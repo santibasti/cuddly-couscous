@@ -1,0 +1,209 @@
+import { useSyncExternalStore } from 'react';
+import type { AuditLog, Base, DB, Invoice, PayrollPeriod, Role, TableName, UserAccount } from './types';
+import { permsFor } from './rbac';
+import { isoNow, sha256, uid } from './util';
+import { seedDB } from './seed';
+
+type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
+type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
+
+const KEY = 'topmop-ops-db-v1';
+const SESSION = 'topmop-ops-session-v1';
+
+export class PermissionError extends Error {}
+export class RuleError extends Error {}
+
+const TABLE_LABEL: Partial<Record<TableName, string>> = {
+  stock: 'stock transaction', invoices: 'invoice', periods: 'payroll period', checkouts: 'equipment out/in record', payments: 'payment',
+};
+
+class Store {
+  private _db: DB;
+  private listeners = new Set<() => void>();
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private sessionUser: string | null = null;
+
+  constructor() {
+    let db: DB | null = null;
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) db = JSON.parse(raw) as DB;
+    } catch { /* ignore corrupted / unavailable storage */ }
+    this._db = db ?? seedDB();
+    try { this.sessionUser = localStorage.getItem(SESSION); } catch { /* noop */ }
+    if (!db) this.persistNow();
+  }
+
+  /* ---- subscription ---- */
+  subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
+  getDB = () => this._db;
+  private emit() { this.listeners.forEach((l) => l()); this.persist(); }
+  private persist() { if (this.timer) clearTimeout(this.timer); this.timer = setTimeout(() => this.persistNow(), 300); }
+  private persistNow() {
+    try { localStorage.setItem(KEY, JSON.stringify(this._db)); }
+    catch { console.warn('Storage quota reached; demo data will not persist this change.'); }
+  }
+  private set(mut: (d: DB) => DB) { this._db = { ...mut(this._db), version: this._db.version + 1 }; this.emit(); }
+
+  /* ---- auth (demo mode: local accounts; production uses Supabase Auth) ---- */
+  get user(): UserAccount | null { return this._db.users.find((u) => u.id === this.sessionUser && u.active && !u.deleted_at) ?? null; }
+  get role(): Role | null { return this.user?.role ?? null; }
+  can(perm: string): boolean {
+    const u = this.user; if (!u) return false;
+    return permsFor(u.role, this._db.settings.access).has(perm);
+  }
+  require(perm: string) { if (!this.can(perm)) throw new PermissionError(`Your role is not permitted to do this (${perm}).`); }
+
+  async login(email: string, password: string): Promise<UserAccount> {
+    const u = this._db.users.find((x) => x.email.toLowerCase() === email.trim().toLowerCase() && !x.deleted_at);
+    const h = await sha256(`topmop:${password}`);
+    if (!u || u.pass_hash !== h) throw new Error('Invalid email or password.');
+    if (!u.active) throw new Error('This account is disabled. Contact your administrator.');
+    this.sessionUser = u.id;
+    try { localStorage.setItem(SESSION, u.id); } catch { /* noop */ }
+    this.audit('login', 'users', u.id, `${u.name} signed in`);
+    this.set((d) => d);
+    return u;
+  }
+  logout() {
+    const u = this.user;
+    if (u) this.audit('logout', 'users', u.id, `${u.name} signed out`);
+    this.sessionUser = null;
+    try { localStorage.removeItem(SESSION); } catch { /* noop */ }
+    this.set((d) => d);
+  }
+  async setPassword(userId: string, password: string) {
+    this.require('admin.users');
+    const h = await sha256(`topmop:${password}`);
+    this.update('users', userId, { pass_hash: h } as never, 'update', 'Password reset');
+  }
+
+  /* ---- audit ---- */
+  audit(action: AuditLog['action'], table: string, recordId: string, summary: string, before?: unknown, after?: unknown) {
+    const u = this.user;
+    const entry: AuditLog = { id: uid(), at: isoNow(), user_id: u?.id ?? 'system', user_name: u?.name ?? 'System', action, table, record_id: recordId, summary, before, after };
+    this._db = { ...this._db, audit: [entry, ...this._db.audit].slice(0, 5000) };
+  }
+
+  /* ---- generic CRUD with audit & guards ---- */
+  insert<T extends TableName>(table: T, data: NewRow<T>, summary?: string): Rows[T] {
+    const now = isoNow();
+    const row = { ...data, id: (data as { id?: string }).id ?? uid(), created_at: now, updated_at: now, created_by: this.user?.id ?? 'system' } as unknown as Rows[T];
+    this.audit('create', table, (row as Base).id, summary ?? `Created ${table.replace(/s$/, '')} ${describe(row)}`, undefined, row);
+    this.set((d) => ({ ...d, [table]: [...(d[table] as unknown[]), row] }) as DB);
+    return row;
+  }
+
+  update<T extends TableName>(table: T, id: string, patch: Partial<Rows[T]>, action: AuditLog['action'] = 'update', summary?: string): Rows[T] {
+    const list = this._db[table] as unknown as (Base & Record<string, unknown>)[];
+    const before = list.find((r) => r.id === id);
+    if (!before) throw new RuleError(`Record not found in ${table}`);
+    this.guardUpdate(table, before, patch as Record<string, unknown>);
+    const after = { ...before, ...patch, updated_at: isoNow(), updated_by: this.user?.id ?? 'system' };
+    this.audit(action, table, id, summary ?? `Updated ${table.replace(/s$/, '')} ${describe(after)}`, pickChanged(before, patch as Record<string, unknown>), pickChanged(after, patch as Record<string, unknown>));
+    this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? after : r)) }) as DB);
+    return after as unknown as Rows[T];
+  }
+
+  remove(table: TableName, id: string) {
+    const list = this._db[table] as unknown as (Base & Record<string, unknown>)[];
+    const before = list.find((r) => r.id === id);
+    if (!before) return;
+    this.guardDelete(table, before);
+    this.audit('delete', table, id, `Soft-deleted ${table.replace(/s$/, '')} ${describe(before)}`, before);
+    this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? { ...r, deleted_at: isoNow(), deleted_by: this.user?.id ?? 'system' } : r)) }) as DB);
+  }
+  restore(table: TableName, id: string) {
+    this.require('admin.users');
+    this.audit('restore', table, id, `Restored ${table} record`);
+    this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? { ...r, deleted_at: null, deleted_by: null } : r)) }) as DB);
+  }
+
+  /** Immutable-record rules: finalized payroll, approved invoices, stock transactions, completed asset checkouts. */
+  private guardDelete(table: TableName, r: Base & Record<string, unknown>) {
+    const nice = TABLE_LABEL[table] ?? table;
+    if (table === 'stock') throw new RuleError('Stock transactions cannot be deleted. Post a reversal or adjustment instead.');
+    if (table === 'periods' && ((r as unknown as PayrollPeriod).locked || (r as unknown as PayrollPeriod).status !== 'Draft')) throw new RuleError('Only draft payroll periods can be removed. Finalized payroll is locked.');
+    if (table === 'runs') throw new RuleError('Payroll runs cannot be deleted.');
+    if (table === 'invoices' && (r as unknown as Invoice).status !== 'Draft') throw new RuleError('Approved invoices cannot be deleted. Reverse the invoice instead.');
+    if (table === 'checkouts' && (r.status === 'Released' || r.status === 'Returned')) throw new RuleError('Completed or active equipment out/in records cannot be deleted.');
+    if (table === 'payments') throw new RuleError('Payments cannot be deleted. Reverse the payment instead.');
+    if (table === 'attendance' && r.approval === 'Approved') throw new RuleError('Approved attendance cannot be deleted. File a correction request.');
+    if (table === 'users' && r.id === this.user?.id) throw new RuleError('You cannot delete your own account.');
+    void nice;
+  }
+  private guardUpdate(table: TableName, r: Base & Record<string, unknown>, patch: Record<string, unknown>) {
+    if (table === 'stock' && !('approval' in patch && Object.keys(patch).every((k) => ['approval', 'approved_by'].includes(k)))) throw new RuleError('Stock transactions are immutable. Post a reversal or adjustment instead.');
+    if (table === 'periods' && r.locked && !('deleted_at' in patch)) throw new RuleError('This payroll period is finalized and locked.');
+    if (table === 'runs') {
+      const p = this._db.periods.find((x) => x.id === r.period_id);
+      if (p?.locked) throw new RuleError('This payroll run is finalized and locked.');
+    }
+    if (table === 'invoices' && r.status === 'Approved') {
+      const allowed = ['status', 'reversal_reason', 'reversed_at', 'last_reminder', 'notes', 'due_date'];
+      if (!Object.keys(patch).every((k) => allowed.includes(k))) throw new RuleError('Approved invoices are locked. Reverse the invoice and issue a new one.');
+    }
+    if (table === 'checkouts' && r.status === 'Returned') throw new RuleError('Completed out/in records are locked.');
+  }
+
+  /** Settings & counters */
+  patchSettings(patch: Partial<DB['settings']>, summary = 'Updated settings') {
+    this.audit('update', 'settings', 'settings', summary, undefined, patch);
+    this.set((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
+  }
+  nextNumber(kind: 'QT' | 'JOB' | 'INV' | 'OR' | 'EMP'): string {
+    const n = (this._db.settings.counters[kind] ?? 0) + 1;
+    this._db = { ...this._db, settings: { ...this._db.settings, counters: { ...this._db.settings.counters, [kind]: n } } };
+    const yr = new Date().getFullYear();
+    return kind === 'EMP' ? `TM-${String(n).padStart(3, '0')}` : `${kind}-${yr}-${String(n).padStart(4, '0')}`;
+  }
+  /* ---- automation helpers (system-attributed, not permission checked) ---- */
+  system<T extends TableName>(table: T, id: string, patch: Partial<Rows[T]>, summary?: string) { return this.update(table, id, patch, 'update', summary); }
+  systemInsert<T extends TableName>(table: T, data: NewRow<T>, summary?: string) { return this.insert(table, data, summary); }
+  syncNotifications(list: Omit<Rows['notifications'], keyof Base | 'read_by'>[]) {
+    const old = new Map(this._db.notifications.map((n) => [n.key, n]));
+    const now = isoNow();
+    const next = list.map((l) => {
+      const o = old.get(l.key);
+      return o ? { ...o, ...l, updated_at: o.updated_at } : ({ id: uid(), created_at: now, updated_at: now, created_by: 'system', read_by: [], ...l } as Rows['notifications']);
+    });
+    const sig = (a: Rows['notifications'][]) => JSON.stringify(a.map((n) => [n.key, n.title, n.body, n.severity, n.read_by]).sort());
+    if (sig(next) === sig(this._db.notifications)) return;
+    this.set((d) => ({ ...d, notifications: next }));
+  }
+  markRead(ids: string[]) {
+    const uidv = this.user?.id; if (!uidv) return;
+    this.set((d) => ({ ...d, notifications: d.notifications.map((n) => (ids.includes(n.id) && !n.read_by.includes(uidv) ? { ...n, read_by: [...n.read_by, uidv] } : n)) }));
+  }
+
+  /** Batch several mutations into a single emit (still audited individually). */
+  batch(fn: () => void) { fn(); }
+
+  reset() {
+    this._db = seedDB();
+    this.sessionUser = null;
+    try { localStorage.removeItem(SESSION); } catch { /* noop */ }
+    this.emit();
+  }
+}
+
+function describe(r: unknown): string {
+  const o = r as Record<string, unknown>;
+  return String(o.number ?? o.name ?? o.full_name ?? o.code ?? o.label ?? o.title ?? o.summary ?? String(o.id ?? '').slice(0, 8));
+}
+function pickChanged(o: Record<string, unknown>, patch: Record<string, unknown>) {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(patch)) out[k] = typeof o[k] === 'string' && (o[k] as string).startsWith('data:') ? '[file]' : o[k];
+  return out;
+}
+
+export const store = new Store();
+export const useDB = (): DB => useSyncExternalStore(store.subscribe, store.getDB);
+export function useAuth() {
+  const db = useDB();
+  const user = db.users.find((u) => u.id === (store as unknown as { sessionUser: string | null }).sessionUser && u.active && !u.deleted_at) ?? null;
+  const perms = user ? permsFor(user.role, db.settings.access) : new Set<string>();
+  const employee = user?.employee_id ? db.employees.find((e) => e.id === user.employee_id) ?? null : null;
+  return { user, perms, can: (p: string) => perms.has(p), any: (ps: string[]) => ps.some((p) => perms.has(p)), employee, db };
+}
+export const live = <T extends { deleted_at?: string | null }>(a: T[]): T[] => a.filter((x) => !x.deleted_at);
