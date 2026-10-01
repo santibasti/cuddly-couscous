@@ -5,7 +5,7 @@ import type {
   Payment, Quotation, QuoteStatus, StockTx,
 } from './types';
 import {
-  buildPayrollLines, computeTimes, docTotals, findConflicts, invoiceBalance, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
+  buildPayrollLines, computeTimes, docTotals, finalContract, findConflicts, invoiceBalance, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
 import { addDays, isoNow, money, nowLocal, round2, sum, today } from './util';
 
@@ -110,8 +110,8 @@ export function moveJob(id: string, startAt: string) {
 export function setJobStatus(id: string, status: JobStatus, note?: string) {
   const j = db().jobs.find((x) => x.id === id)!;
   if (!store.can('jobs.edit')) fail('Not permitted.');
-  if (!['Pending', 'Confirmed', 'Cancelled', 'Rescheduled'].includes(status)) fail('That status is set by the dispatch workflow (checklist → departure → arrival → start work → completion → return → close).');
-  if (!['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)) fail(`A job that is ${j.status.toLowerCase()} can only change status through the dispatch workflow, or by an Operations Manager / Admin override with a reason.`);
+  if (!['Pending', 'Confirmed', 'Cancelled', 'Rescheduled'].includes(status)) fail('That status is set by the job workflow inside the Job Card.');
+  if (!['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)) fail(`A job that is ${j.status.toLowerCase()} can only change status through the job workflow, or by an Operations Manager / Admin override with a reason.`);
   if (status === 'Cancelled' && note) return store.update('jobs', id, { status, damage_report: note }, 'update', `Cancelled ${j.number}: ${note}`);
   return store.update('jobs', id, { status }, 'update', `${j.number} → ${status}`);
 }
@@ -121,32 +121,6 @@ export function updateJobField(id: string, patch: Partial<Job>) {
   if (isDone(j.status) && !store.can('jobs.edit')) fail('Completed jobs are locked.');
   return store.update('jobs', id, patch as never, 'update', `Updated job ${j.number}`);
 }
-export function completeJob(id: string, p: { findings: string; damage_report: string; equipment_condition_notes: string; signoff_name: string; signoff_data?: string; rating?: number; used: Record<string, number> }) {
-  store.require('jobs.complete');
-  const d = db(); const j = d.jobs.find((x) => x.id === id)!;
-  if (isDone(j.status)) fail('Work is already completed.');
-  if (j.status !== 'In Progress') fail(j.status === 'Cancelled' ? 'Cancelled jobs cannot be completed.' : 'Work can only be completed once the job is In Progress (dispatch, arrive on site, then start work).');
-  const hasDispatch = d.dispatches.some((x) => x.job_id === id && !x.deleted_at);
-  if (!p.signoff_name.trim()) fail('Client sign-off name is required.');
-  if (j.checklist.some((c) => !c.done)) fail('Complete every checklist item before submitting.');
-  if (!j.photos.some((x) => x.kind === 'before') || !j.photos.some((x) => x.kind === 'after')) fail('Attach at least one before and one after photo.');
-  const at = nowLocal();
-  // With a dispatch checklist, materials were issued at departure and usage (issued − returned) is calculated at the return checklist.
-  const materials = hasDispatch ? j.materials : j.materials.map((m) => ({ ...m, used_qty: p.used[m.item_id] ?? m.planned_qty }));
-  for (const item of hasDispatch ? [] : [...new Set([...j.materials.map((m) => m.item_id), ...Object.keys(p.used)])]) {
-    const used = p.used[item] ?? j.materials.find((m) => m.item_id === item)?.planned_qty ?? 0;
-    const issuedNet = -sum(d.stock.filter((t) => t.approval === 'Approved' && t.job_id === id && t.item_id === item && ['Issue to Job', 'Return from Job'].includes(t.type)), (t) => t.qty);
-    const diff = round2(used - issuedNet);
-    const inv = d.items.find((i) => i.id === item)!;
-    if (diff > 0) store.insert('stock', { item_id: item, type: 'Issue to Job', qty: -diff, unit_cost: inv.cost, location_id: inv.location_id, job_id: id, date: today(), approval: 'Approved', reason: 'Recorded at job completion' } as never, `Issued ${diff} ${inv.uom} ${inv.name} to ${j.number}`);
-    else if (diff < 0) store.insert('stock', { item_id: item, type: 'Return from Job', qty: -diff, unit_cost: inv.cost, location_id: inv.location_id, job_id: id, date: today(), approval: 'Approved', reason: 'Unused returned at completion' } as never, `Returned ${-diff} ${inv.uom} ${inv.name} from ${j.number}`);
-  }
-  return store.update('jobs', id, {
-    status: hasDispatch ? 'Work Completed' : 'Completed', completed_at: at, findings: p.findings, damage_report: p.damage_report, equipment_condition_notes: p.equipment_condition_notes,
-    signoff_name: p.signoff_name, signoff_data: p.signoff_data, signoff_at: at, client_rating: p.rating, materials,
-  }, 'approve', `Work completed on ${j.number}`);
-}
-
 /* ================= Sales ================= */
 export function saveQuotation(q: Omit<Quotation, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'number'> & { id?: string; number?: string }) {
   store.require('sales.edit');
@@ -290,7 +264,7 @@ export function releaseCheckout(id: string, p: { condition: Condition; meter?: n
   store.require('assets.approve');
   return performRelease(id, p);
 }
-/** Release without a permission check — used by dispatch when the approver is releasing, never exposed directly. */
+/** Release without a permission check — used by the job workflow when an approver completes the HQ checklist. */
 export function performRelease(id: string, p: { condition: Condition; meter?: number; photos: string[] }) {
   const c = db().checkouts.find((x) => x.id === id)!; const a = asset(c.asset_id);
   if (c.status !== 'Requested') fail('Only requested items can be released.');
@@ -298,7 +272,7 @@ export function performRelease(id: string, p: { condition: Condition; meter?: nu
   const active = db().checkouts.find((x) => x.asset_id === c.asset_id && x.status === 'Released');
   if (active) fail(`${a.name} is still checked out to ${db().jobs.find((j) => j.id === active.job_id)?.number ?? 'another job'}. Return it first – equipment can never be on two jobs at once.`);
   store.update('checkouts', id, { status: 'Released', approved_by: me()!.id, out_at: nowLocal(), out_condition: p.condition, out_meter: p.meter, out_photos: p.photos }, 'approve', `Released ${a.name}`);
-  store.update('assets', a.id, { status: 'Checked Out', custodian_id: c.responsible_id, location: 'On site', condition: p.condition, ...(p.meter ? { meter_reading: p.meter } : {}) });
+  store.update('assets', a.id, { status: 'In Use', custodian_id: c.responsible_id, location: 'On site', condition: p.condition, ...(p.meter ? { meter_reading: p.meter } : {}) });
 }
 export function rejectCheckout(id: string, note: string) {
   store.require('assets.approve');
@@ -359,9 +333,13 @@ export function invoiceFromJob(jobId: string): Invoice {
   if (db().invoices.some((i) => i.job_id === jobId && i.status !== 'Reversed' && !i.deleted_at)) fail('This job already has an invoice.');
   const client = db().clients.find((c) => c.id === j.client_id)!;
   const q = db().quotations.find((x) => x.id === j.quotation_id);
+  // approved variations are billed as extra lines; the original quotation lines are copied unchanged
+  const fc = finalContract(db(), j);
+  const varItems = db().variations.filter((v) => v.job_id === jobId && v.status === 'Approved' && !v.deleted_at)
+    .flatMap((v) => v.items.map((it, k) => ({ ...it, description: `${v.number}: ${it.description}`, discount: it.discount + (k === 0 ? v.discount : 0) })));
   return saveInvoice({
     client_id: j.client_id, site_id: j.site_id, job_id: j.id, quotation_id: q?.id, issue_date: today(), due_date: addDays(today(), db().settings.payment_terms_days),
-    items: q?.items ?? [{ service_code: j.service_codes[0], description: j.scope, qty: 1, unit: 'lot', rate: j.contract_amount, discount: 0 }],
+    items: [...(q?.items ?? [{ service_code: j.service_codes[0], description: j.scope, qty: 1, unit: 'lot', rate: fc.originalNet, discount: 0 }]), ...varItems],
     vat_mode: q?.vat_mode ?? (client.vat_status === 'VAT-registered' ? 'exclusive' : 'none'), vat_rate: db().settings.vat_rate, discount: q?.discount ?? 0,
     withholding_rate: client.withholding_rate, status: 'Draft', branch_id: j.branch_id,
   }) as Invoice;
@@ -543,29 +521,29 @@ export function runAutomations() {
     const due = addDays(a.last_maintenance || a.purchase_date, a.maintenance_interval_days); const dt = daysTo(due);
     if (dt <= s.reminder_days.maintenance) add(`maint:${a.id}`, 'asset', dt < 0 ? 'Maintenance overdue' : 'Maintenance due', `${a.code} ${a.name}: ${dt < 0 ? `${-dt} day(s) overdue` : `due in ${dt} day(s)`}.`, dt < 0 ? 'warn' : 'info', '/assets', [...ops]);
   }
-  // dispatch, return & incidents
+  // job workflow, equipment & incidents
   for (const x of d.incidents.filter((i) => !i.deleted_at && ['Open', 'Investigating'].includes(i.status))) {
-    add(`inc:${x.id}`, 'incident', `Incident ${x.number}: ${x.type}`, x.description, x.severity === 'High' ? 'critical' : x.severity === 'Medium' ? 'warn' : 'info', '/dispatch?tab=incidents', [...ops, 'leader'], x.severity === 'High');
-  }
-  for (const dx of d.dispatches.filter((x) => !x.deleted_at && x.dep_exception_status === 'Pending')) {
-    const jx = d.jobs.find((x) => x.id === dx.job_id);
-    add(`disp-exc:${dx.id}`, 'dispatch', 'Departure exception awaiting approval', `${jx?.number}: ${dx.dep_exception_reason}`, 'warn', `/dispatch/${dx.job_id}`, [...ops], true);
+    add(`inc:${x.id}`, 'incident', `Incident ${x.number}: ${x.type}`, x.description, x.severity === 'High' ? 'critical' : x.severity === 'Medium' ? 'warn' : 'info', '/assets?tab=incidents', [...ops, 'leader'], x.severity === 'High');
   }
   for (const r of d.requests.filter((x) => !x.deleted_at && x.status === 'Pending' && x.note?.startsWith('Requested from site'))) {
-    add(`req-site:${r.id}`, 'dispatch', 'Material request from site', `${d.jobs.find((x) => x.id === r.job_id)?.number}: ${r.lines.map((l) => `${l.qty} × ${d.items.find((i) => i.id === l.item_id)?.name}`).join(', ')}`, 'info', '/inventory?tab=requests', [...ops]);
+    add(`req-site:${r.id}`, 'job', 'Material request from site', `${d.jobs.find((x) => x.id === r.job_id)?.number}: ${r.lines.map((l) => `${l.qty} × ${d.items.find((i) => i.id === l.item_id)?.name}`).join(', ')}`, 'info', '/inventory?tab=requests', [...ops]);
   }
-  for (const j of d.jobs.filter((x) => !x.deleted_at && x.start_at.startsWith(t) && LIVE_JOB.includes(x.status))) {
-    const dp = d.dispatches.find((x) => x.job_id === j.id && !x.deleted_at);
-    if ((!dp || dp.stage === 'Pending') && now > addMinutes(j.start_at, 30)) add(`disp-late:${j.id}`, 'dispatch', 'Crew not yet dispatched', `${j.number} was due to start ${j.start_at.slice(11)} — departure checklist not completed.`, 'warn', `/dispatch/${j.id}`, [...ops, 'leader'], true);
+  for (const j of d.jobs.filter((x) => !x.deleted_at && x.start_at.startsWith(t))) {
+    if (['Confirmed', 'Dispatch Checklist Pending'].includes(j.status) && now > addMinutes(j.start_at, 30)) add(`wf-late:${j.id}`, 'job', 'Crew not yet dispatched', `${j.number} was due to start ${j.start_at.slice(11)} — HQ checklist / dispatch not completed.`, 'warn', `/jobs/${j.id}`, [...ops, 'leader'], true);
   }
-  for (const dp of d.dispatches.filter((x) => !x.deleted_at && (x.stage === 'Departed' || x.stage === 'On Site'))) {
-    const j = d.jobs.find((x) => x.id === dp.job_id);
-    if (j && ['Work Completed', 'Return Checklist Pending'].includes(j.status)) add(`ret-pending:${j.id}`, 'dispatch', 'Return checklist pending', `${j.number}: work completed — return checklist not yet done.`, 'warn', `/dispatch/${j.id}`, [...ops, 'leader']);
-    if (j && now > addMinutes(j.end_at, 120)) add(`disp-return:${dp.id}`, 'dispatch', 'Crew not yet returned', `${j.number}: return checklist still open ${Math.round((Date.parse(now + ':00Z') - Date.parse(j.end_at + ':00Z')) / 3600000)} h after scheduled end.`, 'warn', `/dispatch/${j.id}`, [...ops], true);
+  for (const j of d.jobs.filter((x) => !x.deleted_at && ['Work Completed', 'Leaving Site'].includes(x.status))) {
+    add(`wf-return:${j.id}`, 'job', j.status === 'Work Completed' ? 'Return equipment check pending' : 'Crew heading back to HQ', `${j.number}: ${j.status === 'Work Completed' ? 'service report signed — complete the equipment return check before leaving site.' : 'awaiting arrival at HQ.'}`, 'info', `/jobs/${j.id}`, [...ops, 'leader']);
   }
-  for (const dp of d.dispatches.filter((x) => !x.deleted_at && x.stage === 'Returned' && x.ret_at && x.ret_at.slice(0, 10) >= addDays(t, -2) && (x.ret_fuel === 'Empty' || x.ret_fuel === '1/4'))) {
-    const j = d.jobs.find((x) => x.id === dp.job_id);
-    add(`fuel:${dp.id}`, 'dispatch', 'Refuel vehicle', `${d.assets.find((a) => a.id === j?.vehicle_id)?.name ?? 'Vehicle'} returned with ${dp.ret_fuel} fuel after ${j?.number}.`, 'info', `/dispatch/${dp.job_id}`, [...ops]);
+  for (const j of d.jobs.filter((x) => !x.deleted_at && x.status === 'Arrived at HQ')) {
+    const open = d.incidents.filter((i) => i.job_id === j.id && !i.deleted_at && ['Open', 'Investigating'].includes(i.status)).length;
+    add(`wf-close:${j.id}`, 'job', 'Job awaiting closure', `${j.number}: back at HQ${open ? ` — ${open} incident(s) need Admin review before closing` : ' — ready to close'}.`, open ? 'warn' : 'info', `/jobs/${j.id}`, [...ops]);
+  }
+  for (const v of d.variations.filter((x) => !x.deleted_at && x.status === 'Pending Approval')) {
+    add(`var-pend:${v.id}`, 'job', 'Variation awaiting client approval', `${v.number}: ${v.reason}`, 'warn', `/jobs/${v.job_id}`, [...ops, 'leader']);
+  }
+  for (const w of d.workflows.filter((x) => !x.deleted_at && x.hqa_at && x.hqa_at.slice(0, 10) >= addDays(t, -2) && (x.hqa_fuel === 'Empty' || x.hqa_fuel === '1/4'))) {
+    const j = d.jobs.find((x) => x.id === w.job_id);
+    add(`fuel:${w.id}`, 'job', 'Refuel vehicle', `${d.assets.find((a) => a.id === j?.vehicle_id)?.name ?? 'Vehicle'} returned with ${w.hqa_fuel} fuel after ${j?.number}.`, 'info', `/jobs/${w.job_id}`, [...ops]);
   }
   // finance
   for (const i of d.invoices.filter((x) => x.status === 'Approved' && !x.deleted_at)) {

@@ -7,7 +7,7 @@ records are enforced **in the database** (triggers + row-level security), so the
 | --- | --- |
 | `migrations/0001_schema.sql` | Tables, constraints, indexes. Column names mirror `src/lib/types.ts`. |
 | `migrations/0002_security_and_rules.sql` | Audit trail, no-hard-delete, immutability guards, double-booking / negative-stock / overpayment guards, reporting views, RLS policies, storage buckets. |
-| `migrations/0004_dispatch_and_incidents.sql` | Dispatch checklist and incident tables, phase/evidence guards, RLS, `Missing` asset status. |
+| `migrations/0004_job_workflow_and_incidents.sql` | Per-job 11-step workflow, variations and incident tables; step-order / evidence guards, job status flow, variation locking and contract value, `In Use` / `Missing` asset statuses, edit-with-reason, RLS. |
 | `migrations/0003_role_permissions.sql` | Default role → permission matrix (generated from `src/lib/rbac.ts`). The Owner edits it afterwards. |
 | `seed.sql` | **Generated, not committed.** Demo dataset: `npm run db:seed-sql`. |
 

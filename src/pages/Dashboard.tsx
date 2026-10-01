@@ -4,7 +4,7 @@ import { Bar as RBar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tool
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, PageHead, Stat, Bar, Empty } from '@/components/ui';
 import { addDays, eachDay, fmtDate, fmtTime, inRange, monthEnd, monthStart, money, moneyShort, nowLocal, pct, round2, sum, today, weekStart } from '@/lib/util';
-import { AWAY_JOB, docTotals, invoiceBalance, invoiceTotals, isDone, isOpen, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
+import { AWAY_JOB, FIELD_JOB, docTotals, invoiceBalance, invoiceTotals, isDone, isOpen, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
 import { isOverdue } from '@/lib/actions';
 import type { DB, Invoice, ServiceCode } from '@/lib/types';
 
@@ -62,7 +62,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid g4 keep2" style={{ marginBottom: 14 }}>
-        <Stat k="Today's jobs" v={d.todayJobs.length} s={`${d.todayJobs.filter((j) => ['Departed from HQ', 'Arrived at Site', 'In Progress'].includes(j.status)).length} in the field`} to="/jobs" />
+        <Stat k="Today's jobs" v={d.todayJobs.length} s={`${d.todayJobs.filter((j) => FIELD_JOB.includes(j.status)).length} in the field`} to="/jobs" />
         <Stat k="Crew clocked in" v={`${d.clockedIn} / ${d.crewTotal}`} s={`${d.clockedOut} clocked out • ${d.notIn} not in`} tone={d.notIn > 3 ? 'warn' : undefined} to="/attendance" />
         <Stat k="Machines checked out" v={d.checkedOut.length} s={d.overdueReturns ? `${d.overdueReturns} overdue return(s)` : 'None overdue'} tone={d.overdueReturns ? 'bad' : undefined} to="/assets" />
         <Stat k="Low-stock alerts" v={d.lowStock.length} s={`${d.expiring} expiring soon`} tone={d.lowStock.length ? 'warn' : 'good'} to="/inventory" />
@@ -70,19 +70,22 @@ export default function Dashboard() {
 
       {(can('dispatch.view') || can('assets.view')) && (
         <>
-          <div className="grid g3" style={{ marginBottom: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
-            <Stat k="Teams dispatched" v={d.dispatched.length} s="away from HQ" tone="navy" to="/dispatch" />
-            <Stat k="Teams at client sites" v={d.atSites.length} s={`${d.atSites.filter((j) => j.status === 'In Progress').length} working now`} to="/dispatch" />
-            <Stat k="Awaiting return checklist" v={d.awaitingReturn.length} s="work done, crew not checked in" tone={d.awaitingReturn.length ? 'warn' : 'good'} to="/dispatch" />
+          <Card title="Jobs by workflow status" actions={<Link to="/jobs" className="btn sm">All jobs</Link>}>
+            <div className="grid g3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+              {d.byStatus.map((s) => <Stat key={s.status} k={s.label} v={s.count} s={s.hint} tone={s.tone} to={`/jobs?status=${encodeURIComponent(s.status)}`} />)}
+            </div>
+          </Card>
+          <div className="grid g3" style={{ margin: '14px 0', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+            <Stat k="Machines in use" v={d.machinesInUse.length} s={d.machinesInUse.slice(0, 4).map((a) => a.code).join(', ') || 'None out'} to="/assets" />
             <Stat k="Vehicles in use" v={d.vehiclesInUse.length} s={d.vehiclesInUse.map((a) => a.code).join(', ') || 'None out'} to="/assets" />
-            <Stat k="Missing / damaged equipment" v={d.equipAlerts.length} s={`${d.openIncidents.length} open incident(s)`} tone={d.equipAlerts.length || d.openIncidents.length ? 'bad' : 'good'} to="/dispatch?tab=incidents" />
+            <Stat k="Missing / damaged equipment" v={d.equipAlerts.length} s={`${d.openIncidents.length} open incident(s)`} tone={d.equipAlerts.length || d.openIncidents.length ? 'bad' : 'good'} to="/assets?tab=incidents" />
           </div>
-          {(d.dispatched.length > 0 || d.equipAlerts.length > 0) && (
+          {(d.inField.length > 0 || d.equipAlerts.length > 0 || d.openIncidents.length > 0) && (
             <div className="grid g2" style={{ marginBottom: 14 }}>
-              <Card title="Teams in the field" flush actions={<Link to="/dispatch" className="btn sm">Dispatch board</Link>}>
-                <ul className="list">{d.dispatched.map((j) => <li key={j.id}><div><Link to={`/dispatch/${j.id}`}><b>{j.number}</b></Link> · {db.employees.find((e) => e.id === j.leader_id)?.full_name}<div className="small muted">{db.clients.find((c) => c.id === j.client_id)?.name} · {db.sites.find((s) => s.id === j.site_id)?.name}</div></div><Badge>{j.status}</Badge></li>)}{!d.dispatched.length && <li className="muted">No teams out.</li>}</ul>
+              <Card title="Teams in the field" flush>
+                <ul className="list">{d.inField.map((j) => <li key={j.id}><div><Link to={`/jobs/${j.id}`}><b>{j.number}</b></Link> · {db.employees.find((e) => e.id === j.leader_id)?.full_name}<div className="small muted">{db.clients.find((c) => c.id === j.client_id)?.name} · {db.sites.find((s) => s.id === j.site_id)?.name}</div></div><Badge>{j.status}</Badge></li>)}{!d.inField.length && <li className="muted">No teams out.</li>}</ul>
               </Card>
-              <Card title="Missing or damaged equipment" flush actions={<Link to="/dispatch?tab=incidents" className="btn sm">Incidents</Link>}>
+              <Card title="Missing or damaged equipment" flush actions={<Link to="/assets?tab=incidents" className="btn sm">Incidents</Link>}>
                 <ul className="list">{d.equipAlerts.map((a) => <li key={a.id}><div><b>{a.code}</b> · {a.name}<div className="small muted">{a.location}</div></div><Badge>{a.status}</Badge></li>)}{d.openIncidents.filter((i) => !i.asset_id).slice(0, 4).map((i) => <li key={i.id}><div><b>{i.number}</b> · {i.type}<div className="small muted">{i.description}</div></div><Badge>{i.status}</Badge></li>)}{!d.equipAlerts.length && !d.openIncidents.length && <li className="muted">No alerts.</li>}</ul>
               </Card>
             </div>
@@ -280,15 +283,26 @@ function compute(db: DB, from: string, to: string, f: { branch: string; service:
     .map((x) => ({ id: x.j.id, number: x.j.number, client: db.clients.find((c) => c.id === x.j.client_id)?.name, gp: x.c.grossProfit, estimated: x.c.estimated }));
   // dispatch & field widgets (current state, not date-range based)
   const allJobs = live(db.jobs).filter((j) => (!f.branch || j.branch_id === f.branch) && (!f.client || j.client_id === f.client) && (!mineEmp || j.leader_id === mineEmp || j.crew_ids.includes(mineEmp)));
-  const dispatched = allJobs.filter((j) => ['Departed from HQ', 'Arrived at Site', 'In Progress', 'Work Completed', 'Return Checklist Pending'].includes(j.status));
-  const atSites = allJobs.filter((j) => ['Arrived at Site', 'In Progress', 'Work Completed'].includes(j.status));
-  const awaitingReturn = allJobs.filter((j) => ['Work Completed', 'Return Checklist Pending'].includes(j.status));
+  const T0 = today();
+  const cnt = (s: string) => allJobs.filter((j) => j.status === s);
+  const byStatus: { status: string; label: string; count: number; hint?: string; tone?: 'navy' | 'warn' | 'good' | 'bad' }[] = [
+    { status: 'Dispatch Checklist Pending', label: 'Equipment checklist (HQ)', count: cnt('Dispatch Checklist Pending').length + allJobs.filter((j) => j.status === 'Confirmed' && j.start_at.startsWith(T0)).length, hint: 'confirmed today / in progress' },
+    { status: 'Dispatched', label: 'Dispatched', count: cnt('Dispatched').length, hint: 'on the road', tone: 'navy' },
+    { status: 'On Site', label: 'On site', count: cnt('On Site').length, hint: 'awaiting conforme / start' },
+    { status: 'In Progress', label: 'Work in progress', count: cnt('In Progress').length, tone: 'navy' },
+    { status: 'Work Completed', label: 'Work completed', count: cnt('Work Completed').length, hint: 'return check pending', tone: cnt('Work Completed').length ? 'warn' : undefined },
+    { status: 'Leaving Site', label: 'Leaving site', count: cnt('Leaving Site').length },
+    { status: 'Arrived at HQ', label: 'Arrived at HQ', count: cnt('Arrived at HQ').length, hint: 'awaiting closure', tone: cnt('Arrived at HQ').length ? 'warn' : undefined },
+    { status: 'Closed', label: 'Closed (7 days)', count: allJobs.filter((j) => (j.status === 'Closed' || j.status === 'Completed') && j.start_at.slice(0, 10) >= addDays(T0, -7)).length, tone: 'good' },
+  ];
+  const inField = allJobs.filter((j) => AWAY_JOB.includes(j.status));
+  const machinesInUse = live(db.assets).filter((a) => a.category !== 'Vehicle' && a.status === 'In Use');
   const vehiclesInUse = live(db.assets).filter((a) => a.category === 'Vehicle' && live(db.checkouts).some((c) => c.asset_id === a.id && c.status === 'Released'));
   const equipAlerts = live(db.assets).filter((a) => a.status === 'Missing' || a.status === 'Damaged');
   const openIncidents = live(db.incidents).filter((i) => ['Open', 'Investigating'].includes(i.status));
   void eachDay; void AWAY_JOB; void isOpen;
   return {
-    dispatched, atSites, awaitingReturn, vehiclesInUse, equipAlerts, openIncidents,
+    byStatus, inField, machinesInUse, vehiclesInUse, equipAlerts, openIncidents,
     todayJobs, jobsCompleted, jobsScheduled: inRangeJobs.length, weekly, crew, clockedIn: crew.filter((c) => c.state === 'In').length, clockedOut: crew.filter((c) => c.state === 'Out').length,
     notIn: crew.filter((c) => c.state === 'None').length, crewTotal: crew.length, checkedOut, overdueReturns: checkedOut.filter(isOverdue).length, lowStock, expiring,
     pnl, expenses, receivables, overdueAmt, pendingQuotes, pendingQuoteValue, payrollPayable, payrollWaiting, upcoming, expected, billed, collected, paidOut, byService, topClients, balances, trend, loss, invCount: invRange.length,

@@ -15,8 +15,6 @@ import QuoteEditor from '@/pages/QuoteEditor';
 import Jobs from '@/pages/Jobs';
 import JobDetail from '@/pages/JobDetail';
 import Attendance from '@/pages/Attendance';
-import DispatchPage from '@/pages/Dispatch';
-import DispatchRun from '@/pages/DispatchRun';
 import Employees from '@/pages/Employees';
 import EmployeeDetail from '@/pages/EmployeeDetail';
 import Payroll from '@/pages/Payroll';
@@ -32,7 +30,6 @@ import Portal from '@/pages/Portal';
 const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: string; group?: string }[] = [
   { to: '/dashboard', key: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'Overview' },
   { to: '/jobs', key: 'jobs', label: 'Jobs & Calendar', icon: 'calendar', group: 'Operations' },
-  { to: '/dispatch', key: 'dispatch', label: 'Dispatch & Return', icon: 'dispatch' },
   { to: '/attendance', key: 'attendance', label: 'Attendance', icon: 'attendance' },
   { to: '/assets', key: 'assets', label: 'Equipment Out/In', icon: 'assets' },
   { to: '/inventory', key: 'inventory', label: 'Inventory', icon: 'inventory' },
@@ -138,8 +135,7 @@ function Shell() {
             <Route path="/sales/quote/:id" element={<Guard area="sales"><QuoteEditor /></Guard>} />
             <Route path="/jobs" element={<Guard area="jobs"><Jobs /></Guard>} />
             <Route path="/jobs/:id" element={<Guard area="jobs"><JobDetail /></Guard>} />
-            <Route path="/dispatch" element={<Guard area="dispatch"><DispatchPage /></Guard>} />
-            <Route path="/dispatch/:jobId" element={<Guard area="dispatch"><DispatchRun /></Guard>} />
+            <Route path="/dispatch/*" element={<Navigate to="/jobs" replace />} />
             <Route path="/attendance" element={<Guard area="attendance"><Attendance /></Guard>} />
             <Route path="/employees" element={<Guard area="employees"><Employees /></Guard>} />
             <Route path="/employees/:id" element={<Guard area="employees"><EmployeeDetail /></Guard>} />

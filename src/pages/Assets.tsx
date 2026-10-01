@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
+import { IncidentsPanel } from '@/components/workflow/Incidents';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Photos, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { QrImage } from '@/components/Qr';
@@ -25,7 +26,7 @@ function AssetForm({ initial, onClose }: { initial?: Asset; onClose: () => void 
     <Modal title={initial ? `Edit ${initial.code}` : 'New asset'} size="wide" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save}>Save asset</button></>}>
       <div className="form-grid">
         <Field label="Asset ID" required><input {...f.bind('code')} placeholder="e.g. PWR-003" /></Field><Field label="Name" required><input {...f.bind('name')} /></Field>
-        <Field label="Category"><select {...f.bind('category')}>{CATS.map((c) => <option key={c}>{c}</option>)}</select></Field><Field label="Status"><select {...f.bind('status')}>{['Available', 'Reserved', 'Checked Out', 'Under Maintenance', 'Damaged', 'Missing', 'Retired'].map((c) => <option key={c}>{c}</option>)}</select></Field>
+        <Field label="Category"><select {...f.bind('category')}>{CATS.map((c) => <option key={c}>{c}</option>)}</select></Field><Field label="Status"><select {...f.bind('status')}>{['Available', 'Reserved', 'In Use', 'Under Maintenance', 'Damaged', 'Missing', 'Retired'].map((c) => <option key={c}>{c}</option>)}</select></Field>
         <Field label="Brand"><input {...f.bind('brand')} /></Field><Field label="Model"><input {...f.bind('model')} /></Field><Field label="Serial number"><input {...f.bind('serial')} /></Field><Field label="Purchase date"><input type="date" {...f.bind('purchase_date')} /></Field>
         <Field label="Purchase cost (₱)"><input type="number" min="0" {...f.bind('purchase_cost')} /></Field><Field label="Daily cost allocation to jobs (₱)"><input type="number" min="0" {...f.bind('daily_allocation')} /></Field>
         <Field label="Condition"><select {...f.bind('condition')}>{CONDS.map((c) => <option key={c}>{c}</option>)}</select></Field><Field label="Current location"><input {...f.bind('location')} /></Field>
@@ -119,7 +120,7 @@ export default function Assets() {
   const { db, can } = useAuth();
   const [sp] = useSearchParams();
   const view = can('assets.view');
-  const [tab, setTab] = useState<'register' | 'outin' | 'maint' | 'util'>(sp.get('tab') === 'maint' && view ? 'maint' : view ? 'register' : 'outin');
+  const [tab, setTab] = useState<'register' | 'outin' | 'maint' | 'util' | 'incidents'>(sp.get('tab') === 'incidents' && (can('dispatch.view') || view) ? 'incidents' : sp.get('tab') === 'maint' && view ? 'maint' : view ? 'register' : 'outin');
   const [modal, setModal] = useState<'asset' | Asset | 'request' | null>(sp.get('request') ? 'request' : null);
   const [qr, setQr] = useState<Asset | null>(null); const [labels, setLabels] = useState(sp.get('labels') === '1');
   const [rel, setRel] = useState<Checkout | null>(null); const [ret, setRet] = useState<Checkout | null>(null); const [tk, setTk] = useState<MaintenanceTicket | null>(null);
@@ -155,11 +156,11 @@ export default function Assets() {
         <Stat k="Checked out" v={checkouts.filter((c) => c.status === 'Released').length} tone="navy" /><Stat k="Overdue returns" v={overdue.length} tone={overdue.length ? 'bad' : 'good'} />
         <Stat k="Awaiting release approval" v={checkouts.filter((c) => c.status === 'Requested').length} tone="warn" /><Stat k="Under repair / damaged" v={assets.filter((a) => ['Under Maintenance', 'Damaged'].includes(a.status)).length} tone="warn" />
       </div>
-      <Tabs tabs={[...(view ? [{ id: 'register' as const, label: 'Asset register', count: assets.length }] : []), { id: 'outin', label: 'Out / In', count: checkouts.filter((c) => c.status === 'Requested').length }, ...(view ? [{ id: 'maint' as const, label: 'Maintenance', count: live(db.tickets).filter((t) => t.status !== 'Closed').length }, { id: 'util' as const, label: 'Utilization & downtime' }] : [])]} value={tab} onChange={setTab} />
+      <Tabs tabs={[...(view ? [{ id: 'register' as const, label: 'Asset register', count: assets.length }] : []), { id: 'outin', label: 'Out / In', count: checkouts.filter((c) => c.status === 'Requested').length }, ...(view ? [{ id: 'maint' as const, label: 'Maintenance', count: live(db.tickets).filter((t) => t.status !== 'Closed').length }, { id: 'util' as const, label: 'Utilization & downtime' }] : []), ...(can('dispatch.view') ? [{ id: 'incidents' as const, label: 'Incidents', count: live(db.incidents).filter((i) => ['Open', 'Investigating'].includes(i.status)).length }] : [])]} value={tab} onChange={setTab} />
 
       {tab === 'register' && view && (
         <Card flush><DataTable<Asset> rows={assets.filter((a) => (!cat || a.category === cat) && (!st || a.status === st))} rowKey={(a) => a.id} exportTitle="Asset register" pageSize={15}
-          filters={<><select value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category"><option value="">All categories</option>{CATS.map((c) => <option key={c}>{c}</option>)}</select><select value={st} onChange={(e) => setSt(e.target.value)} aria-label="Status"><option value="">All statuses</option>{['Available', 'Reserved', 'Checked Out', 'Under Maintenance', 'Damaged', 'Missing', 'Retired'].map((c) => <option key={c}>{c}</option>)}</select></>}
+          filters={<><select value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category"><option value="">All categories</option>{CATS.map((c) => <option key={c}>{c}</option>)}</select><select value={st} onChange={(e) => setSt(e.target.value)} aria-label="Status"><option value="">All statuses</option>{['Available', 'Reserved', 'In Use', 'Under Maintenance', 'Damaged', 'Missing', 'Retired'].map((c) => <option key={c}>{c}</option>)}</select></>}
           cols={[
             { key: 'code', header: 'Asset ID', value: (a) => a.code }, { key: 'name', header: 'Name', value: (a) => a.name, render: (a) => <div><b>{a.name}</b><div className="small muted">{a.brand} {a.model} · S/N {a.serial}</div></div> }, { key: 'cat', header: 'Category', value: (a) => a.category },
             { key: 'pd', header: 'Purchased', value: (a) => a.purchase_date, render: (a) => fmtDate(a.purchase_date) }, ...(can('profit.view') ? [{ key: 'pc', header: 'Cost', num: true, type: 'money' as const, value: (a: Asset) => a.purchase_cost, render: (a: Asset) => money(a.purchase_cost) }] : []),
@@ -197,6 +198,7 @@ export default function Assets() {
         </div>
       )}
 
+      {tab === 'incidents' && can('dispatch.view') && <IncidentsPanel />}
       {tab === 'util' && view && (
         <Card title="Equipment utilization & downtime" actions={<select value={days} onChange={(e) => setDays(+e.target.value)} aria-label="Window"><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option><option value={180}>Last 180 days</option></select>} flush>
           <DataTable rows={util} rowKey={(u) => u.a.id} exportTitle={`Equipment utilization (${days}d)`} initialSort={{ key: 'util', dir: -1 }} cols={[

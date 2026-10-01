@@ -282,3 +282,22 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .flow div { flex: 1 0 96px; font-size: 10.5px; line-height: 1.2; color: var(--muted); font-weight: 600; }
 .flow div i { display: block; height: 6px; border-radius: 3px; background: var(--gray-bg); margin-bottom: 4px; }
 .flow div.past i { background: var(--teal); } .flow div.cur i { background: var(--navy); } .flow div.cur { color: var(--navy); }
+
+/* ---- job workflow tracker & step cards ---- */
+.tracker { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 4px; }
+.tracker li button { width: 100%; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; font: inherit; color: var(--muted); display: block; }
+.tracker i { display: flex; align-items: center; justify-content: center; height: 24px; border-radius: 12px; background: var(--gray-bg); font-style: normal; font-size: 12px; font-weight: 700; margin-bottom: 4px; color: var(--navy); }
+.tracker span { display: block; font-size: 10.5px; font-weight: 600; line-height: 1.2; }
+.tracker small { display: block; font-size: 9.5px; color: var(--muted); margin-top: 2px; }
+.tracker li.done i { background: var(--green); color: #fff; } .tracker li.done { color: var(--navy); }
+.tracker li.current i { background: var(--navy); color: #fff; } .tracker li.current { color: var(--navy); }
+.tracker li.open i { background: var(--cyan, #22C1C3); color: #fff; }
+@media (max-width: 900px) {
+  .tracker { grid-template-columns: 1fr; gap: 2px; }
+  .tracker li button { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .tracker i { width: 24px; flex: none; margin: 0; } .tracker small { margin: 0 0 0 auto; }
+}
+.wfstep { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.wfstep.current { border-color: var(--navy); }
+.wfhead { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: none; border: 0; cursor: pointer; text-align: left; font: inherit; color: inherit; min-height: 48px; }
+.wfbody { padding: 12px; border-top: 1px solid var(--line); }

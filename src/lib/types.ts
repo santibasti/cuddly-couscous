@@ -141,8 +141,8 @@ export interface Quotation extends Base {
 
 /* ---------- Jobs ---------- */
 export type JobStatus =
-  | 'Pending' | 'Confirmed' | 'Dispatch Checklist Pending' | 'Departed from HQ' | 'Arrived at Site' | 'In Progress'
-  | 'Work Completed' | 'Return Checklist Pending' | 'Returned to HQ' | 'Closed'
+  | 'Pending' | 'Confirmed' | 'Dispatch Checklist Pending' | 'Dispatched' | 'On Site' | 'In Progress'
+  | 'Work Completed' | 'Leaving Site' | 'Arrived at HQ' | 'Closed'
   | 'Completed' // legacy terminal status, treated the same as Closed
   | 'Cancelled' | 'Rescheduled';
 export interface ChecklistItem { label: string; done: boolean }
@@ -362,7 +362,7 @@ export interface MaterialRequest extends Base {
 export type AssetCategory =
   | 'RO/DI Pure-Water System' | 'Water-Fed Pole' | 'Pressure Washer' | 'Surface Cleaner'
   | 'Industrial Vacuum' | 'Pump' | 'Hose' | 'Ladder' | 'Extension Cord' | 'Safety Equipment' | 'Vehicle' | 'Other';
-export type AssetStatus = 'Available' | 'Reserved' | 'Checked Out' | 'Under Maintenance' | 'Damaged' | 'Missing' | 'Retired';
+export type AssetStatus = 'Available' | 'Reserved' | 'In Use' | 'Under Maintenance' | 'Damaged' | 'Missing' | 'Retired';
 export type Condition = 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Damaged';
 export interface Asset extends Base {
   code: string;
@@ -416,67 +416,98 @@ export interface MaintenanceTicket extends Base {
   vendor?: string;
 }
 
-/* ---------- Crew dispatch & return ---------- */
+/* ---------- Job workflow (lives inside each Job Card) ---------- */
+// 1 Equipment Checklist (HQ) → 2 Dispatch → 3 Site Arrival + Attendance → 4 Quotation / Conforme → 5 Start Work →
+// 6 Final Quotation / Variation → 7 Service Report + Client Signature → 8 Equipment Checklist (Return) → 9 Leave Site →
+// 10 Arrived at HQ → 11 Job Closed.  Every step stores date/time (`*_at`), user (`*_by`), notes, photos and GPS where applicable.
 export type FuelLevel = 'Empty' | '1/4' | '1/2' | '3/4' | 'Full';
-export type DispatchStage = 'Pending' | 'Departed' | 'On Site' | 'Returned';
 export type ItemCondition = 'Good' | 'Damaged' | 'Missing';
 export type VehicleCondition = 'Good' | 'With Issue';
 export type ContainerCondition = 'Good' | 'Damaged' | 'Leaking';
-export interface DispatchItem {
+export interface CheckItem {
   key: string;
   kind: 'vehicle' | 'equipment' | 'tool' | 'ppe' | 'material';
   asset_id?: string;
   item_id?: string;
   label: string;
-  code?: string;              // asset ID / QR value, or inventory item code
+  code?: string;              // Asset ID / QR value, or inventory item code
   unit?: string;
   qty: number;                // required quantity
-  extra?: boolean;            // added by the team leader at dispatch
+  extra?: boolean;            // added by the team leader
   responsible_id?: string;
-  // 3/4. departure
+  // step 1 – HQ checklist
   loaded_qty?: number;        // actual quantity loaded (materials: quantity issued)
   out_ok?: boolean;           // confirmed by scan, typed asset ID or manual tick
   out_by?: 'scan' | 'id' | 'manual';
   out_condition?: ItemCondition;
-  out_container?: ContainerCondition; // materials
+  out_container?: ContainerCondition; // chemicals / materials
   out_photo?: string;
   out_note?: string;
-  // return
+  // step 8 – return check (at the client site)
   returned_qty?: number;
-  ret_by?: 'scan' | 'id' | 'manual';
   ret_condition?: ItemCondition;
+  ret_by?: 'scan' | 'id' | 'manual';
   ret_photo?: string;
   ret_note?: string;
-  ret_responsible_id?: string;
   repair_required?: boolean;
   used_qty?: number;          // materials: issued − returned (calculated)
 }
-export interface Dispatch extends Base {
+export interface PanelRow {
+  id: string;
+  area: string;               // 1st Floor … Roof Deck / Other
+  side: string;               // Front, Rear, Left Side, Right Side, Interior, Other
+  external: number;
+  internal: number;
+  notes?: string;
+  additional?: boolean;       // beyond the quoted scope → feeds a Variation
+}
+export interface JobWorkflow extends Base {
   job_id: string;
-  stage: DispatchStage;
-  items: DispatchItem[];
-  // step 1 – crew
-  crew_present?: string[]; crew_notes?: string;
-  // step 2 – vehicle
-  dep_veh_condition?: VehicleCondition; dep_veh_photo?: string; dep_veh_notes?: string; dep_fuel?: FuelLevel; dep_odo?: number;
-  // step 5 – departure confirmation
-  dep_at?: string; dep_lat?: number; dep_lng?: number; dep_gps_note?: string; dep_photo?: string; dep_confirmed_by?: string; dep_confirmed_at?: string;
-  dep_exception_reason?: string; dep_exception_sig?: string; dep_exception_status?: 'Pending' | 'Approved' | 'Rejected';
-  dep_exception_by?: string; dep_exception_at?: string; dep_exception_note?: string;
-  // arrival at client site
-  arr_at?: string; arr_lat?: number; arr_lng?: number; arr_gps_note?: string; arr_photos: string[];
-  arr_contact_name?: string; arr_contact_mobile?: string; arr_safety_briefing?: boolean; arr_briefing_notes?: string;
-  arr_site_notes?: string; arr_requests?: string;
-  // return to headquarters
-  ret_at?: string; ret_lat?: number; ret_lng?: number; ret_gps_note?: string; ret_photos: string[];
-  ret_fuel?: FuelLevel; ret_odo?: number; ret_veh_condition?: VehicleCondition; ret_veh_notes?: string; ret_notes?: string;
-  ret_confirmed_by?: string; ret_confirmed_at?: string; distance_km?: number;
+  items: CheckItem[];
+  panels: PanelRow[];
+  // 1 Equipment Checklist (HQ)
+  hq_at?: string; hq_by?: string; hq_odo?: number; hq_fuel?: FuelLevel; hq_veh_condition?: VehicleCondition; hq_veh_photo?: string; hq_veh_notes?: string; hq_notes?: string; hq_shortage_reason?: string;
+  // 2 Dispatch
+  disp_at?: string; disp_by?: string; disp_lat?: number; disp_lng?: number; disp_gps_note?: string; disp_photo?: string; disp_notes?: string;
+  // 3 Site Arrival + Attendance
+  arr_at?: string; arr_by?: string; arr_lat?: number; arr_lng?: number; arr_gps_note?: string; arr_photos: string[];
+  arr_contact_name?: string; arr_contact_mobile?: string; arr_notes?: string; arr_crew_present?: string[]; arr_crew_absent?: { id: string; reason: string }[];
+  // 4 Quotation / Conforme
+  conf_at?: string; conf_by?: string; conf_quotation_id?: string; conf_original_total?: number; conf_name?: string; conf_signature?: string; conf_file?: string; conf_file_name?: string; conf_notes?: string;
+  // 5 Start Work
+  start_at?: string; start_by?: string; start_crew_present?: string[]; start_safety?: boolean; start_ppe?: boolean; start_photos: string[]; start_notes?: string;
+  // 7 Service Accomplishment Report
+  rep_at?: string; rep_by?: string; rep_scope?: string; rep_method?: string; rep_findings?: string; rep_limits?: string; rep_recs?: string; rep_complimentary?: string;
+  rep_client_name?: string; rep_client_sig?: string; rep_client_at?: string; rep_tm_name?: string; rep_tm_sig?: string; rep_rating?: number; rep_notes?: string;
+  // 8 Equipment Checklist (Return)
+  rc_at?: string; rc_by?: string; rc_notes?: string; rc_photos: string[];
+  // 9 Leave Site
+  leave_at?: string; leave_by?: string; leave_lat?: number; leave_lng?: number; leave_gps_note?: string; leave_photo?: string; leave_notes?: string;
+  // 10 Arrived at HQ
+  hqa_at?: string; hqa_by?: string; hqa_lat?: number; hqa_lng?: number; hqa_gps_note?: string; hqa_odo?: number; hqa_fuel?: FuelLevel;
+  hqa_veh_condition?: VehicleCondition; hqa_veh_notes?: string; hqa_equipment_ok?: boolean; hqa_notes?: string; distance_km?: number;
+  // 11 Job Closed
+  closed_at?: string; closed_by?: string; closed_notes?: string;
+}
+export type VariationStatus = 'Draft' | 'Pending Approval' | 'Approved' | 'Rejected';
+export interface Variation extends Base {
+  job_id: string;
+  number: string;             // e.g. JOB-2026-0123-V1
+  reason: string;
+  items: QuoteItem[];
+  discount: number;
+  vat_mode: 'exclusive' | 'inclusive' | 'none';
+  vat_rate: number;
+  panel_row_ids: string[];    // additional glass panels linked from the panel-counting table
+  status: VariationStatus;
+  client_name?: string; client_signature?: string; signed_at?: string; signed_file?: string; signed_file_name?: string;
+  decided_by?: string; notes?: string;
 }
 export type IncidentType = 'Missing asset' | 'Damaged asset' | 'Vehicle damage' | 'Material shortage' | 'Missing PPE' | 'Safety' | 'Other';
 export interface IncidentReport extends Base {
   number: string;
   job_id?: string;
-  dispatch_id?: string;
+  workflow_id?: string;
   asset_id?: string;
   item_id?: string;
   type: IncidentType;
@@ -615,7 +646,7 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'dispatches' | 'incidents';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents';
 
 export interface DB {
   users: UserAccount[]; branches: Branch[]; clients: Client[]; sites: Site[]; communications: Communication[];
@@ -624,7 +655,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; dispatches: Dispatch[]; incidents: IncidentReport[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[];
   audit: AuditLog[];
   settings: Settings;
   version: number;

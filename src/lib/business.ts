@@ -1,27 +1,50 @@
 import type {
-  DispatchItem,
-  Dispatch,
+  CheckItem,
+  JobWorkflow,
+  PanelRow,
+  Variation,
   JobStatus,
   Asset, Attendance, DB, Employee, Holiday, Invoice, Job, PayrollAdjustment, PayrollLine, PayrollPeriod,
-  Payment, QuoteItem, ServiceDef, Settings, StatutoryRate,
+  Payment, Quotation, QuoteItem, ServiceDef, Settings, StatutoryRate,
 } from './types';
 import { addDays, diffDays, dow, eachDay, minutesBetween, round2, sum, today } from './util';
 
 /* ============ Job status groups ============ */
 /** Work finished (legacy 'Completed' counts as closed). */
-export const DONE_JOB: JobStatus[] = ['Completed', 'Work Completed', 'Return Checklist Pending', 'Returned to HQ', 'Closed'];
+export const DONE_JOB: JobStatus[] = ['Completed', 'Work Completed', 'Leaving Site', 'Arrived at HQ', 'Closed'];
 /** Crew on the road or on site, work not yet complete. */
-export const FIELD_JOB: JobStatus[] = ['Departed from HQ', 'Arrived at Site', 'In Progress'];
+export const FIELD_JOB: JobStatus[] = ['Dispatched', 'On Site', 'In Progress'];
 /** Booked and not yet finished — these hold crew, vehicle and equipment. */
 export const OPEN_JOB: JobStatus[] = ['Pending', 'Confirmed', 'Dispatch Checklist Pending', ...FIELD_JOB];
 /** Crew still away from headquarters. */
-export const AWAY_JOB: JobStatus[] = [...FIELD_JOB, 'Work Completed', 'Return Checklist Pending'];
+export const AWAY_JOB: JobStatus[] = [...FIELD_JOB, 'Work Completed', 'Leaving Site'];
 /** Statuses where the day's attendance / dispatch is relevant. */
 export const LIVE_JOB: JobStatus[] = ['Confirmed', 'Dispatch Checklist Pending', ...FIELD_JOB];
 export const isDone = (s: JobStatus) => DONE_JOB.includes(s);
 export const isOpen = (s: JobStatus) => OPEN_JOB.includes(s);
-/** The forward-only operating flow (Cancelled / Rescheduled are side exits before departure). */
-export const JOB_FLOW: JobStatus[] = ['Confirmed', 'Dispatch Checklist Pending', 'Departed from HQ', 'Arrived at Site', 'In Progress', 'Work Completed', 'Return Checklist Pending', 'Returned to HQ', 'Closed'];
+/** Forward-only status path (Cancelled / Rescheduled are side exits before dispatch). */
+export const JOB_FLOW: JobStatus[] = ['Confirmed', 'Dispatch Checklist Pending', 'Dispatched', 'On Site', 'In Progress', 'Work Completed', 'Leaving Site', 'Arrived at HQ', 'Closed'];
+
+/** The 11-step job workflow shown as the progress tracker in every Job Card. */
+export const WORKFLOW_STEPS = [
+  'Equipment Checklist (HQ)', 'Dispatch', 'Site Arrival + Attendance', 'Quotation / Conforme', 'Start Work', 'Final Quotation / Variation',
+  'Service Report + Client Signature', 'Equipment Checklist (Return)', 'Leave Site', 'Arrived at HQ', 'Job Closed',
+] as const;
+export type StepState = 'done' | 'current' | 'open' | 'locked';
+/** Step 6 (variation) is optional: it is available from Start Work until the report is signed, and never blocks the tracker. */
+export function workflowProgress(wf: JobWorkflow | undefined, variations: Variation[] = []): { state: StepState; at?: string; by?: string }[] {
+  const w = wf ?? ({} as Partial<JobWorkflow>);
+  const stamps: ({ at?: string; by?: string } | undefined)[] = [
+    { at: w.hq_at, by: w.hq_by }, { at: w.disp_at, by: w.disp_by }, { at: w.arr_at, by: w.arr_by }, { at: w.conf_at, by: w.conf_by }, { at: w.start_at, by: w.start_by },
+    variations.length ? { at: (variations[variations.length - 1].signed_at ?? variations[variations.length - 1].created_at).slice(0, 16), by: variations[variations.length - 1].decided_by ?? variations[variations.length - 1].created_by } : undefined,
+    { at: w.rep_at, by: w.rep_by }, { at: w.rc_at, by: w.rc_by }, { at: w.leave_at, by: w.leave_by }, { at: w.hqa_at, by: w.hqa_by }, { at: w.closed_at, by: w.closed_by },
+  ];
+  const done = [!!w.hq_at, !!w.disp_at, !!w.arr_at, !!w.conf_at, !!w.start_at, !!w.rep_at && true, !!w.rep_at, !!w.rc_at, !!w.leave_at, !!w.hqa_at, !!w.closed_at];
+  done[5] = !!w.start_at && (!!w.rep_at || (variations.length > 0 && variations.every((v) => v.status === 'Approved' || v.status === 'Rejected')));
+  let cur = -1;
+  for (let i = 0; i < done.length; i++) { if (i === 5) continue; if (!done[i]) { cur = i; break; } }
+  return done.map((d, i) => ({ state: d ? 'done' : i === cur ? 'current' : i === 5 && !!w.start_at && !w.rep_at ? 'open' : 'locked', at: stamps[i]?.at, by: stamps[i]?.by }));
+}
 
 /* ============ Glass panel counting & service pricing ============ */
 export interface GlassRow { w: number; h: number; qty: number; grouped?: boolean }
@@ -472,14 +495,14 @@ export function serviceProfitRows(db: DB, from: string, to: string) {
   return out;
 }
 
-/* ============ Dispatch checklist ============ */
+/* ============ Equipment checklist (HQ / return) ============ */
 const TOOL_CATEGORIES = new Set(['Hose', 'Ladder', 'Extension Cord', 'Pump', 'Other']);
-export const kindOfAsset = (a: Asset): DispatchItem['kind'] =>
+export const kindOfAsset = (a: Asset): CheckItem['kind'] =>
   a.category === 'Vehicle' ? 'vehicle' : a.category === 'Safety Equipment' ? 'ppe' : TOOL_CATEGORIES.has(a.category) ? 'tool' : 'equipment';
 
 /** The issue list for a job: vehicle, machines, tools, PPE and chemicals/materials assigned at booking. */
-export function buildDispatchItems(d: Pick<DB, 'assets' | 'items'>, job: Job): DispatchItem[] {
-  const items: DispatchItem[] = [];
+export function buildChecklistItems(d: Pick<DB, 'assets' | 'items'>, job: Job): CheckItem[] {
+  const items: CheckItem[] = [];
   const add = (a: Asset | undefined) => { if (a) items.push({ key: `a:${a.id}`, kind: kindOfAsset(a), asset_id: a.id, label: a.name, code: a.code, qty: 1, responsible_id: job.leader_id }); };
   add(d.assets.find((a) => a.id === job.vehicle_id));
   for (const id of job.equipment_ids) add(d.assets.find((a) => a.id === id));
@@ -492,34 +515,49 @@ export function buildDispatchItems(d: Pick<DB, 'assets' | 'items'>, job: Job): D
   return items;
 }
 
-export interface DispatchGaps { incomplete: string[]; discrepancies: { key: string; text: string }[]; signature: string }
-/** What still blocks departure. `incomplete` can never be waived; `discrepancies` (missing / damaged / short items, absent crew) need an approved exception. */
-export function dispatchGaps(job: Job, dp: Pick<Dispatch, 'items' | 'crew_present' | 'dep_veh_condition' | 'dep_veh_notes' | 'dep_veh_photo' | 'dep_fuel' | 'dep_odo' | 'dep_photo' | 'dep_lat' | 'dep_lng' | 'dep_gps_note'>, names: (id: string) => string): DispatchGaps {
-  const incomplete: string[] = []; const disc: { key: string; text: string }[] = [];
-  const crew = [...new Set([...(job.leader_id ? [job.leader_id] : []), ...job.crew_ids])];
-  for (const e of crew) if (!(dp.crew_present ?? []).includes(e)) disc.push({ key: `crew:${e}`, text: `${names(e)} not confirmed present` });
-  const veh = dp.items.find((i) => i.kind === 'vehicle');
-  if (veh) {
-    if (!dp.dep_veh_condition) incomplete.push('Vehicle condition');
-    if (dp.dep_veh_condition === 'With Issue' && !dp.dep_veh_notes?.trim()) incomplete.push('Vehicle issue notes');
-    if (!dp.dep_veh_photo) incomplete.push('Vehicle photo');
-    if (!dp.dep_fuel) incomplete.push('Fuel level');
-    if (!(dp.dep_odo && dp.dep_odo > 0)) incomplete.push('Starting odometer');
+export interface HqGaps { incomplete: string[]; shortages: string[] }
+/** What still blocks the HQ checklist (`incomplete`) and which items are short / damaged / missing (`shortages` — need a reason, raise incidents). */
+export function hqGaps(wf: Pick<JobWorkflow, 'items' | 'hq_odo' | 'hq_fuel' | 'hq_veh_condition' | 'hq_veh_notes'>): HqGaps {
+  const incomplete: string[] = []; const shortages: string[] = [];
+  if (wf.items.some((i) => i.kind === 'vehicle')) {
+    if (!(wf.hq_odo && wf.hq_odo > 0)) incomplete.push('Starting odometer');
+    if (!wf.hq_fuel) incomplete.push('Starting fuel level');
+    if (wf.hq_veh_condition === 'With Issue' && !wf.hq_veh_notes?.trim()) incomplete.push('Vehicle issue notes');
   }
-  for (const i of dp.items) {
+  for (const i of wf.items) {
     if (i.kind === 'vehicle') { if (!i.out_ok) incomplete.push(`${i.label} – confirm`); continue; }
     if (!i.out_ok) { incomplete.push(`${i.label} – confirm`); continue; }
-    const loaded = i.loaded_qty ?? 0;
     const cond = i.kind === 'material' ? i.out_container ?? 'Good' : i.out_condition ?? 'Good';
     if (i.kind !== 'material' && i.out_condition === 'Damaged' && !i.out_photo) incomplete.push(`${i.label} – damage photo`);
-    if (loaded < i.qty) disc.push({ key: `qty:${i.key}`, text: `${i.label}: loaded ${loaded} of ${i.qty}${i.unit ? ' ' + i.unit : ''}` });
-    if (i.kind !== 'material' && cond === 'Missing') disc.push({ key: `miss:${i.key}`, text: `${i.label} missing` });
-    if (cond === 'Damaged' || cond === 'Leaking') disc.push({ key: `dmg:${i.key}`, text: `${i.label} ${String(cond).toLowerCase()}` });
+    if ((i.loaded_qty ?? 0) < i.qty) shortages.push(`${i.label}: loaded ${i.loaded_qty ?? 0} of ${i.qty}${i.unit ? ' ' + i.unit : ''}`);
+    if (cond === 'Missing') shortages.push(`${i.label} missing`);
+    if (cond === 'Damaged' || cond === 'Leaking') shortages.push(`${i.label} ${String(cond).toLowerCase()}`);
   }
-  if (!dp.dep_photo) incomplete.push('Group / equipment loading photo');
-  if (dp.dep_lat === undefined && !dp.dep_gps_note?.trim()) incomplete.push('GPS location');
-  const uniq = [...new Map(disc.map((d) => [d.key, d])).values()];
-  return { incomplete, discrepancies: uniq, signature: uniq.map((d) => d.key).sort().join('|') };
+  return { incomplete, shortages: [...new Set(shortages)] };
 }
 
+/* ============ Panel counting & variations ============ */
+export const rowPanels = (r: Pick<PanelRow, 'external' | 'internal'>) => (r.external || 0) + (r.internal || 0);
+export function panelTotals(rows: PanelRow[]) {
+  const external = sum(rows, (r) => r.external || 0), internal = sum(rows, (r) => r.internal || 0);
+  return { external, internal, total: external + internal, additional: sum(rows.filter((r) => r.additional), rowPanels) };
+}
+/** Glass panels covered by the original quotation (package + excess lines). */
+export function quotedPanels(d: Pick<DB, 'services'>, q?: Quotation): number {
+  if (!q) return 0;
+  return sum(q.items.filter((i) => i.service_code === 'GLASS_EXT' || i.service_code === 'GLASS_INT'), (i) => {
+    const sv = d.services.find((s) => s.code === i.service_code);
+    return i.unit === 'package' ? i.qty * (sv?.package_qty ?? 0) : i.unit === 'panel' ? i.qty : 0;
+  });
+}
+export const variationTotals = (v: Pick<Variation, 'items' | 'discount' | 'vat_mode' | 'vat_rate'>) => docTotals(v.items, v.discount, v.vat_mode, v.vat_rate);
+/** Original quotation + approved variations = final contract value (the original quotation is never modified). */
+export function finalContract(d: Pick<DB, 'quotations' | 'variations'>, job: Job) {
+  const q = d.quotations.find((x) => x.id === job.quotation_id);
+  const orig = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
+  const approved = d.variations.filter((v) => v.job_id === job.id && v.status === 'Approved' && !v.deleted_at).map(variationTotals);
+  const varTotal = sum(approved, (t) => t.total), varNet = sum(approved, (t) => t.net);
+  const originalNet = orig?.net ?? round2(job.contract_amount - varNet), originalTotal = orig?.total ?? originalNet;
+  return { originalTotal: round2(originalTotal), originalNet: round2(originalNet), variationsTotal: round2(varTotal), variationsNet: round2(varNet), finalTotal: round2(originalTotal + varTotal), finalNet: round2(originalNet + varNet) };
+}
 export const round2Safe = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;

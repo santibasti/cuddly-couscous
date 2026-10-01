@@ -1,12 +1,12 @@
 // Realistic demo data for TopMop Window Cleaning Solutions Corp. Everything is generated relative to today (Manila),
 // so the dashboard always shows current activity. Names, TINs and amounts are fictional sample data.
 import type {
-  Asset, Attendance, Checkout, Client, DB, Dispatch, IncidentReport, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
+  Asset, Attendance, Checkout, Client, DB, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
   PayrollAdjustment, PayrollPeriod, PayrollRun, Payment, PerfReview, PettyCashEntry, Quotation, QuoteItem, ServiceDef,
   Settings, Site, StockTx, StorageLocation, UserAccount, Communication, Complaint, Role, ServiceCode, Condition, PayrollType,
 } from './types';
 import { DEFAULT_ACCESS } from './rbac';
-import { buildDispatchItems, buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
+import { buildChecklistItems, buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
 import { addDays, diffDays, dow, eachDay, monthEnd, monthStart, round2, sum, today } from './util';
 
 /* Precomputed sha256("topmop:topmop123") – demo password for all seeded accounts. */
@@ -238,6 +238,7 @@ export function seedDB(): DB {
   const assets: Asset[] = [
     ast('VEH-001', 'Service Van 1 (L300)', 'Vehicle', 'Mitsubishi', 'L300 FB', 1150000, 3, { location: 'Yard', maintenance_interval_days: 90, meter_reading: 48210, meter_unit: 'km', daily_allocation: 900 }),
     ast('VEH-002', 'Service Van 2 (Hiace)', 'Vehicle', 'Toyota', 'Hiace Commuter', 1850000, 2, { location: 'Yard', meter_reading: 31940, meter_unit: 'km', daily_allocation: 1100 }),
+    ast('VEH-003', 'Service Van 3 (Hilux)', 'Vehicle', 'Toyota', 'Hilux FX', 1450000, 1, { location: 'Yard', meter_reading: 12480, meter_unit: 'km', daily_allocation: 1000 }),
     ast('ROD-001', 'RO/DI Pure-Water System #1', 'RO/DI Pure-Water System', 'Aquaflex', 'RO-2000', 185000, 2.5, { meter_reading: 1420, meter_unit: 'hrs', daily_allocation: 250 }),
     ast('ROD-002', 'RO/DI Pure-Water System #2', 'RO/DI Pure-Water System', 'Aquaflex', 'RO-2000', 185000, 2, { meter_reading: 980, meter_unit: 'hrs', daily_allocation: 250 }),
     ast('WFP-001', 'Water-Fed Pole 45ft (A)', 'Water-Fed Pole', 'Ionic Systems', 'Carbon 45', 68000, 2.5),
@@ -426,7 +427,7 @@ export function seedDB(): DB {
       for (const aid of [job.vehicle_id!, ...job.equipment_ids]) {
         const a = assets.find((x) => x.id === aid)!;
         checkouts.push({ ...base('co', d), asset_id: aid, job_id: job.id, requested_by: job.leader_id!, responsible_id: job.leader_id!, status: 'Released', expected_return: `${addDays(d, 1)}T08:00`, approved_by: 'u-ops', out_at: `${d}T07:30`, out_condition: 'Good', out_meter: a.meter_reading, out_photos: [], in_photos: [] });
-        a.status = 'Checked Out'; a.custodian_id = job.leader_id!; a.location = 'On site';
+        a.status = 'In Use'; a.custodian_id = job.leader_id!; a.location = 'On site';
       }
     } else if (job.status === 'Confirmed' && d <= addDays(T, 2) && !recentPurchaseSkipped) {
       // one pending equipment request for the next job
@@ -441,7 +442,7 @@ export function seedDB(): DB {
   const lastDone = [...jobs].reverse().find((j) => j.status === 'Completed')!;
   const overdueAsset = A('VAC-001');
   checkouts.push({ ...base('co', addDays(T, -3)), asset_id: overdueAsset.id, job_id: lastDone.id, requested_by: E_L2.id, responsible_id: FIELD[3].id, status: 'Released', expected_return: `${addDays(T, -2)}T18:00`, approved_by: 'u-ops', out_at: `${addDays(T, -3)}T07:45`, out_condition: 'Good', out_meter: 296, out_photos: [], in_photos: [], note: 'Borrowed for post-job debris cleanup.' });
-  overdueAsset.status = 'Checked Out'; overdueAsset.custodian_id = FIELD[3].id; overdueAsset.location = 'With employee';
+  overdueAsset.status = 'In Use'; overdueAsset.custodian_id = FIELD[3].id; overdueAsset.location = 'With employee';
   // damaged returns → tickets already seeded; add a returned-with-damage record
   const dmgJob = jobs.find((j) => j.status === 'Completed' && j.equipment_ids.includes(A('SFC-001').id));
   void dmgJob;
@@ -629,81 +630,112 @@ export function seedDB(): DB {
   ];
 
 
-  const items0 = items; // inventory items (the dispatch builder below uses its own local `items`)
-  /* ---- crew dispatch & return checklists + incidents ---- */
-  const dispatches: Dispatch[] = [];
+  const items0 = items; // inventory items (workflow builder below uses its own local `items`)
+  /* ---- job workflows (11-step tracker inside each job card), variations & incidents ---- */
+  const workflows: JobWorkflow[] = [];
+  const variations: Variation[] = [];
   const incidents: IncidentReport[] = [];
   const HQ = { lat: 14.5547, lng: 121.0244 };
   const jit = (v: number, k: number) => +(v + (R() - 0.5) * k).toFixed(6);
-  const mkDispatch = (job: Job, stage: Dispatch['stage']): Dispatch => {
+  type Stage = 'hq' | 'disp' | 'arr' | 'start' | 'rep' | 'rc' | 'leave' | 'hqa' | 'closed';
+  const ORDER: Stage[] = ['hq', 'disp', 'arr', 'start', 'rep', 'rc', 'leave', 'hqa', 'closed'];
+  const mkWorkflow = (job: Job, upTo: Stage | 'draft'): JobWorkflow => {
     const d = job.start_at.slice(0, 10);
     const site = sites.find((x) => x.id === job.site_id)!;
+    const q = quotations.find((x) => x.id === job.quotation_id);
     const vehAsset = assets.find((a) => a.id === job.vehicle_id);
-    const dep_odo = (vehAsset?.meter_reading ?? 40000) - between(300, 1200);
+    const hq_odo = (vehAsset?.meter_reading ?? 40000) - between(300, 1200);
     const distance = between(18, 85);
-    const crew = [...(job.leader_id ? [job.leader_id] : []), ...job.crew_ids];
-    const done = stage === 'Returned';
-    const its = buildDispatchItems({ assets, items: items0 }, job).map((i) => ({
+    const crew = [...new Set([...(job.leader_id ? [job.leader_id] : []), ...job.crew_ids])];
+    const lvl = upTo === 'draft' ? -1 : ORDER.indexOf(upTo);
+    const has = (s: Stage) => lvl >= ORDER.indexOf(s);
+    const returned = has('rc');
+    const its = buildChecklistItems({ assets, items: items0 }, job).map((i) => ({
       ...i, out_ok: true, out_by: (R() < 0.8 ? 'scan' : 'id') as 'scan' | 'id', loaded_qty: i.qty,
       ...(i.kind === 'material' ? { out_container: 'Good' as const } : { out_condition: 'Good' as const }),
-      ...(done ? { returned_qty: i.kind === 'material' ? 0 : i.qty, ret_condition: 'Good' as const, ret_by: 'scan' as const, ret_responsible_id: i.responsible_id, ...(i.kind === 'material' ? { used_qty: i.qty } : {}) } : {}),
+      ...(returned && i.kind !== 'vehicle' ? { returned_qty: i.kind === 'material' ? 0 : i.qty, ret_condition: 'Good' as const, ret_by: 'scan' as const, ...(i.kind === 'material' ? { used_qty: i.qty } : {}) } : {}),
     }));
-    const dp: Dispatch = {
-      ...base('dsp', d), job_id: job.id, stage, items: its, crew_present: crew, arr_photos: [], ret_photos: [],
-      dep_veh_condition: 'Good', dep_veh_photo: svgPhoto('VEHICLE CHECK', '#123A63'), dep_fuel: pick(['Full', '3/4', '3/4']), dep_odo,
-      dep_at: `${d}T07:${between(20, 45)}`, dep_lat: jit(HQ.lat, 0.0006), dep_lng: jit(HQ.lng, 0.0006), dep_photo: svgPhoto('DEPARTURE - crew and loaded van', '#123A63'),
-      dep_confirmed_by: job.leader_id ? 'u-lead' : OWNER, dep_confirmed_at: stamp(d, 7),
-    };
-    if (stage !== 'Pending' && stage !== 'Departed') {
-      Object.assign(dp, {
-        arr_at: `${d}T08:${between(10, 40)}`, arr_lat: jit(14.58, 0.2), arr_lng: jit(121.03, 0.2), arr_photos: [svgPhoto('BEFORE - arrival', '#3B4A5A')],
-        arr_contact_name: site.contact_person, arr_contact_mobile: site.contact_mobile, arr_safety_briefing: true,
-        arr_briefing_notes: 'Toolbox talk: working at heights, water-fed pole safety, wet-floor signage.', arr_site_notes: 'Access via service entrance; water source at basement pump room.',
-      });
-    }
-    if (done) {
-      Object.assign(dp, {
-        ret_at: `${d}T17:${between(5, 40)}`, ret_lat: jit(HQ.lat, 0.0006), ret_lng: jit(HQ.lng, 0.0006), ret_photos: [svgPhoto('RETURN - equipment checked in', '#0B2545')],
-        ret_fuel: pick(['1/2', '1/2', '1/4', '3/4']), ret_odo: dep_odo + distance, ret_veh_condition: 'Good', distance_km: distance, ret_confirmed_by: dp.dep_confirmed_by, ret_confirmed_at: stamp(d, 17),
-      });
-    }
-    return dp;
+    const at = (h: number, m = between(0, 55)) => `${d}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    const wf: JobWorkflow = { ...base('wf', d), job_id: job.id, items: its, panels: [], arr_photos: [], start_photos: [], rc_photos: [] };
+    if (has('hq')) Object.assign(wf, { hq_at: at(7, 5), hq_by: 'u-lead', hq_odo, hq_fuel: pick(['Full', '3/4', '3/4']), hq_veh_condition: 'Good', hq_veh_photo: svgPhoto('VEHICLE CHECK', '#123A63') });
+    if (has('disp')) Object.assign(wf, { disp_at: at(7, between(20, 45)), disp_by: 'u-lead', disp_lat: jit(HQ.lat, 0.0006), disp_lng: jit(HQ.lng, 0.0006), disp_photo: svgPhoto('DEPARTURE - crew and loaded van', '#123A63') });
+    if (has('arr')) Object.assign(wf, {
+      arr_at: at(8, between(10, 40)), arr_by: 'u-lead', arr_lat: jit(14.58, 0.2), arr_lng: jit(121.03, 0.2), arr_photos: [svgPhoto('BEFORE - arrival', '#3B4A5A')],
+      arr_contact_name: site.contact_person, arr_contact_mobile: site.contact_mobile, arr_notes: 'Access via service entrance; water source at basement pump room. Safety: working at heights, wet-floor signage.',
+      arr_crew_present: crew, arr_crew_absent: [],
+      conf_at: at(8, between(41, 55)), conf_by: 'u-lead', conf_quotation_id: q?.id, conf_original_total: q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).total : job.contract_amount, conf_name: site.contact_person, conf_signature: svgPhoto('Conforme', '#123A63'),
+    });
+    if (has('start')) Object.assign(wf, { start_at: at(9, between(0, 20)), start_by: 'u-lead', start_crew_present: crew, start_safety: true, start_ppe: true, start_photos: [svgPhoto('WORK START', '#3B4A5A')] });
+    if (has('rep')) Object.assign(wf, {
+      rep_at: at(15, between(0, 40)), rep_by: 'u-lead', rep_scope: job.scope, rep_method: 'Water-fed pole and purified-water system, soft-brush agitation, squeegee finish; roped access where required.',
+      rep_findings: job.findings || 'Work completed without issues.', rep_limits: 'Areas not reachable from the building face were excluded; no work above permitted height.', rep_recs: 'Quarterly maintenance cleaning recommended.',
+      rep_complimentary: 'Entrance door glass wiped at no charge.', rep_client_name: site.contact_person, rep_client_sig: svgPhoto('Signature', '#123A63'), rep_client_at: at(15, 45),
+      rep_tm_name: employees.find((e) => e.id === job.leader_id)?.full_name ?? 'Team Leader', rep_tm_sig: svgPhoto('TopMop', '#0B2545'), rep_rating: 5,
+    });
+    if (has('rc')) Object.assign(wf, { rc_at: at(16, between(0, 30)), rc_by: 'u-lead', rc_photos: [svgPhoto('RETURN CHECK - at site', '#0B2545')] });
+    if (has('leave')) Object.assign(wf, { leave_at: at(16, between(31, 50)), leave_by: 'u-lead', leave_lat: jit(14.58, 0.2), leave_lng: jit(121.03, 0.2), leave_photo: svgPhoto('LEAVING SITE', '#123A63') });
+    if (has('hqa')) Object.assign(wf, { hqa_at: at(17, between(5, 40)), hqa_by: 'u-lead', hqa_lat: jit(HQ.lat, 0.0006), hqa_lng: jit(HQ.lng, 0.0006), hqa_odo: hq_odo + distance, hqa_fuel: pick(['1/2', '1/2', '1/4', '3/4']), hqa_veh_condition: 'Good', hqa_equipment_ok: true, distance_km: distance });
+    if (has('closed')) Object.assign(wf, { closed_at: at(17, 50), closed_by: 'u-ops' });
+    workflows.push(wf);
+    return wf;
   };
-  const mkInc = (dp: Dispatch, type: IncidentReport['type'], severity: IncidentReport['severity'], description: string, status: IncidentReport['status'], extra: Partial<IncidentReport> = {}) => {
-    incidents.push({ ...base('inc', dp.created_at.slice(0, 10)), number: nn('INC'), job_id: dp.job_id, dispatch_id: dp.id, type, severity, description, status, auto: true, ...(status === 'Resolved' ? { resolution: 'Recounted at the warehouse; adjusted and closed.', resolved_at: dp.created_at } : {}), ...extra });
+  const mkInc = (wf: JobWorkflow, type: IncidentReport['type'], severity: IncidentReport['severity'], description: string, status: IncidentReport['status'], extra: Partial<IncidentReport> = {}) => {
+    incidents.push({ ...base('inc', wf.created_at.slice(0, 10)), number: nn('INC'), job_id: wf.job_id, workflow_id: wf.id, type, severity, description, status, auto: true, ...(status === 'Resolved' ? { resolution: 'Recounted at the warehouse; adjusted and closed.', resolved_at: wf.created_at } : {}), ...extra });
   };
   const recentDone = jobs.filter((j) => j.status === 'Completed' && j.start_at.slice(0, 10) >= addDays(T, -21) && j.vehicle_id);
   recentDone.forEach((job, idx) => {
-    const dp = mkDispatch(job, 'Returned');
-    if (idx === 0) { const m = dp.items.find((i) => i.kind === 'material'); if (m) { m.ret_condition = 'Missing'; m.ret_note = 'Container not on the truck'; m.used_qty = m.qty; mkInc(dp, 'Material shortage', 'Medium', `${m.label}: container reported missing on return. Container not on the truck`, 'Resolved', { item_id: m.item_id }); } }
-    if (idx === 1) { const g = dp.items.find((i) => i.kind === 'ppe' && i.label === 'Gloves'); if (g) { g.returned_qty = g.qty - 1; g.ret_note = 'One pair left on site roof'; mkInc(dp, 'Missing PPE', 'Medium', `Gloves: 1 of ${g.qty} not returned. One pair left on site roof`, 'Resolved'); } }
-    if (idx === 2) mkInc(dp, 'Damaged asset', 'Medium', 'LAD-002 Extension Ladder 32ft returned with a bent rail. Taken out of service.', 'Investigating', { asset_id: A('LAD-002').id, ticket_id: tickets[1].id });
-    if (idx === 3) mkInc(dp, 'Damaged asset', 'Medium', 'SFC-002 Surface Cleaner 24" - bearing noise and cracked skirt on return.', 'Acknowledged', { asset_id: A('SFC-002').id, ticket_id: tickets[0].id, resolution: 'Acknowledged by Operations; repair in progress under ticket.' });
-    if (idx === recentDone.length - 2) { const g = dp.items.find((i) => i.kind === 'ppe' && i.label === 'Hard hat'); if (g) { g.returned_qty = g.qty - 1; g.ret_condition = 'Good'; g.ret_note = 'Not on the truck at unloading'; mkInc(dp, 'Missing PPE', 'Medium', `Hard hat: 1 of ${g.qty} not returned. Not on the truck at unloading`, 'Open'); const jb = jobs.find((x) => x.id === job.id)!; jb.status = 'Returned to HQ'; } }
-    dispatches.push(dp);
+    const openHardHat = idx === recentDone.length - 2 && idx > 3;
+    const wf = mkWorkflow(job, openHardHat ? 'hqa' : 'closed');
+    job.status = openHardHat ? 'Arrived at HQ' : 'Closed';
+    if (idx === 0) { const m = wf.items.find((i) => i.kind === 'material'); if (m) { m.ret_condition = 'Missing'; m.ret_note = 'Container not on the truck'; m.used_qty = m.qty; mkInc(wf, 'Material shortage', 'Medium', `${m.label}: container reported missing on return check. Container not on the truck`, 'Resolved', { item_id: m.item_id }); } }
+    if (idx === 1) { const g = wf.items.find((i) => i.kind === 'ppe' && i.label === 'Gloves'); if (g) { g.returned_qty = g.qty - 1; g.ret_note = 'One pair left on site roof'; mkInc(wf, 'Missing PPE', 'Medium', `Gloves: 1 of ${g.qty} not returned. One pair left on site roof`, 'Resolved'); } }
+    if (idx === 2) mkInc(wf, 'Damaged asset', 'Medium', 'LAD-002 Extension Ladder 32ft returned with a bent rail. Taken out of service.', 'Investigating', { asset_id: A('LAD-002').id, ticket_id: tickets[1].id });
+    if (idx === 3) mkInc(wf, 'Damaged asset', 'Medium', 'SFC-002 Surface Cleaner 24" - bearing noise and cracked skirt on return.', 'Acknowledged', { asset_id: A('SFC-002').id, ticket_id: tickets[0].id, resolution: 'Acknowledged by Operations; repair in progress under ticket.' });
+    if (openHardHat) { const g = wf.items.find((i) => i.kind === 'ppe' && i.label === 'Hard hat'); if (g) { g.returned_qty = g.qty - 1; g.ret_condition = 'Good'; g.ret_note = 'Not on the truck at unloading'; mkInc(wf, 'Missing PPE', 'Medium', `Hard hat: 1 of ${g.qty} not returned. Not on the truck at unloading`, 'Open'); } }
   });
+  // today's jobs spread across the tracker so every dashboard status has data
   const live1 = jobs.filter((j) => j.status === 'In Progress');
+  const liveStage: Stage[] = ['rep', 'start', 'arr', 'disp', 'start', 'start'];
+  const liveStatus: Job['status'][] = ['Work Completed', 'In Progress', 'On Site', 'Dispatched', 'In Progress', 'In Progress'];
   live1.forEach((j, i) => {
-    const dp = mkDispatch(j, 'On Site');
-    dispatches.push(dp);
-    if (i === 0) {
-      // work finished on site; crew still away — awaiting the return checklist
-      const d0 = j.start_at.slice(0, 10);
+    const k = Math.min(i, liveStage.length - 1);
+    const wf = mkWorkflow(j, liveStage[k]);
+    j.status = liveStatus[k];
+    const d0 = j.start_at.slice(0, 10);
+    if (k === 0) {
       Object.assign(j, {
-        status: 'Return Checklist Pending', completed_at: `${d0}T15:30`, checklist: j.checklist.map((c) => ({ ...c, done: true })), findings: 'Work completed without issues.', signoff_name: sites.find((x) => x.id === j.site_id)!.contact_person,
+        completed_at: `${d0}T15:30`, checklist: j.checklist.map((c) => ({ ...c, done: true })), findings: 'Work completed without issues.', signoff_name: sites.find((x) => x.id === j.site_id)!.contact_person,
         signoff_at: `${d0}T15:30`, signoff_data: svgPhoto('Signature', '#123A63'), client_rating: 5,
         photos: [...j.photos, { kind: 'after' as const, caption: 'After - exterior', data: svgPhoto('AFTER', '#0B2545'), taken_at: `${d0}T15:20` }],
       });
     }
+    if (k === 1 && j.service_codes.includes('GLASS_EXT')) {
+      // glass panel count with extra panels found on site → approved variation
+      wf.panels = [
+        { id: id('pnl'), area: '1st Floor', side: 'Front', external: 14, internal: 6, notes: 'Storefront glass' },
+        { id: id('pnl'), area: '2nd Floor', side: 'Front', external: 12, internal: 8 },
+        { id: id('pnl'), area: '2nd Floor', side: 'Rear', external: 6, internal: 4, notes: 'Small sections grouped' },
+        { id: id('pnl'), area: 'Roof Deck', side: 'Left Side', external: 8, internal: 0, additional: true, notes: 'Not in original scope' },
+      ];
+      const v: Variation = {
+        ...base('var', d0), job_id: j.id, number: `${j.number}-V1`, reason: 'Eight additional external glass panels on the roof deck found on site.',
+        items: [{ service_code: 'GLASS_EXT', description: 'Additional external glass panels – roof deck (8)', qty: 8, unit: 'panel', rate: 140, discount: 0 }],
+        discount: 0, vat_mode: quotations.find((x) => x.id === j.quotation_id)?.vat_mode ?? 'exclusive', vat_rate: quotations.find((x) => x.id === j.quotation_id)?.vat_rate ?? 12,
+        panel_row_ids: [wf.panels[3].id], status: 'Approved', client_name: sites.find((x) => x.id === j.site_id)!.contact_person, client_signature: svgPhoto('Signature', '#123A63'), signed_at: `${d0}T10:30:00.000Z`, decided_by: 'u-lead',
+      };
+      variations.push(v);
+      j.contract_amount = round2(j.contract_amount + docTotals(v.items, v.discount, v.vat_mode, v.vat_rate).net);
+    }
   });
-  // tomorrow's first confirmed job: checklist started but not finished
-  const next = jobs.find((j) => j.status === 'Confirmed' && j.vehicle_id && j.start_at.slice(0, 10) > T);
+  // tomorrow's first confirmed job: HQ checklist started but not finished
+  const inUseNow = (aid?: string) => !!aid && checkouts.some((c) => c.asset_id === aid && c.status === 'Released');
+  // the crew is still out with vans 1 & 2 today, so tomorrow's first job is booked on the spare van and free equipment
+  const next = jobs.find((j) => j.status === 'Confirmed' && j.start_at.slice(0, 10) > T);
+  if (next) { next.vehicle_id = A('VEH-003').id; next.equipment_ids = [A('HSE-001').id, A('PMP-001').id, A('LAD-001').id, ...next.equipment_ids.filter((e) => !inUseNow(e))].filter((e, i, a) => a.indexOf(e) === i); }
   if (next) {
-    const dp = mkDispatch(next, 'Pending');
-    dp.items = dp.items.map((i, k) => (k < 3 ? i : { ...i, out_ok: false, out_by: undefined, loaded_qty: undefined, out_condition: undefined, out_container: undefined }));
-    Object.assign(dp, { dep_at: undefined, dep_lat: undefined, dep_lng: undefined, dep_photo: undefined, dep_confirmed_by: undefined, dep_confirmed_at: undefined, crew_present: [], dep_fuel: undefined, dep_odo: undefined, dep_veh_photo: undefined });
+    const wf = mkWorkflow(next, 'draft');
+    wf.items = wf.items.map((i, k) => (k < 3 ? { ...i, out_ok: true, loaded_qty: i.qty, out_condition: i.kind === 'material' ? undefined : ('Good' as const), out_container: i.kind === 'material' ? ('Good' as const) : undefined } : { ...i, out_ok: false, out_by: undefined, loaded_qty: undefined, out_condition: undefined, out_container: undefined }));
     next.status = 'Dispatch Checklist Pending';
-    dispatches.push(dp);
   }
 
   return {
@@ -711,7 +743,7 @@ export function seedDB(): DB {
       { ...base('cor'), employee_id: FIELD[1].id, date: addDays(T, -2), clock_in: `${addDays(T, -2)}T08:00`, clock_out: `${addDays(T, -2)}T17:00`, reason: 'Forgot to clock out; was on site until 5PM per team leader.', status: 'Pending' },
     ], holidays, reviews, adjustments, periods, runs, locations, items, stock, requests: [
       { ...base('mr'), job_id: jobs.find((j) => j.status === 'Confirmed')?.id ?? jobs[0].id, requested_by: E_L1.id, lines: [{ item_id: item('CHM-001').id, qty: 4 }, { item_id: item('PPE-002').id, qty: 2 }], status: 'Pending', note: 'Extra chemical for large glass job.' },
-    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], dispatches, incidents, audit: [], settings: { ...settings, counters }, version: 1,
+    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, audit: [], settings: { ...settings, counters }, version: 1,
   };
 }
 

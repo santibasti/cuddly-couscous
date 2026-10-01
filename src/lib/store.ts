@@ -7,7 +7,7 @@ import { seedDB } from './seed';
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
 
-const KEY = 'topmop-ops-db-v2';
+const KEY = 'topmop-ops-db-v3';
 const SESSION = 'topmop-ops-session-v1';
 
 export class PermissionError extends Error {}
@@ -127,7 +127,8 @@ class Store {
     if (table === 'periods' && ((r as unknown as PayrollPeriod).locked || (r as unknown as PayrollPeriod).status !== 'Draft')) throw new RuleError('Only draft payroll periods can be removed. Finalized payroll is locked.');
     if (table === 'runs') throw new RuleError('Payroll runs cannot be deleted.');
     if (table === 'invoices' && (r as unknown as Invoice).status !== 'Draft') throw new RuleError('Approved invoices cannot be deleted. Reverse the invoice instead.');
-    if (table === 'dispatches') throw new RuleError('Dispatch records cannot be deleted.');
+    if (table === 'workflows') throw new RuleError('Job workflow records cannot be deleted.');
+    if (table === 'variations') throw new RuleError('Variations cannot be deleted; reject them instead.');
     if (table === 'incidents') throw new RuleError('Incident reports cannot be deleted; resolve them instead.');
     if (table === 'checkouts' && (r.status === 'Released' || r.status === 'Returned')) throw new RuleError('Completed or active equipment out/in records cannot be deleted.');
     if (table === 'payments') throw new RuleError('Payments cannot be deleted. Reverse the payment instead.');
@@ -147,7 +148,8 @@ class Store {
       if (!Object.keys(patch).every((k) => allowed.includes(k))) throw new RuleError('Approved invoices are locked. Reverse the invoice and issue a new one.');
     }
     if (table === 'checkouts' && r.status === 'Returned') throw new RuleError('Completed out/in records are locked.');
-    if (table === 'dispatches' && r.stage === 'Returned' && !(this._reason && (this.role === 'ops' || this.role === 'owner'))) throw new RuleError('A completed dispatch record is locked. An Operations Manager or Admin can correct it with a reason.');
+    if (table === 'workflows' && r.closed_at && !(this._reason && (this.role === 'ops' || this.role === 'owner'))) throw new RuleError('A closed job workflow is locked. An Operations Manager or Admin can correct it with a reason.');
+    if (table === 'variations' && r.status === 'Approved' && !this._reason) throw new RuleError('An approved variation is locked. Create a new variation or correct it with a reason.');
     if (table === 'incidents' && r.status === 'Resolved' && !this._reason) throw new RuleError('A resolved incident is locked. Correct it with a reason.');
   }
 

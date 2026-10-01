@@ -12,7 +12,7 @@ payroll, inventory, equipment out/in, expenses, receivables, job costing, report
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm test             # 48 tests: pricing rules, payroll maths, store rules, seed integrity
+npm test             # 47 tests: pricing rules, payroll maths, store rules, seed integrity, 11-step job workflow
 npm run build        # type-check + production build
 ```
 
@@ -28,7 +28,7 @@ Sign in with any demo account (password **`topmop123`**), or use the role button
 | Viewer / Accountant | `accountant@topmop.ph` | Reports |
 | Client portal | `/#/portal` – any client contact email, password `topmop123` | Quotes / services / invoices |
 
-Sample data is generated relative to *today* (~110 jobs, 16 employees, 13 clients, 24 stock items, 18 assets, 84 invoices,
+Sample data is generated relative to *today* (~110 jobs, 16 employees, 13 clients, 24 stock items, 21 assets, 84 invoices,
 payroll periods in every status, alerts of every kind), so every module is populated immediately. **Admin → Data & security → Reset** restores it.
 
 ## Modules
@@ -41,7 +41,7 @@ payroll periods in every status, alerts of every kind), so every module is popul
 | 1 | **Jobs & calendar** | Month / week / day / list; **drag-and-drop rescheduling**; crew, leader, vehicle, equipment, PPE, materials, checklist, before/after photos, findings, damage report, signature sign-off, service-report PDF; **double-booking blocked** for crew, vehicles and machines |
 | 1 | **Attendance** | GPS + timestamp + optional selfie, late/undertime/OT/holiday/rest-day/field-work flags, approvals, correction requests with trail, daily view by job site |
 | 1 | **Employees** | Full profile, government IDs, bank, documents & expiry, trainings, monthly scorecard & tier |
-| 4 | **Dispatch & Return Checklist** | Enforced job flow **Confirmed → Dispatch Checklist Pending → Departed from HQ → Arrived at Site → In Progress → Work Completed → Return Checklist Pending → Returned to HQ → Closed**. Mobile step-by-step departure form (job & crew confirmation synced to attendance → vehicle check with odometer / fuel / photo → tools, machines & PPE with QR scan or typed Asset ID, quantities, condition, damage photo, responsible person → chemicals & materials issued from stock → departure time, GPS, loading photo, Team Leader confirmation). Departing with missing / damaged / short items or absent crew needs a reason and **Operations Manager approval**. “Arrived at site” action on the job card (GPS, contact, before photos, safety briefing, site notes, extra equipment / material requests). Return checklist compares issued vs returned, material usage = issued − returned, ending odometer / fuel / vehicle condition, photos, GPS; syncs asset status (Available / Under Maintenance / Damaged / Missing). Missing or damaged items auto-create incident reports and maintenance tickets, alert Admin and Operations, and keep the job open until resolved or acknowledged. QR labels for every asset (PDF). Edits by Ops / Admin require a reason and are audited with old and new values |
+| 4 | **Job workflow** (inside every Job Card) | One streamlined 11-step progress tracker replaces the separate dispatch / return / arrival screens: **1 Equipment Checklist (HQ) → 2 Dispatch → 3 Site Arrival + Attendance → 4 Quotation / Conforme → 5 Start Work → 6 Final Quotation / Variation → 7 Service Report + Client Signature → 8 Equipment Checklist (Return) → 9 Leave Site → 10 Arrived at HQ → 11 Job Closed**. Every step records date / time, user, notes, photos and GPS where applicable, and has an audit trail. Job status follows the steps: Confirmed → Dispatch Checklist Pending → Dispatched → On Site → In Progress → Work Completed → Leaving Site → Arrived at HQ → Closed. Highlights: QR-scan / typed Asset ID equipment checks that mark machines **In Use** and issue chemicals from inventory (issued − returned = used); crew attendance confirmed once on arrival and synced to Attendance / Payroll without duplicates; the client's quotation reviewed and signed on site with an automatic **glass panel-counting table** (area × side, external / internal / total); **variations** that never overwrite the original quotation (Original → Approved Variations → Final Contract Value, client signature required before extra work); a **Service Accomplishment Report** PDF; return check at the client site with auto incident reports, maintenance tickets and alerts for missing / damaged equipment; ending odometer / fuel at HQ; and a closure checklist (conforme, attendance, signed report, equipment return, material usage, HQ arrival, incidents acknowledged). Ops / Admin can correct records and override status only with a reason (logged with old and new values). Incident reports live under Equipment → Incidents; QR labels under Equipment → Print QR labels |
 | 1 | **Equipment out/in** | Register, request → approve/release → return with condition, meter, photos; **never checked out to two jobs**; overdue flags; damage auto-creates a repair ticket; utilization & downtime |
 | 1 | **Inventory** | Beginning/in/out/reserved/available, valuation (weighted-average cost), expiry & batch, receiving, issue/return to job, waste, adjustments with approval, transfers, physical counts, reversal entries, material requests |
 | 2 | **Quotations** | Pipeline (inquiry → ocular → quotation → approval → booked), TopMop pricing rules (glass ₱4,799/31 panels + ₱140 excess, roof ₱145/sqm min 100, wall/floor ₱125/sqm min 50, solar ₱245/panel min 20 — editable in Admin), glass **panel counter** (2×1 m rule, grouped small panels), VAT/discount, PDF, email & WhatsApp share |
@@ -69,9 +69,11 @@ src/lib/types.ts       domain model (mirrors the SQL schema)
 src/lib/business.ts    pure business logic: pricing, panel counting, VAT, aging, payroll, job costing, P&L, scorecards, conflicts
 src/lib/store.ts       audited data store (demo: localStorage) + auth + immutability guards
 src/lib/actions.ts     permission-checked domain operations + automation engine
+src/lib/workflow.ts    the 11-step job workflow (checklists, dispatch, arrival, conforme, variations, report, return, closure, incidents)
 src/lib/seed.ts        TopMop sample dataset
 src/lib/export.ts      PDF (jsPDF) and Excel (ExcelJS) generators
 src/pages/*            one file per module
+src/components/workflow/  Job Card workflow panel (tracker + one component per step)
 supabase/              PostgreSQL schema, triggers, RLS, views, storage (see supabase/README.md)
 ```
 
@@ -79,7 +81,7 @@ Stack: React 19 · TypeScript · Vite · React Router · Recharts · jsPDF · Ex
 
 ## What is and isn't done
 
-**Verified:** type-check clean; 48 automated tests; every screen loaded under all six roles without console errors; browser-tested flows
+**Verified:** type-check clean; 47 automated tests; every screen loaded under all six roles without console errors; browser-tested flows
 (GPS clock-in, quotation pricing, drag-and-drop rescheduling, equipment release, payment + receipt PDF, payroll approve, Excel / PDF downloads);
 the SQL migrations, seed and every guard were executed against a real PostgreSQL engine (PGlite) — RLS, immutability, double-booking,
 overpayment, negative stock and single-release-per-asset all reject correctly.

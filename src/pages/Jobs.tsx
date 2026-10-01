@@ -9,8 +9,8 @@ import { addDays, dow, eachDay, fmtDate, fmtTime, monthEnd, monthStart, money, t
 import type { Job } from '@/lib/types';
 
 type View = 'month' | 'week' | 'day' | 'list';
-const STATUSES = ['Pending', 'Confirmed', 'Dispatch Checklist Pending', 'Departed from HQ', 'Arrived at Site', 'In Progress', 'Work Completed', 'Return Checklist Pending', 'Returned to HQ', 'Closed', 'Completed', 'Cancelled', 'Rescheduled'];
-const chipClass = (s: string) => (['Departed from HQ', 'Arrived at Site', 'In Progress'].includes(s) ? 's-field' : ['Work Completed', 'Return Checklist Pending', 'Returned to HQ', 'Closed', 'Completed'].includes(s) ? 's-done' : s === 'Dispatch Checklist Pending' ? 's-Confirmed' : `s-${s}`);
+const STATUSES = ['Pending', 'Confirmed', 'Dispatch Checklist Pending', 'Dispatched', 'On Site', 'In Progress', 'Work Completed', 'Leaving Site', 'Arrived at HQ', 'Closed', 'Completed', 'Cancelled', 'Rescheduled'];
+const chipClass = (s: string) => (['Dispatched', 'On Site', 'In Progress'].includes(s) ? 's-field' : ['Work Completed', 'Leaving Site', 'Arrived at HQ', 'Closed', 'Completed'].includes(s) ? 's-done' : s === 'Dispatch Checklist Pending' ? 's-Confirmed' : `s-${s}`);
 
 export default function Jobs() {
   const { db, can, user } = useAuth();
@@ -18,7 +18,7 @@ export default function Jobs() {
   const [sp, setSp] = useSearchParams();
   const [view, setView] = useState<View>(() => (window.innerWidth < 720 ? 'list' : 'month'));
   const [anchor, setAnchor] = useState(today());
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState(sp.get('status') ?? '');
   const [leader, setLeader] = useState('');
   const [form, setForm] = useState<{ start?: string; fromQuote?: string } | null>(null);
   const mineOnly = !can('jobs.all');

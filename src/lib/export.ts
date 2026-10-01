@@ -1,5 +1,5 @@
-import type { DB, Invoice, Job, Payment, PayrollLine, PayrollPeriod, Quotation } from './types';
-import { docTotals, invoiceBalance, invoiceSettled, invoiceTotals, jobCost } from './business';
+import type { DB, Invoice, Job, Payment, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
+import { docTotals, finalContract, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
 import { fmtDate, fmtDateTime, nowLocal, round2, sum } from './util';
 import { store } from './store';
 
@@ -243,73 +243,106 @@ async function toRaster(src: string): Promise<{ data: string; fmt: 'JPEG' | 'PNG
   return { data: c.toDataURL('image/png'), fmt: 'PNG' };
 }
 
+const ymax = (doc: Doc) => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+const sigImg = (doc: Doc, data: string | undefined, x: number, y: number) => { if (data?.startsWith('data:image/png')) { try { doc.addImage(data, 'PNG', x, y, 50, 20); } catch { /* ignore */ } } };
+const jobEmp = (db: DB, id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? '—';
+
+/* ---------- Service Accomplishment Report (job workflow step 7) ---------- */
 export async function serviceReportPdf(db: DB, j: Job) {
   const { doc, autoTable } = await newPdf();
-  const cost = jobCost(db, j); void cost;
+  const wf = db.workflows.find((w) => w.job_id === j.id && !w.deleted_at);
   const site = db.sites.find((s) => s.id === j.site_id)!;
-  header(doc, 'Service Report', j.number);
-  let y = partyBlock(doc, 34, ['Client', clientLines(db, j.client_id, j.site_id)], ['Job details', [`Scheduled: ${fmtDateTime(j.start_at)}`, `Completed: ${fmtDateTime(j.completed_at)}`, `Team leader: ${db.employees.find((e) => e.id === j.leader_id)?.full_name ?? '—'}`, `Site contact: ${site.contact_person}`]]);
-  const sec = (t: string, body: string) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text(t, 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); y = wrapText(doc, body || '—', 12, y + 5, 186) + 3; };
-  sec('Scope of work', j.scope);
-  autoTable(doc, { startY: y, head: [['Crew', 'Role']], body: [...(j.leader_id ? [[db.employees.find((e) => e.id === j.leader_id)?.full_name ?? '', 'Team Leader']] : []), ...j.crew_ids.map((id) => [db.employees.find((e) => e.id === id)?.full_name ?? '', 'Technician'])], ...tableStyle, margin: { left: 12, right: 100 } });
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
-  autoTable(doc, { startY: y, head: [['Materials used', 'Qty', 'UoM']], body: j.materials.map((m) => { const it = db.items.find((i) => i.id === m.item_id)!; return [it.name, m.used_qty ?? m.planned_qty, it.uom]; }), ...tableStyle, margin: { left: 12, right: 100 } });
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+  header(doc, 'Service Accomplishment Report', j.number);
+  let y = partyBlock(doc, 34, ['Client / site', clientLines(db, j.client_id, j.site_id)], ['Job details', [`Job ref: ${j.number}`, `Service date: ${fmtDate(j.start_at)}`, `Completed: ${fmtDateTime(wf?.rep_at ?? j.completed_at)}`, `Team leader: ${jobEmp(db, j.leader_id)}`, `Site contact: ${wf?.arr_contact_name ?? site.contact_person}`]]);
+  const sec = (t: string, body?: string) => { if (y > 262) { doc.addPage(); y = 16; } doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text(t, 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); y = wrapText(doc, body || '—', 12, y + 5, 186) + 3; };
+  sec('Scope of work completed', wf?.rep_scope || j.scope);
+  const equip = wf ? wf.items.filter((i) => (i.loaded_qty ?? 0) > 0 && i.kind !== 'material' && i.kind !== 'ppe').map((i) => i.label).join(', ') : '';
+  sec('Methodology and equipment used', `${wf?.rep_method ?? ''}${equip ? `\nEquipment: ${equip}` : ''}`.trim());
+  const fc = finalContract(db, j);
+  if (fc.variationsTotal > 0) {
+    autoTable(doc, { startY: y, head: [['Contract value', 'Amount']], body: [['Original quotation', pm(fc.originalTotal)], ...db.variations.filter((v) => v.job_id === j.id && v.status === 'Approved').map((v) => [`Approved variation ${v.number}`, pm(variationTotals(v).total)]), ['Final contract value', pm(fc.finalTotal)]], ...tableStyle, columnStyles: { 1: { halign: 'right' } }, margin: { left: 12, right: 100 } });
+    y = ymax(doc) + 6;
+  }
+  if (wf?.panels.length) {
+    const pt = panelTotals(wf.panels);
+    autoTable(doc, { startY: y, head: [['Area / floor', 'Side', 'External', 'Internal', 'Total', 'Notes']], body: wf.panels.map((p) => [p.area, p.side, p.external, p.internal, rowPanels(p), clean(`${p.additional ? '[additional] ' : ''}${p.notes ?? ''}`)]), foot: [['Total', '', pt.external, pt.internal, pt.total, '']], ...tableStyle, footStyles: { fillColor: [234, 239, 244], textColor: NAVY, fontStyle: 'bold' }, margin: { left: 12, right: 12 } });
+    y = ymax(doc) + 6;
+  }
+  autoTable(doc, { startY: y, head: [['Crew', 'Role']], body: [...(j.leader_id ? [[jobEmp(db, j.leader_id), 'Team Leader']] : []), ...j.crew_ids.map((id) => [jobEmp(db, id), 'Technician'])], ...tableStyle, margin: { left: 12, right: 100 } });
+  y = ymax(doc) + 6;
+  if (j.materials.length) { autoTable(doc, { startY: y, head: [['Materials used', 'Qty', 'UoM']], body: j.materials.map((m) => { const it = db.items.find((i) => i.id === m.item_id)!; return [it.name, m.used_qty ?? m.planned_qty, it.uom]; }), ...tableStyle, margin: { left: 12, right: 100 } }); y = ymax(doc) + 6; }
   sec('Checklist', j.checklist.map((c) => `${c.done ? '[x]' : '[ ]'} ${c.label}`).join('   '));
-  sec('Findings', j.findings); sec('Damage report / observations', j.damage_report || 'None reported.'); sec('Equipment condition', j.equipment_condition_notes || 'No issues noted.');
-  const ph = j.photos.filter((p) => p.kind === 'before' || p.kind === 'after').slice(0, 4);
+  sec('Findings', wf?.rep_findings || j.findings);
+  sec('Limitations / exclusions', wf?.rep_limits || 'None noted.');
+  sec('Recommendations', wf?.rep_recs || 'None.');
+  sec('Complimentary services', wf?.rep_complimentary || 'None.');
+  const ph = j.photos.filter((p) => p.kind === 'before' || p.kind === 'after').slice(-4);
   if (ph.length) {
     if (y > 200) { doc.addPage(); y = 16; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Before / after photos', 12, y); y += 3;
     for (const [i, p] of ph.entries()) {
-      try { const r = await toRaster(p.data); doc.addImage(r.data, r.fmt, 12 + (i % 2) * 94, y + Math.floor(i / 2) * 52, 90, 48); doc.setFontSize(8); doc.text(clean(p.caption || p.kind), 12 + (i % 2) * 94, y + Math.floor(i / 2) * 52 + 51); } catch { /* unsupported image */ }
+      try { const r = await toRaster(p.data); doc.addImage(r.data, r.fmt, 12 + (i % 2) * 94, y + Math.floor(i / 2) * 52, 90, 48); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text(clean(p.caption || p.kind), 12 + (i % 2) * 94, y + Math.floor(i / 2) * 52 + 51); } catch { /* unsupported image */ }
     }
     y += Math.ceil(ph.length / 2) * 54;
   }
+  if (y > 235) { doc.addPage(); y = 16; }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Client acceptance', 12, y + 4); doc.text('TopMop representative', 110, y + 4);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+  doc.text(`${wf?.rep_client_name ?? j.signoff_name ?? '—'}`, 12, y + 10); doc.text(`${fmtDateTime(wf?.rep_client_at ?? j.signoff_at)}${wf?.rep_rating ?? j.client_rating ? ` - Rating ${wf?.rep_rating ?? j.client_rating}/5` : ''}`, 12, y + 15);
+  sigImg(doc, wf?.rep_client_sig ?? j.signoff_data, 12, y + 17);
+  doc.text(`${wf?.rep_tm_name ?? jobEmp(db, j.leader_id)}`, 110, y + 10); sigImg(doc, wf?.rep_tm_sig, 110, y + 17);
+  footer(doc); doc.save(`service-accomplishment-report-${j.number}.pdf`);
+  store.audit('export', 'jobs', j.id, `Exported service accomplishment report ${j.number}`);
+}
+
+/* ---------- Client conforme (job workflow step 4) ---------- */
+export async function conformePdf(db: DB, j: Job) {
+  const { doc, autoTable } = await newPdf();
+  const wf = db.workflows.find((w) => w.job_id === j.id && !w.deleted_at);
+  const q = db.quotations.find((x) => x.id === (wf?.conf_quotation_id ?? j.quotation_id));
+  header(doc, 'Quotation / Conforme', q?.number ?? j.number);
+  let y = partyBlock(doc, 34, ['Client / site', clientLines(db, j.client_id, j.site_id)], ['Reference', [`Original quotation: ${q?.number ?? '—'}`, `Job ref: ${j.number}`, `Reviewed on site: ${fmtDateTime(wf?.conf_at)}`]]);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Scope', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); y = wrapText(doc, q?.scope ?? j.scope, 12, y + 5, 186) + 3;
+  if (q) y = itemsTable(doc, autoTable, y, q.items, q.vat_mode, q.vat_rate, q.discount) + 3;
+  if (wf?.panels.length) {
+    const pt = panelTotals(wf.panels);
+    autoTable(doc, { startY: y, head: [['Area / floor', 'Side', 'External', 'Internal', 'Total', 'Notes']], body: wf.panels.map((p) => [p.area, p.side, p.external, p.internal, rowPanels(p), clean(`${p.additional ? '[additional] ' : ''}${p.notes ?? ''}`)]), foot: [['Total', '', pt.external, pt.internal, pt.total, '']], ...tableStyle, footStyles: { fillColor: [234, 239, 244], textColor: NAVY, fontStyle: 'bold' }, margin: { left: 12, right: 12 } });
+    y = ymax(doc) + 6;
+  }
+  if (q?.terms) { if (y > 235) { doc.addPage(); y = 16; } doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Terms and exclusions', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); y = wrapText(doc, q.terms, 12, y + 5, 186) + 4; }
   if (y > 240) { doc.addPage(); y = 16; }
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Client sign-off', 12, y + 4);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.text(`${j.signoff_name ?? '—'}${j.signoff_at ? ' • ' + fmtDateTime(j.signoff_at) : ''}${j.client_rating ? ` • Rating ${j.client_rating}/5` : ''}`, 12, y + 10);
-  if (j.signoff_data?.startsWith('data:image/png')) { try { doc.addImage(j.signoff_data, 'PNG', 12, y + 12, 50, 20); } catch { /* ignore */ } }
-  footer(doc); doc.save(`service-report-${j.number}.pdf`);
-  store.audit('export', 'jobs', j.id, `Exported service report ${j.number}`);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Conforme', 12, y + 4); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+  doc.text('I have reviewed the quotation above and agree to the scope, rates and terms.', 12, y + 10);
+  doc.text(`${wf?.conf_name ?? '—'} - ${fmtDateTime(wf?.conf_at)}`, 12, y + 16); sigImg(doc, wf?.conf_signature, 12, y + 18);
+  footer(doc); doc.save(`conforme-${j.number}.pdf`);
+  store.audit('export', 'jobs', j.id, `Exported conforme ${j.number}`);
+}
+
+/* ---------- Variation / revised quotation (job workflow step 6) ---------- */
+export async function variationPdf(db: DB, v: Variation) {
+  const { doc, autoTable } = await newPdf();
+  const j = db.jobs.find((x) => x.id === v.job_id)!;
+  const wf = db.workflows.find((w) => w.job_id === j.id && !w.deleted_at);
+  const fc = finalContract(db, j);
+  header(doc, 'Variation / Final Quotation', v.number);
+  let y = partyBlock(doc, 34, ['Client / site', clientLines(db, j.client_id, j.site_id)], ['Reference', [`Variation: ${v.number}`, `Job ref: ${j.number}`, `Status: ${v.status}`, `Original quotation: ${db.quotations.find((q) => q.id === j.quotation_id)?.number ?? '—'}`]]);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Reason for variation', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); y = wrapText(doc, v.reason, 12, y + 5, 186) + 3;
+  y = itemsTable(doc, autoTable, y, v.items, v.vat_mode, v.vat_rate, v.discount) + 3;
+  const linked = wf?.panels.filter((p) => v.panel_row_ids.includes(p.id)) ?? [];
+  if (linked.length) { autoTable(doc, { startY: y, head: [['Additional panels', 'Side', 'External', 'Internal', 'Total']], body: linked.map((p) => [p.area, p.side, p.external, p.internal, rowPanels(p)]), ...tableStyle, margin: { left: 12, right: 100 } }); y = ymax(doc) + 6; }
+  autoTable(doc, { startY: y, head: [['Contract value (incl. VAT)', 'Amount']], body: [['Original quotation', pm(fc.originalTotal)], ['Approved variations', pm(fc.variationsTotal)], ['Final contract value', pm(fc.finalTotal)]], ...tableStyle, columnStyles: { 1: { halign: 'right' } }, margin: { left: 12, right: 100 } });
+  y = ymax(doc) + 10;
+  if (y > 240) { doc.addPage(); y = 16; }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Client approval', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+  doc.text(v.status === 'Approved' ? `${v.client_name ?? '—'} - ${fmtDateTime(v.signed_at)}` : `Not approved (${v.status})`, 12, y + 6); sigImg(doc, v.client_signature, 12, y + 8);
+  footer(doc); doc.save(`variation-${v.number}.pdf`);
+  store.audit('export', 'variations', v.id, `Exported variation ${v.number}`);
 }
 
 export const shareTextQuote = (db: DB, q: Quotation) => {
   const c = db.clients.find((x) => x.id === q.client_id)!; const t = docTotals(q.items, q.discount, q.vat_mode, q.vat_rate);
   return `Hello ${c.contact_person}, this is ${db.settings.company.name}. Quotation ${q.number} for ${q.scope} — Total ${pm(t.total).replace('PHP', '₱')} (valid until ${fmtDate(q.valid_until)}). Please reply to approve or ask questions. Thank you!`;
 };
-
-/* ---------- Dispatch & return report ---------- */
-export async function dispatchReportPdf(db: DB, dp: import('./types').Dispatch) {
-  const { doc, autoTable } = await newPdf();
-  const j = db.jobs.find((x) => x.id === dp.job_id)!; const site = db.sites.find((s) => s.id === j.site_id)!;
-  header(doc, 'Dispatch & Return Report', j.number);
-  let y = partyBlock(doc, 34, ['Client / site', clientLines(db, j.client_id, j.site_id)], ['Crew', [`Leader: ${db.employees.find((e) => e.id === j.leader_id)?.full_name ?? '—'}`, `Crew: ${j.crew_ids.map((id) => db.employees.find((e) => e.id === id)?.full_name).join(', ') || '—'}`, `Vehicle: ${db.assets.find((a) => a.id === j.vehicle_id)?.name ?? '—'}`]]);
-  const gps = (la?: number, ln?: number, note?: string) => (la !== undefined ? `${la}, ${ln}` : `not captured (${note ?? '—'})`);
-  autoTable(doc, {
-    startY: y, head: [['Phase', 'Time', 'GPS', 'Details']], ...tableStyle, margin: { left: 12, right: 12 },
-    body: [
-      ['Departure (HQ)', fmtDateTime(dp.dep_at), gps(dp.dep_lat, dp.dep_lng, dp.dep_gps_note), `Vehicle ${dp.dep_veh_condition ?? '-'} · fuel ${dp.dep_fuel ?? '-'} · odometer ${dp.dep_odo ?? '-'} km · crew present ${(dp.crew_present ?? []).length}${dp.dep_exception_status ? ` · EXCEPTION ${dp.dep_exception_status}: ${clean(dp.dep_exception_reason ?? '')}` : ''}`],
-      [`Arrival (${site.name})`, fmtDateTime(dp.arr_at), gps(dp.arr_lat, dp.arr_lng, dp.arr_gps_note), `Contact ${dp.arr_contact_name ?? '-'} ${dp.arr_contact_mobile ?? ''} · safety briefing ${dp.arr_safety_briefing ? 'confirmed' : 'NOT confirmed'} · ${clean(dp.arr_site_notes ?? '')}`],
-      ['Return (HQ)', fmtDateTime(dp.ret_at), gps(dp.ret_lat, dp.ret_lng, dp.ret_gps_note), `Vehicle ${dp.ret_veh_condition ?? '-'} · fuel ${dp.ret_fuel ?? '-'} · odometer ${dp.ret_odo ?? '-'} km${dp.distance_km !== undefined ? ` · ${dp.distance_km} km travelled` : ''}`],
-    ],
-  });
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
-  autoTable(doc, {
-    startY: y, head: [['Item', 'Asset ID', 'Required', 'Issued', 'Returned', 'Condition out / in', 'Used', 'Notes']], ...tableStyle, margin: { left: 12, right: 12 },
-    body: dp.items.map((i) => [clean(i.label), i.code ?? '', i.qty, i.loaded_qty ?? '-', i.returned_qty ?? '-', `${(i.kind === 'material' ? i.out_container : i.out_condition) ?? '-'} / ${i.ret_condition ?? '-'}`, i.kind === 'material' ? `${i.used_qty ?? '-'} ${i.unit ?? ''}` : '', clean([i.out_note, i.ret_note].filter(Boolean).join(' | '))]),
-  });
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
-  const inc = db.incidents.filter((i) => i.dispatch_id === dp.id);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text(`Incidents raised (${inc.length})`, 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-  y = wrapText(doc, inc.length ? inc.map((i) => `${i.number} [${i.type} / ${i.severity} / ${i.status}] ${i.description}`).join('\n') : 'None — everything issued was accounted for.', 12, y + 5, 186) + 4;
-  const photos: { src: string; cap: string }[] = [...(dp.dep_photo ? [{ src: dp.dep_photo, cap: 'Departure' }] : []), ...dp.arr_photos.slice(0, 1).map((src) => ({ src, cap: 'Arrival – before work' })), ...dp.ret_photos.slice(0, 1).map((src) => ({ src, cap: 'Return – after work' }))];
-  if (photos.length) {
-    if (y > 215) { doc.addPage(); y = 16; }
-    for (const [i, p] of photos.entries()) { try { const r = await toRaster(p.src); doc.addImage(r.data, r.fmt, 12 + i * 62, y, 58, 38); doc.setFontSize(8); doc.text(p.cap, 12 + i * 62, y + 42); } catch { /* skip */ } }
-  }
-  footer(doc); doc.save(`dispatch-${j.number}.pdf`);
-  store.audit('export', 'dispatches', dp.id, `Exported dispatch report ${j.number}`);
-}
 
 /* ---------- QR labels (A4, 3 × 8) ---------- */
 export async function qrLabelsPdf(assets: { code: string; name: string; category: string }[]) {
