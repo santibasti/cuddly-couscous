@@ -12,7 +12,7 @@ payroll, inventory, equipment out/in, expenses, receivables, job costing, report
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm test             # 37 tests: pricing rules, payroll maths, store rules, seed integrity
+npm test             # 48 tests: pricing rules, payroll maths, store rules, seed integrity
 npm run build        # type-check + production build
 ```
 
@@ -41,6 +41,7 @@ payroll periods in every status, alerts of every kind), so every module is popul
 | 1 | **Jobs & calendar** | Month / week / day / list; **drag-and-drop rescheduling**; crew, leader, vehicle, equipment, PPE, materials, checklist, before/after photos, findings, damage report, signature sign-off, service-report PDF; **double-booking blocked** for crew, vehicles and machines |
 | 1 | **Attendance** | GPS + timestamp + optional selfie, late/undertime/OT/holiday/rest-day/field-work flags, approvals, correction requests with trail, daily view by job site |
 | 1 | **Employees** | Full profile, government IDs, bank, documents & expiry, trainings, monthly scorecard & tier |
+| 4 | **Dispatch & Return Checklist** | Enforced job flow **Confirmed → Dispatch Checklist Pending → Departed from HQ → Arrived at Site → In Progress → Work Completed → Return Checklist Pending → Returned to HQ → Closed**. Mobile step-by-step departure form (job & crew confirmation synced to attendance → vehicle check with odometer / fuel / photo → tools, machines & PPE with QR scan or typed Asset ID, quantities, condition, damage photo, responsible person → chemicals & materials issued from stock → departure time, GPS, loading photo, Team Leader confirmation). Departing with missing / damaged / short items or absent crew needs a reason and **Operations Manager approval**. “Arrived at site” action on the job card (GPS, contact, before photos, safety briefing, site notes, extra equipment / material requests). Return checklist compares issued vs returned, material usage = issued − returned, ending odometer / fuel / vehicle condition, photos, GPS; syncs asset status (Available / Under Maintenance / Damaged / Missing). Missing or damaged items auto-create incident reports and maintenance tickets, alert Admin and Operations, and keep the job open until resolved or acknowledged. QR labels for every asset (PDF). Edits by Ops / Admin require a reason and are audited with old and new values |
 | 1 | **Equipment out/in** | Register, request → approve/release → return with condition, meter, photos; **never checked out to two jobs**; overdue flags; damage auto-creates a repair ticket; utilization & downtime |
 | 1 | **Inventory** | Beginning/in/out/reserved/available, valuation (weighted-average cost), expiry & batch, receiving, issue/return to job, waste, adjustments with approval, transfers, physical counts, reversal entries, material requests |
 | 2 | **Quotations** | Pipeline (inquiry → ocular → quotation → approval → booked), TopMop pricing rules (glass ₱4,799/31 panels + ₱140 excess, roof ₱145/sqm min 100, wall/floor ₱125/sqm min 50, solar ₱245/panel min 20 — editable in Admin), glass **panel counter** (2×1 m rule, grouped small panels), VAT/discount, PDF, email & WhatsApp share |
@@ -78,7 +79,7 @@ Stack: React 19 · TypeScript · Vite · React Router · Recharts · jsPDF · Ex
 
 ## What is and isn't done
 
-**Verified:** type-check clean; 37 automated tests; every screen loaded under all six roles without console errors; browser-tested flows
+**Verified:** type-check clean; 48 automated tests; every screen loaded under all six roles without console errors; browser-tested flows
 (GPS clock-in, quotation pricing, drag-and-drop rescheduling, equipment release, payment + receipt PDF, payroll approve, Excel / PDF downloads);
 the SQL migrations, seed and every guard were executed against a real PostgreSQL engine (PGlite) — RLS, immutability, double-booking,
 overpayment, negative stock and single-release-per-asset all reject correctly.
@@ -93,4 +94,5 @@ overpayment, negative stock and single-release-per-asset all reject correctly.
 5. **Notifications are queued, not delivered.** Email/SMS/WhatsApp are marked per notification (plus `mailto:` and `wa.me` share links); no provider is connected.
 6. PDFs print amounts as `PHP 1,234.00` because jsPDF's built-in fonts have no ₱ glyph (Excel and the UI use ₱). Embed a TTF font to change this.
 7. Client-portal login is a demo; the real portal needs Supabase Auth users with `profiles.client_id`.
-8. Field photos are stored inline (resized) in the demo; use Storage buckets in production.
+8. QR scanning uses the device camera, which browsers only allow on HTTPS or `localhost`; the manual code box also works with USB/Bluetooth scanners. It was tested with typed codes, not a physical camera.
+9. Field photos are stored inline (resized) in the demo; use Storage buckets in production.

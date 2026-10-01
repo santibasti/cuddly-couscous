@@ -42,6 +42,10 @@ export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'assets.edit', group: 'Assets', label: 'Manage asset register & maintenance' },
   { key: 'assets.request', group: 'Assets', label: 'Request / return equipment' },
   { key: 'assets.approve', group: 'Assets', label: 'Approve equipment release' },
+  { key: 'dispatch.view', group: 'Dispatch', label: 'View dispatch checklists & incidents' },
+  { key: 'dispatch.run', group: 'Dispatch', label: 'Run departure / arrival / return checklists' },
+  { key: 'dispatch.approve', group: 'Dispatch', label: 'Approve dispatch exceptions' },
+  { key: 'incidents.manage', group: 'Dispatch', label: 'Investigate & resolve incident reports' },
   { key: 'invoices.view', group: 'Finance', label: 'View invoices & receivables' },
   { key: 'invoices.edit', group: 'Finance', label: 'Create invoices, record payments' },
   { key: 'invoices.approve', group: 'Finance', label: 'Approve / reverse invoices' },
@@ -67,6 +71,7 @@ export const DEFAULT_ACCESS: Record<Role, string[]> = {
     'employees.view', 'employees.edit', 'performance.view', 'performance.edit',
     'inventory.view', 'inventory.edit', 'inventory.approve', 'inventory.request',
     'assets.view', 'assets.edit', 'assets.request', 'assets.approve', 'reports.ops',
+    'dispatch.view', 'dispatch.run', 'dispatch.approve', 'incidents.manage',
   ],
   finance: [
     'dashboard.view', 'dashboard.finance', 'clients.view', 'clients.tax', 'sales.view',
@@ -78,8 +83,9 @@ export const DEFAULT_ACCESS: Record<Role, string[]> = {
   leader: [
     'dashboard.view', 'jobs.mine', 'jobs.complete', 'attendance.own', 'attendance.view', 'attendance.approve',
     'inventory.view', 'inventory.request', 'assets.view', 'assets.request', 'clients.view', 'employees.view',
+    'dispatch.view', 'dispatch.run',
   ],
-  field: ['jobs.mine', 'jobs.complete', 'attendance.own', 'assets.request'],
+  field: ['jobs.mine', 'jobs.complete', 'attendance.own', 'assets.request', 'dispatch.view'],
   viewer: ['reports.finance'],
 };
 
@@ -93,6 +99,7 @@ export const ROUTE_ACCESS: Record<string, string[]> = {
   clients: ['clients.view'],
   sales: ['sales.view'],
   jobs: ['jobs.all', 'jobs.mine'],
+  dispatch: ['dispatch.view', 'dispatch.run'],
   attendance: ['attendance.own', 'attendance.view'],
   employees: ['employees.view', 'performance.view'],
   payroll: ['payroll.view'],

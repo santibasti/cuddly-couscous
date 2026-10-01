@@ -1,12 +1,12 @@
 // Realistic demo data for TopMop Window Cleaning Solutions Corp. Everything is generated relative to today (Manila),
 // so the dashboard always shows current activity. Names, TINs and amounts are fictional sample data.
 import type {
-  Asset, Attendance, Checkout, Client, DB, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
+  Asset, Attendance, Checkout, Client, DB, Dispatch, IncidentReport, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
   PayrollAdjustment, PayrollPeriod, PayrollRun, Payment, PerfReview, PettyCashEntry, Quotation, QuoteItem, ServiceDef,
   Settings, Site, StockTx, StorageLocation, UserAccount, Communication, Complaint, Role, ServiceCode, Condition, PayrollType,
 } from './types';
 import { DEFAULT_ACCESS } from './rbac';
-import { buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
+import { buildDispatchItems, buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
 import { addDays, diffDays, dow, eachDay, monthEnd, monthStart, round2, sum, today } from './util';
 
 /* Precomputed sha256("topmop:topmop123") – demo password for all seeded accounts. */
@@ -252,6 +252,8 @@ export function seedDB(): DB {
     ast('HSE-001', 'High-Pressure Hose Set 50m', 'Hose', 'Gates', 'HP-50', 18000, 1),
     ast('LAD-001', 'Extension Ladder 24ft', 'Ladder', 'Louisville', 'FE3224', 21000, 2),
     ast('LAD-002', 'Extension Ladder 32ft', 'Ladder', 'Louisville', 'FE3232', 29000, 2, { condition: 'Damaged', status: 'Damaged', location: 'Workshop', last_maintenance: addDays(T, -200) }),
+    ast('EXC-001', 'Extension Cord 50m (A)', 'Extension Cord', 'Pacific Cable', 'EC-50', 4800, 1.5, { maintenance_interval_days: 180 }),
+    ast('EXC-002', 'Extension Cord 50m (B)', 'Extension Cord', 'Pacific Cable', 'EC-50', 4800, 1.5, { maintenance_interval_days: 180 }),
     ast('SAF-001', 'Roof Fall-Arrest Kit (A)', 'Safety Equipment', '3M', 'Protecta Pro', 42000, 1.5, { maintenance_interval_days: 180 }),
     ast('SAF-002', 'Roof Fall-Arrest Kit (B)', 'Safety Equipment', '3M', 'Protecta Pro', 42000, 1.5, { maintenance_interval_days: 180 }),
   ];
@@ -270,10 +272,10 @@ export function seedDB(): DB {
   const attendance: Attendance[] = [];
   const checkouts: Checkout[] = [];
   const jobs: Job[] = [];
-  const counters: Record<string, number> = { QT: 0, JOB: 0, INV: 0, OR: 0, EMP: employees.length };
+  const counters: Record<string, number> = { QT: 0, JOB: 0, INV: 0, OR: 0, EMP: employees.length, INC: 0 };
   const nn = (k: string) => { counters[k] += 1; return `${k}-${yr}-${String(counters[k]).padStart(4, '0')}`; };
 
-  const teamAssets = { A: ['VEH-001', 'ROD-001', 'WFP-001', 'WFP-003', 'PWR-001', 'SAF-001'], B: ['VEH-002', 'ROD-002', 'WFP-002', 'PWR-002', 'SFC-001', 'SAF-002'] };
+  const teamAssets = { A: ['VEH-001', 'ROD-001', 'WFP-001', 'WFP-003', 'PWR-001', 'EXC-001', 'SAF-001'], B: ['VEH-002', 'ROD-002', 'WFP-002', 'PWR-002', 'SFC-001', 'EXC-002', 'SAF-002'] };
   const matMap: Record<string, [string, number][]> = {
     GLASS_EXT: [['CHM-001', 2], ['CON-002', 2], ['CON-001', 6]], ROOF: [['CHM-002', 10], ['CON-004', 1], ['PPE-003', 3]],
     WALL: [['CHM-003', 4], ['CON-003', 2], ['CON-001', 4]], SOLAR: [['CHM-005', 2], ['CON-001', 8]], ACP: [['CHM-003', 3], ['CON-001', 6]],
@@ -626,12 +628,90 @@ export function seedDB(): DB {
     { ...base('cmp', addDays(T, -4)), client_id: clients[8].id, summary: 'Crew arrived 45 minutes late.', severity: 'Low', status: 'Investigating' },
   ];
 
+
+  const items0 = items; // inventory items (the dispatch builder below uses its own local `items`)
+  /* ---- crew dispatch & return checklists + incidents ---- */
+  const dispatches: Dispatch[] = [];
+  const incidents: IncidentReport[] = [];
+  const HQ = { lat: 14.5547, lng: 121.0244 };
+  const jit = (v: number, k: number) => +(v + (R() - 0.5) * k).toFixed(6);
+  const mkDispatch = (job: Job, stage: Dispatch['stage']): Dispatch => {
+    const d = job.start_at.slice(0, 10);
+    const site = sites.find((x) => x.id === job.site_id)!;
+    const vehAsset = assets.find((a) => a.id === job.vehicle_id);
+    const dep_odo = (vehAsset?.meter_reading ?? 40000) - between(300, 1200);
+    const distance = between(18, 85);
+    const crew = [...(job.leader_id ? [job.leader_id] : []), ...job.crew_ids];
+    const done = stage === 'Returned';
+    const its = buildDispatchItems({ assets, items: items0 }, job).map((i) => ({
+      ...i, out_ok: true, out_by: (R() < 0.8 ? 'scan' : 'id') as 'scan' | 'id', loaded_qty: i.qty,
+      ...(i.kind === 'material' ? { out_container: 'Good' as const } : { out_condition: 'Good' as const }),
+      ...(done ? { returned_qty: i.kind === 'material' ? 0 : i.qty, ret_condition: 'Good' as const, ret_by: 'scan' as const, ret_responsible_id: i.responsible_id, ...(i.kind === 'material' ? { used_qty: i.qty } : {}) } : {}),
+    }));
+    const dp: Dispatch = {
+      ...base('dsp', d), job_id: job.id, stage, items: its, crew_present: crew, arr_photos: [], ret_photos: [],
+      dep_veh_condition: 'Good', dep_veh_photo: svgPhoto('VEHICLE CHECK', '#123A63'), dep_fuel: pick(['Full', '3/4', '3/4']), dep_odo,
+      dep_at: `${d}T07:${between(20, 45)}`, dep_lat: jit(HQ.lat, 0.0006), dep_lng: jit(HQ.lng, 0.0006), dep_photo: svgPhoto('DEPARTURE - crew and loaded van', '#123A63'),
+      dep_confirmed_by: job.leader_id ? 'u-lead' : OWNER, dep_confirmed_at: stamp(d, 7),
+    };
+    if (stage !== 'Pending' && stage !== 'Departed') {
+      Object.assign(dp, {
+        arr_at: `${d}T08:${between(10, 40)}`, arr_lat: jit(14.58, 0.2), arr_lng: jit(121.03, 0.2), arr_photos: [svgPhoto('BEFORE - arrival', '#3B4A5A')],
+        arr_contact_name: site.contact_person, arr_contact_mobile: site.contact_mobile, arr_safety_briefing: true,
+        arr_briefing_notes: 'Toolbox talk: working at heights, water-fed pole safety, wet-floor signage.', arr_site_notes: 'Access via service entrance; water source at basement pump room.',
+      });
+    }
+    if (done) {
+      Object.assign(dp, {
+        ret_at: `${d}T17:${between(5, 40)}`, ret_lat: jit(HQ.lat, 0.0006), ret_lng: jit(HQ.lng, 0.0006), ret_photos: [svgPhoto('RETURN - equipment checked in', '#0B2545')],
+        ret_fuel: pick(['1/2', '1/2', '1/4', '3/4']), ret_odo: dep_odo + distance, ret_veh_condition: 'Good', distance_km: distance, ret_confirmed_by: dp.dep_confirmed_by, ret_confirmed_at: stamp(d, 17),
+      });
+    }
+    return dp;
+  };
+  const mkInc = (dp: Dispatch, type: IncidentReport['type'], severity: IncidentReport['severity'], description: string, status: IncidentReport['status'], extra: Partial<IncidentReport> = {}) => {
+    incidents.push({ ...base('inc', dp.created_at.slice(0, 10)), number: nn('INC'), job_id: dp.job_id, dispatch_id: dp.id, type, severity, description, status, auto: true, ...(status === 'Resolved' ? { resolution: 'Recounted at the warehouse; adjusted and closed.', resolved_at: dp.created_at } : {}), ...extra });
+  };
+  const recentDone = jobs.filter((j) => j.status === 'Completed' && j.start_at.slice(0, 10) >= addDays(T, -21) && j.vehicle_id);
+  recentDone.forEach((job, idx) => {
+    const dp = mkDispatch(job, 'Returned');
+    if (idx === 0) { const m = dp.items.find((i) => i.kind === 'material'); if (m) { m.ret_condition = 'Missing'; m.ret_note = 'Container not on the truck'; m.used_qty = m.qty; mkInc(dp, 'Material shortage', 'Medium', `${m.label}: container reported missing on return. Container not on the truck`, 'Resolved', { item_id: m.item_id }); } }
+    if (idx === 1) { const g = dp.items.find((i) => i.kind === 'ppe' && i.label === 'Gloves'); if (g) { g.returned_qty = g.qty - 1; g.ret_note = 'One pair left on site roof'; mkInc(dp, 'Missing PPE', 'Medium', `Gloves: 1 of ${g.qty} not returned. One pair left on site roof`, 'Resolved'); } }
+    if (idx === 2) mkInc(dp, 'Damaged asset', 'Medium', 'LAD-002 Extension Ladder 32ft returned with a bent rail. Taken out of service.', 'Investigating', { asset_id: A('LAD-002').id, ticket_id: tickets[1].id });
+    if (idx === 3) mkInc(dp, 'Damaged asset', 'Medium', 'SFC-002 Surface Cleaner 24" - bearing noise and cracked skirt on return.', 'Acknowledged', { asset_id: A('SFC-002').id, ticket_id: tickets[0].id, resolution: 'Acknowledged by Operations; repair in progress under ticket.' });
+    if (idx === recentDone.length - 2) { const g = dp.items.find((i) => i.kind === 'ppe' && i.label === 'Hard hat'); if (g) { g.returned_qty = g.qty - 1; g.ret_condition = 'Good'; g.ret_note = 'Not on the truck at unloading'; mkInc(dp, 'Missing PPE', 'Medium', `Hard hat: 1 of ${g.qty} not returned. Not on the truck at unloading`, 'Open'); const jb = jobs.find((x) => x.id === job.id)!; jb.status = 'Returned to HQ'; } }
+    dispatches.push(dp);
+  });
+  const live1 = jobs.filter((j) => j.status === 'In Progress');
+  live1.forEach((j, i) => {
+    const dp = mkDispatch(j, 'On Site');
+    dispatches.push(dp);
+    if (i === 0) {
+      // work finished on site; crew still away — awaiting the return checklist
+      const d0 = j.start_at.slice(0, 10);
+      Object.assign(j, {
+        status: 'Return Checklist Pending', completed_at: `${d0}T15:30`, checklist: j.checklist.map((c) => ({ ...c, done: true })), findings: 'Work completed without issues.', signoff_name: sites.find((x) => x.id === j.site_id)!.contact_person,
+        signoff_at: `${d0}T15:30`, signoff_data: svgPhoto('Signature', '#123A63'), client_rating: 5,
+        photos: [...j.photos, { kind: 'after' as const, caption: 'After - exterior', data: svgPhoto('AFTER', '#0B2545'), taken_at: `${d0}T15:20` }],
+      });
+    }
+  });
+  // tomorrow's first confirmed job: checklist started but not finished
+  const next = jobs.find((j) => j.status === 'Confirmed' && j.vehicle_id && j.start_at.slice(0, 10) > T);
+  if (next) {
+    const dp = mkDispatch(next, 'Pending');
+    dp.items = dp.items.map((i, k) => (k < 3 ? i : { ...i, out_ok: false, out_by: undefined, loaded_qty: undefined, out_condition: undefined, out_container: undefined }));
+    Object.assign(dp, { dep_at: undefined, dep_lat: undefined, dep_lng: undefined, dep_photo: undefined, dep_confirmed_by: undefined, dep_confirmed_at: undefined, crew_present: [], dep_fuel: undefined, dep_odo: undefined, dep_veh_photo: undefined });
+    next.status = 'Dispatch Checklist Pending';
+    dispatches.push(dp);
+  }
+
   return {
     users, branches, clients, sites, communications, complaints, services, inquiries, quotations, jobs, employees, attendance, corrections: [
       { ...base('cor'), employee_id: FIELD[1].id, date: addDays(T, -2), clock_in: `${addDays(T, -2)}T08:00`, clock_out: `${addDays(T, -2)}T17:00`, reason: 'Forgot to clock out; was on site until 5PM per team leader.', status: 'Pending' },
     ], holidays, reviews, adjustments, periods, runs, locations, items, stock, requests: [
       { ...base('mr'), job_id: jobs.find((j) => j.status === 'Confirmed')?.id ?? jobs[0].id, requested_by: E_L1.id, lines: [{ item_id: item('CHM-001').id, qty: 4 }, { item_id: item('PPE-002').id, qty: 2 }], status: 'Pending', note: 'Extra chemical for large glass job.' },
-    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], audit: [], settings: { ...settings, counters }, version: 1,
+    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], dispatches, incidents, audit: [], settings: { ...settings, counters }, version: 1,
   };
 }
 

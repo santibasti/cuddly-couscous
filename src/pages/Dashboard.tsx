@@ -4,7 +4,7 @@ import { Bar as RBar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tool
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, PageHead, Stat, Bar, Empty } from '@/components/ui';
 import { addDays, eachDay, fmtDate, fmtTime, inRange, monthEnd, monthStart, money, moneyShort, nowLocal, pct, round2, sum, today, weekStart } from '@/lib/util';
-import { docTotals, invoiceBalance, invoiceTotals, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
+import { AWAY_JOB, docTotals, invoiceBalance, invoiceTotals, isDone, isOpen, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
 import { isOverdue } from '@/lib/actions';
 import type { DB, Invoice, ServiceCode } from '@/lib/types';
 
@@ -62,11 +62,33 @@ export default function Dashboard() {
       </div>
 
       <div className="grid g4 keep2" style={{ marginBottom: 14 }}>
-        <Stat k="Today's jobs" v={d.todayJobs.length} s={`${d.todayJobs.filter((j) => j.status === 'In Progress').length} in progress`} to="/jobs" />
+        <Stat k="Today's jobs" v={d.todayJobs.length} s={`${d.todayJobs.filter((j) => ['Departed from HQ', 'Arrived at Site', 'In Progress'].includes(j.status)).length} in the field`} to="/jobs" />
         <Stat k="Crew clocked in" v={`${d.clockedIn} / ${d.crewTotal}`} s={`${d.clockedOut} clocked out • ${d.notIn} not in`} tone={d.notIn > 3 ? 'warn' : undefined} to="/attendance" />
         <Stat k="Machines checked out" v={d.checkedOut.length} s={d.overdueReturns ? `${d.overdueReturns} overdue return(s)` : 'None overdue'} tone={d.overdueReturns ? 'bad' : undefined} to="/assets" />
         <Stat k="Low-stock alerts" v={d.lowStock.length} s={`${d.expiring} expiring soon`} tone={d.lowStock.length ? 'warn' : 'good'} to="/inventory" />
       </div>
+
+      {(can('dispatch.view') || can('assets.view')) && (
+        <>
+          <div className="grid g3" style={{ marginBottom: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+            <Stat k="Teams dispatched" v={d.dispatched.length} s="away from HQ" tone="navy" to="/dispatch" />
+            <Stat k="Teams at client sites" v={d.atSites.length} s={`${d.atSites.filter((j) => j.status === 'In Progress').length} working now`} to="/dispatch" />
+            <Stat k="Awaiting return checklist" v={d.awaitingReturn.length} s="work done, crew not checked in" tone={d.awaitingReturn.length ? 'warn' : 'good'} to="/dispatch" />
+            <Stat k="Vehicles in use" v={d.vehiclesInUse.length} s={d.vehiclesInUse.map((a) => a.code).join(', ') || 'None out'} to="/assets" />
+            <Stat k="Missing / damaged equipment" v={d.equipAlerts.length} s={`${d.openIncidents.length} open incident(s)`} tone={d.equipAlerts.length || d.openIncidents.length ? 'bad' : 'good'} to="/dispatch?tab=incidents" />
+          </div>
+          {(d.dispatched.length > 0 || d.equipAlerts.length > 0) && (
+            <div className="grid g2" style={{ marginBottom: 14 }}>
+              <Card title="Teams in the field" flush actions={<Link to="/dispatch" className="btn sm">Dispatch board</Link>}>
+                <ul className="list">{d.dispatched.map((j) => <li key={j.id}><div><Link to={`/dispatch/${j.id}`}><b>{j.number}</b></Link> · {db.employees.find((e) => e.id === j.leader_id)?.full_name}<div className="small muted">{db.clients.find((c) => c.id === j.client_id)?.name} · {db.sites.find((s) => s.id === j.site_id)?.name}</div></div><Badge>{j.status}</Badge></li>)}{!d.dispatched.length && <li className="muted">No teams out.</li>}</ul>
+              </Card>
+              <Card title="Missing or damaged equipment" flush actions={<Link to="/dispatch?tab=incidents" className="btn sm">Incidents</Link>}>
+                <ul className="list">{d.equipAlerts.map((a) => <li key={a.id}><div><b>{a.code}</b> · {a.name}<div className="small muted">{a.location}</div></div><Badge>{a.status}</Badge></li>)}{d.openIncidents.filter((i) => !i.asset_id).slice(0, 4).map((i) => <li key={i.id}><div><b>{i.number}</b> · {i.type}<div className="small muted">{i.description}</div></div><Badge>{i.status}</Badge></li>)}{!d.equipAlerts.length && !d.openIncidents.length && <li className="muted">No alerts.</li>}</ul>
+              </Card>
+            </div>
+          )}
+        </>
+      )}
 
       {fin && (
         <>
@@ -196,13 +218,13 @@ function compute(db: DB, from: string, to: string, f: { branch: string; service:
   const jobs = live(db.jobs).filter(jobOk);
   const todayJobs = jobs.filter((j) => j.start_at.startsWith(T) && !['Cancelled', 'Rescheduled'].includes(j.status));
   const inRangeJobs = jobs.filter((j) => inRange(j.start_at, from, to) && !['Cancelled', 'Rescheduled'].includes(j.status));
-  const jobsCompleted = inRangeJobs.filter((j) => j.status === 'Completed').length;
+  const jobsCompleted = inRangeJobs.filter((j) => isDone(j.status)).length;
   // weekly buckets
   const wk = new Map<string, { label: string; scheduled: number; completed: number }>();
   for (const j of inRangeJobs) {
     const w = weekStart(j.start_at.slice(0, 10));
     const e = wk.get(w) ?? { label: fmtDate(w).replace(/, \d+$/, ''), scheduled: 0, completed: 0 };
-    e.scheduled += 1; if (j.status === 'Completed') e.completed += 1; wk.set(w, e);
+    e.scheduled += 1; if (isDone(j.status)) e.completed += 1; wk.set(w, e);
   }
   const weekly = [...wk.entries()].sort().map(([, v]) => v);
 
@@ -232,7 +254,7 @@ function compute(db: DB, from: string, to: string, f: { branch: string; service:
   const payrollPeriods = live(db.periods).filter((p) => p.status === 'For Approval' || p.status === 'Approved');
   const payrollPayable = sum(payrollPeriods, (p) => sum(db.runs.find((r) => r.period_id === p.id)?.lines ?? [], (l) => l.net));
   const payrollWaiting = payrollPeriods.filter((p) => p.status === 'For Approval').length;
-  const upcoming = jobs.filter((j) => j.start_at.slice(0, 10) > T && j.start_at.slice(0, 10) <= addDays(T, 7) && ['Pending', 'Confirmed'].includes(j.status));
+  const upcoming = jobs.filter((j) => j.start_at.slice(0, 10) > T && j.start_at.slice(0, 10) <= addDays(T, 7) && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status));
   const approvedQuotes = live(db.quotations).filter((q) => q.status === 'Approved' && !db.jobs.some((j) => j.quotation_id === q.id && j.status === 'Cancelled') && !db.invoices.some((i) => i.quotation_id === q.id && i.status === 'Approved'));
   const expected = sum(approvedQuotes.filter((q) => (!f.client || q.client_id === f.client) && (!f.branch || q.branch_id === f.branch)), (q) => docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).total);
   const billed = sum(invRange, (i) => invoiceTotals(i).total);
@@ -254,10 +276,19 @@ function compute(db: DB, from: string, to: string, f: { branch: string; service:
     const ex = sum(live(db.expenses).filter((x) => x.approval === 'Approved' && !x.reversed && x.date >= s && x.date <= e && (!f.branch || x.branch_id === f.branch)), (x) => x.amount - x.vat);
     if (!trend.some((t) => t.label === s.slice(0, 7))) trend.push({ label: s.slice(0, 7), revenue: round2(rev), expenses: round2(ex) });
   }
-  const loss = jobs.filter((j) => ['Completed', 'In Progress'].includes(j.status)).map((j) => ({ j, c: jobCost(db, j) })).filter((x) => x.c.revenue > 0 && x.c.grossProfit < 0).slice(0, 5)
+  const loss = jobs.filter((j) => isDone(j.status) || j.status === 'In Progress').map((j) => ({ j, c: jobCost(db, j) })).filter((x) => x.c.revenue > 0 && x.c.grossProfit < 0).slice(0, 5)
     .map((x) => ({ id: x.j.id, number: x.j.number, client: db.clients.find((c) => c.id === x.j.client_id)?.name, gp: x.c.grossProfit, estimated: x.c.estimated }));
-  void eachDay;
+  // dispatch & field widgets (current state, not date-range based)
+  const allJobs = live(db.jobs).filter((j) => (!f.branch || j.branch_id === f.branch) && (!f.client || j.client_id === f.client) && (!mineEmp || j.leader_id === mineEmp || j.crew_ids.includes(mineEmp)));
+  const dispatched = allJobs.filter((j) => ['Departed from HQ', 'Arrived at Site', 'In Progress', 'Work Completed', 'Return Checklist Pending'].includes(j.status));
+  const atSites = allJobs.filter((j) => ['Arrived at Site', 'In Progress', 'Work Completed'].includes(j.status));
+  const awaitingReturn = allJobs.filter((j) => ['Work Completed', 'Return Checklist Pending'].includes(j.status));
+  const vehiclesInUse = live(db.assets).filter((a) => a.category === 'Vehicle' && live(db.checkouts).some((c) => c.asset_id === a.id && c.status === 'Released'));
+  const equipAlerts = live(db.assets).filter((a) => a.status === 'Missing' || a.status === 'Damaged');
+  const openIncidents = live(db.incidents).filter((i) => ['Open', 'Investigating'].includes(i.status));
+  void eachDay; void AWAY_JOB; void isOpen;
   return {
+    dispatched, atSites, awaitingReturn, vehiclesInUse, equipAlerts, openIncidents,
     todayJobs, jobsCompleted, jobsScheduled: inRangeJobs.length, weekly, crew, clockedIn: crew.filter((c) => c.state === 'In').length, clockedOut: crew.filter((c) => c.state === 'Out').length,
     notIn: crew.filter((c) => c.state === 'None').length, crewTotal: crew.length, checkedOut, overdueReturns: checkedOut.filter(isOverdue).length, lowStock, expiring,
     pnl, expenses, receivables, overdueAmt, pendingQuotes, pendingQuoteValue, payrollPayable, payrollWaiting, upcoming, expected, billed, collected, paidOut, byService, topClients, balances, trend, loss, invCount: invRange.length,

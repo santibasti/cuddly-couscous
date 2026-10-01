@@ -3,12 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Photos, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
+import { QrImage } from '@/components/Qr';
+import { qrLabelsPdf } from '@/lib/export';
 import { isOverdue, rejectCheckout, releaseCheckout, requestCheckout, returnCheckout, scheduleMaintenance, updateTicket } from '@/lib/actions';
-import { nextDue } from '@/lib/business';
+import { isOpen, nextDue } from '@/lib/business';
 import { addDays, diffDays, fmtDate, fmtDateTime, money, nowLocal, sum, today } from '@/lib/util';
 import type { Asset, AssetCategory, Checkout, Condition, MaintenanceTicket } from '@/lib/types';
 
-const CATS: AssetCategory[] = ['RO/DI Pure-Water System', 'Water-Fed Pole', 'Pressure Washer', 'Surface Cleaner', 'Industrial Vacuum', 'Pump', 'Hose', 'Ladder', 'Safety Equipment', 'Vehicle', 'Other'];
+const CATS: AssetCategory[] = ['RO/DI Pure-Water System', 'Water-Fed Pole', 'Pressure Washer', 'Surface Cleaner', 'Industrial Vacuum', 'Pump', 'Hose', 'Ladder', 'Extension Cord', 'Safety Equipment', 'Vehicle', 'Other'];
 const CONDS: Condition[] = ['Excellent', 'Good', 'Fair', 'Poor', 'Damaged'];
 
 function AssetForm({ initial, onClose }: { initial?: Asset; onClose: () => void }) {
@@ -23,7 +25,7 @@ function AssetForm({ initial, onClose }: { initial?: Asset; onClose: () => void 
     <Modal title={initial ? `Edit ${initial.code}` : 'New asset'} size="wide" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save}>Save asset</button></>}>
       <div className="form-grid">
         <Field label="Asset ID" required><input {...f.bind('code')} placeholder="e.g. PWR-003" /></Field><Field label="Name" required><input {...f.bind('name')} /></Field>
-        <Field label="Category"><select {...f.bind('category')}>{CATS.map((c) => <option key={c}>{c}</option>)}</select></Field><Field label="Status"><select {...f.bind('status')}>{['Available', 'Reserved', 'Checked Out', 'Under Maintenance', 'Damaged', 'Retired'].map((c) => <option key={c}>{c}</option>)}</select></Field>
+        <Field label="Category"><select {...f.bind('category')}>{CATS.map((c) => <option key={c}>{c}</option>)}</select></Field><Field label="Status"><select {...f.bind('status')}>{['Available', 'Reserved', 'Checked Out', 'Under Maintenance', 'Damaged', 'Missing', 'Retired'].map((c) => <option key={c}>{c}</option>)}</select></Field>
         <Field label="Brand"><input {...f.bind('brand')} /></Field><Field label="Model"><input {...f.bind('model')} /></Field><Field label="Serial number"><input {...f.bind('serial')} /></Field><Field label="Purchase date"><input type="date" {...f.bind('purchase_date')} /></Field>
         <Field label="Purchase cost (₱)"><input type="number" min="0" {...f.bind('purchase_cost')} /></Field><Field label="Daily cost allocation to jobs (₱)"><input type="number" min="0" {...f.bind('daily_allocation')} /></Field>
         <Field label="Condition"><select {...f.bind('condition')}>{CONDS.map((c) => <option key={c}>{c}</option>)}</select></Field><Field label="Current location"><input {...f.bind('location')} /></Field>
@@ -37,7 +39,7 @@ function AssetForm({ initial, onClose }: { initial?: Asset; onClose: () => void 
 
 function RequestModal({ assetId, jobId, onClose }: { assetId?: string; jobId?: string; onClose: () => void }) {
   const { db, user } = useAuth();
-  const jobs = live(db.jobs).filter((j) => ['Pending', 'Confirmed', 'In Progress'].includes(j.status) && (!!user && (db.employees.find((e) => e.id === user.employee_id) ? true : true)));
+  const jobs = live(db.jobs).filter((j) => isOpen(j.status) && (!!user && (db.employees.find((e) => e.id === user.employee_id) ? true : true)));
   const j0 = jobs.find((j) => j.id === jobId) ?? jobs[0];
   const f = useObj({ asset_id: assetId ?? live(db.assets).find((a) => a.status === 'Available' || a.status === 'Reserved')?.id ?? '', job_id: j0?.id ?? '', responsible_id: user?.employee_id ?? j0?.leader_id ?? '', expected_return: (j0?.end_at ?? `${today()}T18:00`), note: '' });
   return (
@@ -89,6 +91,25 @@ function ReturnModal({ co, onClose }: { co: Checkout; onClose: () => void }) {
   );
 }
 
+function QrModal({ a, onClose }: { a: Asset; onClose: () => void }) {
+  return (
+    <Modal title={`QR label – ${a.code}`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Close</button><button className="btn primary" onClick={() => attempt(() => qrLabelsPdf([a]), 'Label downloaded')}><Icon name="download" />Download label (PDF)</button></>}>
+      <div style={{ textAlign: 'center' }}><QrImage code={a.code} size={220} /><h2 style={{ marginTop: 8 }}>{a.code}</h2><div className="muted">{a.name}</div><p className="small muted">Stick this on the machine. Team leaders scan it at departure and return.</p></div>
+    </Modal>
+  );
+}
+function LabelsModal({ assets, onClose }: { assets: Asset[]; onClose: () => void }) {
+  const [sel, setSel] = useState<Set<string>>(new Set(assets.map((a) => a.id)));
+  const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  return (
+    <Modal title="Print QR labels" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!sel.size} onClick={() => attempt(() => qrLabelsPdf(assets.filter((a) => sel.has(a.id))), 'Labels downloaded')}><Icon name="download" />Download {sel.size} label(s) (PDF)</button></>}>
+      <div className="row" style={{ marginBottom: 8 }}><button className="btn sm" onClick={() => setSel(new Set(assets.map((a) => a.id)))}>Select all</button><button className="btn sm" onClick={() => setSel(new Set())}>None</button></div>
+      <div className="grid g-auto" style={{ maxHeight: 360, overflow: 'auto' }}>{assets.map((a) => <label key={a.id} className="check"><input type="checkbox" checked={sel.has(a.id)} onChange={() => toggle(a.id)} />{a.code} · {a.name}</label>)}</div>
+      <p className="small muted">A4 sheet, 3 × 8 labels. Print on adhesive sticker paper and laminate for outdoor use.</p>
+    </Modal>
+  );
+}
+
 function CloseTicket({ t, onClose }: { t: MaintenanceTicket; onClose: () => void }) {
   const f = useObj({ cost: t.cost, vendor: t.vendor ?? '' });
   return <Modal title="Close maintenance ticket" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => { if (attempt(() => updateTicket(t.id, { status: 'Closed', cost: f.v.cost, vendor: f.v.vendor }), 'Ticket closed; asset back in service')) onClose(); }}>Close & return to service</button></>}><div className="form-grid"><Field label="Repair cost (₱)" hint="Creates a pending Equipment Repair expense."><input type="number" min="0" {...f.bind('cost')} /></Field><Field label="Vendor"><input {...f.bind('vendor')} /></Field></div></Modal>;
@@ -98,8 +119,9 @@ export default function Assets() {
   const { db, can } = useAuth();
   const [sp] = useSearchParams();
   const view = can('assets.view');
-  const [tab, setTab] = useState<'register' | 'outin' | 'maint' | 'util'>(view ? 'register' : 'outin');
+  const [tab, setTab] = useState<'register' | 'outin' | 'maint' | 'util'>(sp.get('tab') === 'maint' && view ? 'maint' : view ? 'register' : 'outin');
   const [modal, setModal] = useState<'asset' | Asset | 'request' | null>(sp.get('request') ? 'request' : null);
+  const [qr, setQr] = useState<Asset | null>(null); const [labels, setLabels] = useState(sp.get('labels') === '1');
   const [rel, setRel] = useState<Checkout | null>(null); const [ret, setRet] = useState<Checkout | null>(null); const [tk, setTk] = useState<MaintenanceTicket | null>(null);
   const [cat, setCat] = useState(''); const [st, setSt] = useState('');
   const [days, setDays] = useState(90);
@@ -126,6 +148,7 @@ export default function Assets() {
     <>
       <PageHead title="Machines, equipment & vehicles" sub="Asset register with controlled out/in. An asset can never be checked out to two jobs at once.">
         {can('assets.request') && <button className="btn primary" onClick={() => setModal('request')}><Icon name="plus" />Request equipment</button>}
+        {view && <button className="btn" onClick={() => setLabels(true)}><Icon name="qr" />QR labels</button>}
         {can('assets.edit') && <button className="btn" onClick={() => setModal('asset')}><Icon name="plus" />New asset</button>}
       </PageHead>
       <div className="grid g4 keep2" style={{ marginBottom: 14 }}>
@@ -136,14 +159,14 @@ export default function Assets() {
 
       {tab === 'register' && view && (
         <Card flush><DataTable<Asset> rows={assets.filter((a) => (!cat || a.category === cat) && (!st || a.status === st))} rowKey={(a) => a.id} exportTitle="Asset register" pageSize={15}
-          filters={<><select value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category"><option value="">All categories</option>{CATS.map((c) => <option key={c}>{c}</option>)}</select><select value={st} onChange={(e) => setSt(e.target.value)} aria-label="Status"><option value="">All statuses</option>{['Available', 'Reserved', 'Checked Out', 'Under Maintenance', 'Damaged', 'Retired'].map((c) => <option key={c}>{c}</option>)}</select></>}
+          filters={<><select value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category"><option value="">All categories</option>{CATS.map((c) => <option key={c}>{c}</option>)}</select><select value={st} onChange={(e) => setSt(e.target.value)} aria-label="Status"><option value="">All statuses</option>{['Available', 'Reserved', 'Checked Out', 'Under Maintenance', 'Damaged', 'Missing', 'Retired'].map((c) => <option key={c}>{c}</option>)}</select></>}
           cols={[
             { key: 'code', header: 'Asset ID', value: (a) => a.code }, { key: 'name', header: 'Name', value: (a) => a.name, render: (a) => <div><b>{a.name}</b><div className="small muted">{a.brand} {a.model} · S/N {a.serial}</div></div> }, { key: 'cat', header: 'Category', value: (a) => a.category },
             { key: 'pd', header: 'Purchased', value: (a) => a.purchase_date, render: (a) => fmtDate(a.purchase_date) }, ...(can('profit.view') ? [{ key: 'pc', header: 'Cost', num: true, type: 'money' as const, value: (a: Asset) => a.purchase_cost, render: (a: Asset) => money(a.purchase_cost) }] : []),
             { key: 'cond', header: 'Condition', value: (a) => a.condition, render: (a) => <Badge>{a.condition}</Badge> }, { key: 'loc', header: 'Location', value: (a) => a.location }, { key: 'cust', header: 'Custodian', value: custodian },
             { key: 'due', header: 'Next maintenance', value: (a) => nextDue(a) ?? '', render: (a) => { const d = nextDue(a); return d ? <span>{fmtDate(d)} {d < T && <Badge tone="red">overdue</Badge>}</span> : '—'; } },
             { key: 'st', header: 'Status', value: (a) => a.status, render: (a) => <Badge>{a.status}</Badge> },
-            { key: 'actions', header: '', noExport: true, sortable: false, render: (a) => <span className="row">{can('assets.edit') && <button className="btn sm" onClick={() => setModal(a)}>Edit</button>}{can('assets.edit') && <button className="btn sm" onClick={async () => { const d = await ask('Schedule maintenance', 'Work to be done'); if (d) attempt(() => scheduleMaintenance(a.id, d), 'Ticket created'); }}>Maintain</button>}</span> },
+            { key: 'actions', header: '', noExport: true, sortable: false, render: (a) => <span className="row"><button className="btn sm" onClick={() => setQr(a)} aria-label={`QR code for ${a.code}`}><Icon name="qr" size={14} /></button>{can('assets.edit') && <button className="btn sm" onClick={() => setModal(a)}>Edit</button>}{can('assets.edit') && <button className="btn sm" onClick={async () => { const d = await ask('Schedule maintenance', 'Work to be done'); if (d) attempt(() => scheduleMaintenance(a.id, d), 'Ticket created'); }}>Maintain</button>}</span> },
           ]} /></Card>
       )}
 
@@ -189,6 +212,8 @@ export default function Assets() {
       {rel && <ReleaseModal co={rel} onClose={() => setRel(null)} />}
       {ret && <ReturnModal co={ret} onClose={() => setRet(null)} />}
       {tk && <CloseTicket t={tk} onClose={() => setTk(null)} />}
+      {qr && <QrModal a={qr} onClose={() => setQr(null)} />}
+      {labels && <LabelsModal assets={assets.filter((a) => a.status !== 'Retired')} onClose={() => setLabels(false)} />}
     </>
   );
 }

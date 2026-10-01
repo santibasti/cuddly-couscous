@@ -4,7 +4,7 @@ import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj, ask } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { ClientForm } from './Clients';
-import { docTotals, invoiceBalance, invoiceState, invoiceTotals } from '@/lib/business';
+import { docTotals, invoiceBalance, invoiceState, invoiceTotals, isDone, isOpen } from '@/lib/business';
 import { fmtDate, fmtDateTime, fmtStamp, money, sum, today } from '@/lib/util';
 import { serviceReportPdf, statementPdf } from '@/lib/export';
 import type { Communication, Complaint, Site } from '@/lib/types';
@@ -52,7 +52,7 @@ export default function ClientDetail() {
   const canFin = can('invoices.view');
   const outstanding = sum(invs, (i) => invoiceBalance(db, i));
   const billed = sum(invs.filter((i) => i.status === 'Approved'), (i) => invoiceTotals(i).total);
-  const done = jobs.filter((j) => j.status === 'Completed');
+  const done = jobs.filter((j) => isDone(j.status));
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Overview' }, { id: 'sites', label: 'Sites', count: sites.length }, { id: 'quotes', label: 'Quotations', count: quotes.length },
@@ -68,7 +68,7 @@ export default function ClientDetail() {
         {can('sales.edit') && <button className="btn primary" onClick={() => nav(`/sales/quote/new?client=${c.id}`)}><Icon name="plus" />New quotation</button>}
       </PageHead>
       <div className="grid g4 keep2" style={{ marginBottom: 14 }}>
-        <Stat k="Completed jobs" v={done.length} s={`${jobs.filter((j) => ['Pending', 'Confirmed', 'In Progress'].includes(j.status)).length} upcoming / active`} />
+        <Stat k="Completed jobs" v={done.length} s={`${jobs.filter((j) => isOpen(j.status)).length} upcoming / active`} />
         <Stat k="Service sites" v={sites.length} />
         {canFin && <Stat k="Total billed" v={money(billed)} tone="navy" />}
         {canFin && <Stat k="Outstanding" v={money(outstanding)} tone={outstanding ? 'warn' : 'good'} />}

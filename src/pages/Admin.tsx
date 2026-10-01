@@ -101,6 +101,7 @@ export default function Admin() {
   const { db, can } = useAuth();
   const [tab, setTab] = useState<'users' | 'perms' | 'pricing' | 'rates' | 'audit' | 'bin' | 'data'>(can('admin.users') ? 'users' : can('admin.settings') ? 'rates' : 'audit');
   const [um, setUm] = useState<UserAccount | 'new' | null>(null);
+  const [detail, setDetail] = useState<AuditLog | null>(null);
   const [tbl, setTbl] = useState(''); const [act, setAct] = useState('');
   const bin: { table: TableName; id: string; label: string; at: string; by?: string | null }[] = [];
   for (const t of ['clients', 'sites', 'jobs', 'employees', 'items', 'assets', 'quotations', 'invoices', 'expenses', 'users'] as TableName[]) for (const r of db[t] as unknown as Record<string, unknown>[]) if (r.deleted_at) bin.push({ table: t, id: String(r.id), label: String(r.number ?? r.name ?? r.full_name ?? r.code ?? r.payee ?? r.id), at: String(r.deleted_at), by: r.deleted_by as string });
@@ -123,9 +124,9 @@ export default function Admin() {
       {tab === 'pricing' && can('admin.settings') && <Pricing />}
       {tab === 'rates' && can('admin.settings') && <Rates s={db.settings} />}
       {tab === 'audit' && can('admin.audit') && (
-        <Card flush><DataTable<AuditLog> rows={logs} rowKey={(a) => a.id} exportTitle="Audit log" pageSize={20}
+        <Card flush><DataTable<AuditLog> rows={logs} rowKey={(a) => a.id} onRow={(a) => setDetail(a)} exportTitle="Audit log" pageSize={20}
           filters={<><select value={tbl} onChange={(e) => setTbl(e.target.value)} aria-label="Table"><option value="">All records</option>{[...new Set(db.audit.map((a) => a.table))].sort().map((t) => <option key={t}>{t}</option>)}</select><select value={act} onChange={(e) => setAct(e.target.value)} aria-label="Action"><option value="">All actions</option>{['create', 'update', 'delete', 'restore', 'approve', 'reverse', 'lock', 'login', 'logout', 'export'].map((t) => <option key={t}>{t}</option>)}</select></>}
-          cols={[{ key: 'at', header: 'When (Manila)', value: (a) => a.at, render: (a) => fmtStamp(a.at) }, { key: 'u', header: 'User', value: (a) => a.user_name }, { key: 'a', header: 'Action', value: (a) => a.action, render: (a) => <Badge tone={a.action === 'delete' || a.action === 'reverse' ? 'red' : a.action === 'approve' || a.action === 'lock' ? 'green' : 'blue'}>{a.action}</Badge> }, { key: 't', header: 'Record', value: (a) => a.table }, { key: 's', header: 'Summary', value: (a) => a.summary }]} /></Card>
+          cols={[{ key: 'at', header: 'When (Manila)', value: (a) => a.at, render: (a) => fmtStamp(a.at) }, { key: 'u', header: 'User', value: (a) => a.user_name }, { key: 'a', header: 'Action', value: (a) => a.action, render: (a) => <Badge tone={a.action === 'delete' || a.action === 'reverse' ? 'red' : a.action === 'approve' || a.action === 'lock' ? 'green' : 'blue'}>{a.action}</Badge> }, { key: 't', header: 'Record', value: (a) => a.table }, { key: 's', header: 'Summary', value: (a) => a.summary }, { key: 'r', header: 'Reason', value: (a) => a.reason ?? '' }]} /></Card>
       )}
       {tab === 'bin' && can('admin.users') && (
         <Card title="Soft-deleted records" flush><ul className="list">{bin.map((b) => <li key={b.table + b.id}><div><b>{b.label}</b> <span className="muted small">{b.table}</span><div className="small muted">Deleted {fmtStamp(b.at)} by {uname(b.by)}</div></div><button className="btn sm" onClick={() => attempt(() => store.restore(b.table, b.id), 'Restored')}>Restore</button></li>)}{!bin.length && <li className="muted">Nothing deleted.</li>}</ul></Card>
@@ -142,6 +143,14 @@ export default function Admin() {
           </Card>
           <Card title="Demo data"><p className="muted" style={{ marginTop: 0 }}>Demo data is stored in this browser only.</p><button className="btn danger" onClick={async () => { const c = await ask('Reset demo data', 'Type RESET to erase all changes and reload the sample dataset', { okLabel: 'Reset' }); if (c === 'RESET') { store.reset(); location.hash = '#/login'; } }}>Reset to sample data</button></Card>
         </div>
+      )}
+      {detail && (
+        <Modal title={`Audit entry – ${detail.action} ${detail.table}`} size="wide" onClose={() => setDetail(null)}>
+          <dl className="kv"><dt>When</dt><dd>{fmtStamp(detail.at)}</dd><dt>User</dt><dd>{detail.user_name}</dd><dt>Record</dt><dd>{detail.table} · {detail.record_id}</dd><dt>Summary</dt><dd>{detail.summary}</dd>{detail.reason && <><dt>Reason</dt><dd><b>{detail.reason}</b></dd></>}</dl>
+          <div className="tbl-wrap" style={{ marginTop: 12 }}><table className="tbl"><thead><tr><th>Field</th><th>Old value</th><th>New value</th></tr></thead><tbody>
+            {Object.keys({ ...((detail.before as object) ?? {}), ...((detail.after as object) ?? {}) }).map((k) => { const b = (detail.before as Record<string, unknown> | undefined)?.[k]; const a = (detail.after as Record<string, unknown> | undefined)?.[k]; return <tr key={k}><td><b>{k}</b></td><td style={{ maxWidth: 320, wordBreak: 'break-word' }}>{b === undefined ? '—' : typeof b === 'string' && b.startsWith('data:') ? '[file]' : JSON.stringify(b).slice(0, 300)}</td><td style={{ maxWidth: 320, wordBreak: 'break-word' }}>{a === undefined ? '—' : typeof a === 'string' && a.startsWith('data:') ? '[file]' : JSON.stringify(a).slice(0, 300)}</td></tr>; })}
+          </tbody></table></div>
+        </Modal>
       )}
       {um && <UserModal initial={um === 'new' ? undefined : um} onClose={() => setUm(null)} />}
     </>

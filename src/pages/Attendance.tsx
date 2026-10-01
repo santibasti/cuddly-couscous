@@ -3,16 +3,11 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
-import { bulkApproveAttendance, clockIn, clockOut, decideAttendance, decideCorrection, manualAttendance, requestCorrection, type Geo } from '@/lib/actions';
+import { bulkApproveAttendance, clockIn, clockOut, decideAttendance, decideCorrection, manualAttendance, requestCorrection } from '@/lib/actions';
+import { getGeo } from '@/lib/geo';
+import { LIVE_JOB } from '@/lib/business';
 import { addDays, dow, fmtDate, fmtStamp, fmtTime, nowLocal, today } from '@/lib/util';
 import type { Attendance as Att, Employee } from '@/lib/types';
-
-function getGeo(): Promise<Geo> {
-  return new Promise((res) => {
-    if (!navigator.geolocation) return res({});
-    navigator.geolocation.getCurrentPosition((p) => res({ lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6) }), () => res({}), { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 });
-  });
-}
 
 function Clock() {
   const [t, setT] = useState(nowLocal());
@@ -28,7 +23,7 @@ function MyClock({ emp }: { emp: Employee }) {
   const [job, setJob] = useState('');
   const [busy, setBusy] = useState(false);
   const [corr, setCorr] = useState(false);
-  const myJobs = live(db.jobs).filter((j) => j.start_at.startsWith(T) && ['Confirmed', 'In Progress'].includes(j.status) && (j.leader_id === emp.id || j.crew_ids.includes(emp.id)));
+  const myJobs = live(db.jobs).filter((j) => j.start_at.startsWith(T) && LIVE_JOB.includes(j.status) && (j.leader_id === emp.id || j.crew_ids.includes(emp.id)));
   useEffect(() => { if (!job && myJobs[0]) setJob(myJobs[0].id); }, [myJobs.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const recent = live(db.attendance).filter((a) => a.employee_id === emp.id).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
   const state = rec?.clock_out ? 'out' : rec?.clock_in ? 'in' : 'none';

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
-import { AGING_BUCKETS, aggregateProfit, agingBucket, docTotals, invoiceBalance, invoiceSettled, invoiceState, invoiceTotals, jobProfitRows, profitAndLoss, serviceProfitRows, type AgingBucket } from '@/lib/business';
+import { isDone, AGING_BUCKETS, aggregateProfit, agingBucket, docTotals, invoiceBalance, invoiceSettled, invoiceState, invoiceTotals, jobProfitRows, profitAndLoss, serviceProfitRows, type AgingBucket } from '@/lib/business';
 import { approveInvoice, decideExpense, invoiceFromJob, pettyBalance, pettyCash, recordPayment, reverseExpense, reverseInvoice, reversePayment, saveExpense, saveInvoice } from '@/lib/actions';
 import { invoicePdf, receiptPdf, statementPdf } from '@/lib/export';
 import { addDays, diffDays, fmtDate, monthEnd, monthStart, money, moneyShort, pct, round2, sum, today } from '@/lib/util';
@@ -24,7 +24,7 @@ function InvoiceModal({ initial, onClose }: { initial?: Invoice; onClose: () => 
     <Modal title={initial ? `Edit draft ${initial.number}` : 'New invoice'} size="xl" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => { if (attempt(() => saveInvoice({ ...v, id: initial?.id, number: initial?.number }), 'Draft saved')) onClose(); }}>Save draft</button></>}>
       <div className="form-grid">
         <Field label="Client"><select value={v.client_id} onChange={(e) => onClient(e.target.value)}>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
-        <Field label="Related job"><select value={v.job_id ?? ''} onChange={(e) => f.set('job_id', e.target.value || undefined)}><option value="">— none —</option>{live(db.jobs).filter((j) => j.client_id === v.client_id && j.status === 'Completed').map((j) => <option key={j.id} value={j.id}>{j.number}</option>)}</select></Field>
+        <Field label="Related job"><select value={v.job_id ?? ''} onChange={(e) => f.set('job_id', e.target.value || undefined)}><option value="">— none —</option>{live(db.jobs).filter((j) => j.client_id === v.client_id && isDone(j.status)).map((j) => <option key={j.id} value={j.id}>{j.number}</option>)}</select></Field>
         <Field label="Issue date"><input type="date" {...f.bind('issue_date')} /></Field><Field label="Due date"><input type="date" {...f.bind('due_date')} /></Field>
       </div>
       <div className="tbl-wrap" style={{ margin: '14px 0' }}><table className="tbl"><thead><tr><th>Description</th><th style={{ width: 80 }}>Qty</th><th style={{ width: 70 }}>Unit</th><th style={{ width: 110 }}>Rate</th><th style={{ width: 100 }}>Discount</th><th className="num">Amount</th><th /></tr></thead><tbody>
@@ -102,7 +102,7 @@ export default function Finance() {
   const open = approved.filter((i) => invoiceBalance(db, i) > 0.005);
   const receivable = sum(open, (i) => invoiceBalance(db, i));
   const overdue = open.filter((i) => i.due_date < T);
-  const uninvoiced = live(db.jobs).filter((j) => j.status === 'Completed' && !db.invoices.some((i) => i.job_id === j.id && i.status !== 'Reversed' && !i.deleted_at));
+  const uninvoiced = live(db.jobs).filter((j) => isDone(j.status) && !db.invoices.some((i) => i.job_id === j.id && i.status !== 'Reversed' && !i.deleted_at));
   const cm = profitAndLoss(db, monthStart(T), monthEnd(T));
 
   const aging = useMemo(() => {

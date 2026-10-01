@@ -277,3 +277,53 @@ export const shareTextQuote = (db: DB, q: Quotation) => {
   const c = db.clients.find((x) => x.id === q.client_id)!; const t = docTotals(q.items, q.discount, q.vat_mode, q.vat_rate);
   return `Hello ${c.contact_person}, this is ${db.settings.company.name}. Quotation ${q.number} for ${q.scope} — Total ${pm(t.total).replace('PHP', '₱')} (valid until ${fmtDate(q.valid_until)}). Please reply to approve or ask questions. Thank you!`;
 };
+
+/* ---------- Dispatch & return report ---------- */
+export async function dispatchReportPdf(db: DB, dp: import('./types').Dispatch) {
+  const { doc, autoTable } = await newPdf();
+  const j = db.jobs.find((x) => x.id === dp.job_id)!; const site = db.sites.find((s) => s.id === j.site_id)!;
+  header(doc, 'Dispatch & Return Report', j.number);
+  let y = partyBlock(doc, 34, ['Client / site', clientLines(db, j.client_id, j.site_id)], ['Crew', [`Leader: ${db.employees.find((e) => e.id === j.leader_id)?.full_name ?? '—'}`, `Crew: ${j.crew_ids.map((id) => db.employees.find((e) => e.id === id)?.full_name).join(', ') || '—'}`, `Vehicle: ${db.assets.find((a) => a.id === j.vehicle_id)?.name ?? '—'}`]]);
+  const gps = (la?: number, ln?: number, note?: string) => (la !== undefined ? `${la}, ${ln}` : `not captured (${note ?? '—'})`);
+  autoTable(doc, {
+    startY: y, head: [['Phase', 'Time', 'GPS', 'Details']], ...tableStyle, margin: { left: 12, right: 12 },
+    body: [
+      ['Departure (HQ)', fmtDateTime(dp.dep_at), gps(dp.dep_lat, dp.dep_lng, dp.dep_gps_note), `Vehicle ${dp.dep_veh_condition ?? '-'} · fuel ${dp.dep_fuel ?? '-'} · odometer ${dp.dep_odo ?? '-'} km · crew present ${(dp.crew_present ?? []).length}${dp.dep_exception_status ? ` · EXCEPTION ${dp.dep_exception_status}: ${clean(dp.dep_exception_reason ?? '')}` : ''}`],
+      [`Arrival (${site.name})`, fmtDateTime(dp.arr_at), gps(dp.arr_lat, dp.arr_lng, dp.arr_gps_note), `Contact ${dp.arr_contact_name ?? '-'} ${dp.arr_contact_mobile ?? ''} · safety briefing ${dp.arr_safety_briefing ? 'confirmed' : 'NOT confirmed'} · ${clean(dp.arr_site_notes ?? '')}`],
+      ['Return (HQ)', fmtDateTime(dp.ret_at), gps(dp.ret_lat, dp.ret_lng, dp.ret_gps_note), `Vehicle ${dp.ret_veh_condition ?? '-'} · fuel ${dp.ret_fuel ?? '-'} · odometer ${dp.ret_odo ?? '-'} km${dp.distance_km !== undefined ? ` · ${dp.distance_km} km travelled` : ''}`],
+    ],
+  });
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+  autoTable(doc, {
+    startY: y, head: [['Item', 'Asset ID', 'Required', 'Issued', 'Returned', 'Condition out / in', 'Used', 'Notes']], ...tableStyle, margin: { left: 12, right: 12 },
+    body: dp.items.map((i) => [clean(i.label), i.code ?? '', i.qty, i.loaded_qty ?? '-', i.returned_qty ?? '-', `${(i.kind === 'material' ? i.out_container : i.out_condition) ?? '-'} / ${i.ret_condition ?? '-'}`, i.kind === 'material' ? `${i.used_qty ?? '-'} ${i.unit ?? ''}` : '', clean([i.out_note, i.ret_note].filter(Boolean).join(' | '))]),
+  });
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+  const inc = db.incidents.filter((i) => i.dispatch_id === dp.id);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text(`Incidents raised (${inc.length})`, 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+  y = wrapText(doc, inc.length ? inc.map((i) => `${i.number} [${i.type} / ${i.severity} / ${i.status}] ${i.description}`).join('\n') : 'None — everything issued was accounted for.', 12, y + 5, 186) + 4;
+  const photos: { src: string; cap: string }[] = [...(dp.dep_photo ? [{ src: dp.dep_photo, cap: 'Departure' }] : []), ...dp.arr_photos.slice(0, 1).map((src) => ({ src, cap: 'Arrival – before work' })), ...dp.ret_photos.slice(0, 1).map((src) => ({ src, cap: 'Return – after work' }))];
+  if (photos.length) {
+    if (y > 215) { doc.addPage(); y = 16; }
+    for (const [i, p] of photos.entries()) { try { const r = await toRaster(p.src); doc.addImage(r.data, r.fmt, 12 + i * 62, y, 58, 38); doc.setFontSize(8); doc.text(p.cap, 12 + i * 62, y + 42); } catch { /* skip */ } }
+  }
+  footer(doc); doc.save(`dispatch-${j.number}.pdf`);
+  store.audit('export', 'dispatches', dp.id, `Exported dispatch report ${j.number}`);
+}
+
+/* ---------- QR labels (A4, 3 × 8) ---------- */
+export async function qrLabelsPdf(assets: { code: string; name: string; category: string }[]) {
+  const { qrDataUrl } = await import('./qr');
+  const { doc } = await newPdf();
+  const cols = 3, rows = 8, w = 66, h = 34, ox = 6, oy = 8;
+  for (const [n, a] of assets.entries()) {
+    if (n > 0 && n % (cols * rows) === 0) doc.addPage();
+    const k = n % (cols * rows); const x = ox + (k % cols) * w; const yy = oy + Math.floor(k / cols) * h;
+    doc.setDrawColor(180, 195, 210); doc.rect(x + 1, yy + 1, w - 2, h - 2);
+    doc.addImage(await qrDataUrl(a.code, 220), 'PNG', x + 3, yy + 3, 28, 28);
+    doc.setTextColor(11, 37, 69); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(a.code, x + 34, yy + 12);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); (doc.splitTextToSize(clean(a.name), w - 38) as string[]).slice(0, 2).forEach((l, i) => doc.text(l, x + 34, yy + 18 + i * 4));
+    doc.setFontSize(6.5); doc.setTextColor(110, 125, 145); doc.text('TopMop - scan QR', x + 34, yy + 30);
+  }
+  doc.save(`topmop-qr-labels-${nowLocal().slice(0, 10)}.pdf`);
+}

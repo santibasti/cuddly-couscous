@@ -1,8 +1,27 @@
 import type {
+  DispatchItem,
+  Dispatch,
+  JobStatus,
   Asset, Attendance, DB, Employee, Holiday, Invoice, Job, PayrollAdjustment, PayrollLine, PayrollPeriod,
   Payment, QuoteItem, ServiceDef, Settings, StatutoryRate,
 } from './types';
 import { addDays, diffDays, dow, eachDay, minutesBetween, round2, sum, today } from './util';
+
+/* ============ Job status groups ============ */
+/** Work finished (legacy 'Completed' counts as closed). */
+export const DONE_JOB: JobStatus[] = ['Completed', 'Work Completed', 'Return Checklist Pending', 'Returned to HQ', 'Closed'];
+/** Crew on the road or on site, work not yet complete. */
+export const FIELD_JOB: JobStatus[] = ['Departed from HQ', 'Arrived at Site', 'In Progress'];
+/** Booked and not yet finished — these hold crew, vehicle and equipment. */
+export const OPEN_JOB: JobStatus[] = ['Pending', 'Confirmed', 'Dispatch Checklist Pending', ...FIELD_JOB];
+/** Crew still away from headquarters. */
+export const AWAY_JOB: JobStatus[] = [...FIELD_JOB, 'Work Completed', 'Return Checklist Pending'];
+/** Statuses where the day's attendance / dispatch is relevant. */
+export const LIVE_JOB: JobStatus[] = ['Confirmed', 'Dispatch Checklist Pending', ...FIELD_JOB];
+export const isDone = (s: JobStatus) => DONE_JOB.includes(s);
+export const isOpen = (s: JobStatus) => OPEN_JOB.includes(s);
+/** The forward-only operating flow (Cancelled / Rescheduled are side exits before departure). */
+export const JOB_FLOW: JobStatus[] = ['Confirmed', 'Dispatch Checklist Pending', 'Departed from HQ', 'Arrived at Site', 'In Progress', 'Work Completed', 'Return Checklist Pending', 'Returned to HQ', 'Closed'];
 
 /* ============ Glass panel counting & service pricing ============ */
 export interface GlassRow { w: number; h: number; qty: number; grouped?: boolean }
@@ -102,7 +121,7 @@ export function onHand(db: Pick<DB, 'stock'>, itemId: string, locationId?: strin
 export function reservedQty(db: Pick<DB, 'jobs' | 'stock'>, itemId: string): number {
   let r = 0;
   for (const j of db.jobs) {
-    if (j.deleted_at || !['Pending', 'Confirmed', 'In Progress', 'Rescheduled'].includes(j.status)) continue;
+    if (j.deleted_at || !(isOpen(j.status) || j.status === 'Rescheduled')) continue;
     const m = j.materials.find((x) => x.item_id === itemId);
     if (!m) continue;
     const issued = sum(activeStock(db).filter((t) => t.job_id === j.id && t.item_id === itemId && (t.type === 'Issue to Job' || t.type === 'Return from Job')), (t) => -t.qty);
@@ -127,7 +146,7 @@ export function findConflicts(db: Pick<DB, 'jobs'>, j: Pick<Job, 'start_at' | 'e
   const people = new Set([...(j.crew_ids || []), ...(j.leader_id ? [j.leader_id] : [])]);
   const out: Conflict[] = [];
   for (const o of db.jobs) {
-    if (o.id === j.id || o.deleted_at || o.status === 'Cancelled' || o.status === 'Rescheduled' || o.status === 'Completed') continue;
+    if (o.id === j.id || o.deleted_at || o.status === 'Cancelled' || o.status === 'Rescheduled' || isDone(o.status)) continue;
     if (!overlaps(j.start_at, j.end_at, o.start_at, o.end_at)) continue;
     for (const p of [...o.crew_ids, ...(o.leader_id ? [o.leader_id] : [])]) if (people.has(p) && !out.some((c) => c.kind === 'crew' && c.refId === p && c.job.id === o.id)) out.push({ kind: 'crew', refId: p, job: o });
     if (j.vehicle_id && o.vehicle_id === j.vehicle_id) out.push({ kind: 'vehicle', refId: j.vehicle_id, job: o });
@@ -303,7 +322,7 @@ export function jobCost(db: DB, j: Job): JobCost {
   const equipment = sum([...j.equipment_ids, ...(j.vehicle_id ? [j.vehicle_id] : [])], (id) => (db.assets.find((a: Asset) => a.id === id)?.daily_allocation ?? 0) * jobDays(j));
   const { revenue, basis } = jobRevenue(db, j);
   const total = labor + materials + transport + equipment + subcontractor + other;
-  const estimated = j.status !== 'Completed' || laborEstimated || materialsEstimated;
+  const estimated = !isDone(j.status) || laborEstimated || materialsEstimated;
   return {
     labor: round2(labor), materials: round2(materials), transport: round2(transport), equipment: round2(equipment),
     subcontractor: round2(subcontractor), other: round2(other), total: round2(total), revenue: round2(revenue), revenueBasis: basis,
@@ -376,7 +395,7 @@ export function scorecard(db: DB, emp: Employee, month: string): Scorecard {
   const attendanceRate = workdays ? Math.min(100, (present.length / workdays) * 100) : 100;
   const lateDays = present.filter((a) => a.late_min > s.grace_minutes).length;
   const punctuality = present.length ? (1 - lateDays / present.length) * 100 : 100;
-  const jobs = db.jobs.filter((j) => j.status === 'Completed' && !j.deleted_at && j.completed_at?.slice(0, 7) === month && (j.crew_ids.includes(emp.id) || j.leader_id === emp.id));
+  const jobs = db.jobs.filter((j) => isDone(j.status) && !j.deleted_at && j.completed_at?.slice(0, 7) === month && (j.crew_ids.includes(emp.id) || j.leader_id === emp.id));
   const rated = jobs.filter((j) => j.client_rating);
   const clientRating = rated.length ? (sum(rated, (j) => j.client_rating!) / rated.length) * 20 : 0;
   const rv = db.reviews.find((r) => r.employee_id === emp.id && r.month === month && !r.deleted_at);
@@ -426,7 +445,7 @@ export interface JobProfitRow { job: Job; cost: JobCost; clientId: string }
 /** Jobs (completed or already invoiced) whose service date falls in range. */
 export function jobProfitRows(db: DB, from: string, to: string): JobProfitRow[] {
   return db.jobs
-    .filter((j) => !j.deleted_at && j.start_at.slice(0, 10) >= from && j.start_at.slice(0, 10) <= to && (j.status === 'Completed' || j.status === 'In Progress'))
+    .filter((j) => !j.deleted_at && j.start_at.slice(0, 10) >= from && j.start_at.slice(0, 10) <= to && (isDone(j.status) || j.status === 'In Progress'))
     .map((job) => ({ job, cost: jobCost(db, job), clientId: job.client_id }));
 }
 export interface ProfitAgg { key: string; label: string; jobs: number; revenue: number; cost: number; gp: number; margin: number; estimated: boolean }
@@ -452,3 +471,55 @@ export function serviceProfitRows(db: DB, from: string, to: string) {
   }
   return out;
 }
+
+/* ============ Dispatch checklist ============ */
+const TOOL_CATEGORIES = new Set(['Hose', 'Ladder', 'Extension Cord', 'Pump', 'Other']);
+export const kindOfAsset = (a: Asset): DispatchItem['kind'] =>
+  a.category === 'Vehicle' ? 'vehicle' : a.category === 'Safety Equipment' ? 'ppe' : TOOL_CATEGORIES.has(a.category) ? 'tool' : 'equipment';
+
+/** The issue list for a job: vehicle, machines, tools, PPE and chemicals/materials assigned at booking. */
+export function buildDispatchItems(d: Pick<DB, 'assets' | 'items'>, job: Job): DispatchItem[] {
+  const items: DispatchItem[] = [];
+  const add = (a: Asset | undefined) => { if (a) items.push({ key: `a:${a.id}`, kind: kindOfAsset(a), asset_id: a.id, label: a.name, code: a.code, qty: 1, responsible_id: job.leader_id }); };
+  add(d.assets.find((a) => a.id === job.vehicle_id));
+  for (const id of job.equipment_ids) add(d.assets.find((a) => a.id === id));
+  const headcount = new Set([...job.crew_ids, ...(job.leader_id ? [job.leader_id] : [])]).size || 1;
+  for (const p of job.ppe) items.push({ key: `p:${p}`, kind: 'ppe', label: p, qty: headcount, responsible_id: job.leader_id });
+  for (const m of job.materials) {
+    const it = d.items.find((i) => i.id === m.item_id);
+    if (it) items.push({ key: `m:${it.id}`, kind: 'material', item_id: it.id, label: it.name, code: it.code, unit: it.uom, qty: m.planned_qty, responsible_id: job.leader_id });
+  }
+  return items;
+}
+
+export interface DispatchGaps { incomplete: string[]; discrepancies: { key: string; text: string }[]; signature: string }
+/** What still blocks departure. `incomplete` can never be waived; `discrepancies` (missing / damaged / short items, absent crew) need an approved exception. */
+export function dispatchGaps(job: Job, dp: Pick<Dispatch, 'items' | 'crew_present' | 'dep_veh_condition' | 'dep_veh_notes' | 'dep_veh_photo' | 'dep_fuel' | 'dep_odo' | 'dep_photo' | 'dep_lat' | 'dep_lng' | 'dep_gps_note'>, names: (id: string) => string): DispatchGaps {
+  const incomplete: string[] = []; const disc: { key: string; text: string }[] = [];
+  const crew = [...new Set([...(job.leader_id ? [job.leader_id] : []), ...job.crew_ids])];
+  for (const e of crew) if (!(dp.crew_present ?? []).includes(e)) disc.push({ key: `crew:${e}`, text: `${names(e)} not confirmed present` });
+  const veh = dp.items.find((i) => i.kind === 'vehicle');
+  if (veh) {
+    if (!dp.dep_veh_condition) incomplete.push('Vehicle condition');
+    if (dp.dep_veh_condition === 'With Issue' && !dp.dep_veh_notes?.trim()) incomplete.push('Vehicle issue notes');
+    if (!dp.dep_veh_photo) incomplete.push('Vehicle photo');
+    if (!dp.dep_fuel) incomplete.push('Fuel level');
+    if (!(dp.dep_odo && dp.dep_odo > 0)) incomplete.push('Starting odometer');
+  }
+  for (const i of dp.items) {
+    if (i.kind === 'vehicle') { if (!i.out_ok) incomplete.push(`${i.label} – confirm`); continue; }
+    if (!i.out_ok) { incomplete.push(`${i.label} – confirm`); continue; }
+    const loaded = i.loaded_qty ?? 0;
+    const cond = i.kind === 'material' ? i.out_container ?? 'Good' : i.out_condition ?? 'Good';
+    if (i.kind !== 'material' && i.out_condition === 'Damaged' && !i.out_photo) incomplete.push(`${i.label} – damage photo`);
+    if (loaded < i.qty) disc.push({ key: `qty:${i.key}`, text: `${i.label}: loaded ${loaded} of ${i.qty}${i.unit ? ' ' + i.unit : ''}` });
+    if (i.kind !== 'material' && cond === 'Missing') disc.push({ key: `miss:${i.key}`, text: `${i.label} missing` });
+    if (cond === 'Damaged' || cond === 'Leaking') disc.push({ key: `dmg:${i.key}`, text: `${i.label} ${String(cond).toLowerCase()}` });
+  }
+  if (!dp.dep_photo) incomplete.push('Group / equipment loading photo');
+  if (dp.dep_lat === undefined && !dp.dep_gps_note?.trim()) incomplete.push('GPS location');
+  const uniq = [...new Map(disc.map((d) => [d.key, d])).values()];
+  return { incomplete, discrepancies: uniq, signature: uniq.map((d) => d.key).sort().join('|') };
+}
+
+export const round2Safe = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;

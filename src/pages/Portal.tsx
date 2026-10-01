@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { store, useDB } from '@/lib/store';
 import { Badge, Card, Field, Stat, Tabs, attempt, toast } from '@/components/ui';
 import { Logo } from '@/components/Logo';
-import { docTotals, invoiceBalance, invoiceState, invoiceTotals } from '@/lib/business';
+import { docTotals, invoiceBalance, invoiceState, invoiceTotals, isDone, isOpen } from '@/lib/business';
 import { invoicePdf, quotationPdf, serviceReportPdf, statementPdf } from '@/lib/export';
 import { fmtDate, fmtDateTime, money, sum, today } from '@/lib/util';
 
@@ -48,12 +48,12 @@ export default function Portal() {
       <div className="content">
         <h1 style={{ marginBottom: 12 }}>Welcome, {client.contact_person}</h1>
         <div className="grid g4 keep2" style={{ marginBottom: 14 }}>
-          <Stat k="Open quotations" v={quotes.filter((q) => q.status === 'Sent').length} tone="warn" /><Stat k="Upcoming services" v={jobs.filter((j) => ['Pending', 'Confirmed', 'In Progress'].includes(j.status)).length} /><Stat k="Completed services" v={jobs.filter((j) => j.status === 'Completed').length} tone="good" /><Stat k="Balance due" v={money(balance)} tone={balance ? 'warn' : 'good'} />
+          <Stat k="Open quotations" v={quotes.filter((q) => q.status === 'Sent').length} tone="warn" /><Stat k="Upcoming services" v={jobs.filter((j) => isOpen(j.status)).length} /><Stat k="Completed services" v={jobs.filter((j) => isDone(j.status)).length} tone="good" /><Stat k="Balance due" v={money(balance)} tone={balance ? 'warn' : 'good'} />
         </div>
         <Tabs tabs={[{ id: 'overview', label: 'Overview' }, { id: 'quotes', label: 'Quotations', count: quotes.length }, { id: 'jobs', label: 'Services & reports', count: jobs.length }, { id: 'invoices', label: 'Invoices', count: invs.length }]} value={tab} onChange={setTab} />
         {tab === 'overview' && (
           <div className="grid g2">
-            <Card title="Upcoming services" flush><ul className="list">{jobs.filter((j) => ['Pending', 'Confirmed', 'In Progress'].includes(j.status)).map((j) => <li key={j.id}><div><b>{fmtDateTime(j.start_at)}</b><div className="small muted">{db.sites.find((s) => s.id === j.site_id)?.name} · {j.service_codes.map((c) => db.services.find((s) => s.code === c)?.name).join(', ')}</div></div><Badge>{j.status}</Badge></li>)}{!jobs.some((j) => ['Pending', 'Confirmed', 'In Progress'].includes(j.status)) && <li className="muted">Nothing scheduled.</li>}</ul></Card>
+            <Card title="Upcoming services" flush><ul className="list">{jobs.filter((j) => isOpen(j.status)).map((j) => <li key={j.id}><div><b>{fmtDateTime(j.start_at)}</b><div className="small muted">{db.sites.find((s) => s.id === j.site_id)?.name} · {j.service_codes.map((c) => db.services.find((s) => s.code === c)?.name).join(', ')}</div></div><Badge>{j.status}</Badge></li>)}{!jobs.some((j) => isOpen(j.status)) && <li className="muted">Nothing scheduled.</li>}</ul></Card>
             <Card title="Quotations awaiting your approval" flush><ul className="list">{quotes.filter((q) => q.status === 'Sent').map((q) => <li key={q.id}><div><b>{q.number}</b><div className="small muted">Valid until {fmtDate(q.valid_until)}</div></div><b>{money(docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).total)}</b></li>)}{!quotes.some((q) => q.status === 'Sent') && <li className="muted">None.</li>}</ul></Card>
           </div>
         )}
@@ -62,7 +62,7 @@ export default function Portal() {
             <span className="row"><button className="btn sm" onClick={() => attempt(() => quotationPdf(db, q))}>PDF</button>{q.status === 'Sent' && <><button className="btn sm primary" onClick={() => decide(q.id, true)}>Approve</button><button className="btn sm danger" onClick={() => decide(q.id, false)}>Decline</button></>}</span></li>)}</ul></Card>
         )}
         {tab === 'jobs' && (
-          <Card flush><ul className="list">{jobs.map((j) => <li key={j.id}><div><b>{j.number}</b> <Badge>{j.status}</Badge><div className="small muted">{fmtDateTime(j.start_at)} · {db.sites.find((s) => s.id === j.site_id)?.name}</div>{j.findings && <div className="small">Findings: {j.findings}</div>}</div>{j.status === 'Completed' && <button className="btn sm" onClick={() => attempt(() => serviceReportPdf(db, j))}>Service report (PDF)</button>}</li>)}</ul></Card>
+          <Card flush><ul className="list">{jobs.map((j) => <li key={j.id}><div><b>{j.number}</b> <Badge>{j.status}</Badge><div className="small muted">{fmtDateTime(j.start_at)} · {db.sites.find((s) => s.id === j.site_id)?.name}</div>{j.findings && <div className="small">Findings: {j.findings}</div>}</div>{isDone(j.status) && j.completed_at && <button className="btn sm" onClick={() => attempt(() => serviceReportPdf(db, j))}>Service report (PDF)</button>}</li>)}</ul></Card>
         )}
         {tab === 'invoices' && (
           <Card title="Invoices" actions={<button className="btn sm" onClick={() => attempt(() => statementPdf(db, client.id, today()))}>Statement of account (PDF)</button>} flush><ul className="list">{invs.map((i) => <li key={i.id}><div><b>{i.number}</b> <Badge>{invoiceState(db, i)}</Badge><div className="small muted">Issued {fmtDate(i.issue_date)} · due {fmtDate(i.due_date)}</div></div><span className="row"><span className="mono">{money(invoiceTotals(i).total)} <span className="muted small">bal {money(invoiceBalance(db, i))}</span></span><button className="btn sm" onClick={() => attempt(() => invoicePdf(db, i))}>PDF</button></span></li>)}</ul></Card>

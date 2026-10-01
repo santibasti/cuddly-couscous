@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, attempt, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
-import { invoiceBalance } from '@/lib/business';
+import { invoiceBalance, isDone } from '@/lib/business';
 import { money, sum } from '@/lib/util';
 import type { Client, ClientStatus, ClientType } from '@/lib/types';
 
@@ -72,7 +72,7 @@ export default function Clients() {
             { key: 'status', header: 'Status', render: (c) => <Badge>{c.status}</Badge>, value: (c) => c.status },
             { key: 'mobile', header: 'Mobile', value: (c) => c.mobile },
             { key: 'sites', header: 'Sites', num: true, value: (c) => db.sites.filter((s) => s.client_id === c.id && !s.deleted_at).length },
-            { key: 'jobs', header: 'Jobs', num: true, value: (c) => db.jobs.filter((j) => j.client_id === c.id && j.status === 'Completed' && !j.deleted_at).length },
+            { key: 'jobs', header: 'Jobs', num: true, value: (c) => db.jobs.filter((j) => j.client_id === c.id && isDone(j.status) && !j.deleted_at).length },
             ...(canFin ? [{ key: 'bal', header: 'Outstanding', num: true, type: 'money' as const, value: (c: Client) => bal(c.id), render: (c: Client) => (bal(c.id) > 0 ? money(bal(c.id)) : '—') }] : []),
           ]}
         />

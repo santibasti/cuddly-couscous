@@ -140,7 +140,11 @@ export interface Quotation extends Base {
 }
 
 /* ---------- Jobs ---------- */
-export type JobStatus = 'Pending' | 'Confirmed' | 'In Progress' | 'Completed' | 'Cancelled' | 'Rescheduled';
+export type JobStatus =
+  | 'Pending' | 'Confirmed' | 'Dispatch Checklist Pending' | 'Departed from HQ' | 'Arrived at Site' | 'In Progress'
+  | 'Work Completed' | 'Return Checklist Pending' | 'Returned to HQ' | 'Closed'
+  | 'Completed' // legacy terminal status, treated the same as Closed
+  | 'Cancelled' | 'Rescheduled';
 export interface ChecklistItem { label: string; done: boolean }
 export interface JobMaterial { item_id: string; planned_qty: number; used_qty?: number }
 export interface JobPhoto { kind: 'before' | 'after' | 'damage' | 'signoff'; caption: string; data: string; taken_at: string }
@@ -357,8 +361,8 @@ export interface MaterialRequest extends Base {
 /* ---------- Assets ---------- */
 export type AssetCategory =
   | 'RO/DI Pure-Water System' | 'Water-Fed Pole' | 'Pressure Washer' | 'Surface Cleaner'
-  | 'Industrial Vacuum' | 'Pump' | 'Hose' | 'Ladder' | 'Safety Equipment' | 'Vehicle' | 'Other';
-export type AssetStatus = 'Available' | 'Reserved' | 'Checked Out' | 'Under Maintenance' | 'Damaged' | 'Retired';
+  | 'Industrial Vacuum' | 'Pump' | 'Hose' | 'Ladder' | 'Extension Cord' | 'Safety Equipment' | 'Vehicle' | 'Other';
+export type AssetStatus = 'Available' | 'Reserved' | 'Checked Out' | 'Under Maintenance' | 'Damaged' | 'Missing' | 'Retired';
 export type Condition = 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Damaged';
 export interface Asset extends Base {
   code: string;
@@ -410,6 +414,79 @@ export interface MaintenanceTicket extends Base {
   closed_on?: string;
   cost: number;
   vendor?: string;
+}
+
+/* ---------- Crew dispatch & return ---------- */
+export type FuelLevel = 'Empty' | '1/4' | '1/2' | '3/4' | 'Full';
+export type DispatchStage = 'Pending' | 'Departed' | 'On Site' | 'Returned';
+export type ItemCondition = 'Good' | 'Damaged' | 'Missing';
+export type VehicleCondition = 'Good' | 'With Issue';
+export type ContainerCondition = 'Good' | 'Damaged' | 'Leaking';
+export interface DispatchItem {
+  key: string;
+  kind: 'vehicle' | 'equipment' | 'tool' | 'ppe' | 'material';
+  asset_id?: string;
+  item_id?: string;
+  label: string;
+  code?: string;              // asset ID / QR value, or inventory item code
+  unit?: string;
+  qty: number;                // required quantity
+  extra?: boolean;            // added by the team leader at dispatch
+  responsible_id?: string;
+  // 3/4. departure
+  loaded_qty?: number;        // actual quantity loaded (materials: quantity issued)
+  out_ok?: boolean;           // confirmed by scan, typed asset ID or manual tick
+  out_by?: 'scan' | 'id' | 'manual';
+  out_condition?: ItemCondition;
+  out_container?: ContainerCondition; // materials
+  out_photo?: string;
+  out_note?: string;
+  // return
+  returned_qty?: number;
+  ret_by?: 'scan' | 'id' | 'manual';
+  ret_condition?: ItemCondition;
+  ret_photo?: string;
+  ret_note?: string;
+  ret_responsible_id?: string;
+  repair_required?: boolean;
+  used_qty?: number;          // materials: issued − returned (calculated)
+}
+export interface Dispatch extends Base {
+  job_id: string;
+  stage: DispatchStage;
+  items: DispatchItem[];
+  // step 1 – crew
+  crew_present?: string[]; crew_notes?: string;
+  // step 2 – vehicle
+  dep_veh_condition?: VehicleCondition; dep_veh_photo?: string; dep_veh_notes?: string; dep_fuel?: FuelLevel; dep_odo?: number;
+  // step 5 – departure confirmation
+  dep_at?: string; dep_lat?: number; dep_lng?: number; dep_gps_note?: string; dep_photo?: string; dep_confirmed_by?: string; dep_confirmed_at?: string;
+  dep_exception_reason?: string; dep_exception_sig?: string; dep_exception_status?: 'Pending' | 'Approved' | 'Rejected';
+  dep_exception_by?: string; dep_exception_at?: string; dep_exception_note?: string;
+  // arrival at client site
+  arr_at?: string; arr_lat?: number; arr_lng?: number; arr_gps_note?: string; arr_photos: string[];
+  arr_contact_name?: string; arr_contact_mobile?: string; arr_safety_briefing?: boolean; arr_briefing_notes?: string;
+  arr_site_notes?: string; arr_requests?: string;
+  // return to headquarters
+  ret_at?: string; ret_lat?: number; ret_lng?: number; ret_gps_note?: string; ret_photos: string[];
+  ret_fuel?: FuelLevel; ret_odo?: number; ret_veh_condition?: VehicleCondition; ret_veh_notes?: string; ret_notes?: string;
+  ret_confirmed_by?: string; ret_confirmed_at?: string; distance_km?: number;
+}
+export type IncidentType = 'Missing asset' | 'Damaged asset' | 'Vehicle damage' | 'Material shortage' | 'Missing PPE' | 'Safety' | 'Other';
+export interface IncidentReport extends Base {
+  number: string;
+  job_id?: string;
+  dispatch_id?: string;
+  asset_id?: string;
+  item_id?: string;
+  type: IncidentType;
+  severity: 'Low' | 'Medium' | 'High';
+  description: string;
+  status: 'Open' | 'Investigating' | 'Acknowledged' | 'Resolved';
+  ticket_id?: string;
+  resolution?: string;
+  resolved_at?: string;
+  auto: boolean;
 }
 
 /* ---------- Finance ---------- */
@@ -499,6 +576,7 @@ export interface AuditLog {
   at: string;
   user_id: string;
   user_name: string;
+  reason?: string;
   action: 'create' | 'update' | 'delete' | 'restore' | 'approve' | 'reverse' | 'login' | 'logout' | 'lock' | 'export';
   table: string;
   record_id: string;
@@ -537,7 +615,7 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'dispatches' | 'incidents';
 
 export interface DB {
   users: UserAccount[]; branches: Branch[]; clients: Client[]; sites: Site[]; communications: Communication[];
@@ -546,7 +624,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; dispatches: Dispatch[]; incidents: IncidentReport[];
   audit: AuditLog[];
   settings: Settings;
   version: number;

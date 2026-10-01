@@ -9,7 +9,8 @@ import { addDays, dow, eachDay, fmtDate, fmtTime, monthEnd, monthStart, money, t
 import type { Job } from '@/lib/types';
 
 type View = 'month' | 'week' | 'day' | 'list';
-const STATUSES = ['Pending', 'Confirmed', 'In Progress', 'Completed', 'Cancelled', 'Rescheduled'];
+const STATUSES = ['Pending', 'Confirmed', 'Dispatch Checklist Pending', 'Departed from HQ', 'Arrived at Site', 'In Progress', 'Work Completed', 'Return Checklist Pending', 'Returned to HQ', 'Closed', 'Completed', 'Cancelled', 'Rescheduled'];
+const chipClass = (s: string) => (['Departed from HQ', 'Arrived at Site', 'In Progress'].includes(s) ? 's-field' : ['Work Completed', 'Return Checklist Pending', 'Returned to HQ', 'Closed', 'Completed'].includes(s) ? 's-done' : s === 'Dispatch Checklist Pending' ? 's-Confirmed' : `s-${s}`);
 
 export default function Jobs() {
   const { db, can, user } = useAuth();
@@ -42,7 +43,7 @@ export default function Jobs() {
     attempt(() => moveJob(id, `${d}${j.start_at.slice(10)}`), `Rescheduled to ${fmtDate(d)}`);
   };
   const chip = (j: Job) => (
-    <Link key={j.id} to={`/jobs/${j.id}`} className={`chip s-${j.status}`} draggable={edit && !['Completed', 'Cancelled'].includes(j.status)} onDragStart={(e) => e.dataTransfer.setData('text/job', j.id)} title={`${j.number} · ${cn(j.client_id)} · ${j.status}`}>
+    <Link key={j.id} to={`/jobs/${j.id}`} className={`chip ${chipClass(j.status)}`} draggable={edit && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)} onDragStart={(e) => e.dataTransfer.setData('text/job', j.id)} title={`${j.number} · ${cn(j.client_id)} · ${j.status}`}>
       <b>{fmtTime(j.start_at)}</b> {cn(j.client_id)}
     </Link>
   );

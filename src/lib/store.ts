@@ -7,7 +7,7 @@ import { seedDB } from './seed';
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
 
-const KEY = 'topmop-ops-db-v1';
+const KEY = 'topmop-ops-db-v2';
 const SESSION = 'topmop-ops-session-v1';
 
 export class PermissionError extends Error {}
@@ -22,6 +22,7 @@ class Store {
   private listeners = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private sessionUser: string | null = null;
+  private _reason: string | null = null;
 
   constructor() {
     let db: DB | null = null;
@@ -81,7 +82,7 @@ class Store {
   /* ---- audit ---- */
   audit(action: AuditLog['action'], table: string, recordId: string, summary: string, before?: unknown, after?: unknown) {
     const u = this.user;
-    const entry: AuditLog = { id: uid(), at: isoNow(), user_id: u?.id ?? 'system', user_name: u?.name ?? 'System', action, table, record_id: recordId, summary, before, after };
+    const entry: AuditLog = { id: uid(), at: isoNow(), user_id: u?.id ?? 'system', user_name: u?.name ?? 'System', action, table, record_id: recordId, summary, before, after, ...(this._reason ? { reason: this._reason } : {}) };
     this._db = { ...this._db, audit: [entry, ...this._db.audit].slice(0, 5000) };
   }
 
@@ -126,6 +127,8 @@ class Store {
     if (table === 'periods' && ((r as unknown as PayrollPeriod).locked || (r as unknown as PayrollPeriod).status !== 'Draft')) throw new RuleError('Only draft payroll periods can be removed. Finalized payroll is locked.');
     if (table === 'runs') throw new RuleError('Payroll runs cannot be deleted.');
     if (table === 'invoices' && (r as unknown as Invoice).status !== 'Draft') throw new RuleError('Approved invoices cannot be deleted. Reverse the invoice instead.');
+    if (table === 'dispatches') throw new RuleError('Dispatch records cannot be deleted.');
+    if (table === 'incidents') throw new RuleError('Incident reports cannot be deleted; resolve them instead.');
     if (table === 'checkouts' && (r.status === 'Released' || r.status === 'Returned')) throw new RuleError('Completed or active equipment out/in records cannot be deleted.');
     if (table === 'payments') throw new RuleError('Payments cannot be deleted. Reverse the payment instead.');
     if (table === 'attendance' && r.approval === 'Approved') throw new RuleError('Approved attendance cannot be deleted. File a correction request.');
@@ -144,6 +147,8 @@ class Store {
       if (!Object.keys(patch).every((k) => allowed.includes(k))) throw new RuleError('Approved invoices are locked. Reverse the invoice and issue a new one.');
     }
     if (table === 'checkouts' && r.status === 'Returned') throw new RuleError('Completed out/in records are locked.');
+    if (table === 'dispatches' && r.stage === 'Returned' && !(this._reason && (this.role === 'ops' || this.role === 'owner'))) throw new RuleError('A completed dispatch record is locked. An Operations Manager or Admin can correct it with a reason.');
+    if (table === 'incidents' && r.status === 'Resolved' && !this._reason) throw new RuleError('A resolved incident is locked. Correct it with a reason.');
   }
 
   /** Settings & counters */
@@ -151,7 +156,7 @@ class Store {
     this.audit('update', 'settings', 'settings', summary, undefined, patch);
     this.set((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
   }
-  nextNumber(kind: 'QT' | 'JOB' | 'INV' | 'OR' | 'EMP'): string {
+  nextNumber(kind: 'QT' | 'JOB' | 'INV' | 'OR' | 'EMP' | 'INC'): string {
     const n = (this._db.settings.counters[kind] ?? 0) + 1;
     this._db = { ...this._db, settings: { ...this._db.settings, counters: { ...this._db.settings.counters, [kind]: n } } };
     const yr = new Date().getFullYear();
@@ -176,6 +181,12 @@ class Store {
     this.set((d) => ({ ...d, notifications: d.notifications.map((n) => (ids.includes(n.id) && !n.read_by.includes(uidv) ? { ...n, read_by: [...n.read_by, uidv] } : n)) }));
   }
 
+  /** Run edits with a recorded reason (stored on every audit entry written inside `fn`). */
+  withReason<T>(reason: string, fn: () => T): T {
+    if (!reason.trim()) throw new RuleError('A reason is required for this change.');
+    this._reason = reason.trim();
+    try { return fn(); } finally { this._reason = null; }
+  }
   /** Batch several mutations into a single emit (still audited individually). */
   batch(fn: () => void) { fn(); }
 

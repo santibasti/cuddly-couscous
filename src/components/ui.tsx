@@ -19,6 +19,8 @@ const P: Record<string, string> = {
   admin: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-1-3-2 .5-1.5-1.5.5-2-3-1-1 2h-2l-1-2-3 1 .5 2L5 8.5 3 8l-1 3 2 1v2l-2 1 1 3 2-.5L6.5 19l-.5 2 3 1 1-2h2l1 2 3-1-.5-2 1.5-1.5 2 .5 1-3-2-1z',
   bell: 'M6 9a6 6 0 1 1 12 0c0 6 2 7 2 7H4s2-1 2-7zM10 20a2 2 0 0 0 4 0',
   menu: 'M4 6h16M4 12h16M4 18h16',
+  dispatch: 'M2 6h12v10H2zM14 9h4l4 4v3h-8zM6 19a1.7 1.7 0 1 0 0-.01M17 19a1.7 1.7 0 1 0 0-.01',
+  qr: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM20 14v.01M14 20h3M20 17v4',
   x: 'M6 6l12 12M18 6L6 18',
   plus: 'M12 5v14M5 12h14',
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-5-5',
@@ -118,8 +120,8 @@ export function Field({ label, required, children, className, hint }: { label: R
 const TONES: Record<string, string> = {
   // generic statuses across modules
   Active: 'green', Approved: 'green', Completed: 'green', Paid: 'green', Available: 'green', Confirmed: 'teal', Issued: 'green', Closed: 'green', Resolved: 'green', Regular: 'green', regular: 'green', Present: 'green', Finalized: 'navy', Returned: 'green', Excellent: 'green', Good: 'green', Booked: 'green', Won: 'green', Current: 'green',
-  Pending: 'amber', Draft: 'gray', Prospect: 'blue', Sent: 'blue', 'For Approval': 'amber', 'In Progress': 'teal', Reserved: 'blue', Requested: 'amber', Open: 'amber', Investigating: 'amber', 'Partially Paid': 'amber', Unpaid: 'blue', Fair: 'amber', probationary: 'amber', contractual: 'blue', Late: 'amber', Low: 'gray', Medium: 'amber', Leave: 'blue', Holiday: 'blue', 'Client Approval': 'blue', 'Ocular Visit': 'blue', Inquiry: 'gray', Quotation: 'teal', '1–30': 'amber', '31–60': 'amber',
-  Cancelled: 'red', Rejected: 'red', Expired: 'red', Overdue: 'red', Reversed: 'red', Damaged: 'red', Poor: 'red', Absent: 'red', High: 'red', Lost: 'red', inactive: 'gray', Inactive: 'gray', Retired: 'gray', Rescheduled: 'gray', 'Under Maintenance': 'amber', 'Checked Out': 'teal', Released: 'teal', '61–90': 'red', '90+': 'red', 'In Repair': 'amber',
+  Pending: 'amber', Draft: 'gray', Prospect: 'blue', Sent: 'blue', 'For Approval': 'amber', 'In Progress': 'teal', 'Dispatch Checklist Pending': 'amber', 'Departed from HQ': 'blue', 'Arrived at Site': 'teal', 'Work Completed': 'green', 'Return Checklist Pending': 'amber', 'Returned to HQ': 'blue', Acknowledged: 'blue', 'With Issue': 'amber', Leaking: 'red', Reserved: 'blue', Requested: 'amber', Open: 'amber', Investigating: 'amber', 'Partially Paid': 'amber', Unpaid: 'blue', Fair: 'amber', probationary: 'amber', contractual: 'blue', Late: 'amber', Low: 'gray', Medium: 'amber', Leave: 'blue', Holiday: 'blue', 'Client Approval': 'blue', 'Ocular Visit': 'blue', Inquiry: 'gray', Quotation: 'teal', '1–30': 'amber', '31–60': 'amber',
+  Cancelled: 'red', Rejected: 'red', Expired: 'red', Overdue: 'red', Reversed: 'red', Damaged: 'red', Missing: 'red', Poor: 'red', Absent: 'red', High: 'red', Lost: 'red', inactive: 'gray', Inactive: 'gray', Retired: 'gray', Rescheduled: 'gray', 'Under Maintenance': 'amber', 'Checked Out': 'teal', Released: 'teal', '61–90': 'red', '90+': 'red', 'In Repair': 'amber',
 };
 export function Badge({ children, tone }: { children: ReactNode; tone?: string }) {
   const t = tone ?? (typeof children === 'string' ? TONES[children] : undefined) ?? 'gray';
@@ -177,7 +179,7 @@ export async function fileToDataUrl(file: File, max = 900): Promise<string> {
   return c.toDataURL('image/jpeg', 0.72);
 }
 
-export function PhotoInput({ label, onAdd, capture, multiple, accept }: { label: string; onAdd: (dataUrl: string, name: string) => void; capture?: 'environment' | 'user'; multiple?: boolean; accept?: string }) {
+export function PhotoInput({ label, onAdd, capture, multiple, accept, disabled }: { label: string; onAdd: (dataUrl: string, name: string) => void; capture?: 'environment' | 'user'; multiple?: boolean; accept?: string; disabled?: boolean }) {
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -185,7 +187,7 @@ export function PhotoInput({ label, onAdd, capture, multiple, accept }: { label:
         for (const f of Array.from(e.target.files ?? [])) { try { onAdd(await fileToDataUrl(f), f.name); } catch { toast('Could not read that file', 'err'); } }
         e.target.value = '';
       }} />
-      <button type="button" className="btn sm" onClick={() => ref.current?.click()}><Icon name="camera" />{label}</button>
+      <button type="button" className="btn sm" disabled={disabled} onClick={() => ref.current?.click()}><Icon name="camera" />{label}</button>
     </>
   );
 }

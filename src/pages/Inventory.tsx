@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
-import { onHand, stockSummary } from '@/lib/business';
+import { isOpen, onHand, stockSummary } from '@/lib/business';
 import { decideAdjustment, decideRequest, physicalCount, receivePurchase, requestAdjustment, requestMaterials, returnFromJob, reverseStockTx, issueToJob, transferStock, wasteMaterial } from '@/lib/actions';
 import { addDays, diffDays, fmtDate, money, sum, today } from '@/lib/util';
 import type { InventoryItem, ItemCategory, MaterialRequest, StockTx } from '@/lib/types';
@@ -78,7 +78,7 @@ function TxModal({ kind, itemId, jobId, onClose }: { kind: Kind; itemId?: string
 
 function RequestModal({ jobId, onClose }: { jobId?: string; onClose: () => void }) {
   const { db } = useAuth();
-  const mine = live(db.jobs).filter((j) => ['Pending', 'Confirmed', 'In Progress'].includes(j.status));
+  const mine = live(db.jobs).filter((j) => isOpen(j.status));
   const [job, setJob] = useState(jobId ?? mine[0]?.id ?? '');
   const [lines, setLines] = useState<{ item_id: string; qty: number }[]>([{ item_id: db.items[0].id, qty: 1 }]);
   const [note, setNote] = useState('');

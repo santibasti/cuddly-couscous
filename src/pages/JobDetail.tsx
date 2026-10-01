@@ -4,7 +4,9 @@ import { useAuth, store } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Photos, SignaturePad, Stat, attempt, ask, useObj } from '@/components/ui';
 import { JobForm } from '@/components/JobForm';
 import { completeJob, invoiceFromJob, setJobStatus, updateJobField } from '@/lib/actions';
-import { jobCost, stockSummary } from '@/lib/business';
+import { isDone, jobCost, JOB_FLOW, stockSummary } from '@/lib/business';
+import { ArrivalModal } from '@/components/ArrivalModal';
+import { canRunDispatch, closeJob, overrideJobStatus, startReturnChecklist, startWork } from '@/lib/dispatch';
 import { serviceReportPdf } from '@/lib/export';
 import { fmtDateTime, fmtStamp, money, nowLocal } from '@/lib/util';
 import type { Job, JobPhoto } from '@/lib/types';
@@ -15,6 +17,8 @@ export default function JobDetail() {
   const nav = useNavigate();
   const [edit, setEdit] = useState(false);
   const [done, setDone] = useState(false);
+  const [arrive, setArrive] = useState(false);
+  const [ovr, setOvr] = useState(false);
   const j = db.jobs.find((x) => x.id === id);
   if (!j || j.deleted_at) return <div className="alert warn">Job not found. <Link to="/jobs">Back to jobs</Link></div>;
   const myEmp = user?.employee_id;
@@ -23,7 +27,9 @@ export default function JobDetail() {
   const client = db.clients.find((c) => c.id === j.client_id)!;
   const site = db.sites.find((s) => s.id === j.site_id);
   const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? '—';
-  const locked = j.status === 'Completed';
+  const locked = isDone(j.status);
+  const run = canRunDispatch(j);
+  const openInc = db.incidents.filter((i) => i.job_id === j.id && !i.deleted_at && ['Open', 'Investigating'].includes(i.status));
   const canWork = can('jobs.complete') && !locked && j.status !== 'Cancelled';
   const cost = can('profit.view') ? jobCost(db, j) : null;
   const inv = db.invoices.find((i) => i.job_id === j.id && i.status !== 'Reversed' && !i.deleted_at);
@@ -39,13 +45,21 @@ export default function JobDetail() {
         <Link to="/jobs" className="btn">← Jobs</Link>
         {can('jobs.edit') && !locked && <button className="btn" onClick={() => setEdit(true)}><Icon name="edit" />Edit / reassign</button>}
         {can('jobs.edit') && j.status === 'Pending' && <button className="btn" onClick={() => attempt(() => setJobStatus(j.id, 'Confirmed'), 'Job confirmed')}>Confirm</button>}
-        {can('jobs.complete') && ['Pending', 'Confirmed'].includes(j.status) && <button className="btn navy" onClick={() => attempt(() => setJobStatus(j.id, 'In Progress'), 'Job started')}>Start job</button>}
-        {can('jobs.edit') && !locked && j.status !== 'Cancelled' && <button className="btn danger" onClick={async () => { const r = await ask('Cancel job', 'Reason for cancellation'); if (r) attempt(() => setJobStatus(j.id, 'Cancelled', r), 'Job cancelled'); }}>Cancel</button>}
+        {can('jobs.edit') && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status) && <button className="btn danger" onClick={async () => { const r = await ask('Cancel job', 'Reason for cancellation'); if (r) attempt(() => setJobStatus(j.id, 'Cancelled', r), 'Job cancelled'); }}>Cancel</button>}
+        {run && j.status === 'Departed from HQ' && <button className="btn primary" onClick={() => setArrive(true)}><Icon name="pin" />Arrived at site</button>}
+        {run && j.status === 'Arrived at Site' && <button className="btn primary" onClick={() => attempt(() => startWork(j.id), 'Work started — In Progress')}>Start work</button>}
         {canWork && j.status === 'In Progress' && <button className="btn primary" onClick={() => setDone(true)}><Icon name="check" />Submit completion</button>}
+        {can('dispatch.view') && j.status !== 'Cancelled' && j.status !== 'Rescheduled' && <Link to={`/dispatch/${j.id}`} className="btn navy"><Icon name="dispatch" />Dispatch checklist{db.dispatches.find((d) => d.job_id === j.id) ? ` · ${db.dispatches.find((d) => d.job_id === j.id)!.stage}` : ''}</Link>}
+        {run && j.status === 'Work Completed' && <button className="btn primary" onClick={() => attempt(() => startReturnChecklist(j.id), 'Return checklist started')}>Start return checklist</button>}
+        {j.status === 'Return Checklist Pending' && can('dispatch.view') && <Link to={`/dispatch/${j.id}`} className="btn primary">Return checklist</Link>}
+        {j.status === 'Returned to HQ' && (run || can('incidents.manage')) && <button className="btn primary" disabled={openInc.length > 0} title={openInc.length ? 'Resolve or acknowledge open incidents first' : ''} onClick={() => attempt(() => closeJob(j.id), 'Job closed')}>Close job</button>}
+        {can('dispatch.approve') && !['Cancelled', 'Rescheduled'].includes(j.status) && <button className="btn" onClick={() => setOvr(true)}>Override status…</button>}
         {locked && <button className="btn" onClick={() => attempt(() => serviceReportPdf(db, j))}><Icon name="download" />Service report (PDF)</button>}
         {locked && can('invoices.edit') && !inv && <button className="btn primary" onClick={() => { const i = attempt(() => invoiceFromJob(j.id), 'Draft invoice created'); if (i) nav('/finance?tab=invoices'); }}>Create invoice</button>}
       </PageHead>
 
+      {!['Cancelled', 'Rescheduled'].includes(j.status) && <div className="flow" aria-label="Job status flow">{JOB_FLOW.map((st, i) => { const cur = j.status === 'Completed' ? JOB_FLOW.length - 1 : JOB_FLOW.indexOf(j.status); return <div key={st} className={i < cur ? 'past' : i === cur ? 'cur' : ''}><i />{st}</div>; })}</div>}
+      {j.status === 'Returned to HQ' && openInc.length > 0 && <div className="alert warn" style={{ marginBottom: 12 }}>This job stays open for review: {openInc.length} incident report(s) must be resolved or acknowledged before it can be closed. <Link to="/dispatch?tab=incidents">Review incidents</Link></div>}
       <div className="grid g2">
         <div className="stack">
           <Card title="Scope of work"><p style={{ marginTop: 0 }}>{j.scope || '—'}</p><div className="row">{j.service_codes.map((c) => <Badge key={c} tone="teal">{db.services.find((s) => s.code === c)?.name}</Badge>)}</div></Card>
@@ -126,13 +140,27 @@ export default function JobDetail() {
         </div>
       </div>
       {edit && <JobForm initial={j} onClose={() => setEdit(false)} />}
+      {arrive && <ArrivalModal job={j} onClose={() => setArrive(false)} />}
+      {ovr && <OverrideModal job={j} onClose={() => setOvr(false)} />}
       {done && <CompleteModal job={j} onClose={() => setDone(false)} />}
     </>
   );
 }
 
+function OverrideModal({ job, onClose }: { job: Job; onClose: () => void }) {
+  const [status, setStatus] = useState<Job['status']>(job.status);
+  const [reason, setReason] = useState('');
+  return (
+    <Modal title={`Override status – ${job.number}`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!reason.trim() || status === job.status} onClick={() => { if (attempt(() => overrideJobStatus(job.id, status, reason), 'Status overridden and logged')) onClose(); }}>Apply override</button></>}>
+      <div className="alert warn" style={{ marginBottom: 12 }}>Skips the normal dispatch workflow. The change is logged with your name, the old and new status, and your reason.</div>
+      <div className="form-grid"><Field label="New status"><select value={status} onChange={(e) => setStatus(e.target.value as Job['status'])}>{[...JOB_FLOW, 'Pending'].map((s) => <option key={s}>{s}</option>)}</select></Field><Field label="Reason" required className="full"><textarea value={reason} onChange={(e) => setReason(e.target.value)} /></Field></div>
+    </Modal>
+  );
+}
+
 function CompleteModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const { db } = useAuth();
+  const hasDispatch = db.dispatches.some((d) => d.job_id === job.id && !d.deleted_at);
   const f = useObj({ findings: job.findings, damage_report: job.damage_report, equipment_condition_notes: job.equipment_condition_notes, signoff_name: db.sites.find((s) => s.id === job.site_id)?.contact_person ?? '', rating: 5 });
   const [sig, setSig] = useState<string | undefined>();
   const [used, setUsed] = useState<Record<string, number>>(() => Object.fromEntries(job.materials.map((m) => [m.item_id, m.used_qty ?? m.planned_qty])));
@@ -145,8 +173,8 @@ function CompleteModal({ job, onClose }: { job: Job; onClose: () => void }) {
         <Field label="Findings" className="full"><textarea {...f.bind('findings')} /></Field>
         <Field label="Damage report"><textarea {...f.bind('damage_report')} placeholder="Any pre-existing or new damage observed" /></Field>
         <Field label="Equipment condition"><textarea {...f.bind('equipment_condition_notes')} /></Field>
-        <div className="full"><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Materials actually used (job cost is calculated from these)</div>
-          <div className="stack">{job.materials.map((m) => { const it = db.items.find((i) => i.id === m.item_id)!; return <div key={m.item_id} className="row"><span className="grow">{it.name} <span className="muted small">planned {m.planned_qty} {it.uom}</span></span><input type="number" min="0" step="0.5" value={used[m.item_id] ?? 0} onChange={(e) => setUsed({ ...used, [m.item_id]: +e.target.value })} style={{ width: 100 }} aria-label={`Used ${it.name}`} /></div>; })}{!job.materials.length && <span className="muted">No materials planned.</span>}</div></div>
+        {hasDispatch ? <div className="full alert info">Material usage is calculated at the return checklist (issued − returned).</div> : <div className="full"><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Materials actually used (job cost is calculated from these)</div>
+          <div className="stack">{job.materials.map((m) => { const it = db.items.find((i) => i.id === m.item_id)!; return <div key={m.item_id} className="row"><span className="grow">{it.name} <span className="muted small">planned {m.planned_qty} {it.uom}</span></span><input type="number" min="0" step="0.5" value={used[m.item_id] ?? 0} onChange={(e) => setUsed({ ...used, [m.item_id]: +e.target.value })} style={{ width: 100 }} aria-label={`Used ${it.name}`} /></div>; })}{!job.materials.length && <span className="muted">No materials planned.</span>}</div></div>}
         <Field label="Client sign-off — printed name" required><input {...f.bind('signoff_name')} /></Field>
         <Field label="Client rating"><select value={f.v.rating} onChange={(e) => f.set('rating', +e.target.value)}>{[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} / 5</option>)}</select></Field>
         <div className="full"><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad onChange={setSig} /></div>
