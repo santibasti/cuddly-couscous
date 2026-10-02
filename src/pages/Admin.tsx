@@ -3,7 +3,7 @@ import { store, useAuth } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Tabs, attempt, ask, useObj, toast } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { DEFAULT_ACCESS, PERMISSIONS, ROLE_LABEL } from '@/lib/rbac';
-import { fmtStamp, sha256 } from '@/lib/util';
+import { clone, fmtStamp, sha256 } from '@/lib/util';
 import type { AuditLog, Role, ServiceDef, Settings, StatutoryRate, TableName, UserAccount } from '@/lib/types';
 
 const ROLES = Object.keys(ROLE_LABEL) as Role[];
@@ -32,7 +32,7 @@ function UserModal({ initial, onClose }: { initial?: UserAccount; onClose: () =>
 }
 
 function Rates({ s }: { s: Settings }) {
-  const [draft, setDraft] = useState<Settings>(() => structuredClone(s));
+  const [draft, setDraft] = useState<Settings>(() => clone(s));
   const setM = (k: keyof Settings['multipliers'], v: number) => setDraft({ ...draft, multipliers: { ...draft.multipliers, [k]: v } });
   const setStat = (i: number, patch: Partial<StatutoryRate>) => setDraft({ ...draft, statutory: draft.statutory.map((r, k) => (k === i ? { ...r, ...patch } : r)) });
   const save = () => attempt(() => { store.require('admin.settings'); store.patchSettings({ vat_rate: draft.vat_rate, multipliers: draft.multipliers, statutory: draft.statutory, std_hours_per_day: draft.std_hours_per_day, monthly_divisor_days: draft.monthly_divisor_days, grace_minutes: draft.grace_minutes, payment_terms_days: draft.payment_terms_days, quote_validity_days: draft.quote_validity_days, glass_group_size: draft.glass_group_size, channels: draft.channels, reminder_days: draft.reminder_days, default_terms: draft.default_terms, company: draft.company }, 'Updated payroll, tax and system settings'); }, 'Settings saved');
@@ -68,7 +68,7 @@ function Rates({ s }: { s: Settings }) {
 
 function Pricing() {
   const { db } = useAuth();
-  const [rows, setRows] = useState<ServiceDef[]>(() => structuredClone(db.services));
+  const [rows, setRows] = useState<ServiceDef[]>(() => clone(db.services));
   const set = (i: number, p: Partial<ServiceDef>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...p } : r)));
   const save = () => attempt(() => { store.require('admin.settings'); rows.forEach((r) => { const cur = db.services.find((s) => s.id === r.id)!; if (JSON.stringify(cur) !== JSON.stringify(r)) store.update('services', r.id, r, 'update', `Pricing updated: ${r.name}`); }); }, 'Pricing saved');
   return (
@@ -84,11 +84,11 @@ function Pricing() {
 }
 
 function Permissions({ access }: { access: Settings['access'] }) {
-  const [draft, setDraft] = useState<Settings['access']>(() => structuredClone(access));
+  const [draft, setDraft] = useState<Settings['access']>(() => clone(access));
   const groups = [...new Set(PERMISSIONS.map((p) => p.group))];
   const toggle = (r: Role, k: string) => setDraft({ ...draft, [r]: draft[r].includes(k) ? draft[r].filter((x) => x !== k) : [...draft[r], k] });
   return (
-    <Card title="Role permissions" actions={<><button className="btn" onClick={() => setDraft(structuredClone(DEFAULT_ACCESS) as Settings['access'])}>Reset to defaults</button><button className="btn primary" onClick={() => attempt(() => { store.require('admin.users'); store.patchSettings({ access: { ...draft, owner: DEFAULT_ACCESS.owner } }, 'Updated role permissions'); }, 'Permissions saved')}>Save permissions</button></>}>
+    <Card title="Role permissions" actions={<><button className="btn" onClick={() => setDraft(clone(DEFAULT_ACCESS) as Settings['access'])}>Reset to defaults</button><button className="btn primary" onClick={() => attempt(() => { store.require('admin.users'); store.patchSettings({ access: { ...draft, owner: DEFAULT_ACCESS.owner } }, 'Updated role permissions'); }, 'Permissions saved')}>Save permissions</button></>}>
       <p className="small muted" style={{ marginTop: 0 }}>Owner / Admin always has every permission. Changes apply to all users of a role the next time they load a page. In production these map to Postgres row-level-security policies.</p>
       <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Permission</th>{ROLES.map((r) => <th key={r} style={{ textAlign: 'center' }}>{ROLE_LABEL[r].split(' ')[0]}<br />{ROLE_LABEL[r].split(' ').slice(1).join(' ')}</th>)}</tr></thead><tbody>
         {groups.map((g) => [<tr key={g}><td colSpan={ROLES.length + 1} style={{ background: '#f8fafc', fontWeight: 700, color: 'var(--navy)' }}>{g}</td></tr>, ...PERMISSIONS.filter((p) => p.group === g).map((p) => <tr key={p.key}><td>{p.label}<div className="small muted">{p.key}</div></td>{ROLES.map((r) => <td key={r} style={{ textAlign: 'center' }}><input type="checkbox" disabled={r === 'owner'} checked={r === 'owner' || draft[r].includes(p.key)} onChange={() => toggle(r, p.key)} aria-label={`${ROLE_LABEL[r]} ${p.label}`} /></td>)}</tr>)])}

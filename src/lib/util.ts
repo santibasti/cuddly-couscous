@@ -115,3 +115,6 @@ export async function sha256(text: string): Promise<string> {
 }
 
 export const cls = (...a: (string | false | null | undefined)[]) => a.filter(Boolean).join(' ');
+
+/** Deep copy of plain data (structuredClone is missing in older Android WebViews). */
+export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;

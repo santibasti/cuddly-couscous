@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { agingBucket, computePayrollLine, countPanels, docTotals, priceService, invoiceTotals } from './business';
 import { seedDB } from './seed';
-import { addDays, today } from './util';
+import { addDays, clone, today } from './util';
 
 const db = seedDB();
 const svc = (code: string) => db.services.find((s) => s.code === code)!;
@@ -94,7 +94,7 @@ describe('payroll calculation', () => {
     expect(l.net).toBeCloseTo(l.gross - l.total_deductions, 2);
   });
   it('uses configurable statutory rates rather than hard-coded values', () => {
-    const custom = structuredClone(db.settings); custom.statutory.find((r) => r.key === 'sss')!.value = 10; custom.statutory.find((r) => r.key === 'sss')!.max = 0;
+    const custom = clone(db.settings); custom.statutory.find((r) => r.key === 'sss')!.value = 10; custom.statutory.find((r) => r.key === 'sss')!.max = 0;
     const l = computePayrollLine({ emp: { ...emp, rest_day: 0 }, period, attendance: [att('2026-03-02'), att('2026-03-03')] as never, holidays: [], adjustments: [], settings: custom, asOf: '2026-03-06' }).line;
     expect(l.sss).toBeCloseTo(l.regular_pay * 0.1, 1);
   });

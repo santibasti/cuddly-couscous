@@ -7,7 +7,7 @@ import type {
 } from './types';
 import { DEFAULT_ACCESS } from './rbac';
 import { buildChecklistItems, buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
-import { addDays, diffDays, dow, eachDay, monthEnd, monthStart, round2, sum, today } from './util';
+import { addDays, clone, diffDays, dow, eachDay, monthEnd, monthStart, round2, sum, today } from './util';
 
 /* Precomputed sha256("topmop:topmop123") – demo password for all seeded accounts. */
 export const DEMO_PASS_HASH = '31472fd57adb88f745afdec821538558171d7c892e8efa4432d2955e59520d40';
@@ -56,7 +56,7 @@ export function seedDB(): DB {
     channels: { email: true, sms: false, whatsapp: true },
     reminder_days: { quote_expiry: 5, doc_expiry: 30, chemical_expiry: 30, invoice_due: 5, maintenance: 7 },
     glass_group_size: 4,
-    access: structuredClone(DEFAULT_ACCESS) as Record<Role, string[]>,
+    access: clone(DEFAULT_ACCESS) as Record<Role, string[]>,
     counters: {},
   };
 
