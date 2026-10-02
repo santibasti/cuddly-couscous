@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth, live } from '@/lib/store';
 import { Badge, Field, Icon, Modal, PhotoInput, attempt, toast } from '@/components/ui';
 import { Stepper, Toggle } from '@/components/touch';
+import { uid } from '@/lib/util';
 import { getGeo } from '@/lib/geo';
 import { ITEM_CONDITIONS, kindOfAsset } from '@/lib/workflow';
 import type { CheckItem, ItemCondition, Job } from '@/lib/types';
@@ -72,7 +73,7 @@ export function AddToolModal({ items, job, onAdd, onClose }: { items: CheckItem[
       return onAdd({ key: `a:${byCode.id}`, kind: kindOfAsset(byCode), asset_id: byCode.id, label: byCode.name, code: byCode.code, qty: 1, extra: true, responsible_id: job.leader_id });
     }
     if (!name.trim()) return toast('Choose an asset or type a tool name.', 'err');
-    onAdd({ key: `x:${crypto.randomUUID()}`, kind: 'tool', label: name.trim(), qty, extra: true, responsible_id: job.leader_id });
+    onAdd({ key: `x:${uid()}`, kind: 'tool', label: name.trim(), qty, extra: true, responsible_id: job.leader_id });
   };
   return (
     <Modal title="Add tool or equipment" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={add}>Add to checklist</button></>}>

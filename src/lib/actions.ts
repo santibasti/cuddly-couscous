@@ -7,7 +7,7 @@ import type {
 import {
   buildPayrollLines, computeTimes, docTotals, finalContract, findConflicts, invoiceBalance, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
-import { addDays, isoNow, money, nowLocal, round2, sum, today } from './util';
+import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
 const db = () => store.getDB();
 const me = () => store.user;
@@ -205,7 +205,7 @@ export function transferStock(p: { item_id: string; qty: number; from: string; t
   store.require('inventory.edit'); needQty(p.qty);
   if (p.from === p.to) fail('Choose two different locations.');
   if (onHand(db(), p.item_id, p.from) < p.qty) fail('Not enough stock at the source location.');
-  const tid = crypto.randomUUID();
+  const tid = uid();
   stockTx({ item_id: p.item_id, type: 'Transfer Out', qty: -p.qty, location_id: p.from, transfer_id: tid }, `Transfer out ${p.qty} ${item(p.item_id).name}`);
   stockTx({ item_id: p.item_id, type: 'Transfer In', qty: p.qty, location_id: p.to, transfer_id: tid }, `Transfer in ${p.qty} ${item(p.item_id).name}`);
 }

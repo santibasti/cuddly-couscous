@@ -99,3 +99,14 @@ describe('payroll calculation', () => {
     expect(l.sss).toBeCloseTo(l.regular_pay * 0.1, 1);
   });
 });
+
+describe('sha256 without Web Crypto (http:// on a phone)', () => {
+  it('matches the standard digest', async () => {
+    const { sha256 } = await import('./util');
+    const real = await sha256('topmop:topmop123');
+    const saved = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    Object.defineProperty(globalThis, 'crypto', { value: {}, configurable: true });
+    try { expect(await sha256('topmop:topmop123')).toBe(real); expect(await sha256('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'); }
+    finally { if (saved) Object.defineProperty(globalThis, 'crypto', saved); }
+  });
+});

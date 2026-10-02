@@ -6,11 +6,11 @@ import { DraftBar, Stepper } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { PANEL_AREAS, PANEL_SIDES, savePanels } from '@/lib/workflow';
 import { countPanels, docTotals, panelTotals, quotedPanels, rowPanels } from '@/lib/business';
-import { fmtDateTime, money } from '@/lib/util';
+import { fmtDateTime, money, uid } from '@/lib/util';
 import { conformePdf } from '@/lib/export';
 import type { Job, JobWorkflow, PanelRow } from '@/lib/types';
 
-const newRow = (): PanelRow => ({ id: crypto.randomUUID(), area: '1st Floor', side: 'Front', external: 0, internal: 0 });
+const newRow = (): PanelRow => ({ id: uid(), area: '1st Floor', side: 'Front', external: 0, internal: 0 });
 
 /** Glass panel-counting table: Area/Floor | Side/Location | External | Internal | Total | Notes — totals are automatic. */
 export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolean }) {
