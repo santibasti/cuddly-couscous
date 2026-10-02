@@ -37,8 +37,8 @@ export function minutesBetween(a: string, b: string): number {
   return Math.round((f(b) - f(a)) / 60000);
 }
 
-const peso = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 });
-const pesoWhole = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 });
+const peso = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pesoWhole = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 });
 export const money = (n: number): string => peso.format(round2(n || 0)).replace('PHP', '₱').replace(/\s/g, '');
 export const moneyShort = (n: number): string => {
   const a = Math.abs(n);
