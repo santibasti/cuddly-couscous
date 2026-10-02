@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/store';
-import { Badge, Field, PhotoInput, SignaturePad, attempt } from '@/components/ui';
-import { Confirm } from './shared';
-import { DraftBar, PresetChips, Stepper } from '@/components/touch';
+import { Badge, Field, attempt } from '@/components/ui';
+import { AdditionalWork, ClientReview, PanelBreakdown, useReview } from './FinalQuote';
+import { DraftBar, Stepper } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
-import { PRESETS } from '@/lib/presets';
-import { PANEL_AREAS, PANEL_SIDES, savePanels, signConforme } from '@/lib/workflow';
+import { PANEL_AREAS, PANEL_SIDES, savePanels } from '@/lib/workflow';
 import { countPanels, docTotals, panelTotals, quotedPanels, rowPanels } from '@/lib/business';
 import { fmtDateTime, money } from '@/lib/util';
 import { conformePdf } from '@/lib/export';
@@ -72,14 +71,12 @@ export function ConformeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
   const t = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
   const client = db.clients.find((c) => c.id === job.client_id)!; const site = db.sites.find((s) => s.id === job.site_id);
   const signed = !!wf.conf_at;
-  const [name, setName] = useState(site?.contact_person ?? ''); const [sig, setSig] = useState<string>(); const [file, setFile] = useState<{ data: string; name: string }>();
-  const [notes, setNotes] = useState(''); const [ok, setOk] = useState(false);
-  const dr = useDraft(`d:${wf.id}:conf`, { name, sig, file, notes }, (d) => { setName(d.name); setSig(d.sig); setFile(d.file); setNotes(d.notes); }, run && !signed);
+  const [view, setView] = useState(false);
+  const { history } = useReview(job);
   return (
     <div className="stack">
-      {run && !signed && <DraftBar d={dr} />}
       <div className="card" style={{ padding: 12 }}>
-        <div className="row between"><b>Original quotation {q?.number ?? '—'}</b><Badge tone="gray">retained unchanged</Badge></div>
+        <div className="row between"><b>Original quotation {q?.number ?? '—'}</b><Badge tone="gray">approved — read-only</Badge></div>
         <dl className="kv"><dt>Client / site</dt><dd>{client.name} · {site?.name}</dd><dt>Scope</dt><dd>{q?.scope ?? job.scope}</dd></dl>
         {q && t ? (
           <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Description</th><th className="num">Qty</th><th>Unit</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead><tbody>
@@ -94,24 +91,19 @@ export function ConformeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
       </div>
 
       <PanelTable wf={wf} editable={run && !wf.closed_at} />
+      {wf.panels.length > 0 && <PanelBreakdown wf={wf} job={job} />}
 
-      {signed ? (
+      {!signed && <AdditionalWork wf={wf} job={job} run={run} onPresent={() => setView(true)} />}
+      {!signed && !run && <div className="alert info">Only the Team Leader or a manager can present the final quote to the client.</div>}
+
+      {signed && (
         <div className="stack">
-          <dl className="kv"><dt>Conforme signed by</dt><dd>{wf.conf_name} · {fmtDateTime(wf.conf_at)}</dd><dt>Original total</dt><dd>{money(wf.conf_original_total ?? 0)}</dd>{wf.conf_notes && <><dt>Notes</dt><dd>{wf.conf_notes}</dd></>}</dl>
-          {wf.conf_signature && <img src={wf.conf_signature} alt="Client signature" style={{ maxHeight: 90, border: '1px solid var(--line)', borderRadius: 6 }} />}
-          {wf.conf_file && (wf.conf_file.startsWith('data:image') ? <img src={wf.conf_file} alt="Signed copy" style={{ maxHeight: 160, borderRadius: 6 }} /> : <a href={wf.conf_file} download={wf.conf_file_name ?? 'conforme.pdf'}>Signed copy: {wf.conf_file_name ?? 'download'}</a>)}
-          <div><button className="btn sm" onClick={() => attempt(() => conformePdf(db, job))}>Download conforme (PDF)</button></div>
-        </div>
-      ) : (
-        <div className="stack">
-          <Confirm checked={ok} onChange={setOk} disabled={!run}>The quotation, scope, rates, quantities, terms and exclusions were reviewed with the client on site.</Confirm>
-          <div className="form-grid"><Field label="Client conforme — printed name" required><input disabled={!run} value={name} onChange={(e) => setName(e.target.value)} /></Field><Field label="Date & time signed"><input disabled value={fmtDateTime(new Date().toISOString())} /></Field></div>
-          {run && <><div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad value={sig} onChange={setSig} /></div>
-            <div className="row"><PhotoInput label="Attach photo / PDF of signed copy" accept="image/*,application/pdf" onAdd={(d, n) => setFile({ data: d, name: n })} />{file && <Badge tone="green">{file.name}</Badge>}</div></>}
-          <Field label="Notes"><input disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} /><PresetChips options={PRESETS.conforme} value={notes} onChange={setNotes} disabled={!run} /></Field>
-          {run && <button className="btn primary lg" onClick={() => attempt(() => signConforme(wf.id, { name, signature: sig, file: file?.data, file_name: file?.name, notes, confirmed: ok }), 'Conforme signed — work can start')}>Save signed conforme</button>}
+          <div className="alert info">Final quote approved and signed by <b>{wf.conf_name}</b> · {fmtDateTime(wf.conf_at)} — final total <b>{money(wf.conf_final_total ?? wf.conf_original_total ?? 0)}</b>{wf.conf_variation_id ? ' (includes approved additional work, recorded as a change order)' : ''}.</div>
+          {history.filter((h) => h.status === 'Rejected').map((h) => <div key={h.id} className="small muted">Offered and declined: {h.number} — {h.items.map((i) => i.description).join('; ')}</div>)}
+          <div className="row"><button className="btn navy" onClick={() => setView(true)}>View final quote</button><button className="btn" onClick={() => attempt(() => conformePdf(db, job))}>Download final quote &amp; conforme (PDF)</button></div>
         </div>
       )}
+      {view && <ClientReview wf={wf} job={job} run={run} onClose={() => setView(false)} />}
     </div>
   );
 }

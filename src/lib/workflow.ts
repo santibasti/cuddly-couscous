@@ -7,7 +7,7 @@ import { store, RuleError } from './store';
 import type {
   ContainerCondition, DB, FuelLevel, IncidentReport, IncidentType, ItemCondition, Job, JobPhoto, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, VehicleCondition, CheckItem,
 } from './types';
-import { buildChecklistItems, docTotals, finalContract, hqGaps, kindOfAsset, onHand, round2Safe, variationTotals } from './business';
+import { buildChecklistItems, categoryDefaults, docTotals, finalContract, finalQuoteSummary, hqGaps, kindOfAsset, onHand, openVariations, panelBreakdown, resolveReviewItems, round2Safe, variationTotals } from './business';
 import { performRelease, performReturn, requestCheckout, requestMaterials, runAutomations } from './actions';
 import { nowLocal, today } from './util';
 
@@ -191,12 +191,104 @@ export function signConforme(id: string, f: { name: string; signature?: string; 
   needRun(job);
   if (!wf.arr_at) fail('Record the site arrival first.');
   if (wf.conf_at) fail('The quotation / conforme is already signed.');
+  if (openVariations(db(), job.id).some((v) => v.source === 'final_review')) fail('Additional work is waiting for the client: use the Client Final Quote Review (approve, decline or request a revision) before the conforme is signed.');
   if (!f.confirmed) fail('Confirm that the quotation was reviewed with the client on site.');
   if (!f.name.trim()) fail('Enter the client name on the conforme.');
   if (!f.signature && !f.file) fail('Capture the client signature or attach a photo / PDF of the signed conforme.');
   const q = db().quotations.find((x) => x.id === job.quotation_id);
   const original = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).total : finalContract(db(), job).originalTotal;
   store.update('workflows', id, { conf_at: nowLocal(), conf_by: uidNow(), conf_quotation_id: q?.id, conf_original_total: original, conf_name: f.name.trim(), conf_signature: f.signature, conf_file: f.file, conf_file_name: f.file_name, conf_notes: f.notes } as never, 'approve', `${job.number}: client conforme signed by ${f.name.trim()}`);
+}
+
+/* ================= Step 4b: Client Final Quote Review (original quote + additional work → final bill) ================= */
+const canEditRates = () => store.can('admin.settings') || store.can('dispatch.approve');
+const reviewDraft = (jobId: string) => db().variations.find((v) => v.job_id === jobId && v.source === 'final_review' && v.status === 'Draft' && !v.deleted_at);
+export const reviewVat = (job: Job): { vat_mode: Variation['vat_mode']; vat_rate: number } => {
+  const q = db().quotations.find((x) => x.id === job.quotation_id); const c = db().clients.find((x) => x.id === job.client_id);
+  return { vat_mode: q?.vat_mode ?? (c?.vat_status === 'VAT-registered' ? 'exclusive' : 'none'), vat_rate: q?.vat_rate ?? db().settings.vat_rate };
+};
+export interface FinalReviewInput { items: QuoteItem[]; deposit?: number; deposit_note?: string }
+
+/** Team Leader / Admin prepares the additional work before presenting the final quote. The original quotation is never touched. */
+export function saveFinalReview(id: string, f: FinalReviewInput) {
+  const wf = getWf(id); const job = jobOf(wf);
+  needRun(job);
+  if (!wf.arr_at) fail('Record the site arrival first.');
+  if (wf.conf_at) fail('The final quote is already signed. Further changes go through a variation (step 6).');
+  const authorised = canEditRates();
+  for (const it of f.items) {
+    if (!it.category) fail('Choose a service category for every additional line.');
+    if (!it.unit.trim()) fail('Choose a unit of measure for every additional line.');
+    const def = categoryDefaults(db().services, it.category!);
+    if (it.category !== 'other' && Math.abs(it.rate - def.rate) > 0.004 && !authorised) fail(`The price list rate (${def.rate} per ${def.unit}) for ${it.description || 'this line'} can only be changed by an Operations Manager or Admin.`);
+    if (it.discount < 0) fail('Discount cannot be negative.');
+    if (it.discount > 0 && !authorised) fail('Only an Operations Manager or Admin can apply a discount.');
+    if (it.rate < 0) fail('Unit rate cannot be negative.');
+  }
+  const items = resolveReviewItems(db(), wf.panels, f.items);
+  for (const it of items) {
+    if (!it.description.trim()) fail('Describe the area or work for every additional line.');
+    if (!(it.qty > 0)) fail(it.linked_panels ? 'No additional panels are marked in the panel-counting table. Tick “Extra” on the rows beyond the quoted scope.' : `Enter a quantity for ${it.description}.`);
+    if (it.discount > it.qty * it.rate + 0.005) fail(`The discount on ${it.description} is more than the line amount.`);
+  }
+  const vat = reviewVat(job);
+  const deposit = Math.max(0, f.deposit ?? 0);
+  const sum_ = finalQuoteSummary(db(), job, { pending: { items, ...vat }, deposit });
+  if (deposit > sum_.finalTotal + 0.005) fail('The deposit / prior payment is more than the final total.');
+  const glass = wf.panels.filter((p) => p.additional).map((p) => p.id);
+  const cur = reviewDraft(job.id);
+  const patch = { items, discount: 0, ...vat, panel_row_ids: items.some((i) => i.linked_panels) ? glass : [], reason: items.length ? `Additional work requested / identified at site: ${items.map((i) => i.note?.trim() || i.description).join('; ')}`.slice(0, 480) : 'Additional work (none)', revision_open: false };
+  if (cur) store.update('variations', cur.id, patch as never, 'update', `${cur.number}: additional work ${cur.revision_open ? 're-presented after revision request' : 'updated'} (${items.length} line(s))`);
+  else if (items.length) store.insert('variations', { job_id: job.id, number: varNumber(job), ...patch, status: 'Draft', source: 'final_review' } as never, `Additional work drafted for ${job.number} (${items.length} line(s))`);
+  store.update('workflows', id, { conf_deposit: deposit || undefined, conf_deposit_note: f.deposit_note?.trim() || undefined } as never, 'update', `${job.number}: final quote review prepared${deposit ? ` (deposit ${deposit})` : ''}`);
+}
+
+/** The client asks for changes: the review stays open and cannot be signed until the Team Leader re-presents it. */
+export function requestFinalQuoteRevision(id: string, note: string) {
+  const wf = getWf(id); const job = jobOf(wf);
+  needRun(job);
+  if (wf.conf_at) fail('The final quote is already signed.');
+  const v = reviewDraft(job.id) ?? fail('There is no additional work under review.');
+  if (!note.trim()) fail('Record what the client would like changed.');
+  store.update('variations', v.id, { revision_open: true, revision_note: note.trim(), revision_at: new Date().toISOString() } as never, 'update', `${v.number}: client requested a revision — ${note.trim()}`);
+}
+
+/** The client declines the additional work: it leaves the final amount but stays on record as offered and declined. */
+export function declineAdditionalWork(id: string, f: { client_name: string; reason?: string; lat?: number; lng?: number; gps_note?: string; device?: string }) {
+  const wf = getWf(id); const job = jobOf(wf);
+  needRun(job);
+  if (wf.conf_at) fail('The final quote is already signed.');
+  const v = reviewDraft(job.id); if (!v || !v.items.length) fail('There is no additional work to decline.');
+  if (!f.client_name.trim()) fail('Enter the client name.');
+  store.update('variations', v!.id, { status: 'Rejected', client_name: f.client_name.trim(), notes: f.reason?.trim() || 'Declined by the client at the site', decided_by: uidNow(), decided_at: new Date().toISOString(), revision_open: false, sign_lat: f.lat, sign_lng: f.lng, sign_gps_note: f.gps_note, sign_device: f.device } as never, 'update', `${v!.number}: additional work offered and declined by ${f.client_name.trim()}`);
+  runAutomations();
+}
+
+/** "Approve Final Quote and Sign": approves the additions (if any) as a linked variation / change order and signs the conforme. */
+export function approveFinalQuote(id: string, f: { name: string; signature?: string; file?: string; file_name?: string; notes?: string; confirmed: boolean; lat?: number; lng?: number; gps_note?: string; device?: string }) {
+  const wf = getWf(id); const job = jobOf(wf);
+  needRun(job);
+  if (!wf.arr_at) fail('Record the site arrival first.');
+  if (wf.conf_at) fail('The final quote is already signed.');
+  const v = reviewDraft(job.id);
+  if (v?.revision_open) fail('The client asked for a revision. Update the additional work and present it again before signing.');
+  if (!f.confirmed) fail('Confirm that the final quote was reviewed with the client on site.');
+  if (!f.name.trim()) fail('Enter the client name.');
+  if (!f.signature && !f.file) fail('Capture the client signature or attach a photo / PDF of the signed final quote.');
+  const q = db().quotations.find((x) => x.id === job.quotation_id);
+  const now = new Date().toISOString();
+  let variationId: string | undefined;
+  if (v && v.items.length) {
+    const items = resolveReviewItems(db(), wf.panels, v.items);
+    if (items.some((i) => !(i.qty > 0))) fail('An additional line has no quantity. Update the additional work first.');
+    store.update('variations', v.id, { items, status: 'Approved', client_name: f.name.trim(), client_signature: f.signature, signed_file: f.file, signed_file_name: f.file_name, signed_at: now, decided_at: now, decided_by: uidNow(), sign_lat: f.lat, sign_lng: f.lng, sign_gps_note: f.gps_note, sign_device: f.device } as never, 'approve', `${v.number}: additional work approved by ${f.name.trim()} — change order`);
+    variationId = v.id;
+    const fc = finalContract(db(), db().jobs.find((j) => j.id === job.id)!);
+    store.update('jobs', job.id, { contract_amount: fc.finalNet }, 'update', `${job.number}: contract value ${fc.originalNet} + approved additions ${fc.variationsNet} = ${fc.finalNet}`);
+  }
+  const sm = finalQuoteSummary(db(), db().jobs.find((j) => j.id === job.id)!, { deposit: wf.conf_deposit });
+  store.update('workflows', id, { conf_at: nowLocal(), conf_by: uidNow(), conf_quotation_id: q?.id, conf_original_total: sm.originalTotal, conf_final_total: sm.finalTotal, conf_variation_id: variationId, conf_name: f.name.trim(), conf_signature: f.signature, conf_file: f.file, conf_file_name: f.file_name, conf_notes: f.notes, conf_lat: f.lat, conf_lng: f.lng, conf_gps_note: f.gps_note, conf_device: f.device } as never, 'approve', `${job.number}: final quote approved and signed by ${f.name.trim()} (final total ${sm.finalTotal})`);
+  runAutomations();
 }
 
 /* ================= Step 5: Start Work ================= */
@@ -236,6 +328,7 @@ function validateVariation(f: VariationInput) {
 export function updateVariation(id: string, f: VariationInput) {
   const v = db().variations.find((x) => x.id === id) ?? fail('Variation not found.');
   needRun(db().jobs.find((j) => j.id === v.job_id)!);
+  if (v.source === 'final_review') fail('Edit this addition from the Client Final Quote Review (step 4).');
   if (v.status !== 'Draft') fail('Only draft variations can be edited. Create a new variation instead.');
   validateVariation(f);
   return store.update('variations', id, f as never, 'update', `Variation ${v.number} updated`);
@@ -245,6 +338,7 @@ export function approveVariation(id: string, f: { client_name: string; signature
   const v = db().variations.find((x) => x.id === id) ?? fail('Variation not found.');
   const job = db().jobs.find((j) => j.id === v.job_id)!;
   needRun(job);
+  if (v.source === 'final_review') fail('Approve this addition from the Client Final Quote Review (step 4).');
   if (v.status !== 'Draft') fail(`This variation is already ${v.status.toLowerCase()}.`);
   if (!f.client_name.trim()) fail('Enter the client name.');
   if (!f.signature && !f.file) fail('Client approval needs a signature or an attached signed copy.');
@@ -256,6 +350,7 @@ export function approveVariation(id: string, f: { client_name: string; signature
 export function rejectVariation(id: string, note: string) {
   const v = db().variations.find((x) => x.id === id) ?? fail('Variation not found.');
   needRun(db().jobs.find((j) => j.id === v.job_id)!);
+  if (v.source === 'final_review') fail('Decline this addition from the Client Final Quote Review (step 4).');
   if (v.status !== 'Draft') fail(`This variation is already ${v.status.toLowerCase()}.`);
   if (!note.trim()) fail('Enter the reason the client declined.');
   store.update('variations', id, { status: 'Rejected', notes: note.trim(), decided_by: uidNow() } as never, 'update', `Variation ${v.number} declined by client`);
@@ -274,7 +369,7 @@ export function signServiceReport(id: string, f: ReportForm) {
   needRun(job);
   if (!wf.start_at) fail('Start the work before submitting the service report.');
   if (wf.rep_at) fail('The service report is already signed.');
-  const open = db().variations.filter((v) => v.job_id === job.id && v.status === 'Draft' && !v.deleted_at);
+  const open = openVariations(db(), job.id);
   if (open.length) fail(`${open.length} variation(s) are waiting for client approval (${open.map((v) => v.number).join(', ')}). Approve or decline them before the report is signed.`);
   if (!f.scope.trim()) fail('Describe the scope completed.');
   if (!f.method.trim()) fail('Describe the methodology and equipment used.');
@@ -411,7 +506,7 @@ export function arriveAtHq(id: string, f: { lat?: number; lng?: number; gps_note
 export interface ClosureGate { key: string; label: string; ok: boolean; hint?: string }
 export function closureGates(d: DB, job: Job, wf?: JobWorkflow): ClosureGate[] {
   const open = d.incidents.filter((i) => i.job_id === job.id && !i.deleted_at && ['Open', 'Investigating'].includes(i.status));
-  const pendingVar = d.variations.filter((v) => v.job_id === job.id && v.status === 'Draft' && !v.deleted_at);
+  const pendingVar = openVariations(d, job.id);
   return [
     { key: 'conf', label: 'Client conforme / approved quotation', ok: !!wf?.conf_at },
     { key: 'att', label: 'Site attendance confirmed', ok: !!wf?.arr_at && !!wf.arr_crew_present?.length },

@@ -13,7 +13,7 @@ import type { Job, JobWorkflow, QuoteItem, Variation } from '@/lib/types';
 
 export function VariationStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
   const { db } = useAuth();
-  const vars = db.variations.filter((v) => v.job_id === job.id && !v.deleted_at);
+  const vars = db.variations.filter((v) => v.job_id === job.id && !v.deleted_at && !(v.source === 'final_review' && v.status === 'Draft' && !v.items.length));
   const fc = finalContract(db, job);
   const [edit, setEdit] = useState<Variation | 'new' | null>(null);
   const [sign, setSign] = useState<Variation | null>(null);
@@ -29,14 +29,15 @@ export function VariationStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run
         const t = variationTotals(v);
         return (
           <div key={v.id} className={`itemcard ${v.status === 'Approved' ? 'ok' : v.status === 'Rejected' ? 'bad' : ''}`}>
-            <div className="row between"><div><b>{v.number}</b> <Badge tone={v.status === 'Approved' ? 'green' : v.status === 'Rejected' ? 'red' : 'amber'}>{v.status === 'Draft' ? 'Awaiting client approval' : v.status === 'Rejected' ? 'Declined' : v.status}</Badge></div><b>{money(t.total)}</b></div>
+            <div className="row between"><div><b>{v.number}</b> {v.source === 'final_review' && <Badge tone="gray">Final quote review</Badge>} <Badge tone={v.status === 'Approved' ? 'green' : v.status === 'Rejected' ? 'red' : 'amber'}>{v.status === 'Draft' ? 'Awaiting client approval' : v.status === 'Rejected' ? 'Declined' : v.status}</Badge></div><b>{money(t.total)}</b></div>
             <div className="small">{v.reason}</div>
             <ul className="small" style={{ margin: '6px 0', paddingLeft: 18 }}>{v.items.map((i, k) => <li key={k}>{i.description} — {i.qty} {i.unit} × {money(i.rate)}{i.discount ? ` − ${money(i.discount)}` : ''}</li>)}</ul>
             {v.panel_row_ids.length > 0 && <div className="small muted">Linked panels: {wf.panels.filter((p) => v.panel_row_ids.includes(p.id)).map((p) => `${p.area} ${p.side} (${rowPanels(p)})`).join(', ')}</div>}
             {v.status === 'Approved' && <div className="small muted">Approved by {v.client_name} · {fmtDateTime(v.signed_at)}</div>}
-            {v.status === 'Rejected' && <div className="small muted">Declined: {v.notes}</div>}
+            {v.status === 'Rejected' && <div className="small muted">Offered and declined: {v.notes}</div>}
+            {v.source === 'final_review' && v.status === 'Draft' && <div className="small muted">Waiting for the client's decision in step 4 (Client Final Quote Review).</div>}
             <div className="row" style={{ marginTop: 6 }}>
-              {run && v.status === 'Draft' && <><button className="btn sm" onClick={() => setEdit(v)}>Edit</button><button className="btn sm primary" onClick={() => setSign(v)}>Client approval &amp; signature</button><button className="btn sm danger" onClick={async () => { const n = await ask('Client declined variation', 'Reason'); if (n) attempt(() => rejectVariation(v.id, n), 'Variation declined'); }}>Declined</button></>}
+              {run && v.status === 'Draft' && v.source !== 'final_review' && <><button className="btn sm" onClick={() => setEdit(v)}>Edit</button><button className="btn sm primary" onClick={() => setSign(v)}>Client approval &amp; signature</button><button className="btn sm danger" onClick={async () => { const n = await ask('Client declined variation', 'Reason'); if (n) attempt(() => rejectVariation(v.id, n), 'Variation declined'); }}>Declined</button></>}
               <button className="btn sm" onClick={() => attempt(() => variationPdf(db, v))}>PDF</button>
             </div>
           </div>

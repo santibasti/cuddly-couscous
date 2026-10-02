@@ -337,8 +337,11 @@ export function invoiceFromJob(jobId: string): Invoice {
   const fc = finalContract(db(), j);
   const varItems = db().variations.filter((v) => v.job_id === jobId && v.status === 'Approved' && !v.deleted_at)
     .flatMap((v) => v.items.map((it, k) => ({ ...it, description: `${v.number}: ${it.description}`, discount: it.discount + (k === 0 ? v.discount : 0) })));
+  const wfr = db().workflows.find((w) => w.job_id === jobId && !w.deleted_at);
+  const approvedVars = db().variations.filter((v) => v.job_id === jobId && v.status === 'Approved' && !v.deleted_at).map((v) => v.number);
+  const notes = [approvedVars.length ? `Includes approved additional work: ${approvedVars.join(', ')}.` : '', wfr?.conf_deposit ? `Deposit / prior payment recorded at the site conforme: ${money(wfr.conf_deposit)}${wfr.conf_deposit_note ? ` (${wfr.conf_deposit_note})` : ''} — record the payment against this invoice.` : ''].filter(Boolean).join(' ');
   return saveInvoice({
-    client_id: j.client_id, site_id: j.site_id, job_id: j.id, quotation_id: q?.id, issue_date: today(), due_date: addDays(today(), db().settings.payment_terms_days),
+    notes: notes || undefined, client_id: j.client_id, site_id: j.site_id, job_id: j.id, quotation_id: q?.id, issue_date: today(), due_date: addDays(today(), db().settings.payment_terms_days),
     items: [...(q?.items ?? [{ service_code: j.service_codes[0], description: j.scope, qty: 1, unit: 'lot', rate: fc.originalNet, discount: 0 }]), ...varItems],
     vat_mode: q?.vat_mode ?? (client.vat_status === 'VAT-registered' ? 'exclusive' : 'none'), vat_rate: db().settings.vat_rate, discount: q?.discount ?? 0,
     withholding_rate: client.withholding_rate, status: 'Draft', branch_id: j.branch_id,

@@ -111,6 +111,7 @@ export interface Inquiry extends Base {
 }
 
 export type QuoteStatus = 'Draft' | 'Sent' | 'Approved' | 'Rejected' | 'Expired';
+export type AdditionalCategory = 'glass' | 'solar' | 'floor' | 'wall' | 'roof' | 'other';
 export interface QuoteItem {
   service_code: ServiceCode;
   description: string;
@@ -118,6 +119,12 @@ export interface QuoteItem {
   unit: string;
   rate: number;
   discount: number; // peso amount off this line
+  // additional-work lines (Client Final Quote Review) only:
+  category?: AdditionalCategory;
+  entered_qty?: number;      // what was counted / entered; qty is the billable quantity (minimum applied)
+  linked_panels?: boolean;   // glass: quantity comes from the panel-counting table
+  photo?: string;            // before photo
+  note?: string;             // reason for the additional work
 }
 export interface Quotation extends Base {
   number: string;
@@ -474,6 +481,7 @@ export interface JobWorkflow extends Base {
   arr_contact_name?: string; arr_contact_mobile?: string; arr_notes?: string; arr_crew_present?: string[]; arr_crew_absent?: { id: string; reason: string }[];
   // 4 Quotation / Conforme
   conf_at?: string; conf_by?: string; conf_quotation_id?: string; conf_original_total?: number; conf_name?: string; conf_signature?: string; conf_file?: string; conf_file_name?: string; conf_notes?: string;
+  conf_variation_id?: string; conf_final_total?: number; conf_deposit?: number; conf_deposit_note?: string; conf_lat?: number; conf_lng?: number; conf_gps_note?: string; conf_device?: string;
   // 5 Start Work
   start_at?: string; start_by?: string; start_crew_present?: string[]; start_safety?: boolean; start_ppe?: boolean; start_photos: string[]; start_notes?: string;
   // 7 Service Accomplishment Report
@@ -502,6 +510,11 @@ export interface Variation extends Base {
   status: VariationStatus;
   client_name?: string; client_signature?: string; signed_at?: string; signed_file?: string; signed_file_name?: string;
   decided_by?: string; notes?: string;
+  // Client Final Quote Review (step 4): additions offered at the site before the conforme is signed
+  source?: 'final_review';
+  revision_open?: boolean; revision_note?: string; revision_at?: string;
+  decided_at?: string;       // when the client approved / declined
+  sign_lat?: number; sign_lng?: number; sign_gps_note?: string; sign_device?: string;
 }
 export type IncidentType = 'Missing asset' | 'Damaged asset' | 'Vehicle damage' | 'Material shortage' | 'Missing PPE' | 'Safety' | 'Other';
 export interface IncidentReport extends Base {

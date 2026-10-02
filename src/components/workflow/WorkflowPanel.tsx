@@ -12,7 +12,7 @@ import {
   FUEL_LEVELS, arriveAtHq, arriveAtSite, canRunWorkflow, closeJob, closureGates, completeHqChecklist, correctWorkflow, dispatchJob, leaveSite, matchScan, openWorkflow, saveHqDraft, startWork, workflowFor,
 } from '@/lib/workflow';
 import { fmtDateTime, fmtStamp, nowLocal, round2 } from '@/lib/util';
-import { clearDraft, confirmLeave } from '@/lib/sync';
+import { clearDraft, confirmLeave, draftKeys } from '@/lib/sync';
 import { useDraft } from '@/lib/useDraft';
 import { DraftBar, PresetChips, Stepper, Toggle } from '@/components/touch';
 import { PRESETS } from '@/lib/presets';
@@ -28,7 +28,7 @@ export function Step({ n, state, at, by, children, wfId, done }: { n: number; st
   const [nonce, setNonce] = useState(0);
   const key = `d:${wfId}:${DRAFT_KEYS[n - 1]}`;
   // once the step is submitted its draft is no longer needed
-  useEffect(() => { if (done) { clearDraft(key); clearDraft(`${key}:panels`); } }, [done, key]);
+  useEffect(() => { if (done) draftKeys().filter((k) => k.startsWith(key)).forEach(clearDraft); }, [done, key]);
   // "Discard draft" remounts the step with fresh, empty entries
   useEffect(() => {
     const f = (e: Event) => { if (String((e as CustomEvent).detail).startsWith(key)) setNonce((x) => x + 1); };

@@ -5,9 +5,9 @@ import type {
   Variation,
   JobStatus,
   Asset, Attendance, DB, Employee, Holiday, Invoice, Job, PayrollAdjustment, PayrollLine, PayrollPeriod,
-  Payment, Quotation, QuoteItem, ServiceDef, Settings, StatutoryRate,
+  Payment, Quotation, QuoteItem, ServiceDef, Settings, StatutoryRate, AdditionalCategory, ServiceCode,
 } from './types';
-import { addDays, diffDays, dow, eachDay, minutesBetween, round2, sum, today } from './util';
+import { addDays, diffDays, dow, eachDay, minutesBetween, nowLocal, round2, sum, today } from './util';
 
 /* ============ Job status groups ============ */
 /** Work finished (legacy 'Completed' counts as closed). */
@@ -36,7 +36,7 @@ export function workflowProgress(wf: JobWorkflow | undefined, variations: Variat
   const w = wf ?? ({} as Partial<JobWorkflow>);
   const stamps: ({ at?: string; by?: string } | undefined)[] = [
     { at: w.hq_at, by: w.hq_by }, { at: w.disp_at, by: w.disp_by }, { at: w.arr_at, by: w.arr_by }, { at: w.conf_at, by: w.conf_by }, { at: w.start_at, by: w.start_by },
-    variations.length ? { at: (variations[variations.length - 1].signed_at ?? variations[variations.length - 1].created_at).slice(0, 16), by: variations[variations.length - 1].decided_by ?? variations[variations.length - 1].created_by } : undefined,
+    variations.length ? { at: nowLocal(new Date(variations[variations.length - 1].signed_at ?? variations[variations.length - 1].created_at)), by: variations[variations.length - 1].decided_by ?? variations[variations.length - 1].created_by } : undefined,
     { at: w.rep_at, by: w.rep_by }, { at: w.rc_at, by: w.rc_by }, { at: w.leave_at, by: w.leave_by }, { at: w.hqa_at, by: w.hqa_by }, { at: w.closed_at, by: w.closed_by },
   ];
   const done = [!!w.hq_at, !!w.disp_at, !!w.arr_at, !!w.conf_at, !!w.start_at, !!w.rep_at && true, !!w.rep_at, !!w.rc_at, !!w.leave_at, !!w.hqa_at, !!w.closed_at];
@@ -561,3 +561,82 @@ export function finalContract(d: Pick<DB, 'quotations' | 'variations'>, job: Job
   return { originalTotal: round2(originalTotal), originalNet: round2(originalNet), variationsTotal: round2(varTotal), variationsNet: round2(varNet), finalTotal: round2(originalTotal + varTotal), finalNet: round2(originalNet + varNet) };
 }
 export const round2Safe = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
+
+/* ============ Client Final Quote Review: additional work ============ */
+export const ADDITIONAL_CATEGORIES: { key: AdditionalCategory; label: string; code: ServiceCode; units: string[] }[] = [
+  { key: 'glass', label: 'Additional Glass Panels', code: 'GLASS_EXT', units: ['panel'] },
+  { key: 'solar', label: 'Solar Panel Cleaning', code: 'SOLAR', units: ['panel'] },
+  { key: 'floor', label: 'Floor / Hardscape Cleaning', code: 'FLOOR', units: ['sqm'] },
+  { key: 'wall', label: 'Wall Cleaning', code: 'WALL', units: ['sqm'] },
+  { key: 'roof', label: 'Roof Cleaning', code: 'ROOF', units: ['sqm'] },
+  { key: 'other', label: 'Other Custom Service', code: 'OTHER', units: ['lot', 'unit', 'sqm', 'panel'] },
+];
+export const UNIT_OPTIONS = ['panel', 'sqm', 'unit', 'lot', 'custom'] as const;
+export const categoryLabel = (k?: AdditionalCategory) => ADDITIONAL_CATEGORIES.find((c) => c.key === k)?.label ?? 'Additional work';
+
+/** TopMop defaults come from the editable service price list (Admin → Pricing): glass ₱140/panel, solar ₱245/panel (min 20), floor & wall ₱125/sqm (min 50), roof ₱145/sqm (min 100). */
+export function categoryDefaults(services: ServiceDef[], key: AdditionalCategory): { rate: number; min: number; unit: string } {
+  const cat = ADDITIONAL_CATEGORIES.find((c) => c.key === key)!;
+  const s = services.find((x) => x.code === cat.code);
+  if (key === 'other' || !s) return { rate: 0, min: 0, unit: cat.units[0] };
+  if (key === 'glass') return { rate: s.excess_rate ?? s.rate, min: 0, unit: 'panel' };
+  return { rate: s.rate, min: s.minimum_qty, unit: s.unit };
+}
+
+/** Original / additional / external / internal / total panels from the panel-counting table. */
+export function panelBreakdown(d: Pick<DB, 'services'>, q: Quotation | undefined, panels: PanelRow[]) {
+  const t = panelTotals(panels);
+  const add = panels.filter((p) => p.additional);
+  return { original: quotedPanels(d, q), additional: sum(add, rowPanels), additionalExternal: sum(add, (p) => p.external || 0), additionalInternal: sum(add, (p) => p.internal || 0), external: t.external, internal: t.internal, total: t.total };
+}
+
+/** Normalises additional-work lines: glass lines follow the panel table, minimum quantities are applied. */
+export function resolveReviewItems(d: Pick<DB, 'services'>, panels: PanelRow[], items: QuoteItem[]): QuoteItem[] {
+  return items.map((it) => {
+    if (!it.category) return it;
+    const def = categoryDefaults(d.services, it.category);
+    let entered = it.entered_qty ?? it.qty;
+    let description = it.description;
+    if (it.category === 'glass' && it.linked_panels) {
+      const b = panelBreakdown(d, undefined, panels);
+      entered = b.additional;
+      const areas = [...new Set(panels.filter((p) => p.additional).map((p) => `${p.area} ${p.side}`))].join(', ');
+      if (!description.trim() || description.startsWith('Additional glass panels –')) description = `Additional glass panels – ${b.additionalExternal} external, ${b.additionalInternal} internal${areas ? ` (${areas})` : ''}`;
+    }
+    const qty = def.min > 0 && entered > 0 ? Math.max(entered, def.min) : entered;
+    return { ...it, description, entered_qty: entered, qty };
+  });
+}
+
+/** One line: amount after discount, its VAT and total (VAT follows the document's mode). */
+export function lineTotals(it: QuoteItem, mode: 'exclusive' | 'inclusive' | 'none', vatRate: number) {
+  const t = docTotals([it], 0, mode, vatRate);
+  return { amount: t.net, vat: t.vat, total: t.total, discount: t.discount };
+}
+
+export interface FinalQuoteSummary {
+  originalTotal: number; originalNet: number; originalDiscount: number; originalVat: number;
+  additionalTotal: number; additionalNet: number; additionalDiscount: number; additionalVat: number;
+  discount: number; vat: number; finalTotal: number; deposit: number; balance: number;
+}
+/** Original quote + additional work → final bill. `pending` previews additions that the client has not approved yet. */
+export function finalQuoteSummary(d: Pick<DB, 'quotations' | 'variations'>, job: Job, o: { pending?: { items: QuoteItem[]; vat_mode: Variation['vat_mode']; vat_rate: number }; deposit?: number } = {}): FinalQuoteSummary {
+  const q = d.quotations.find((x) => x.id === job.quotation_id);
+  const orig = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
+  const fc = finalContract(d, job);
+  const approved = d.variations.filter((v) => v.job_id === job.id && v.status === 'Approved' && !v.deleted_at).map(variationTotals);
+  const pend = o.pending?.items.length ? docTotals(o.pending.items, 0, o.pending.vat_mode, o.pending.vat_rate) : undefined;
+  const parts = pend ? [...approved, pend] : approved;
+  const additionalTotal = round2(sum(parts, (t) => t.total)), additionalNet = round2(sum(parts, (t) => t.net)), additionalDiscount = round2(sum(parts, (t) => t.discount)), additionalVat = round2(sum(parts, (t) => t.vat));
+  const originalTotal = orig?.total ?? fc.originalTotal;
+  const finalTotal = round2(originalTotal + additionalTotal);
+  const deposit = round2(Math.max(0, o.deposit ?? 0));
+  return {
+    originalTotal, originalNet: orig?.net ?? fc.originalNet, originalDiscount: orig?.discount ?? 0, originalVat: orig?.vat ?? 0,
+    additionalTotal, additionalNet, additionalDiscount, additionalVat,
+    discount: round2((orig?.discount ?? 0) + additionalDiscount), vat: round2((orig?.vat ?? 0) + additionalVat),
+    finalTotal, deposit, balance: round2(Math.max(0, finalTotal - deposit)),
+  };
+}
+/** Additions waiting for the client (drafts with at least one line). */
+export const openVariations = (d: Pick<DB, 'variations'>, jobId: string) => d.variations.filter((v) => v.job_id === jobId && v.status === 'Draft' && v.items.length > 0 && !v.deleted_at);

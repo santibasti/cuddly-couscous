@@ -1,5 +1,5 @@
 import type { DB, Invoice, Job, Payment, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
-import { docTotals, finalContract, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
+import { categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
 import { fmtDate, fmtDateTime, nowLocal, round2, sum } from './util';
 import { store } from './store';
 
@@ -9,7 +9,7 @@ export interface ExportTable {
 }
 
 /** jsPDF's built-in fonts have no ₱ glyph; print PHP instead and normalise other symbols. */
-const clean = (t: string) => String(t ?? '').replace(/₱/g, 'PHP ').replace(/→/g, '->').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, '...');
+const clean = (t: string) => String(t ?? '').replace(/₱/g, 'PHP ').replace(/→/g, '->').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, '...').replace(/[–—]/g, '-').replace(/·/g, '|').replace(/×/g, 'x');
 const pm = (n: number) => 'PHP ' + round2(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const NAVY: [number, number, number] = [11, 37, 69];
 const CYAN: [number, number, number] = [34, 193, 195];
@@ -295,27 +295,63 @@ export async function serviceReportPdf(db: DB, j: Job) {
   store.audit('export', 'jobs', j.id, `Exported service accomplishment report ${j.number}`);
 }
 
-/* ---------- Client conforme (job workflow step 4) ---------- */
+/* ---------- Final quote & conforme: original quotation + additional work + final bill (job workflow step 4) ---------- */
 export async function conformePdf(db: DB, j: Job) {
   const { doc, autoTable } = await newPdf();
   const wf = db.workflows.find((w) => w.job_id === j.id && !w.deleted_at);
   const q = db.quotations.find((x) => x.id === (wf?.conf_quotation_id ?? j.quotation_id));
-  header(doc, 'Quotation / Conforme', q?.number ?? j.number);
-  let y = partyBlock(doc, 34, ['Client / site', clientLines(db, j.client_id, j.site_id)], ['Reference', [`Original quotation: ${q?.number ?? '—'}`, `Job ref: ${j.number}`, `Reviewed on site: ${fmtDateTime(wf?.conf_at)}`]]);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Scope', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); y = wrapText(doc, q?.scope ?? j.scope, 12, y + 5, 186) + 3;
+  const w = doc.internal.pageSize.getWidth();
+  header(doc, 'Final Quote & Conforme', q?.number ?? j.number);
+  let y = partyBlock(doc, 34, ['Client / site', clientLines(db, j.client_id, j.site_id)], ['Reference', [`Original quotation: ${q?.number ?? '—'}`, `Job ref: ${j.number}`, `Presented on site: ${fmtDateTime(wf?.conf_at)}`]]);
+  const room = (n: number) => { if (y > 285 - n) { doc.addPage(); y = 16; } };
+  const h = (t: string) => { room(20); doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...NAVY); doc.text(t, 12, y); doc.setTextColor(20, 36, 58); y += 5; };
+
+  h('1. Original Scope of Work');
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); y = wrapText(doc, q?.scope ?? j.scope, 12, y, 186) + 3;
   if (q) y = itemsTable(doc, autoTable, y, q.items, q.vat_mode, q.vat_rate, q.discount) + 3;
   if (wf?.panels.length) {
-    const pt = panelTotals(wf.panels);
+    const pt = panelTotals(wf.panels); const pb = panelBreakdown(db, q, wf.panels);
     autoTable(doc, { startY: y, head: [['Area / floor', 'Side', 'External', 'Internal', 'Total', 'Notes']], body: wf.panels.map((p) => [p.area, p.side, p.external, p.internal, rowPanels(p), clean(`${p.additional ? '[additional] ' : ''}${p.notes ?? ''}`)]), foot: [['Total', '', pt.external, pt.internal, pt.total, '']], ...tableStyle, footStyles: { fillColor: [234, 239, 244], textColor: NAVY, fontStyle: 'bold' }, margin: { left: 12, right: 12 } });
-    y = ymax(doc) + 6;
+    y = ymax(doc) + 3; doc.setFontSize(9); doc.text(`Panels: ${pb.original} in original quotation, ${pb.additional} additional, ${pb.external} external, ${pb.internal} internal, ${pb.total} counted in total.`, 12, y); y += 7;
   }
-  if (q?.terms) { if (y > 235) { doc.addPage(); y = 16; } doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Terms and exclusions', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); y = wrapText(doc, q.terms, 12, y + 5, 186) + 4; }
-  if (y > 240) { doc.addPage(); y = 16; }
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Conforme', 12, y + 4); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-  doc.text('I have reviewed the quotation above and agree to the scope, rates and terms.', 12, y + 10);
-  doc.text(`${wf?.conf_name ?? '—'} - ${fmtDateTime(wf?.conf_at)}`, 12, y + 16); sigImg(doc, wf?.conf_signature, 12, y + 18);
-  footer(doc); doc.save(`conforme-${j.number}.pdf`);
-  store.audit('export', 'jobs', j.id, `Exported conforme ${j.number}`);
+  if (q?.terms) { room(30); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text('Terms and exclusions', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); y = wrapText(doc, q.terms, 12, y + 4.5, 186) + 4; }
+
+  h('2. Additional Work Requested / Confirmed at Site');
+  const vars = db.variations.filter((v) => v.job_id === j.id && !v.deleted_at && (v.status === 'Approved' || (v.source === 'final_review' && (v.status === 'Rejected' || v.items.length > 0)))).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  if (!vars.length) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.text('No additional work was requested.', 12, y); y += 7; }
+  for (const v of vars) {
+    room(40);
+    const label = v.status === 'Approved' ? 'APPROVED by client' : v.status === 'Rejected' ? 'OFFERED - DECLINED by client (not included in the final amount)' : 'AWAITING client approval (not included)';
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text(`${v.number} - ${label}`, 12, y); y += 2;
+    autoTable(doc, { startY: y, head: [['Category', 'Description / area', 'Qty', 'Unit', 'Rate', 'Discount', 'VAT', 'Line total']], ...tableStyle, margin: { left: 12, right: 12 }, columnStyles: { 2: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' } },
+      body: v.items.map((i) => { const t = lineTotals(i, v.vat_mode, v.vat_rate); return [categoryLabel(i.category), clean(`${i.description}${i.note ? ` (${i.note})` : ''}${i.entered_qty !== undefined && i.entered_qty !== i.qty ? ` [counted ${i.entered_qty}, minimum ${i.qty} billed]` : ''}`), i.qty, i.unit, pm(i.rate), i.discount ? pm(i.discount) : '-', pm(t.vat), pm(t.total)]; }) });
+    y = ymax(doc) + 3;
+    if (v.status === 'Approved') { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(`Approved by ${clean(v.client_name ?? '')} on ${fmtDateTime(v.signed_at)}`, 12, y); y += 5; }
+    if (v.status === 'Rejected' && v.notes) { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(clean(`Client note: ${v.notes}`), 12, y); y += 5; }
+    const ph = v.items.filter((i) => i.photo).slice(0, 4);
+    for (const [k, i] of ph.entries()) { try { room(36); const r = await toRaster(i.photo!); doc.addImage(r.data, r.fmt, 12 + k * 46, y, 42, 28); } catch { /* skip */ } }
+    if (ph.length) y += 32;
+  }
+
+  h('3. Final Billing Summary');
+  const sm = finalQuoteSummary(db, j, { deposit: wf?.conf_deposit });
+  autoTable(doc, { startY: y, body: [
+    ['Original quote total (incl. VAT)', pm(sm.originalTotal)], ['Approved additional work total (incl. VAT)', pm(sm.additionalTotal)],
+    [`Discount included`, pm(sm.discount)], ['VAT included', pm(sm.vat)], ['FINAL TOTAL BILL', pm(sm.finalTotal)],
+    ['Less: deposit / prior payment' + (wf?.conf_deposit_note ? ` (${wf.conf_deposit_note})` : ''), '- ' + pm(sm.deposit)], ['BALANCE DUE', pm(sm.balance)],
+  ], theme: 'plain', styles: { fontSize: 10, cellPadding: 1.8 }, columnStyles: { 1: { halign: 'right' } }, margin: { left: 80, right: 12 },
+    didParseCell: (d: { row: { index: number }; cell: { styles: { fontStyle: string } } }) => { if (d.row.index === 4 || d.row.index === 6) d.cell.styles.fontStyle = 'bold'; } });
+  y = ymax(doc) + 6;
+  room(60); doc.setFont('helvetica', 'italic'); doc.setFontSize(9); y = wrapText(doc, 'Any additional work listed above has been discussed with and approved by the client before commencement.', 12, y, 186) + 4;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Client conforme', 12, y); y += 5; doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+  doc.text('I have reviewed the original quotation, the additional work and the final bill above, and I agree to the scope, rates and terms.', 12, y, { maxWidth: 186 }); y += 9;
+  doc.text(`${clean(wf?.conf_name ?? '—')} - ${fmtDateTime(wf?.conf_at)}`, 12, y);
+  const where = wf?.conf_lat !== undefined ? `GPS ${wf.conf_lat}, ${wf.conf_lng}` : wf?.conf_gps_note ? `GPS not captured (${clean(wf.conf_gps_note)})` : '';
+  doc.setFontSize(8); doc.setTextColor(110, 125, 145); doc.text(clean([where, wf?.conf_device ? `Device: ${wf.conf_device}` : ''].filter(Boolean).join('   ')), 12, y + 4.5); doc.setTextColor(20, 36, 58);
+  sigImg(doc, wf?.conf_signature, 12, y + 7);
+  void w;
+  footer(doc); doc.save(`final-quote-${j.number}.pdf`);
+  store.audit('export', 'jobs', j.id, `Exported final quote & conforme ${j.number}`);
 }
 
 /* ---------- Variation / revised quotation (job workflow step 6) ---------- */

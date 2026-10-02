@@ -4,7 +4,7 @@ import { Bar as RBar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tool
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, PageHead, Stat, Bar, Empty } from '@/components/ui';
 import { addDays, eachDay, fmtDate, fmtTime, inRange, monthEnd, monthStart, money, moneyShort, nowLocal, pct, round2, sum, today, weekStart } from '@/lib/util';
-import { AWAY_JOB, FIELD_JOB, docTotals, invoiceBalance, invoiceTotals, isDone, isOpen, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
+import { AWAY_JOB, FIELD_JOB, variationTotals, docTotals, invoiceBalance, invoiceTotals, isDone, isOpen, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
 import { isOverdue } from '@/lib/actions';
 import type { DB, Invoice, ServiceCode } from '@/lib/types';
 
@@ -259,7 +259,7 @@ function compute(db: DB, from: string, to: string, f: { branch: string; service:
   const payrollWaiting = payrollPeriods.filter((p) => p.status === 'For Approval').length;
   const upcoming = jobs.filter((j) => j.start_at.slice(0, 10) > T && j.start_at.slice(0, 10) <= addDays(T, 7) && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status));
   const approvedQuotes = live(db.quotations).filter((q) => q.status === 'Approved' && !db.jobs.some((j) => j.quotation_id === q.id && j.status === 'Cancelled') && !db.invoices.some((i) => i.quotation_id === q.id && i.status === 'Approved'));
-  const expected = sum(approvedQuotes.filter((q) => (!f.client || q.client_id === f.client) && (!f.branch || q.branch_id === f.branch)), (q) => docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).total);
+  const expected = sum(approvedQuotes.filter((q) => (!f.client || q.client_id === f.client) && (!f.branch || q.branch_id === f.branch)), (q) => docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).total + sum(live(db.variations).filter((v) => v.status === 'Approved' && db.jobs.some((j) => j.id === v.job_id && j.quotation_id === q.id)), (v) => variationTotals(v).total));
   const billed = sum(invRange, (i) => invoiceTotals(i).total);
   const collected = sum(live(db.payments).filter((p) => !p.reversed && inRange(p.date, from, to) && (!f.client || p.client_id === f.client)), (p) => p.amount + p.wht_amount);
   const paidOut = sum(live(db.expenses).filter((e) => e.paid && e.approval === 'Approved' && !e.reversed && inRange(e.date, from, to)), (e) => e.amount - e.wht);

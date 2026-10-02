@@ -12,7 +12,7 @@ payroll, inventory, equipment out/in, expenses, receivables, job costing, report
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm test             # 54 tests: pricing rules, payroll maths, store rules, seed integrity, 11-step job workflow, drafts & sync status
+npm test             # 58 tests: pricing rules, payroll maths, store rules, seed integrity, 11-step job workflow, drafts & sync status
 npm run build        # type-check + production build
 ```
 
@@ -40,6 +40,14 @@ The field screens (Job Card workflow, Equipment checklists, Site Arrival, Attend
 * **Camera, GPS, QR, signature:** photo buttons open the tablet camera directly (plus “From gallery”); GPS capture on departure / arrival / leaving / HQ and attendance; QR **and barcode** scanning through the camera (native `BarcodeDetector` where the browser has it, QR fallback elsewhere, typed code always works); touch / stylus signature pads that keep the signature when the tablet is rotated.
 * **Drafts & sync status:** every step auto-saves what you type to the tablet and restores it after a reload, crash or lost connection. A status chip shows **Saved · Saving… · Offline Draft · Synced** (top bar and on each step). Leaving a step or the app with unsubmitted entries asks first.
 * **Install:** open the site over HTTPS in Chrome (Android) or Safari (iPad → Share → Add to Home Screen). The service worker caches the app so it opens with no signal.
+
+## Client Final Quote Review (workflow step 4)
+
+Before the client signs on site, the Team Leader (or Admin) can add optional **additional work** — Additional Glass Panels, Solar Panel Cleaning, Floor / Hardscape, Wall, Roof or any custom service — and present one clean, tablet-friendly page to the client: **1 Original Scope of Work · 2 Additional Work Requested / Confirmed at Site · 3 Final Billing Summary** (original total, additional work, discount, VAT, final total bill, deposit, balance due) with the required notice.
+
+* **Rates:** TopMop price-list defaults (glass ₱140/panel, solar ₱245/panel min 20, floor & wall ₱125/sqm min 50, roof ₱145/sqm min 100 — editable in Admin → Pricing). Minimums are applied automatically. Only an Operations Manager / Admin can change a rate or give a discount. Glass lines are linked to the panel-counting table (original, additional, external, internal, total panels).
+* **Client decision:** *Approve Final Quote and Sign* (name, touch signature, date/time, device and GPS), *Decline Additional Work* (removed from the bill but kept as “offered and declined”), or *Request Revision* (the quote stays open until it is re-presented). Work cannot start until the client has signed.
+* **Records:** the original quotation is read-only; approved additions are saved as a linked **variation / change order** and raise the job's contract value; everything is audited. One PDF contains the original quote, the additions and the final bill. Approved amounts flow into the invoice (with the deposit noted), receivables, revenue, expected-billing and job profitability.
 
 ## Modules
 

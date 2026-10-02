@@ -724,6 +724,12 @@ export function seedDB(): DB {
         panel_row_ids: [wf.panels[3].id], status: 'Approved', client_name: sites.find((x) => x.id === j.site_id)!.contact_person, client_signature: svgPhoto('Signature', '#123A63'), signed_at: `${d0}T10:30:00.000Z`, decided_by: 'u-lead',
       };
       variations.push(v);
+      // an extra the client turned down at the conforme: kept on record, not in the final amount
+      variations.push({
+        ...base('var', d0), job_id: j.id, number: `${j.number}-V2`, reason: 'Solar panel cleaning offered at the site', source: 'final_review', status: 'Rejected', discount: 0,
+        items: [{ service_code: 'SOLAR', category: 'solar', description: 'Solar panels – carport roof', qty: 20, entered_qty: 14, unit: 'panel', rate: 245, discount: 0, note: 'Client requested a price at the site' }],
+        vat_mode: v.vat_mode, vat_rate: v.vat_rate, panel_row_ids: [], client_name: v.client_name, notes: 'Will arrange separately', decided_by: 'u-lead', decided_at: `${d0}T08:50:00.000Z`,
+      });
       j.contract_amount = round2(j.contract_amount + docTotals(v.items, v.discount, v.vat_mode, v.vat_rate).net);
     }
   });

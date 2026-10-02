@@ -232,3 +232,103 @@ describe('return check, incidents and closure', () => {
     expect(db().audit.find((a) => a.record_id === sc.job.id && a.reason === 'Admin close')).toBeTruthy();
   });
 });
+
+describe('Client Final Quote Review', () => {
+  const upToArrival = (label: string, leaderEmp: string) => {
+    const sc = scenario(label, leaderEmp);
+    const q = db().quotations.find((x) => x.status === 'Approved')!;
+    store.update('jobs', sc.job.id, { quotation_id: q.id, contract_amount: B.docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).net } as never);
+    const wf = W.openWorkflow(sc.job.id);
+    W.completeHqChecklist(wf.id, hqForm(wf) as never);
+    W.dispatchJob(wf.id, { lat: 1, lng: 1, confirmed: true });
+    W.arriveAtSite(wf.id, arrForm([leaderEmp]));
+    return { ...sc, wf, q };
+  };
+  const glass = { service_code: 'GLASS_EXT' as const, category: 'glass' as const, description: '', qty: 0, unit: 'panel', rate: 140, discount: 0, linked_panels: true };
+  const solar = { service_code: 'SOLAR' as const, category: 'solar' as const, description: 'Solar panels – carport', qty: 14, unit: 'panel', rate: 245, discount: 0 };
+  const panels = [{ id: 'p1', area: '1st Floor', side: 'Front', external: 10, internal: 2 }, { id: 'p2', area: 'Roof Deck', side: 'Rear', external: 6, internal: 2, additional: true }];
+
+  it('uses the price-list defaults, applies minimums and links glass to the panel table', async () => {
+    await as('owner@topmop.ph');
+    const sv = db().services;
+    expect(B.categoryDefaults(sv, 'glass')).toMatchObject({ rate: 140, min: 0 });
+    expect(B.categoryDefaults(sv, 'solar')).toMatchObject({ rate: 245, min: 20 });
+    expect(B.categoryDefaults(sv, 'floor')).toMatchObject({ rate: 125, min: 50 });
+    expect(B.categoryDefaults(sv, 'wall')).toMatchObject({ rate: 125, min: 50 });
+    expect(B.categoryDefaults(sv, 'roof')).toMatchObject({ rate: 145, min: 100 });
+    const [g, s] = B.resolveReviewItems(db(), panels, [glass, solar]);
+    expect(g.qty).toBe(8); expect(g.description).toContain('6 external, 2 internal');
+    expect(s.qty).toBe(20); expect(s.entered_qty).toBe(14);       // minimum 20 panels billed
+    expect(B.panelBreakdown(db(), undefined, panels)).toMatchObject({ additional: 8, external: 16, internal: 4, total: 20 });
+    expect(B.lineTotals(s, 'exclusive', 12)).toMatchObject({ amount: 4900, vat: 588, total: 5488 });
+  });
+
+  it('only an Operations Manager / Admin may change a default rate or give a discount', async () => {
+    await as('owner@topmop.ph');
+    const lead = db().users.find((u) => u.email === 'leader@topmop.ph')!.employee_id!;
+    const { wf } = upToArrival('FQR1', lead);
+    W.savePanels(wf.id, panels);
+    await as('leader@topmop.ph');
+    expect(() => W.saveFinalReview(wf.id, { items: [{ ...solar, rate: 200 }] })).toThrow(/price list/);
+    expect(() => W.saveFinalReview(wf.id, { items: [{ ...solar, discount: 100 }] })).toThrow(/discount/);
+    W.saveFinalReview(wf.id, { items: [glass, solar] });
+    await as('owner@topmop.ph');
+    W.saveFinalReview(wf.id, { items: [glass, { ...solar, rate: 200, discount: 100 }] });
+    expect(db().variations.filter((v) => v.job_id === wf.job_id && v.source === 'final_review').length).toBe(1);   // updated, not duplicated
+  });
+
+  it('approve & sign: change order, final total, deposit, audit; original quote untouched; no extra work before approval', async () => {
+    await as('owner@topmop.ph');
+    const lead = db().employees[3].id;
+    const { wf, job, q } = upToArrival('FQR2', lead);
+    W.savePanels(wf.id, panels);
+    const origJson = JSON.stringify(db().quotations.find((x) => x.id === q.id));
+    const before = B.finalContract(db(), db().jobs.find((j) => j.id === job.id)!);
+    W.saveFinalReview(wf.id, { items: [glass, solar], deposit: 1000, deposit_note: 'OR-1' });
+    expect(() => W.signConforme(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true })).toThrow(/Final Quote Review/);
+    expect(() => W.startWork(wf.id, { present: [lead], safety: true, ppe: true, photos: [PNG], confirmed: true })).toThrow(/conforme/);
+    W.requestFinalQuoteRevision(wf.id, 'Remove the solar panels');
+    expect(() => W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true })).toThrow(/revision/);
+    W.saveFinalReview(wf.id, { items: [glass], deposit: 1000, deposit_note: 'OR-1' });          // re-presented
+    expect(() => W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', confirmed: true })).toThrow(/signature/);
+    W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true, lat: 14.55, lng: 121.02, device: 'iPad · 1024×768' });
+    const v = db().variations.find((x) => x.job_id === job.id && x.source === 'final_review')!;
+    expect(v.status).toBe('Approved'); expect(v.items[0].qty).toBe(8);
+    expect(v).toMatchObject({ client_name: 'Ms. Reyes', sign_lat: 14.55, sign_device: 'iPad · 1024×768' }); expect(v.signed_at).toBeTruthy();
+    const w = wfOf(job.id);
+    expect(w).toMatchObject({ conf_name: 'Ms. Reyes', conf_lat: 14.55, conf_device: 'iPad · 1024×768', conf_variation_id: v.id });
+    const add = B.variationTotals(v);
+    expect(add.net).toBe(1120);
+    const sm = B.finalQuoteSummary(db(), db().jobs.find((j) => j.id === job.id)!, { deposit: w.conf_deposit });
+    expect(sm.finalTotal).toBe(Math.round((before.originalTotal + add.total) * 100) / 100);
+    expect(sm.balance).toBe(Math.round((sm.finalTotal - 1000) * 100) / 100);
+    expect(w.conf_final_total).toBe(sm.finalTotal);
+    expect(db().jobs.find((j) => j.id === job.id)!.contract_amount).toBe(before.originalNet + 1120);
+    expect(JSON.stringify(db().quotations.find((x) => x.id === q.id))).toBe(origJson);
+    expect(() => store.update('variations', v.id, { reason: 'x' } as never)).toThrow(/locked/);
+    expect(db().audit.some((a) => a.record_id === v.id && /approved by Ms. Reyes/.test(a.summary))).toBe(true);
+    // syncs to the invoice
+    store.update('jobs', job.id, { status: 'Closed' } as never);
+    const inv = A.invoiceFromJob(job.id);
+    expect(inv.items.some((i) => i.description.startsWith(v.number))).toBe(true);
+    expect(inv.notes).toMatch(/Deposit/);
+    expect(B.invoiceTotals(inv).total).toBe(sm.finalTotal);
+  });
+
+  it('declining keeps a record of what was offered but removes it from the bill; the original can still be signed', async () => {
+    await as('owner@topmop.ph');
+    const lead = db().employees[3].id;
+    const { wf, job } = upToArrival('FQR3', lead);
+    W.saveFinalReview(wf.id, { items: [solar] });
+    expect(() => W.saveFinalReview(wf.id, { items: [solar], deposit: 99999999 })).toThrow(/deposit/);
+    W.declineAdditionalWork(wf.id, { client_name: 'Ms. Reyes', reason: 'Too expensive' });
+    const v = db().variations.find((x) => x.job_id === job.id && x.source === 'final_review')!;
+    expect(v.status).toBe('Rejected'); expect(v.notes).toBe('Too expensive'); expect(v.items.length).toBe(1);
+    const fc = B.finalContract(db(), db().jobs.find((j) => j.id === job.id)!);
+    expect(fc.variationsTotal).toBe(0); expect(fc.finalTotal).toBe(fc.originalTotal);
+    W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true });
+    expect(wfOf(job.id).conf_variation_id).toBeUndefined();
+    expect(wfOf(job.id).conf_final_total).toBe(fc.originalTotal);
+    expect(() => store.update('variations', v.id, { notes: 'x' } as never)).not.toThrow;   // declined record stays on file
+  });
+});
