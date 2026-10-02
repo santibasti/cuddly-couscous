@@ -64,6 +64,6 @@ export function DraftBar({ d }: { d: DraftApi }) {
 export function useIsOnline() { return useSync().online; }
 export function useMedia(q: string) {
   const [m, setM] = useState(() => (typeof window !== 'undefined' ? window.matchMedia(q).matches : false));
-  useEffect(() => { const mq = window.matchMedia(q); const f = () => setM(mq.matches); f(); mq.addEventListener('change', f); return () => mq.removeEventListener('change', f); }, [q]);
+  useEffect(() => { const mq = window.matchMedia(q); const f = () => setM(mq.matches); f(); if (mq.addEventListener) mq.addEventListener('change', f); else mq.addListener(f); return () => { if (mq.removeEventListener) mq.removeEventListener('change', f); else mq.removeListener(f); }; }, [q]);
   return m;
 }

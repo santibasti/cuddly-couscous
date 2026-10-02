@@ -16,6 +16,17 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // if the app cannot start (old browser, blocked file…), show why instead of a blank page
+      (function () {
+        function show(msg) {
+          var r = document.getElementById('root');
+          if (r && !r.children.length) r.innerHTML = '<div style="font:14px system-ui;padding:20px;max-width:640px"><h2>TopMop could not start</h2><p>Please send this text to support:</p><pre style="white-space:pre-wrap;background:#f3f6f9;padding:12px;border-radius:8px">' + String(msg).replace(/</g, '&lt;') + '\n\n' + navigator.userAgent + '</pre></div>';
+        }
+        window.addEventListener('error', function (e) { show(e.message + ' (' + String(e.filename || '').split('/').pop() + ':' + e.lineno + ')'); });
+        window.addEventListener('unhandledrejection', function (e) { show(e.reason && e.reason.message ? e.reason.message : e.reason); });
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

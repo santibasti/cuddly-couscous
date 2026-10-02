@@ -231,7 +231,9 @@ export function SignaturePad({ onChange, value }: { onChange: (dataUrl: string |
   };
   useEffect(() => {
     setup();
-    const ro = new ResizeObserver(() => { if (ref.current && Math.abs(ref.current.getBoundingClientRect().width - width.current) > 1) setup(); });
+    const check = () => { if (ref.current && Math.abs(ref.current.getBoundingClientRect().width - width.current) > 1) setup(); };
+    if (typeof ResizeObserver === 'undefined') { window.addEventListener('resize', check); return () => window.removeEventListener('resize', check); }
+    const ro = new ResizeObserver(check);
     ro.observe(ref.current!);
     return () => ro.disconnect();
   }, []);
