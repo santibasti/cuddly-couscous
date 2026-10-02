@@ -24,15 +24,23 @@ export function QrScanner({ title = 'Scan QR code', onScan, onClose, hint }: { t
   useEffect(() => {
     let stream: MediaStream | null = null; let raf = 0; let stopped = false;
     const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    // Chrome / Android tablets can decode QR + common barcodes natively; everything else falls back to jsQR (QR only)
+    const BD = (window as unknown as { BarcodeDetector?: new (o?: { formats: string[] }) => { detect: (v: HTMLVideoElement) => Promise<{ rawValue: string }[]> } }).BarcodeDetector;
+    let detector: InstanceType<NonNullable<typeof BD>> | null = null;
+    try { detector = BD ? new BD({ formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'data_matrix'] }) : null; } catch { detector = null; }
+    let busy = false;
     (async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera not available in this browser (needs HTTPS or localhost).');
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
         if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
         const v = video.current!; v.srcObject = stream; await v.play();
         const tick = () => {
           if (stopped) return;
-          if (v.readyState >= 2 && v.videoWidth) {
+          if (detector && v.readyState >= 2 && !busy) {
+            busy = true;
+            detector.detect(v).then((r) => { const raw = r[0]?.rawValue; if (raw && Date.now() - lastAt.current > 1500) { lastAt.current = Date.now(); const c = parseQr(raw); setLast(c); onScan(c); } }).catch(() => { detector = null; }).finally(() => { busy = false; });
+          } else if (!detector && v.readyState >= 2 && v.videoWidth) {
             canvas.width = v.videoWidth; canvas.height = v.videoHeight; ctx.drawImage(v, 0, 0);
             const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const r = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
@@ -49,11 +57,11 @@ export function QrScanner({ title = 'Scan QR code', onScan, onClose, hint }: { t
   const submit = () => { const c = parseQr(manual); if (c) { setLast(c); onScan(c); setManual(''); } };
   return (
     <Modal title={title} onClose={onClose} footer={<button className="btn primary" onClick={onClose}>Done</button>}>
-      {!err ? <video ref={video} playsInline muted style={{ width: '100%', maxHeight: 320, background: '#0B2545', borderRadius: 8, objectFit: 'cover' }} /> : <div className="alert warn">{err}</div>}
+      {!err ? <video ref={video} playsInline muted className="scanvideo" style={{ width: '100%', background: '#0B2545', borderRadius: 8, objectFit: 'cover' }} /> : <div className="alert warn">{err}</div>}
       <p className="small muted">{hint ?? 'Point the camera at the QR label on the machine or tool. Each successful scan is applied immediately.'}</p>
       {last && <div className="alert info">Last scan: <b>{last}</b></div>}
       <div className="row" style={{ marginTop: 10 }}>
-        <input value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} placeholder="Type or scan an asset code (e.g. WFP-001)" aria-label="Asset code" style={{ flex: 1 }} autoFocus={!!err} />
+        <input value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} placeholder="Type or scan a code (e.g. WFP-001)" aria-label="Asset code" style={{ flex: 1 }} autoFocus={!!err} />
         <button className="btn" onClick={submit}><Icon name="check" />Apply</button>
       </div>
     </Modal>

@@ -4,6 +4,8 @@ import { store, useAuth } from '@/lib/store';
 import { ROLE_LABEL, ROUTE_ACCESS } from '@/lib/rbac';
 import { runAutomations } from '@/lib/actions';
 import { Icon, Overlays, Badge } from '@/components/ui';
+import { SyncBadge } from '@/components/touch';
+import { confirmLeave } from '@/lib/sync';
 import { Logo } from '@/components/Logo';
 import { fmtStamp } from '@/lib/util';
 import Login from '@/pages/Login';
@@ -83,22 +85,22 @@ function Shell() {
   return (
     <div className="app">
       <aside className={open ? 'sidebar open' : 'sidebar'} aria-label="Main navigation">
-        <div className="brand"><div className="logo"><Logo size={26} /></div><div><b>TOPMOP</b><span>Operations System</span></div></div>
+        <div className="brand"><div className="logo"><Logo size={26} /></div><div className="lbl"><b>TOPMOP</b><span>Operations System</span></div></div>
         <nav className="nav">
           {items.map((n) => {
             const g = n.group && n.group !== lastGroup ? n.group : null; if (g) lastGroup = g;
             return (
               <div key={n.to} style={{ display: 'contents' }}>
                 {g && <div className="sep">{g}</div>}
-                <NavLink to={n.to} className={({ isActive }) => (isActive ? 'active' : '')}><Icon name={n.icon} />{n.label}</NavLink>
+                <NavLink to={n.to} title={n.label} aria-label={n.label} className={({ isActive }) => (isActive ? 'active' : '')}><Icon name={n.icon} /><span className="lbl">{n.label}</span></NavLink>
               </div>
             );
           })}
         </nav>
         <div className="side-foot">
-          <div style={{ color: '#fff', fontWeight: 600 }}>{user.name}</div>
-          <div>{ROLE_LABEL[user.role]}</div>
-          <button className="btn sm block" style={{ marginTop: 10 }} onClick={() => { store.logout(); nav('/login'); }}><Icon name="logout" />Sign out</button>
+          <div className="lbl"><div style={{ color: '#fff', fontWeight: 600 }}>{user.name}</div>
+          <div>{ROLE_LABEL[user.role]}</div></div>
+          <button className="btn sm block" title="Sign out" aria-label="Sign out" style={{ marginTop: 10 }} onClick={() => { if (!confirmLeave()) return; store.logout(); nav('/login'); }}><Icon name="logout" /><span className="lbl">Sign out</span></button>
         </div>
       </aside>
       <div className={open ? 'scrim open' : 'scrim'} onClick={() => setOpen(false)} />
@@ -106,7 +108,8 @@ function Shell() {
         <header className="topbar">
           <button className="icon-btn burger" onClick={() => setOpen(true)} aria-label="Open menu"><Icon name="menu" /></button>
           <div className="title grow">{items.find((n) => loc.pathname.startsWith(n.to))?.label ?? 'TopMop'}</div>
-          <span className="muted small" style={{ display: 'var(--tz-d, inline)' }}>Asia/Manila</span>
+          <SyncBadge />
+          <span className="muted small hide-sm">Asia/Manila</span>
           <div className="rel" ref={bellRef}>
             <button className="icon-btn" onClick={() => setBell((b) => !b)} aria-label={`Notifications (${unread.length} unread)`}><Icon name="bell" />{unread.length > 0 && <span className="dot">{unread.length > 99 ? '99+' : unread.length}</span>}</button>
             {bell && (

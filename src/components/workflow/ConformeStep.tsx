@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { Badge, Field, PhotoInput, SignaturePad, attempt } from '@/components/ui';
 import { Confirm } from './shared';
+import { DraftBar, PresetChips, Stepper } from '@/components/touch';
+import { useDraft } from '@/lib/useDraft';
+import { PRESETS } from '@/lib/presets';
 import { PANEL_AREAS, PANEL_SIDES, savePanels, signConforme } from '@/lib/workflow';
 import { countPanels, docTotals, panelTotals, quotedPanels, rowPanels } from '@/lib/business';
 import { fmtDateTime, money } from '@/lib/util';
@@ -14,7 +17,8 @@ const newRow = (): PanelRow => ({ id: crypto.randomUUID(), area: '1st Floor', si
 export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolean }) {
   const { db } = useAuth();
   const [rows, setRows] = useState<PanelRow[]>(wf.panels);
-  useEffect(() => setRows(wf.panels), [wf.panels]);
+  const dr = useDraft(`d:${wf.id}:conf:panels`, rows, (d) => setRows(d), editable);
+  useEffect(() => { if (!dr.dirty) setRows(wf.panels); }, [wf.panels]); // eslint-disable-line react-hooks/exhaustive-deps
   const [calc, setCalc] = useState({ w: 2, h: 1, qty: 1, grouped: false, kind: 'external' as 'external' | 'internal', row: '' });
   const t = panelTotals(rows);
   const set = (id: string, p: Partial<PanelRow>) => setRows((a) => a.map((r) => (r.id === id ? { ...r, ...p } : r)));
@@ -22,7 +26,7 @@ export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolea
   const quoted = quotedPanels(db, q);
   const cp = countPanels([{ w: calc.w, h: calc.h, qty: calc.qty, grouped: calc.grouped }], db.settings.glass_group_size);
   const dirty = JSON.stringify(rows) !== JSON.stringify(wf.panels);
-  const numIn = (r: PanelRow, k: 'external' | 'internal') => <input type="number" min="0" inputMode="numeric" disabled={!editable} value={r[k] || ''} onChange={(e) => set(r.id, { [k]: Math.max(0, +e.target.value || 0) })} style={{ width: 80 }} aria-label={`${k} panels ${r.area} ${r.side}`} />;
+  const numIn = (r: PanelRow, k: 'external' | 'internal') => <Stepper label={`${k} panels ${r.area} ${r.side}`} disabled={!editable} value={r[k]} onChange={(v) => set(r.id, { [k]: v ?? 0 })} />;
   return (
     <div className="stack" style={{ gap: 8 }}>
       <div className="row between"><b>Glass panel count</b>{quoted > 0 && <span className="small muted">Quoted: {quoted} panels{t.total > quoted && <> · counted {t.total} (<b>{t.total - quoted} more</b>)</>}</span>}</div>
@@ -43,12 +47,12 @@ export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolea
       </tbody><tfoot><tr><th colSpan={2}>Total</th><th className="num">{t.external}</th><th className="num">{t.internal}</th><th className="num">{t.total}</th><th colSpan={3}>{t.additional > 0 && <Badge tone="amber">{t.additional} additional panels</Badge>}</th></tr></tfoot></table></div>
       {editable && (
         <>
-          <div className="row"><button className="btn sm" onClick={() => setRows([...rows, newRow()])}>+ Add area</button>{dirty && <button className="btn sm primary" onClick={() => attempt(() => savePanels(wf.id, rows), 'Panel count saved')}>Save panel count</button>}</div>
+          <div className="row"><button className="btn sm" onClick={() => setRows([...rows, newRow()])}>+ Add area</button>{dirty && <button className="btn sm primary" onClick={() => { if (attempt(() => savePanels(wf.id, rows), 'Panel count saved')) dr.markSaved(); }}>Save panel count</button>}{dirty && <span className="small" style={{ color: 'var(--amber)' }}>Unsaved panel changes</span>}</div>
           <details><summary className="small" style={{ cursor: 'pointer' }}>Count by window size</summary>
             <div className="form-grid" style={{ marginTop: 8 }}>
-              <Field label="Width (m)"><input type="number" step="0.1" min="0" value={calc.w} onChange={(e) => setCalc({ ...calc, w: +e.target.value })} /></Field>
-              <Field label="Height (m)"><input type="number" step="0.1" min="0" value={calc.h} onChange={(e) => setCalc({ ...calc, h: +e.target.value })} /></Field>
-              <Field label="How many windows"><input type="number" min="1" value={calc.qty} onChange={(e) => setCalc({ ...calc, qty: +e.target.value })} /></Field>
+              <Field label="Width (m)"><Stepper label="Width in metres" step={0.1} min={0.1} unit="m" value={calc.w} onChange={(v) => setCalc({ ...calc, w: v ?? 1 })} /></Field>
+              <Field label="Height (m)"><Stepper label="Height in metres" step={0.1} min={0.1} unit="m" value={calc.h} onChange={(v) => setCalc({ ...calc, h: v ?? 1 })} /></Field>
+              <Field label="How many windows"><Stepper label="Number of windows" min={1} value={calc.qty} onChange={(v) => setCalc({ ...calc, qty: v ?? 1 })} /></Field>
               <Field label="Small sections to group"><label className="check"><input type="checkbox" checked={calc.grouped} onChange={(e) => setCalc({ ...calc, grouped: e.target.checked })} />Group (≤ 0.5 m² each, {db.settings.glass_group_size} = 1 panel)</label></Field>
               <Field label="Add to row"><select value={calc.row} onChange={(e) => setCalc({ ...calc, row: e.target.value })}><option value="">New row</option>{rows.map((r) => <option key={r.id} value={r.id}>{r.area} · {r.side}</option>)}</select></Field>
               <Field label="Side counted"><select value={calc.kind} onChange={(e) => setCalc({ ...calc, kind: e.target.value as 'external' | 'internal' })}><option value="external">External</option><option value="internal">Internal</option></select></Field>
@@ -70,8 +74,10 @@ export function ConformeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
   const signed = !!wf.conf_at;
   const [name, setName] = useState(site?.contact_person ?? ''); const [sig, setSig] = useState<string>(); const [file, setFile] = useState<{ data: string; name: string }>();
   const [notes, setNotes] = useState(''); const [ok, setOk] = useState(false);
+  const dr = useDraft(`d:${wf.id}:conf`, { name, sig, file, notes }, (d) => { setName(d.name); setSig(d.sig); setFile(d.file); setNotes(d.notes); }, run && !signed);
   return (
     <div className="stack">
+      {run && !signed && <DraftBar d={dr} />}
       <div className="card" style={{ padding: 12 }}>
         <div className="row between"><b>Original quotation {q?.number ?? '—'}</b><Badge tone="gray">retained unchanged</Badge></div>
         <dl className="kv"><dt>Client / site</dt><dd>{client.name} · {site?.name}</dd><dt>Scope</dt><dd>{q?.scope ?? job.scope}</dd></dl>
@@ -100,9 +106,9 @@ export function ConformeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
         <div className="stack">
           <Confirm checked={ok} onChange={setOk} disabled={!run}>The quotation, scope, rates, quantities, terms and exclusions were reviewed with the client on site.</Confirm>
           <div className="form-grid"><Field label="Client conforme — printed name" required><input disabled={!run} value={name} onChange={(e) => setName(e.target.value)} /></Field><Field label="Date & time signed"><input disabled value={fmtDateTime(new Date().toISOString())} /></Field></div>
-          {run && <><div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad onChange={setSig} /></div>
+          {run && <><div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad value={sig} onChange={setSig} /></div>
             <div className="row"><PhotoInput label="Attach photo / PDF of signed copy" accept="image/*,application/pdf" onAdd={(d, n) => setFile({ data: d, name: n })} />{file && <Badge tone="green">{file.name}</Badge>}</div></>}
-          <Field label="Notes"><input disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+          <Field label="Notes"><input disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} /><PresetChips options={PRESETS.conforme} value={notes} onChange={setNotes} disabled={!run} /></Field>
           {run && <button className="btn primary lg" onClick={() => attempt(() => signConforme(wf.id, { name, signature: sig, file: file?.data, file_name: file?.name, notes, confirmed: ok }), 'Conforme signed — work can start')}>Save signed conforme</button>}
         </div>
       )}

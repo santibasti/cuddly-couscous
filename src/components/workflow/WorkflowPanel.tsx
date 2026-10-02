@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PhotoInput, Photos, attempt, toast } from '@/components/ui';
 import { QrScanner } from '@/components/Qr';
@@ -12,41 +12,58 @@ import {
   FUEL_LEVELS, arriveAtHq, arriveAtSite, canRunWorkflow, closeJob, closureGates, completeHqChecklist, correctWorkflow, dispatchJob, leaveSite, matchScan, openWorkflow, saveHqDraft, startWork, workflowFor,
 } from '@/lib/workflow';
 import { fmtDateTime, fmtStamp, nowLocal, round2 } from '@/lib/util';
+import { clearDraft, confirmLeave } from '@/lib/sync';
+import { useDraft } from '@/lib/useDraft';
+import { DraftBar, PresetChips, Stepper, Toggle } from '@/components/touch';
+import { PRESETS } from '@/lib/presets';
 import type { CheckItem, FuelLevel, Job, JobWorkflow, VehicleCondition } from '@/lib/types';
 
 export const userName = (db: ReturnType<typeof useAuth>['db'], id?: string) => db.users.find((u) => u.id === id)?.name ?? (id ? id : '—');
 const gpsLink = (lat?: number, lng?: number, note?: string) => (lat !== undefined ? <a target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${lat},${lng}`}>{lat}, {lng}</a> : <span className="muted">not captured{note ? ` (${note})` : ''}</span>);
 
 /* ---------- a step card: number, title, date/time + user, body ---------- */
-export function Step({ n, state, at, by, children, open, onToggle, actions }: { n: number; state: StepState; at?: string; by?: string; children: ReactNode; open: boolean; onToggle: () => void; actions?: ReactNode }) {
+const DRAFT_KEYS = ['hq', 'disp', 'arr', 'conf', 'start', 'var', 'rep', 'rc', 'leave', 'hqa', 'close'];
+export function Step({ n, state, at, by, children, wfId, done }: { n: number; state: StepState; at?: string; by?: string; children: ReactNode; wfId: string; done: boolean }) {
   const { db } = useAuth();
-  const done = state === 'done';
+  const [nonce, setNonce] = useState(0);
+  const key = `d:${wfId}:${DRAFT_KEYS[n - 1]}`;
+  // once the step is submitted its draft is no longer needed
+  useEffect(() => { if (done) { clearDraft(key); clearDraft(`${key}:panels`); } }, [done, key]);
+  // "Discard draft" remounts the step with fresh, empty entries
+  useEffect(() => {
+    const f = (e: Event) => { if (String((e as CustomEvent).detail).startsWith(key)) setNonce((x) => x + 1); };
+    window.addEventListener('draft-discard', f); return () => window.removeEventListener('draft-discard', f);
+  }, [key]);
   return (
-    <section id={`step-${n}`} className={`wfstep ${state}`}>
-      <button type="button" className="wfhead" onClick={onToggle} aria-expanded={open}>
-        <span className="avatar" style={{ background: done ? 'var(--green)' : state === 'locked' ? '#9db0c5' : 'var(--navy)' }}>{done ? '✓' : n}</span>
-        <span className="grow"><b>{n}. {WORKFLOW_STEPS[n - 1]}</b>{done && at && <span className="small muted"> · {fmtDateTime(at)} · {userName(db, by)}</span>}</span>
+    <section id={`step-${n}`} className={`wfstep ${state}`} aria-labelledby={`step-${n}-t`}>
+      <div className="wfhead">
+        <span className="avatar" style={{ background: done ? 'var(--green)' : state === 'locked' ? '#9db0c5' : 'var(--navy)', width: 38, height: 38, fontSize: 15 }}>{done ? '✓' : n}</span>
+        <span className="grow"><b id={`step-${n}-t`} style={{ fontSize: 17 }}>{n}. {WORKFLOW_STEPS[n - 1]}</b>{done && at && <div className="small muted">{fmtDateTime(at)} · {userName(db, by)}</div>}</span>
         <Badge tone={done ? 'green' : state === 'current' ? 'blue' : state === 'open' ? 'teal' : 'gray'}>{done ? 'Done' : state === 'current' ? 'Next' : state === 'open' ? 'Available' : 'Locked'}</Badge>
-        <span className="small muted">{open ? '▲' : '▼'}</span>
-      </button>
-      {open && <div className="wfbody">{actions && <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 8 }}>{actions}</div>}{children}</div>}
+      </div>
+      <div className="wfbody" key={nonce}>{children}</div>
     </section>
   );
 }
 const Locked = ({ why }: { why: string }) => <div className="muted">{why}</div>;
 
 /* ================= the panel ================= */
-export function WorkflowPanel({ job }: { job: Job }) {
+export function WorkflowPanel({ job, onDetails }: { job: Job; onDetails?: () => void }) {
   const { db, can } = useAuth();
   const wf = db.workflows.find((w) => w.job_id === job.id && !w.deleted_at);
   const vars = db.variations.filter((v) => v.job_id === job.id && !v.deleted_at);
   const prog = workflowProgress(wf, vars);
   const run = canRunWorkflow(job);
   const first = prog.findIndex((p) => p.state === 'current');
-  const [openSet, setOpenSet] = useState<Record<number, boolean | undefined>>({});
+  const selKey = `wfsel:${job.id}`;
+  const [sel, setSel] = useState<number>(() => { try { const s = sessionStorage.getItem(selKey); return s === null ? -1 : +s; } catch { return -1; } });
   const [fix, setFix] = useState(false);
-  const isOpen = (i: number) => openSet[i] ?? i === first;
-  const toggle = (i: number) => setOpenSet((s) => ({ ...s, [i]: !isOpen(i) }));
+  const cur = sel >= 0 ? sel : first >= 0 ? first : 10;
+  const choose = (i: number) => { setSel(i); try { sessionStorage.setItem(selKey, String(i)); } catch { /* private mode */ } };
+  // a finished step moves the crew on to the next one
+  const lastFirst = useRef(first);
+  useEffect(() => { if (first !== lastFirst.current) { lastFirst.current = first; if (first >= 0) { choose(first); window.scrollTo({ top: 0 }); } } }, [first]); // eslint-disable-line react-hooks/exhaustive-deps
+  const go = (i: number) => { if (i < 0 || i > 10 || i === cur) return; if (!confirmLeave()) return; choose(i); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const canceled = ['Cancelled', 'Rescheduled'].includes(job.status);
   const st = (i: number) => prog[i];
 
@@ -60,55 +77,51 @@ export function WorkflowPanel({ job }: { job: Job }) {
       </Card>
     );
   }
-  const jump = (i: number) => { setOpenSet((s) => ({ ...s, [i]: true })); setTimeout(() => document.getElementById(`step-${i + 1}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30); };
+
+  const body: ReactNode[] = [
+    wf.hq_at ? <HqSummary wf={wf} /> : <HqForm wf={wf} job={job} run={run} />,
+    wf.disp_at ? <dl className="kv"><dt>Departed HQ</dt><dd>{fmtDateTime(wf.disp_at)}</dd><dt>GPS</dt><dd>{gpsLink(wf.disp_lat, wf.disp_lng, wf.disp_gps_note)}</dd><dt>Notes</dt><dd>{wf.disp_notes || '—'}</dd>{wf.disp_photo && <><dt>Loading photo</dt><dd><Photos items={[{ src: wf.disp_photo, caption: 'Loading / departure' }]} /></dd></>}</dl>
+      : !wf.hq_at ? <Locked why="Available after the HQ equipment checklist is confirmed." /> : <DispatchForm wf={wf} run={run} />,
+    wf.arr_at ? <ArrivalSummary wf={wf} job={job} /> : !wf.disp_at ? <Locked why="Available after the crew is dispatched." /> : <ArrivalForm wf={wf} job={job} run={run} />,
+    !wf.arr_at ? <Locked why="Available after arrival on site is recorded." /> : <ConformeStep wf={wf} job={job} run={run} />,
+    wf.start_at ? <dl className="kv"><dt>Started</dt><dd>{fmtDateTime(wf.start_at)}</dd><dt>Crew present</dt><dd>{(wf.start_crew_present ?? []).map((e) => db.employees.find((x) => x.id === e)?.full_name).join(', ')}</dd><dt>Safety briefing / PPE</dt><dd>Confirmed / Confirmed</dd><dt>Notes</dt><dd>{wf.start_notes || '—'}</dd><dt>Photos</dt><dd><Photos items={wf.start_photos.map((p, i) => ({ src: p, caption: `Work start ${i + 1}` }))} /></dd></dl>
+      : !wf.conf_at ? <Locked why="Enabled once the client conforme is signed (step 4)." /> : <StartForm wf={wf} job={job} run={run} />,
+    !wf.start_at ? <Locked why="Available once work has started. Use this step for additional work, changed quantities, added panels or scope changes — the original quotation is never overwritten." /> : <VariationStep wf={wf} job={job} run={run} />,
+    !wf.start_at ? <Locked why="Available once work has started." /> : <ReportStep wf={wf} job={job} run={run} onDetails={onDetails} />,
+    !wf.rep_at ? <Locked why="Available after the service report is signed." /> : <ReturnStep wf={wf} job={job} run={run} />,
+    wf.leave_at ? <dl className="kv"><dt>Left site</dt><dd>{fmtDateTime(wf.leave_at)}</dd><dt>GPS</dt><dd>{gpsLink(wf.leave_lat, wf.leave_lng, wf.leave_gps_note)}</dd><dt>Notes</dt><dd>{wf.leave_notes || '—'}</dd>{wf.leave_photo && <><dt>Photo</dt><dd><Photos items={[{ src: wf.leave_photo, caption: 'Leaving site' }]} /></dd></>}</dl>
+      : !wf.rc_at ? <Locked why="Enabled after the return equipment check (step 8)." /> : <LeaveForm wf={wf} run={run} />,
+    wf.hqa_at ? <HqaSummary wf={wf} /> : !wf.leave_at ? <Locked why="Available after leaving the client site." /> : <HqaForm wf={wf} run={run} />,
+    <CloseStep wf={wf} job={job} run={run} />,
+  ];
+  const stamps: { at?: string; by?: string }[] = [{ at: wf.hq_at, by: wf.hq_by }, { at: wf.disp_at, by: wf.disp_by }, { at: wf.arr_at, by: wf.arr_by }, { at: wf.conf_at, by: wf.conf_by }, { at: wf.start_at, by: wf.start_by }, { at: st(5).at, by: st(5).by }, { at: wf.rep_at, by: wf.rep_by }, { at: wf.rc_at, by: wf.rc_by }, { at: wf.leave_at, by: wf.leave_by }, { at: wf.hqa_at, by: wf.hqa_by }, { at: wf.closed_at, by: wf.closed_by }];
+  const fixBtn = can('incidents.manage') ? <button className="btn sm" onClick={() => setFix(true)}><Icon name="edit" />Correct record</button> : null;
 
   return (
-    <div className="stack" style={{ gap: 10 }}>
-      <Card title="Job progress" actions={can('incidents.manage') ? <button className="btn sm" onClick={() => setFix(true)}><Icon name="edit" />Correct record</button> : undefined}>
-        <ol className="tracker" aria-label="Job workflow progress">
-          {WORKFLOW_STEPS.map((t, i) => { const p = st(i); return (
-            <li key={t} className={p.state}><button type="button" onClick={() => jump(i)} title={t}><i>{p.state === 'done' ? '✓' : i + 1}</i><span>{t}</span>{p.at && <small>{fmtDateTime(p.at)}</small>}</button></li>
-          ); })}
-        </ol>
-        {!run && <div className="alert info" style={{ marginTop: 10 }}>You can view this workflow. Only the assigned Team Leader or a manager can complete the steps.</div>}
-      </Card>
-
-      <Step n={1} state={st(0).state} at={wf.hq_at} by={wf.hq_by} open={isOpen(0)} onToggle={() => toggle(0)}>
-        {wf.hq_at ? <HqSummary wf={wf} /> : <HqForm wf={wf} job={job} run={run} />}
-      </Step>
-      <Step n={2} state={st(1).state} at={wf.disp_at} by={wf.disp_by} open={isOpen(1)} onToggle={() => toggle(1)}>
-        {wf.disp_at ? <dl className="kv"><dt>Departed HQ</dt><dd>{fmtDateTime(wf.disp_at)}</dd><dt>GPS</dt><dd>{gpsLink(wf.disp_lat, wf.disp_lng, wf.disp_gps_note)}</dd><dt>Notes</dt><dd>{wf.disp_notes || '—'}</dd>{wf.disp_photo && <><dt>Loading photo</dt><dd><Photos items={[{ src: wf.disp_photo, caption: 'Loading / departure' }]} /></dd></>}</dl>
-          : !wf.hq_at ? <Locked why="Available after the HQ equipment checklist is confirmed." /> : <DispatchForm wf={wf} run={run} />}
-      </Step>
-      <Step n={3} state={st(2).state} at={wf.arr_at} by={wf.arr_by} open={isOpen(2)} onToggle={() => toggle(2)}>
-        {wf.arr_at ? <ArrivalSummary wf={wf} job={job} /> : !wf.disp_at ? <Locked why="Available after the crew is dispatched." /> : <ArrivalForm wf={wf} job={job} run={run} />}
-      </Step>
-      <Step n={4} state={st(3).state} at={wf.conf_at} by={wf.conf_by} open={isOpen(3)} onToggle={() => toggle(3)}>
-        {!wf.arr_at ? <Locked why="Available after arrival on site is recorded." /> : <ConformeStep wf={wf} job={job} run={run} />}
-      </Step>
-      <Step n={5} state={st(4).state} at={wf.start_at} by={wf.start_by} open={isOpen(4)} onToggle={() => toggle(4)}>
-        {wf.start_at ? <dl className="kv"><dt>Started</dt><dd>{fmtDateTime(wf.start_at)}</dd><dt>Crew present</dt><dd>{(wf.start_crew_present ?? []).map((e) => db.employees.find((x) => x.id === e)?.full_name).join(', ')}</dd><dt>Safety briefing / PPE</dt><dd>Confirmed / Confirmed</dd><dt>Notes</dt><dd>{wf.start_notes || '—'}</dd><dt>Photos</dt><dd><Photos items={wf.start_photos.map((p, i) => ({ src: p, caption: `Work start ${i + 1}` }))} /></dd></dl>
-          : !wf.conf_at ? <Locked why="Enabled once the client conforme is signed (step 4)." /> : <StartForm wf={wf} job={job} run={run} />}
-      </Step>
-      <Step n={6} state={st(5).state} at={st(5).at} by={st(5).by} open={isOpen(5)} onToggle={() => toggle(5)}>
-        {!wf.start_at ? <Locked why="Available once work has started. Use this step for additional work, changed quantities, added panels or scope changes — the original quotation is never overwritten." /> : <VariationStep wf={wf} job={job} run={run} />}
-      </Step>
-      <Step n={7} state={st(6).state} at={wf.rep_at} by={wf.rep_by} open={isOpen(6)} onToggle={() => toggle(6)}>
-        {!wf.start_at ? <Locked why="Available once work has started." /> : <ReportStep wf={wf} job={job} run={run} />}
-      </Step>
-      <Step n={8} state={st(7).state} at={wf.rc_at} by={wf.rc_by} open={isOpen(7)} onToggle={() => toggle(7)}>
-        {!wf.rep_at ? <Locked why="Available after the service report is signed." /> : <ReturnStep wf={wf} job={job} run={run} />}
-      </Step>
-      <Step n={9} state={st(8).state} at={wf.leave_at} by={wf.leave_by} open={isOpen(8)} onToggle={() => toggle(8)}>
-        {wf.leave_at ? <dl className="kv"><dt>Left site</dt><dd>{fmtDateTime(wf.leave_at)}</dd><dt>GPS</dt><dd>{gpsLink(wf.leave_lat, wf.leave_lng, wf.leave_gps_note)}</dd><dt>Notes</dt><dd>{wf.leave_notes || '—'}</dd>{wf.leave_photo && <><dt>Photo</dt><dd><Photos items={[{ src: wf.leave_photo, caption: 'Leaving site' }]} /></dd></>}</dl>
-          : !wf.rc_at ? <Locked why="Enabled after the return equipment check (step 8)." /> : <LeaveForm wf={wf} run={run} />}
-      </Step>
-      <Step n={10} state={st(9).state} at={wf.hqa_at} by={wf.hqa_by} open={isOpen(9)} onToggle={() => toggle(9)}>
-        {wf.hqa_at ? <HqaSummary wf={wf} /> : !wf.leave_at ? <Locked why="Available after leaving the client site." /> : <HqaForm wf={wf} run={run} />}
-      </Step>
-      <Step n={11} state={st(10).state} at={wf.closed_at} by={wf.closed_by} open={isOpen(10)} onToggle={() => toggle(10)}>
-        <CloseStep wf={wf} job={job} run={run} />
-      </Step>
+    <div className="wfwrap">
+      {/* landscape tablets / desktop: full tracker rail beside the step */}
+      <aside className="wfrail card" aria-label="Job workflow progress">
+        <div className="card-h"><b>Job progress</b>{fixBtn}</div>
+        <ol>{WORKFLOW_STEPS.map((t, i) => { const p = st(i); return (
+          <li key={t} className={`${p.state} ${i === cur ? 'sel' : ''}`}><button type="button" onClick={() => go(i)} aria-current={i === cur ? 'step' : undefined}><i>{p.state === 'done' ? '✓' : i + 1}</i><span>{t}{p.at && <small>{fmtDateTime(p.at)}</small>}</span></button></li>
+        ); })}</ol>
+      </aside>
+      <div>
+        {/* tablets in portrait / phones: sticky step strip */}
+        <nav className="wfstrip" aria-label="Job workflow progress">
+          <ol>{WORKFLOW_STEPS.map((t, i) => { const p = st(i); return (
+            <li key={t} className={`${p.state} ${i === cur ? 'sel' : ''}`}><button type="button" onClick={() => go(i)} title={t} aria-label={`Step ${i + 1}: ${t}`} aria-current={i === cur ? 'step' : undefined}>{p.state === 'done' ? '✓' : i + 1}</button></li>
+          ); })}</ol>
+          <div className="now"><span><span className="small muted">Step {cur + 1} of 11</span><br /><b>{WORKFLOW_STEPS[cur]}</b></span>{fixBtn}</div>
+        </nav>
+        {!run && <div className="alert info" style={{ marginBottom: 10 }}>You can view this workflow. Only the assigned Team Leader or a manager can complete the steps.</div>}
+        <Step key={cur} n={cur + 1} state={st(cur).state} at={stamps[cur].at} by={stamps[cur].by} wfId={wf.id} done={st(cur).state === 'done'}>{body[cur]}</Step>
+        <div className="wffoot">
+          <button className="btn" disabled={cur === 0} onClick={() => go(cur - 1)}>← Back</button>
+          <span className="mid">{cur + 1} / 11 · {WORKFLOW_STEPS[cur]}</span>
+          <button className="btn navy" disabled={cur === 10} onClick={() => go(cur + 1)}>Next →</button>
+        </div>
+      </div>
       {fix && <CorrectModal wf={wf} onClose={() => setFix(false)} />}
     </div>
   );
@@ -127,6 +140,7 @@ function HqForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
   const [confirmed, setConfirmed] = useState(false);
   const [scan, setScan] = useState<{ key?: string } | null>(null);
   const [adding, setAdding] = useState(false);
+  const dr = useDraft(`d:${wf.id}:hq`, { items, veh, reason, notes }, (d) => { setItems(d.items); setVeh(d.veh); setReason(d.reason); setNotes(d.notes); }, run && !wf.hq_at);
   const draft = () => ({ items, hq_odo: veh.odo, hq_fuel: veh.fuel, hq_veh_condition: veh.cond, hq_veh_photo: veh.photo, hq_veh_notes: veh.notes, hq_notes: notes, hq_shortage_reason: reason });
   const gaps = useMemo(() => hqGaps(draft() as never), [items, veh, reason, notes]); // eslint-disable-line react-hooks/exhaustive-deps
   const setItem = (key: string, patch: Partial<CheckItem>) => setItems((a) => a.map((i) => (i.key === key ? { ...i, ...patch } : i)));
@@ -141,6 +155,7 @@ function HqForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
   const mats = items.filter((i) => i.kind === 'material');
   return (
     <div className="stack">
+      {run && <DraftBar d={dr} />}
       <dl className="kv"><dt>Job ref</dt><dd><b>{job.number}</b></dd><dt>Team leader</dt><dd>{emp(job.leader_id)}</dd><dt>Crew</dt><dd>{job.crew_ids.map(emp).join(', ') || '—'}</dd></dl>
       {run && <div className="row"><button className="btn navy" onClick={() => setScan({})}><Icon name="camera" />Scan any item</button><button className="btn" onClick={() => setAdding(true)}><Icon name="plus" />Add tool</button><button className="btn" onClick={() => attempt(() => saveHqDraft(wf.id, draft()), 'Progress saved')}>Save progress</button></div>}
 
@@ -152,7 +167,7 @@ function HqForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
             <Field label="Starting fuel level" required><Seg value={veh.fuel} options={FUEL_LEVELS} disabled={disabled} onChange={(v) => setVeh({ ...veh, fuel: v })} /></Field>
             <Field label="Vehicle condition"><Seg value={veh.cond} options={['Good', 'With Issue'] as const} disabled={disabled} tone={condTone} onChange={(v) => setVeh({ ...veh, cond: v })} /></Field>
             <Field label="Vehicle photo"><PhotoField label="Take vehicle photo" value={veh.photo} onChange={(d) => setVeh({ ...veh, photo: d })} disabled={disabled} /></Field>
-            <Field label={`Notes${veh.cond === 'With Issue' ? ' (describe the issue — required)' : ''}`} className="full"><input disabled={disabled} value={veh.notes} onChange={(e) => setVeh({ ...veh, notes: e.target.value })} /></Field>
+            <Field label={`Notes${veh.cond === 'With Issue' ? ' (describe the issue — required)' : ''}`} className="full"><input disabled={disabled} value={veh.notes} onChange={(e) => setVeh({ ...veh, notes: e.target.value })} />{veh.cond === 'With Issue' && <PresetChips options={PRESETS.vehicleIssue} value={veh.notes} onChange={(v) => setVeh({ ...veh, notes: v })} disabled={disabled} />}</Field>
           </div>
           {items.filter((i) => i.kind === 'vehicle').map((i) => <div key={i.key} className="row" style={{ marginTop: 6 }}>{run && <button className="btn sm navy" onClick={() => setScan({ key: i.key })}><Icon name="qr" size={14} />Scan QR</button>}<label className="check"><input type="checkbox" disabled={disabled} checked={!!i.out_ok} onChange={(e) => (e.target.checked ? confirmItem(i, 'manual') : setItem(i.key, { out_ok: false }))} />Vehicle confirmed</label></div>)}
         </div>
@@ -172,7 +187,7 @@ function HqForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
               <div className="row between"><div><b>{i.label}</b> <span className="muted small">{i.code}</span></div>{i.out_ok ? <Badge tone="green">✓ Confirmed</Badge> : <Badge tone="amber">Not confirmed</Badge>}</div>
               <div className="itemgrid">
                 <Field label="Required"><input disabled value={`${i.qty} ${i.unit ?? ''}`} /></Field>
-                <Field label={`Qty issued (${i.unit ?? ''})`}><input type="number" min="0" step="0.5" disabled={disabled} value={i.loaded_qty ?? ''} onChange={(e) => setItem(i.key, { loaded_qty: e.target.value === '' ? undefined : +e.target.value })} /></Field>
+                <Field label={`Qty issued (${i.unit ?? ''})`}><Stepper label={`Quantity issued ${i.label}`} step={0.5} unit={i.unit} disabled={disabled} value={i.loaded_qty} onChange={(v) => setItem(i.key, { loaded_qty: v })} /></Field>
                 <Field label="Container condition"><Seg value={i.out_container ?? 'Good'} options={['Good', 'Damaged', 'Leaking'] as const} disabled={disabled} tone={condTone} onChange={(v) => setItem(i.key, { out_container: v })} /></Field>
               </div>
               <div className="small muted">On hand in {db.locations.find((l) => l.id === inv.location_id)?.name}: <b>{round2(oh)} {inv.uom}</b> — issuing deducts from inventory when the checklist is confirmed.</div>
@@ -187,8 +202,8 @@ function HqForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
         {gaps.shortages.length > 0 && <div><b>Short / damaged / missing:</b><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{gaps.shortages.map((d) => <li key={d}>{d}</li>)}</ul>An incident report is raised automatically and Operations is notified.</div>}
         {!gaps.incomplete.length && !gaps.shortages.length && <div>Checklist complete — all items present and in good condition.</div>}
       </div>
-      {gaps.shortages.length > 0 && <Field label="Reason for proceeding with these items" required><textarea disabled={disabled} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Spare hose at supplier; client accepted a reduced scope" /></Field>}
-      <Field label="Notes"><input disabled={disabled} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+      {gaps.shortages.length > 0 && <Field label="Reason for proceeding with these items" required><textarea disabled={disabled} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Tap a reason below or type" /><PresetChips replace options={PRESETS.shortage} value={reason} onChange={setReason} disabled={disabled} /></Field>}
+      <Field label="Notes"><input disabled={disabled} value={notes} onChange={(e) => setNotes(e.target.value)} /><PresetChips options={PRESETS.hqNotes} value={notes} onChange={setNotes} disabled={disabled} /></Field>
       <Confirm checked={confirmed} onChange={setConfirmed} disabled={disabled}>I confirm, as Team Leader, that the vehicle, equipment, PPE and materials listed are loaded and the information above is correct.</Confirm>
       {run && <button className="btn primary lg" onClick={() => attempt(() => completeHqChecklist(wf.id, { ...draft(), items, confirmed }), 'HQ checklist confirmed — equipment is now In Use')}>Confirm HQ equipment checklist</button>}
       {scan && <QrScanner title={scan.key ? 'Scan this item’s QR code' : 'Scan items being loaded'} onScan={onScan} onClose={() => setScan(null)} hint="Point the camera at the QR label, or type the Asset ID (e.g. WFP-001) and press Apply." />}
@@ -218,12 +233,14 @@ function DispatchForm({ wf, run }: { wf: JobWorkflow; run: boolean }) {
   const [photo, setPhoto] = useState<string>();
   const [notes, setNotes] = useState('');
   const [ok, setOk] = useState(false);
+  const dr = useDraft(`d:${wf.id}:disp`, { gps, photo, notes }, (d) => { setGps(d.gps); setPhoto(d.photo); setNotes(d.notes); }, run && !wf.disp_at);
   return (
     <div className="stack">
+      {run && <DraftBar d={dr} />}
       <div className="small muted">Departure date & time are captured when you confirm: <b>{fmtDateTime(nowLocal())}</b></div>
       <GpsField label="Capture departure GPS" value={gps} onChange={setGps} disabled={!run} />
       <Field label="Loading photo (optional)"><PhotoField label="Take loading photo" value={photo} onChange={setPhoto} disabled={!run} /></Field>
-      <Field label="Notes"><input disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+      <Field label="Notes"><input disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} /><PresetChips options={PRESETS.dispatch} value={notes} onChange={setNotes} disabled={!run} /></Field>
       <Confirm checked={ok} onChange={setOk} disabled={!run}>I confirm the crew is loaded and leaving headquarters now.</Confirm>
       {run && <button className="btn primary lg" onClick={() => attempt(() => dispatchJob(wf.id, { lat: gps.lat, lng: gps.lng, gps_note: gps.note, photo, notes, confirmed: ok }), 'Crew dispatched')}>Dispatch crew</button>}
     </div>
@@ -246,16 +263,18 @@ function ArrivalForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean
   const [reqs, setReqs] = useState('');
   const [xAssets, setXAssets] = useState<string[]>([]);
   const [xMat, setXMat] = useState<{ item_id: string; qty: number }>({ item_id: '', qty: 0 });
+  const dr = useDraft(`d:${wf.id}:arr`, { present, absent, gps, photos, contact, notes, reqs, xAssets, xMat }, (d) => { setPresent(d.present); setAbsent(d.absent); setGps(d.gps); setPhotos(d.photos); setContact(d.contact); setNotes(d.notes); setReqs(d.reqs); setXAssets(d.xAssets); setXMat(d.xMat); }, run && !wf.arr_at);
   const free = db.assets.filter((a) => !a.deleted_at && a.status === 'Available' && !job.equipment_ids.includes(a.id) && a.category !== 'Vehicle');
   return (
     <div className="stack">
+      {run && <DraftBar d={dr} />}
       <div className="small muted">Arrival time is captured when you confirm: <b>{fmtDateTime(nowLocal())}</b></div>
       <div>
         <div className="row between" style={{ marginBottom: 6 }}><b>Confirm attendance (synced to Attendance &amp; Payroll)</b>{run && <button className="btn sm" onClick={() => setPresent(crew)}>All present</button>}</div>
         <ul className="list" style={{ border: '1px solid var(--line-2)', borderRadius: 6 }}>
           {crew.map((e) => { const a = db.attendance.find((x) => x.employee_id === e && x.date === T && x.clock_in && !x.deleted_at); const on = present.includes(e);
             return <li key={e}><div className="grow"><label className="check"><input type="checkbox" disabled={!run} checked={on} onChange={() => setPresent(on ? present.filter((x) => x !== e) : [...present, e])} /><span><b>{emp(e)}</b>{e === job.leader_id && <span className="muted small"> · Team Leader</span>}</span></label>
-              {!on && <input style={{ marginTop: 6 }} disabled={!run} placeholder="Reason absent (required)" value={absent[e] ?? ''} onChange={(ev) => setAbsent({ ...absent, [e]: ev.target.value })} aria-label={`Reason ${emp(e)} is absent`} />}</div>
+              {!on && <div style={{ marginTop: 6 }}><input disabled={!run} placeholder="Reason absent (required)" value={absent[e] ?? ''} onChange={(ev) => setAbsent({ ...absent, [e]: ev.target.value })} aria-label={`Reason ${emp(e)} is absent`} /><PresetChips replace options={PRESETS.absent} value={absent[e] ?? ''} onChange={(v) => setAbsent({ ...absent, [e]: v })} disabled={!run} /></div>}</div>
               {a ? <Badge tone="green">Clocked in {a.clock_in?.slice(11, 16)}</Badge> : on ? <Badge tone="blue">Will be recorded</Badge> : <Badge tone="red">Absent</Badge>}</li>; })}
         </ul>
         <div className="small muted" style={{ marginTop: 6 }}>Crew who already clocked in keep their single attendance record (it is linked to this job). Others get one created — never a duplicate.</div>
@@ -265,11 +284,11 @@ function ArrivalForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean
       <div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Before-work photos (required)</div>
         <Photos items={photos.map((p, k) => ({ src: p, caption: `Before ${k + 1}` }))} onRemove={run ? (k) => setPhotos(photos.filter((_, x) => x !== k)) : undefined} />
         {run && <div style={{ marginTop: 8 }}><PhotoInput label="Add before photo" capture="environment" multiple onAdd={(d) => setPhotos((x) => [...x, d])} /></div>}</div>
-      <Field label="Site access & safety notes"><textarea disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Access route, hazards, water source, restrictions…" /></Field>
+      <Field label="Site access & safety notes"><textarea disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Tap quick entries below or type" /><PresetChips options={PRESETS.site} value={notes} onChange={setNotes} disabled={!run} /></Field>
       <details><summary className="small" style={{ cursor: 'pointer' }}>Request additional equipment / materials from site (optional)</summary>
         <div className="stack" style={{ marginTop: 8 }}>
           <Field label="Extra equipment"><select multiple disabled={!run} value={xAssets} onChange={(e) => setXAssets(Array.from(e.target.selectedOptions).map((o) => o.value))} style={{ minHeight: 80 }}>{free.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select></Field>
-          <div className="form-grid"><Field label="Material"><select disabled={!run} value={xMat.item_id} onChange={(e) => setXMat({ ...xMat, item_id: e.target.value })}><option value="">—</option>{db.items.filter((i) => !i.deleted_at).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select></Field><Field label="Quantity"><input type="number" min="0" disabled={!run} value={xMat.qty || ''} onChange={(e) => setXMat({ ...xMat, qty: +e.target.value })} /></Field></div>
+          <div className="form-grid"><Field label="Material"><select disabled={!run} value={xMat.item_id} onChange={(e) => setXMat({ ...xMat, item_id: e.target.value })}><option value="">—</option>{db.items.filter((i) => !i.deleted_at).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select></Field><Field label="Quantity"><Stepper label="Extra material quantity" disabled={!run} value={xMat.qty} onChange={(v) => setXMat({ ...xMat, qty: v ?? 0 })} /></Field></div>
           <Field label="Why"><input disabled={!run} value={reqs} onChange={(e) => setReqs(e.target.value)} /></Field>
         </div></details>
       {run && <button className="btn primary lg" onClick={() => attempt(() => arriveAtSite(wf.id, {
@@ -301,17 +320,19 @@ function StartForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }
   const [present, setPresent] = useState<string[]>(here);
   const [safety, setSafety] = useState(false); const [ppe, setPpe] = useState(false); const [ok, setOk] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]); const [notes, setNotes] = useState('');
+  const dr = useDraft(`d:${wf.id}:start`, { present, safety, ppe, photos, notes }, (d) => { setPresent(d.present); setSafety(d.safety); setPpe(d.ppe); setPhotos(d.photos); setNotes(d.notes); }, run && !wf.start_at);
   void job;
   return (
     <div className="stack">
+      {run && <DraftBar d={dr} />}
       <div className="small muted">Start time is captured when you confirm: <b>{fmtDateTime(nowLocal())}</b></div>
-      <div><b>Crew present at start</b><div className="row" style={{ marginTop: 6 }}>{here.map((e) => <label key={e} className="check"><input type="checkbox" disabled={!run} checked={present.includes(e)} onChange={() => setPresent(present.includes(e) ? present.filter((x) => x !== e) : [...present, e])} />{emp(e)}</label>)}</div></div>
+      <div><b>Crew present at start</b><div className="row" style={{ marginTop: 6 }}>{here.map((e) => <Toggle key={e} checked={present.includes(e)} disabled={!run} onChange={() => setPresent(present.includes(e) ? present.filter((x) => x !== e) : [...present, e])}>{emp(e)}</Toggle>)}</div></div>
       <Confirm checked={safety} onChange={setSafety} disabled={!run}>Safety briefing completed with the crew.</Confirm>
       <Confirm checked={ppe} onChange={setPpe} disabled={!run}>All crew are wearing the required PPE.</Confirm>
       <div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Work-start photos (required)</div>
         <Photos items={photos.map((p, k) => ({ src: p, caption: `Start ${k + 1}` }))} onRemove={run ? (k) => setPhotos(photos.filter((_, x) => x !== k)) : undefined} />
         {run && <div style={{ marginTop: 8 }}><PhotoInput label="Add photo" capture="environment" multiple onAdd={(d) => setPhotos((x) => [...x, d])} /></div>}</div>
-      <Field label="Notes"><input disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+      <Field label="Notes"><input disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} /><PresetChips options={PRESETS.start} value={notes} onChange={setNotes} disabled={!run} /></Field>
       <Confirm checked={ok} onChange={setOk} disabled={!run}>I confirm, as Team Leader, that work is starting now.</Confirm>
       {run && <button className="btn primary lg" onClick={() => attempt(() => startWork(wf.id, { present, safety, ppe, photos, notes, confirmed: ok }), 'Work started — In Progress')}>Start work</button>}
     </div>
@@ -321,12 +342,14 @@ function StartForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }
 /* ================= Step 9: Leave site ================= */
 function LeaveForm({ wf, run }: { wf: JobWorkflow; run: boolean }) {
   const [gps, setGps] = useState<Geo>({ note: '' }); const [photo, setPhoto] = useState<string>(); const [notes, setNotes] = useState(''); const [ok, setOk] = useState(false);
+  const dr = useDraft(`d:${wf.id}:leave`, { gps, photo, notes }, (d) => { setGps(d.gps); setPhoto(d.photo); setNotes(d.notes); }, run && !wf.leave_at);
   return (
     <div className="stack">
+      {run && <DraftBar d={dr} />}
       <div className="small muted">Departure time from site is captured when you confirm: <b>{fmtDateTime(nowLocal())}</b></div>
       <GpsField label="Capture GPS" value={gps} onChange={setGps} disabled={!run} />
       <Field label="Final photo (optional)"><PhotoField label="Take photo" value={photo} onChange={setPhoto} disabled={!run} /></Field>
-      <Field label="Notes"><input disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+      <Field label="Notes"><input disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} /><PresetChips options={PRESETS.leave} value={notes} onChange={setNotes} disabled={!run} /></Field>
       <Confirm checked={ok} onChange={setOk} disabled={!run}>I confirm the crew, equipment and site are clear and we are leaving.</Confirm>
       {run && <button className="btn primary lg" onClick={() => attempt(() => leaveSite(wf.id, { lat: gps.lat, lng: gps.lng, gps_note: gps.note, photo, notes, confirmed: ok }), 'Left site')}>Leave site</button>}
     </div>
@@ -338,8 +361,10 @@ function HqaForm({ wf, run }: { wf: JobWorkflow; run: boolean }) {
   const hasVeh = wf.items.some((i) => i.kind === 'vehicle');
   const [gps, setGps] = useState<Geo>({ note: '' });
   const [f, setF] = useState({ odo: undefined as number | undefined, fuel: undefined as FuelLevel | undefined, cond: 'Good' as VehicleCondition, notes: '', eq: false, ok: false, n: '' });
+  const dr = useDraft(`d:${wf.id}:hqa`, { gps, odo: f.odo, fuel: f.fuel, cond: f.cond, notes: f.notes, n: f.n }, (d) => { setGps(d.gps); setF((x) => ({ ...x, odo: d.odo, fuel: d.fuel, cond: d.cond, notes: d.notes, n: d.n })); }, run && !wf.hqa_at);
   return (
     <div className="stack">
+      {run && <DraftBar d={dr} />}
       <div className="small muted">Arrival time at HQ is captured when you confirm: <b>{fmtDateTime(nowLocal())}</b></div>
       <GpsField label="Capture GPS at headquarters" value={gps} onChange={setGps} disabled={!run} />
       {hasVeh && (
@@ -348,7 +373,7 @@ function HqaForm({ wf, run }: { wf: JobWorkflow; run: boolean }) {
           <Field label="Ending fuel level" required hint={wf.hq_fuel ? `Starting: ${wf.hq_fuel}` : undefined}><Seg value={f.fuel} options={FUEL_LEVELS} disabled={!run} onChange={(v) => setF({ ...f, fuel: v })} /></Field>
           <Field label="Vehicle condition" required><Seg value={f.cond} options={['Good', 'With Issue'] as const} disabled={!run} tone={condTone} onChange={(v) => setF({ ...f, cond: v })} /></Field>
           {f.odo !== undefined && wf.hq_odo !== undefined && <div className="alert info" style={{ alignSelf: 'end' }}>Distance travelled: <b>{round2(f.odo - wf.hq_odo)} km</b></div>}
-          {f.cond === 'With Issue' && <Field label="Vehicle issue (required — opens a maintenance ticket)" className="full"><input disabled={!run} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>}
+          {f.cond === 'With Issue' && <Field label="Vehicle issue (required — opens a maintenance ticket)" className="full"><input disabled={!run} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /><PresetChips options={PRESETS.vehicleIssue} value={f.notes} onChange={(v) => setF({ ...f, notes: v })} disabled={!run} /></Field>}
         </div>
       )}
       <Confirm checked={f.eq} onChange={(v) => setF({ ...f, eq: v })} disabled={!run}>Final equipment check done: all equipment is back at headquarters. Serviceable items return to <b>Available</b>.</Confirm>

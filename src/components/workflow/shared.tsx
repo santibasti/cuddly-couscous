@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth, live } from '@/lib/store';
 import { Badge, Field, Icon, Modal, PhotoInput, attempt, toast } from '@/components/ui';
+import { Stepper, Toggle } from '@/components/touch';
 import { getGeo } from '@/lib/geo';
 import { ITEM_CONDITIONS, kindOfAsset } from '@/lib/workflow';
 import type { CheckItem, ItemCondition, Job } from '@/lib/types';
@@ -41,7 +42,7 @@ export function ItemCard({ it, setItem, confirmItem, onScan, crew, disabled, emp
       <div className="row between"><div><b>{it.label}</b> {it.extra && <Badge tone="blue">added</Badge>} <span className="muted small">{it.code ?? 'no Asset ID'}</span></div>{it.out_ok ? <Badge tone="green">{it.out_by === 'scan' ? '✓ Scanned' : it.out_by === 'id' ? '✓ ID entered' : '✓ Confirmed'}</Badge> : <Badge tone="amber">Not confirmed</Badge>}</div>
       <div className="itemgrid">
         <Field label="Qty required"><input disabled value={it.qty} /></Field>
-        <Field label="Qty loaded"><input type="number" min="0" disabled={disabled || it.kind === 'vehicle'} value={it.loaded_qty ?? ''} onChange={(e) => setItem(it.key, { loaded_qty: e.target.value === '' ? undefined : +e.target.value })} /></Field>
+        <Field label="Qty loaded"><Stepper label={`Quantity loaded ${it.label}`} min={0} disabled={disabled || it.kind === 'vehicle'} value={it.loaded_qty} onChange={(v) => setItem(it.key, { loaded_qty: v })} /></Field>
         <Field label="Responsible"><select disabled={disabled} value={it.responsible_id ?? ''} onChange={(e) => setItem(it.key, { responsible_id: e.target.value || undefined })}>{crew.map((e) => <option key={e} value={e}>{emp(e)}</option>)}</select></Field>
       </div>
       {it.kind !== 'vehicle' && <Field label="Condition"><Seg value={cond} options={ITEM_CONDITIONS} disabled={disabled} tone={condTone} onChange={(v: ItemCondition) => setItem(it.key, { out_condition: v, ...(v === 'Missing' ? { loaded_qty: 0 } : {}) })} /></Field>}
@@ -50,7 +51,7 @@ export function ItemCard({ it, setItem, confirmItem, onScan, crew, disabled, emp
       {!disabled && (
         <div className="row">
           {it.code && <button className="btn sm navy" onClick={onScan}><Icon name="qr" size={14} />Scan QR</button>}
-          {it.code && <span className="row" style={{ gap: 4 }}><input value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && verify()} placeholder="Type Asset ID" aria-label={`Asset ID for ${it.label}`} style={{ width: 130, minHeight: 30, padding: '2px 8px' }} /><button className="btn sm" onClick={verify}>Verify</button></span>}
+          {it.code && <span className="row" style={{ gap: 4 }}><input value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && verify()} placeholder="Type Asset ID" aria-label={`Asset ID for ${it.label}`} style={{ width: 160 }} /><button className="btn sm" onClick={verify}>Verify</button></span>}
           <label className="check"><input type="checkbox" checked={!!it.out_ok} onChange={(e) => (e.target.checked ? confirmItem(it, 'manual') : setItem(it.key, { out_ok: false }))} />Confirm</label>
           {onRemove && <button className="btn sm danger" onClick={onRemove}>Remove</button>}
         </div>
@@ -87,7 +88,7 @@ export function AddToolModal({ items, job, onAdd, onClose }: { items: CheckItem[
 }
 
 export const Confirm = ({ checked, onChange, disabled, children }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; children: React.ReactNode }) => (
-  <label className="check"><input type="checkbox" disabled={disabled} checked={checked} onChange={(e) => onChange(e.target.checked)} /><span>{children}</span></label>
+  <Toggle checked={checked} onChange={onChange} disabled={disabled}>{children}</Toggle>
 );
 
 /** Run an action and report the result in a toast (re-exported for brevity in step forms). */

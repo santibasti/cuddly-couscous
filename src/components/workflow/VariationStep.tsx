@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { Badge, Field, Modal, PhotoInput, SignaturePad, attempt, ask } from '@/components/ui';
+import { DraftBar, PresetChips, Stepper } from '@/components/touch';
+import { useDraft } from '@/lib/useDraft';
+import { PRESETS } from '@/lib/presets';
+import { confirmLeave } from '@/lib/sync';
 import { approveVariation, createVariation, rejectVariation, updateVariation, type VariationInput } from '@/lib/workflow';
 import { docTotals, finalContract, rowPanels, variationTotals } from '@/lib/business';
 import { variationPdf } from '@/lib/export';
@@ -52,6 +56,8 @@ function VariationModal({ wf, job, initial, onClose }: { wf: JobWorkflow; job: J
   const q = db.quotations.find((x) => x.id === job.quotation_id);
   const [f, setF] = useState<VariationInput>(() => initial ? { reason: initial.reason, items: initial.items, discount: initial.discount, vat_mode: initial.vat_mode, vat_rate: initial.vat_rate, panel_row_ids: initial.panel_row_ids, notes: initial.notes } : { reason: '', items: [], discount: 0, vat_mode: q?.vat_mode ?? 'exclusive', vat_rate: q?.vat_rate ?? db.settings.vat_rate ?? 12, panel_row_ids: [] });
   const t = docTotals(f.items, f.discount, f.vat_mode, f.vat_rate);
+  const dr = useDraft(`d:${wf.id}:var:${initial?.id ?? 'new'}`, f, (d) => setF(d));
+  const close = () => { if (dr.dirty && !confirmLeave()) return; onClose(); };
   const setItem = (i: number, p: Partial<QuoteItem>) => setF({ ...f, items: f.items.map((x, k) => (k === i ? { ...x, ...p } : x)) });
   const extra = wf.panels.filter((p) => p.additional);
   const toggle = (id: string) => setF({ ...f, panel_row_ids: f.panel_row_ids.includes(id) ? f.panel_row_ids.filter((x) => x !== id) : [...f.panel_row_ids, id] });
@@ -65,20 +71,21 @@ function VariationModal({ wf, job, initial, onClose }: { wf: JobWorkflow; job: J
     if (int) add.push({ service_code: 'GLASS_INT', description: `Additional internal glass panels (${rows.map((r) => `${r.area} ${r.side}`).join(', ')})`, qty: int, unit: 'panel', rate, discount: 0 });
     setF({ ...f, items: [...f.items, ...add] });
   };
-  const save = () => { if (attempt(() => (initial ? updateVariation(initial.id, f) : createVariation(job.id, f)), 'Variation saved')) onClose(); };
+  const save = () => { if (attempt(() => (initial ? updateVariation(initial.id, f) : createVariation(job.id, f)), 'Variation saved')) { dr.markSaved(); onClose(); } };
   return (
-    <Modal title={initial ? `Edit ${initial.number}` : 'New variation / final quotation'} size="wide" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save}>Save variation</button></>}>
+    <Modal title={initial ? `Edit ${initial.number}` : 'New variation / final quotation'} size="wide" onClose={close} footer={<><button className="btn" onClick={close}>Cancel</button><button className="btn primary" onClick={save}>Save variation</button></>}>
       <div className="stack">
+        <DraftBar d={dr} />
         <div className="alert info">The original quotation {q?.number} stays unchanged. This variation adds to it once the client approves and signs.</div>
-        <Field label="Reason for variation" required><textarea value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} placeholder="e.g. Additional glass panels found on the roof deck" /></Field>
+        <Field label="Reason for variation" required><textarea value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} placeholder="Tap a reason below or type" /><PresetChips replace options={PRESETS.variation} value={f.reason} onChange={(v) => setF({ ...f, reason: v })} /></Field>
         {extra.length > 0 && <div><b>Additional panels counted (step 4)</b><div className="stack" style={{ gap: 4, marginTop: 4 }}>{extra.map((p) => <label key={p.id} className="check"><input type="checkbox" checked={f.panel_row_ids.includes(p.id)} onChange={() => toggle(p.id)} />{p.area} · {p.side} — {p.external} external, {p.internal} internal</label>)}</div>
           <button className="btn sm" style={{ marginTop: 6 }} disabled={!f.panel_row_ids.length} onClick={fromPanels}>Add line items from selected panels</button></div>}
         <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Description</th><th>Service</th><th className="num">Qty</th><th>Unit</th><th className="num">Rate</th><th className="num">Discount</th><th /></tr></thead><tbody>
           {f.items.map((i, k) => (
             <tr key={k}><td><input value={i.description} onChange={(e) => setItem(k, { description: e.target.value })} aria-label="Description" /></td>
               <td><select value={i.service_code} onChange={(e) => setItem(k, { service_code: e.target.value as QuoteItem['service_code'] })}>{db.services.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></td>
-              <td className="num"><input type="number" min="0" step="any" value={i.qty || ''} onChange={(e) => setItem(k, { qty: +e.target.value })} style={{ width: 70 }} aria-label="Qty" /></td><td><input value={i.unit} onChange={(e) => setItem(k, { unit: e.target.value })} style={{ width: 70 }} /></td>
-              <td className="num"><input type="number" min="0" step="any" value={i.rate || ''} onChange={(e) => setItem(k, { rate: +e.target.value })} style={{ width: 90 }} aria-label="Rate" /></td><td className="num"><input type="number" min="0" value={i.discount || ''} onChange={(e) => setItem(k, { discount: +e.target.value })} style={{ width: 80 }} /></td>
+              <td className="num"><Stepper label="Qty" min={0} value={i.qty} onChange={(v) => setItem(k, { qty: v ?? 0 })} /></td><td><input value={i.unit} onChange={(e) => setItem(k, { unit: e.target.value })} style={{ width: 70 }} /></td>
+              <td className="num"><input type="number" inputMode="decimal" min="0" step="any" value={i.rate || ''} onChange={(e) => setItem(k, { rate: +e.target.value })} style={{ width: 120 }} aria-label="Rate" /></td><td className="num"><input type="number" min="0" value={i.discount || ''} onChange={(e) => setItem(k, { discount: +e.target.value })} style={{ width: 80 }} /></td>
               <td><button className="btn sm danger" onClick={() => setF({ ...f, items: f.items.filter((_, x) => x !== k) })}>✕</button></td></tr>
           ))}
           {!f.items.length && <tr><td colSpan={7} className="muted">No lines yet.</td></tr>}
@@ -97,12 +104,14 @@ function ApproveModal({ v, onClose }: { v: Variation; onClose: () => void }) {
   const job = db.jobs.find((j) => j.id === v.job_id)!;
   const [name, setName] = useState(db.sites.find((s) => s.id === job.site_id)?.contact_person ?? '');
   const [sig, setSig] = useState<string>(); const [file, setFile] = useState<{ data: string; name: string }>();
+  const dr = useDraft(`d:${v.job_id}:varsign:${v.id}`, { name, sig, file }, (d) => { setName(d.name); setSig(d.sig); setFile(d.file); });
+  const close = () => { if (dr.dirty && !confirmLeave()) return; onClose(); };
   return (
-    <Modal title={`Client approval – ${v.number}`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => { if (attempt(() => approveVariation(v.id, { client_name: name, signature: sig, file: file?.data, file_name: file?.name }), 'Variation approved — additional work may begin')) onClose(); }}>Approve &amp; sign</button></>}>
+    <Modal title={`Client approval – ${v.number}`} onClose={close} footer={<><button className="btn" onClick={close}>Cancel</button><button className="btn primary" onClick={() => { if (attempt(() => approveVariation(v.id, { client_name: name, signature: sig, file: file?.data, file_name: file?.name }), 'Variation approved — additional work may begin')) { dr.markSaved(); onClose(); } }}>Approve &amp; sign</button></>}>
       <div className="alert warn" style={{ marginBottom: 10 }}>Additional work must not begin until the client has approved and signed. Variation total: <b>{money(variationTotals(v).total)}</b>.</div>
       <div className="stack">
         <Field label="Client name" required><input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        <div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad onChange={setSig} /></div>
+        <div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad value={sig} onChange={setSig} /></div>
         <div className="row"><PhotoInput label="Attach signed copy (optional)" accept="image/*,application/pdf" onAdd={(d, n) => setFile({ data: d, name: n })} />{file && <Badge tone="green">{file.name}</Badge>}</div>
       </div>
     </Modal>

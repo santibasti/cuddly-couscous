@@ -12,7 +12,7 @@ payroll, inventory, equipment out/in, expenses, receivables, job costing, report
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm test             # 47 tests: pricing rules, payroll maths, store rules, seed integrity, 11-step job workflow
+npm test             # 54 tests: pricing rules, payroll maths, store rules, seed integrity, 11-step job workflow, drafts & sync status
 npm run build        # type-check + production build
 ```
 
@@ -30,6 +30,16 @@ Sign in with any demo account (password **`topmop123`**), or use the role button
 
 Sample data is generated relative to *today* (~110 jobs, 16 employees, 13 clients, 24 stock items, 21 assets, 84 invoices,
 payroll periods in every status, alerts of every kind), so every module is populated immediately. **Admin → Data & security → Reset** restores it.
+
+## Tablet-first / installable (PWA)
+
+The field screens (Job Card workflow, Equipment checklists, Site Arrival, Attendance, Conforme, Panel counting, Variation, Service Report, signatures, Return check) are laid out for 10–13" Android tablets and iPads, portrait and landscape. Desktop keeps the dense reporting, finance and table screens.
+
+* **Layout:** phones < 768 px use the bottom bar; tablets 768–1199 px use a slim icon rail; wider screens the full sidebar. Touch devices get 48 px+ buttons and fields, large segmented toggles, switches, quantity steppers (− / +) and tap-to-fill phrase chips.
+* **Job workflow:** the 11-step tracker stays visible (sticky step strip in portrait, full progress rail in landscape) and **one step is shown at a time** with Back / Next. Job details (checklist, photos, costing) are on a second tab.
+* **Camera, GPS, QR, signature:** photo buttons open the tablet camera directly (plus “From gallery”); GPS capture on departure / arrival / leaving / HQ and attendance; QR **and barcode** scanning through the camera (native `BarcodeDetector` where the browser has it, QR fallback elsewhere, typed code always works); touch / stylus signature pads that keep the signature when the tablet is rotated.
+* **Drafts & sync status:** every step auto-saves what you type to the tablet and restores it after a reload, crash or lost connection. A status chip shows **Saved · Saving… · Offline Draft · Synced** (top bar and on each step). Leaving a step or the app with unsubmitted entries asks first.
+* **Install:** open the site over HTTPS in Chrome (Android) or Safari (iPad → Share → Add to Home Screen). The service worker caches the app so it opens with no signal.
 
 ## Modules
 
@@ -97,4 +107,5 @@ overpayment, negative stock and single-release-per-asset all reject correctly.
 6. PDFs print amounts as `PHP 1,234.00` because jsPDF's built-in fonts have no ₱ glyph (Excel and the UI use ₱). Embed a TTF font to change this.
 7. Client-portal login is a demo; the real portal needs Supabase Auth users with `profiles.client_id`.
 8. QR scanning uses the device camera, which browsers only allow on HTTPS or `localhost`; the manual code box also works with USB/Bluetooth scanners. It was tested with typed codes, not a physical camera.
-9. Field photos are stored inline (resized) in the demo; use Storage buckets in production.
+9. **Offline sync is local-only in the demo.** Changes are written to the tablet immediately, so the “Synced” state means “nothing is waiting to upload”. The upload hook is `syncHub.setFlusher()` in `src/lib/sync.ts` — connect it to Supabase together with item 1. The service worker caches the app shell and built assets; the PDF / Excel export libraries are cached after first use online. The browser Back button is not intercepted by the unsaved-step warning (links, steps and sign-out are).
+10. Field photos are stored inline (resized) in the demo; use Storage buckets in production.

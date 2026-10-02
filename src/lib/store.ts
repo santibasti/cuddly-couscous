@@ -3,6 +3,7 @@ import type { AuditLog, Base, DB, Invoice, PayrollPeriod, Role, TableName, UserA
 import { permsFor } from './rbac';
 import { isoNow, sha256, uid } from './util';
 import { seedDB } from './seed';
+import { syncHub } from './sync';
 
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
@@ -38,7 +39,7 @@ class Store {
   /* ---- subscription ---- */
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
   getDB = () => this._db;
-  private emit() { this.listeners.forEach((l) => l()); this.persist(); }
+  private emit() { this.listeners.forEach((l) => l()); this.persist(); syncHub.noteWrite(); }
   private persist() { if (this.timer) clearTimeout(this.timer); this.timer = setTimeout(() => this.persistNow(), 300); }
   private persistNow() {
     try { localStorage.setItem(KEY, JSON.stringify(this._db)); }

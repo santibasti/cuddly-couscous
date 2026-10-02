@@ -180,15 +180,20 @@ export async function fileToDataUrl(file: File, max = 900): Promise<string> {
 }
 
 export function PhotoInput({ label, onAdd, capture, multiple, accept, disabled }: { label: string; onAdd: (dataUrl: string, name: string) => void; capture?: 'environment' | 'user'; multiple?: boolean; accept?: string; disabled?: boolean }) {
-  const ref = useRef<HTMLInputElement>(null);
+  const cam = useRef<HTMLInputElement>(null);
+  const gal = useRef<HTMLInputElement>(null);
+  const onChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    for (const f of Array.from(e.target.files ?? [])) { try { onAdd(await fileToDataUrl(f), f.name); } catch { toast('Could not read that file', 'err'); } }
+    e.target.value = '';
+  };
+  // With `capture` the tablet opens its camera directly; a second button picks an existing photo / file instead.
   return (
-    <>
-      <input ref={ref} type="file" accept={accept ?? 'image/*'} capture={capture} multiple={multiple} className="hide" onChange={async (e) => {
-        for (const f of Array.from(e.target.files ?? [])) { try { onAdd(await fileToDataUrl(f), f.name); } catch { toast('Could not read that file', 'err'); } }
-        e.target.value = '';
-      }} />
-      <button type="button" className="btn sm" disabled={disabled} onClick={() => ref.current?.click()}><Icon name="camera" />{label}</button>
-    </>
+    <span className="photobtns">
+      {capture && <input ref={cam} type="file" accept="image/*" capture={capture} multiple={multiple} className="hide" onChange={onChange} />}
+      <input ref={gal} type="file" accept={accept ?? 'image/*'} multiple={multiple} className="hide" onChange={onChange} />
+      <button type="button" className="btn sm" disabled={disabled} onClick={() => (capture ? cam : gal).current?.click()}><Icon name="camera" />{label}</button>
+      {capture && <button type="button" className="btn sm" disabled={disabled} onClick={() => gal.current?.click()} aria-label={`${label} – choose from gallery`}>From gallery</button>}
+    </span>
   );
 }
 
@@ -210,21 +215,40 @@ export function Photos({ items, onRemove }: { items: { src: string; caption?: st
   );
 }
 
-export function SignaturePad({ onChange }: { onChange: (dataUrl: string | undefined) => void }) {
+export function SignaturePad({ onChange, value }: { onChange: (dataUrl: string | undefined) => void; value?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
+  const last = useRef<string | undefined>(value);
+  const width = useRef(0);
+  const [has, setHas] = useState(!!value);
+  // size the canvas to its box (sharp on retina tablets) and keep the drawing when the tablet is rotated
+  const setup = () => {
+    const c = ref.current!; const r = c.getBoundingClientRect(); if (!r.width) return;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); width.current = r.width;
+    const g = c.getContext('2d')!; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.lineWidth = 2.6; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#0B2545';
+    if (last.current) { const img = new Image(); img.onload = () => g.drawImage(img, 0, 0, r.width, r.height); img.src = last.current; }
+  };
   useEffect(() => {
-    const c = ref.current!; const r = c.getBoundingClientRect(); c.width = r.width * 2; c.height = r.height * 2;
-    const g = c.getContext('2d')!; g.scale(2, 2); g.lineWidth = 2; g.lineCap = 'round'; g.strokeStyle = '#0B2545';
+    setup();
+    const ro = new ResizeObserver(() => { if (ref.current && Math.abs(ref.current.getBoundingClientRect().width - width.current) > 1) setup(); });
+    ro.observe(ref.current!);
+    return () => ro.disconnect();
   }, []);
+  // a saved draft can hand the signature back in
+  useEffect(() => { if (value === last.current) return; last.current = value; setHas(!!value); if (ref.current) setup(); }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
   const pos = (e: React.PointerEvent) => { const r = ref.current!.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] as const; };
+  const end = () => { if (!drawing.current) return; drawing.current = false; last.current = ref.current!.toDataURL('image/png'); setHas(true); onChange(last.current); };
   return (
     <div>
-      <canvas ref={ref} className="sigpad"
-        onPointerDown={(e) => { drawing.current = true; const g = ref.current!.getContext('2d')!; g.beginPath(); g.moveTo(...pos(e)); ref.current!.setPointerCapture(e.pointerId); }}
+      <canvas ref={ref} className="sigpad" aria-label="Signature area – sign with your finger or stylus"
+        onPointerDown={(e) => { e.preventDefault(); drawing.current = true; const g = ref.current!.getContext('2d')!; const [x, y] = pos(e); g.beginPath(); g.moveTo(x, y); g.lineTo(x + 0.1, y + 0.1); g.stroke(); ref.current!.setPointerCapture(e.pointerId); }}
         onPointerMove={(e) => { if (!drawing.current) return; const g = ref.current!.getContext('2d')!; g.lineTo(...pos(e)); g.stroke(); }}
-        onPointerUp={() => { drawing.current = false; onChange(ref.current!.toDataURL('image/png')); }} />
-      <button type="button" className="btn sm" onClick={() => { const c = ref.current!; c.getContext('2d')!.clearRect(0, 0, c.width, c.height); onChange(undefined); }}>Clear signature</button>
+        onPointerUp={end} onPointerCancel={end} />
+      <div className="row between" style={{ marginTop: 6 }}>
+        <span className="small muted">{has ? '✓ Signature captured' : 'Sign here with your finger or stylus'}</span>
+        <button type="button" className="btn sm" onClick={() => { const c = ref.current!; c.getContext('2d')!.clearRect(0, 0, c.width, c.height); last.current = undefined; setHas(false); onChange(undefined); }}>Clear signature</button>
+      </div>
     </div>
   );
 }

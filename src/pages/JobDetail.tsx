@@ -5,6 +5,8 @@ import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Photos, Stat, at
 import { JobForm } from '@/components/JobForm';
 import { invoiceFromJob, setJobStatus, updateJobField } from '@/lib/actions';
 import { finalContract, isDone, jobCost, JOB_FLOW, stockSummary } from '@/lib/business';
+import { Tabs } from '@/components/ui';
+import { useMedia } from '@/components/touch';
 import { WorkflowPanel } from '@/components/workflow/WorkflowPanel';
 import { ReportIncidentModal } from '@/components/workflow/Incidents';
 import { overrideJobStatus } from '@/lib/workflow';
@@ -19,6 +21,8 @@ export default function JobDetail() {
   const [edit, setEdit] = useState(false);
   const [ovr, setOvr] = useState(false);
   const [inc, setInc] = useState(false);
+  const [tab, setTab] = useState<'workflow' | 'details'>('workflow');
+  const wide = useMedia('(min-width: 1200px) and (orientation: landscape)');
   const j = db.jobs.find((x) => x.id === id);
   if (!j || j.deleted_at) return <div className="alert warn">Job not found. <Link to="/jobs">Back to jobs</Link></div>;
   const myEmp = user?.employee_id;
@@ -53,8 +57,9 @@ export default function JobDetail() {
       </PageHead>
 
       {hasVars && <div className="alert info" style={{ marginBottom: 12 }}>Contract value: original {money(fc.originalNet)} + approved variations {money(fc.variationsNet)} = <b>{money(fc.finalNet)}</b> (ex-VAT). The original quotation is unchanged.</div>}
-      <div style={{ marginBottom: 14 }}><WorkflowPanel job={j} /></div>
-      <div className="grid g2">
+      {!wide && <Tabs tabs={[{ id: 'workflow' as const, label: 'Workflow' }, { id: 'details' as const, label: 'Job details' }]} value={tab} onChange={setTab} />}
+      {(wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><WorkflowPanel job={j} onDetails={() => { setTab('details'); window.scrollTo({ top: 0 }); }} /></div>}
+      {(wide || tab === 'details') && <div className="grid g2">
         <div className="stack">
           <Card title="Scope of work"><p style={{ marginTop: 0 }}>{j.scope || '—'}</p><div className="row">{j.service_codes.map((c) => <Badge key={c} tone="teal">{db.services.find((s) => s.code === c)?.name}</Badge>)}</div></Card>
           <Card title="Site & contact">
@@ -132,7 +137,7 @@ export default function JobDetail() {
               {logs.map((l) => <li key={l.id}><span className="small">{l.summary}</span><span className="small muted">{fmtStamp(l.at)} · {l.user_name}</span></li>)}</ul>
           </Card>
         </div>
-      </div>
+      </div>}
       {edit && <JobForm initial={j} onClose={() => setEdit(false)} />}
       {inc && <ReportIncidentModal jobId={j.id} onClose={() => setInc(false)} />}
       {ovr && <OverrideModal job={j} onClose={() => setOvr(false)} />}
