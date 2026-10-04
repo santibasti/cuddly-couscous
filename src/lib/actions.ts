@@ -542,8 +542,12 @@ export function runAutomations() {
   for (const j of d.jobs.filter((x) => !x.deleted_at && x.start_at.startsWith(t))) {
     if (['Confirmed', 'Dispatch Checklist Pending'].includes(j.status) && now > addMinutes(j.start_at, 30)) add(`wf-late:${j.id}`, 'job', 'Crew not yet dispatched', `${j.number} was due to start ${j.start_at.slice(11)} — HQ checklist / dispatch not completed.`, 'warn', `/jobs/${j.id}`, [...ops, 'leader'], true);
   }
-  for (const j of d.jobs.filter((x) => !x.deleted_at && x.status === 'Work Completed')) {
+  for (const j of d.jobs.filter((x) => !x.deleted_at && x.status === 'Work Completed' && !d.workflows.some((w) => w.job_id === x.id && w.closed_at && !w.deleted_at))) {
     add(`wf-return:${j.id}`, 'job', 'Close-out pending', `${j.number}: client handover signed — complete the close-out (equipment return, leave site, arrival at HQ).`, 'info', `/jobs/${j.id}`, [...ops, 'leader']);
+  }
+  for (const fb of d.client_feedback.filter((x) => !x.deleted_at && x.follow_up === 'Required')) {
+    const j = d.jobs.find((x) => x.id === fb.job_id);
+    add(`fb-follow:${fb.id}`, 'job', 'Follow-Up Required: client not satisfied', `${j?.number} · ${d.clients.find((c) => c.id === fb.client_id)?.name}: ${fb.issue_category}${fb.comment ? ` — “${fb.comment}”` : ''}. The job cannot be closed until you acknowledge it.`, 'critical', `/jobs/${fb.job_id}`, ['owner']);
   }
   for (const r of d.discount_requests.filter((x) => !x.deleted_at && x.status === 'Pending Admin Approval')) {
     const j = d.jobs.find((x) => x.id === r.job_id);

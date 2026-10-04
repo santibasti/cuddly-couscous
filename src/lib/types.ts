@@ -504,6 +504,21 @@ export interface Variation extends Base {
   decided_at?: string;       // when the client approved / declined
   sign_lat?: number; sign_lng?: number; sign_gps_note?: string; sign_device?: string;
 }
+/* ---------- Client Satisfaction Check (end of Client Handover) ---------- */
+export type SatisfactionRating = 1 | 2 | 3;     // 1 Not Satisfied · 2 Satisfied · 3 Very Satisfied
+export type IssueCategory = 'Quality' | 'Damage' | 'Delay' | 'Communication' | 'Scope' | 'Other';
+export interface ClientFeedback extends Base {
+  job_id: string; workflow_id?: string; client_id: string;
+  leader_id?: string; crew_ids: string[]; service_codes: string[]; service_date: string;
+  rating: SatisfactionRating;
+  aspects: string[];                 // optional ticked items: crew professionalism, quality of cleaning, …
+  comment?: string;
+  issue_category?: IssueCategory;    // required from the Team Leader when Not Satisfied
+  follow_up: 'None' | 'Required' | 'Acknowledged';
+  ack_note?: string; ack_by?: string; ack_at?: string;
+  submitted_by?: string; submitted_at: string;
+}
+
 /* ---------- Controlled discounts ---------- */
 export type DiscountStatus = 'Pending Admin Approval' | 'Approved' | 'Rejected' | 'Applied';
 export type DiscountKind = 'percent' | 'fixed';
@@ -682,7 +697,7 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback';
 
 export interface DB {
   users: UserAccount[]; branches: Branch[]; clients: Client[]; sites: Site[]; communications: Communication[];
@@ -691,7 +706,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[];
   audit: AuditLog[];
   settings: Settings;
   version: number;

@@ -4,9 +4,9 @@
 // Photos are NOT kept in this app (TopMop uses its own file system for before / after, site and equipment photos).
 import { store, RuleError } from './store';
 import type {
-  ContainerCondition, DB, DiscountKind, DiscountRequest, FuelLevel, IncidentReport, IncidentType, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
+  ClientFeedback, ContainerCondition, DB, DiscountKind, DiscountRequest, FuelLevel, IncidentReport, IncidentType, IssueCategory, SatisfactionRating, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
 } from './types';
-import { buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
+import { FEEDBACK_ASPECTS, ISSUE_CATEGORIES, RATING_STARS, openFollowUp, buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
 import { performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { nowLocal, today } from './util';
 
@@ -382,8 +382,11 @@ export function rejectVariation(id: string, note: string) {
 /* ================= Step 6: Client Handover (Service Accomplishment Report) ================= */
 export interface ReportForm {
   scope: string; findings: string; limits: string; recs: string; method?: string; complimentary?: string;
-  client_name: string; client_sig?: string; tm_name: string; tm_sig?: string; rating?: number; notes?: string;
+  client_name: string; client_sig?: string; tm_name: string; tm_sig?: string; notes?: string;
+  /** Client Satisfaction Check: one tap, optional ticks, optional comment. Not Satisfied needs an issue category from the Team Leader. */
+  satisfaction?: SatisfactionInput;
 }
+export interface SatisfactionInput { rating: SatisfactionRating; aspects?: string[]; comment?: string; issue_category?: IssueCategory }
 export function signServiceReport(id: string, f: ReportForm) {
   store.require('jobs.complete');
   const wf = getWf(id); const job = jobOf(wf);
@@ -400,17 +403,39 @@ export function signServiceReport(id: string, f: ReportForm) {
   if (!f.client_sig) fail('The client signature is required.');
   if (!f.tm_name.trim() || !f.tm_sig) fail('The TopMop team leader name and signature are required.');
   const dBlock = discountBlock(db(), job, wf, billBase(job).base); if (dBlock) fail(dBlock);
+  const sat = f.satisfaction;
+  if (!sat || ![1, 2, 3].includes(sat.rating)) fail('Ask the client how satisfied they are with today’s service (one tap).');
+  if (sat!.rating === 1 && !ISSUE_CATEGORIES.includes(sat!.issue_category as IssueCategory)) fail('The client is not satisfied: choose the issue category (Quality, Damage, Delay, Communication, Scope or Other).');
+  const aspects = (sat!.aspects ?? []).filter((a) => (FEEDBACK_ASPECTS as readonly string[]).includes(a));
   const cur = db().jobs.find((j) => j.id === job.id)!;
   const at = nowLocal();
-  store.update('jobs', job.id, { findings: f.findings, signoff_name: f.client_name.trim(), signoff_data: f.client_sig, signoff_at: at, client_rating: f.rating, completed_at: at }, 'approve', `Service report signed for ${job.number}`);
+  store.update('jobs', job.id, { findings: f.findings, signoff_name: f.client_name.trim(), signoff_data: f.client_sig, signoff_at: at, client_rating: RATING_STARS[sat!.rating], completed_at: at }, 'approve', `Service report signed for ${job.number}`);
   void cur;
-  store.update('workflows', id, { rep_at: at, rep_by: uidNow(), rep_scope: f.scope, rep_method: f.method, rep_findings: f.findings, rep_limits: f.limits, rep_recs: f.recs, rep_complimentary: f.complimentary, rep_client_name: f.client_name.trim(), rep_client_sig: f.client_sig, rep_client_at: at, rep_tm_name: f.tm_name.trim(), rep_tm_sig: f.tm_sig, rep_rating: f.rating, rep_notes: f.notes } as never, 'approve', `${job.number}: service accomplishment report signed by ${f.client_name.trim()}`);
+  store.update('workflows', id, { rep_at: at, rep_by: uidNow(), rep_scope: f.scope, rep_method: f.method, rep_findings: f.findings, rep_limits: f.limits, rep_recs: f.recs, rep_complimentary: f.complimentary, rep_client_name: f.client_name.trim(), rep_client_sig: f.client_sig, rep_client_at: at, rep_tm_name: f.tm_name.trim(), rep_tm_sig: f.tm_sig, rep_rating: RATING_STARS[sat!.rating], rep_notes: f.notes } as never, 'approve', `${job.number}: service accomplishment report signed by ${f.client_name.trim()}`);
   setStatus(db().jobs.find((j) => j.id === job.id)!, 'Work Completed');
+  const neg = sat!.rating === 1;
+  store.insert('client_feedback', {
+    job_id: job.id, workflow_id: id, client_id: job.client_id, leader_id: job.leader_id, crew_ids: [...job.crew_ids], service_codes: [...job.service_codes], service_date: job.start_at.slice(0, 10),
+    rating: sat!.rating, aspects, comment: sat!.comment?.trim() || undefined, issue_category: neg ? sat!.issue_category : undefined, follow_up: neg ? 'Required' : 'None', submitted_by: uidNow(), submitted_at: new Date().toISOString(),
+  } as never, `${job.number}: client satisfaction ${sat!.rating === 1 ? 'Not Satisfied' : sat!.rating === 2 ? 'Satisfied' : 'Very Satisfied'}${neg ? ` (${sat!.issue_category}) — follow-up required` : ''}`);
   runAutomations();
 }
 
+/** Owner / Admin acknowledges negative feedback (with a note). This releases the job so it can be fully closed. */
+export function acknowledgeFeedback(id: string, note: string): ClientFeedback {
+  store.require('feedback.acknowledge');
+  const fb = db().client_feedback.find((x) => x.id === id) ?? fail('Feedback not found.');
+  if (fb.follow_up !== 'Required') fail('This feedback does not need a follow-up.');
+  if (!note.trim()) fail('Enter the follow-up note (what was done or agreed with the client).');
+  const r = store.update('client_feedback', id, { follow_up: 'Acknowledged', ack_note: note.trim(), ack_by: uidNow(), ack_at: new Date().toISOString() } as never, 'approve', `Negative client feedback acknowledged for ${db().jobs.find((j) => j.id === fb.job_id)?.number}: ${note.trim()}`) as ClientFeedback;
+  const job = db().jobs.find((j) => j.id === fb.job_id); const wf = workflowFor(fb.job_id);
+  if (job && wf?.closed_at && job.status === 'Work Completed') setStatus(job, 'Closed', `${job.number} closed after the Admin acknowledged the client feedback`);
+  runAutomations();
+  return r;
+}
+
 /* ================= Step 7: Close-Out (equipment return + leave site + arrival at HQ + leader confirmation) ================= */
-export interface ReturnSummary { missing: number; damaged: number; incidents: number; tickets: number; used: { label: string; qty: number; unit?: string }[] }
+export interface ReturnSummary { awaitingAck?: boolean; missing: number; damaged: number; incidents: number; tickets: number; used: { label: string; qty: number; unit?: string }[] }
 export interface CloseReady { key: string; label: string; ok: boolean }
 export function closeOutReady(d: DB, job: Job, wf?: JobWorkflow): CloseReady[] {
   return [
@@ -485,9 +510,10 @@ export function completeCloseOut(id: string, f: { items: CheckItem[]; leave_at?:
   const incidents = db().incidents.filter((x) => x.workflow_id === id).length - before;
   const now = nowLocal();
   store.update('workflows', id, { items, rc_at: now, rc_by: uidNow(), rc_notes: f.notes, leave_at: leave, leave_by: uidNow(), hqa_at: hqa, hqa_by: uidNow(), hqa_fuel: f.fuel, closed_at: now, closed_by: uidNow(), closed_notes: f.notes } as never, 'approve', `${job.number}: close-out confirmed — left site ${leave.slice(11)}, at HQ ${hqa.slice(11)}${incidents ? `, ${incidents} incident(s) raised` : ''}`);
-  setStatus(db().jobs.find((j) => j.id === job.id)!, 'Closed', `${job.number} closed`);
+  const hold = !!openFollowUp(db(), job.id);
+  if (!hold) setStatus(db().jobs.find((j) => j.id === job.id)!, 'Closed', `${job.number} closed`);
   runAutomations();
-  return { missing, damaged, incidents, tickets, used };
+  return { missing, damaged, incidents, tickets, used, awaitingAck: hold };
 }
 
 /* ================= Incidents ================= */
@@ -538,6 +564,7 @@ export function overrideJobStatus(id: string, status: JobStatus, reason: string)
   store.require('dispatch.approve');
   const job = db().jobs.find((j) => j.id === id) ?? fail('Job not found.');
   if (status === job.status) fail('The job already has that status.');
+  if (status === 'Closed' && openFollowUp(db(), id)) fail('The client was not satisfied: the Admin must acknowledge the feedback before the job can be closed.');
   return store.withReason(reason, () => store.update('jobs', id, { status } as never, 'update', `Status override ${job.number}: ${job.status} → ${status}`));
 }
 

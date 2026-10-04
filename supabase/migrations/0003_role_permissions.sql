@@ -36,6 +36,7 @@ insert into public.role_permissions (role, permission) values
 ('owner', 'dispatch.approve'),
 ('owner', 'discount.request'),
 ('owner', 'discount.approve'),
+('owner', 'feedback.acknowledge'),
 ('owner', 'incidents.manage'),
 ('owner', 'invoices.view'),
 ('owner', 'invoices.edit'),

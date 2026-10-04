@@ -1,7 +1,7 @@
 // Realistic demo data for TopMop Window Cleaning Solutions Corp. Everything is generated relative to today (Manila),
 // so the dashboard always shows current activity. Names, TINs and amounts are fictional sample data.
 import type {
-  Asset, Attendance, Checkout, Client, DB, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
+  Asset, Attendance, Checkout, Client, ClientFeedback, DB, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
   PayrollAdjustment, PayrollPeriod, PayrollRun, Payment, PerfReview, PettyCashEntry, Quotation, QuoteItem, ServiceDef,
   Settings, Site, StockTx, StorageLocation, UserAccount, Communication, Complaint, Role, ServiceCode, Condition, PayrollType,
 } from './types';
@@ -700,6 +700,27 @@ export function seedDB(): DB {
     if (idx === 3) mkInc(wf, 'Damaged asset', 'Medium', 'SFC-002 Surface Cleaner 24" - bearing noise and cracked skirt on return.', 'Acknowledged', { asset_id: A('SFC-002').id, ticket_id: tickets[0].id, resolution: 'Acknowledged by Operations; repair in progress under ticket.' });
     if (openHardHat) { const g = wf.items.find((i) => i.kind === 'ppe' && i.label === 'Hard hat'); if (g) { g.returned_qty = g.qty - 1; g.ret_condition = 'Good'; g.ret_note = 'Not on the truck at unloading'; mkInc(wf, 'Missing PPE', 'Medium', `Hard hat: 1 of ${g.qty} not returned. Not on the truck at unloading`, 'Open'); } }
   });
+  // Client Satisfaction Check results for finished jobs (mostly happy; a few unhappy; the latest unhappy one still waits for the Admin)
+  const feedback: ClientFeedback[] = [];
+  const finished = jobs.filter((j) => ['Completed', 'Closed'].includes(j.status) && j.leader_id && j.start_at.slice(0, 10) <= T).sort((a, b) => a.start_at.localeCompare(b.start_at));
+  const negIdx = finished.map((_, i) => i).filter((i) => i % 9 === 4);
+  const lastRecentNeg = [...negIdx].reverse().find((i) => recentDone.includes(finished[i]));
+  finished.forEach((j, i) => {
+    const rating = (negIdx.includes(i) ? 1 : i % 3 === 0 ? 2 : 3) as 1 | 2 | 3;
+    const cat = (['Quality', 'Delay', 'Communication', 'Scope', 'Damage'] as const)[i % 5];
+    const open = i === lastRecentNeg;
+    const d0 = j.start_at.slice(0, 10);
+    feedback.push({
+      ...base('fb', d0), job_id: j.id, workflow_id: workflows.find((w) => w.job_id === j.id)?.id, client_id: j.client_id, leader_id: j.leader_id, crew_ids: [...j.crew_ids], service_codes: [...j.service_codes], service_date: d0,
+      rating, aspects: rating === 1 ? [pick(['Quality of cleaning', 'On-time arrival', 'Communication'])] : rating === 3 ? ['Crew professionalism', 'Quality of cleaning'] : [],
+      comment: rating === 1 ? 'Streaks left on a few panels and the crew arrived late.' : undefined, issue_category: rating === 1 ? cat : undefined,
+      follow_up: rating !== 1 ? 'None' : open ? 'Required' : 'Acknowledged',
+      ...(rating === 1 && !open ? { ack_note: 'Called the client, re-cleaned the affected area free of charge.', ack_by: 'u-owner', ack_at: `${addDays(d0, 1)}T09:00:00.000Z` } : {}),
+      submitted_by: 'u-lead', submitted_at: `${d0}T16:00:00.000Z`,
+    });
+    if (open) j.status = 'Work Completed';
+  });
+
   // today's jobs spread across the tracker so every dashboard status has data
   const live1 = jobs.filter((j) => j.status === 'In Progress');
   const liveStage: Stage[] = ['rep', 'start', 'arr', 'disp', 'start', 'start'];
@@ -769,7 +790,7 @@ export function seedDB(): DB {
       { ...base('cor'), employee_id: FIELD[1].id, date: addDays(T, -2), clock_in: `${addDays(T, -2)}T08:00`, clock_out: `${addDays(T, -2)}T17:00`, reason: 'Forgot to clock out; was on site until 5PM per team leader.', status: 'Pending' },
     ], holidays, reviews, adjustments, periods, runs, locations, items, stock, requests: [
       { ...base('mr'), job_id: jobs.find((j) => j.status === 'Confirmed')?.id ?? jobs[0].id, requested_by: E_L1.id, lines: [{ item_id: item('CHM-001').id, qty: 4 }, { item_id: item('PPE-002').id, qty: 2 }], status: 'Pending', note: 'Extra chemical for large glass job.' },
-    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, audit: [], settings: { ...settings, counters }, version: 1,
+    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, audit: [], settings: { ...settings, counters }, version: 1,
   };
 }
 

@@ -47,6 +47,7 @@ export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'dispatch.approve', group: 'Dispatch', label: 'Override job status (with reason)' },
   { key: 'discount.request', group: 'Discounts', label: 'Submit a Discount Request (cannot apply or edit discounts)' },
   { key: 'discount.approve', group: 'Discounts', label: 'Approve / reject / modify discounts; edit discount fields' },
+  { key: 'feedback.acknowledge', group: 'Dispatch', label: 'Acknowledge negative client feedback (releases job closure)' },
   { key: 'incidents.manage', group: 'Dispatch', label: 'Investigate & resolve incident reports' },
   { key: 'invoices.view', group: 'Finance', label: 'View invoices & receivables' },
   { key: 'invoices.edit', group: 'Finance', label: 'Create invoices, record payments' },

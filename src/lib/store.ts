@@ -30,7 +30,7 @@ class Store {
     let db: DB | null = null;
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { db = JSON.parse(raw) as DB; if (!db.discount_requests) db.discount_requests = []; }   // data saved before Discount Requests existed
+      if (raw) { db = JSON.parse(raw) as DB; if (!db.discount_requests) db.discount_requests = []; if (!db.client_feedback) db.client_feedback = []; }   // data saved before Discount Requests existed
     } catch { /* ignore corrupted / unavailable storage */ }
     this._db = db ?? seedDB();
     try { this.sessionUser = localStorage.getItem(SESSION); } catch { /* noop */ }
@@ -134,6 +134,7 @@ class Store {
     if (table === 'workflows') throw new RuleError('Job workflow records cannot be deleted.');
     if (table === 'variations') throw new RuleError('Variations cannot be deleted; reject them instead.');
     if (table === 'incidents') throw new RuleError('Incident reports cannot be deleted; resolve them instead.');
+    if (table === 'client_feedback') throw new RuleError('Client feedback cannot be deleted.');
     if (table === 'discount_requests') throw new RuleError('Discount requests cannot be deleted; they stay on record with their status.');
     if (table === 'checkouts' && (r.status === 'Released' || r.status === 'Returned')) throw new RuleError('Completed or active equipment out/in records cannot be deleted.');
     if (table === 'payments') throw new RuleError('Payments cannot be deleted. Reverse the payment instead.');

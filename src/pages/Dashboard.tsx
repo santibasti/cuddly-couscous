@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Bar as RBar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, PageHead, Stat, Bar, Empty } from '@/components/ui';
+import { SatisfactionDashboard } from '@/components/workflow/Satisfaction';
 import { DiscountInbox } from '@/components/workflow/DiscountPanel';
 import { addDays, eachDay, fmtDate, fmtTime, inRange, monthEnd, monthStart, money, moneyShort, nowLocal, pct, round2, sum, today, weekStart } from '@/lib/util';
 import { AWAY_JOB, FIELD_JOB, variationTotals, docTotals, invoiceBalance, invoiceTotals, isDone, isOpen, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
@@ -95,6 +96,7 @@ export default function Dashboard() {
         </>
       )}
 
+      {!mine && can('reports.ops') && <div style={{ marginBottom: 14 }}><SatisfactionDashboard from={from} to={to} /></div>}
       {fin && (
         <>
           <div className="grid g4 keep2" style={{ marginBottom: 14 }}>

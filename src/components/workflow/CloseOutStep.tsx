@@ -71,6 +71,7 @@ export function CloseOutStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
         </>
       )}
       {(result || done) && (incs.length > 0 ? <div className="alert warn"><b>{incs.length} incident report(s)</b> — Operations / Admin were notified automatically.<ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{incs.map((x) => <li key={x.id}><b>{x.number}</b> · {x.type} · {x.status}{x.ticket_id ? ' · maintenance ticket opened' : ''} — {x.description}</li>)}</ul></div> : <div className="alert info">Everything issued was accounted for.</div>)}
+      {(result?.awaitingAck || (done && db.client_feedback.some((f) => f.job_id === job.id && f.follow_up === 'Required' && !f.deleted_at))) && <div className="alert err"><b>Equipment returned. The job stays open</b> until the Owner / Admin acknowledges the client’s negative feedback (Follow-Up Required).</div>}
       {result && result.used.length > 0 && <div className="small">Material usage: {result.used.map((u) => `${u.label} ${u.qty}${u.unit ? ' ' + u.unit : ''}`).join(' · ')}</div>}
       {scan && <QrScanner title="Scan returning items" onScan={onScan} onClose={() => setScan(false)} />}
     </div>

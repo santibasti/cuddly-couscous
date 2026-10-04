@@ -5,7 +5,7 @@ import type {
   Variation,
   JobStatus,
   Asset, Attendance, DB, Employee, Holiday, Invoice, Job, PayrollAdjustment, PayrollLine, PayrollPeriod,
-  Payment, Quotation, QuoteItem, ServiceDef, Settings, StatutoryRate, AdditionalCategory, ServiceCode, DiscountRequest, DiscountKind,
+  Payment, Quotation, QuoteItem, ServiceDef, Settings, StatutoryRate, AdditionalCategory, ServiceCode, DiscountRequest, DiscountKind, ClientFeedback, IssueCategory, SatisfactionRating,
 } from './types';
 import { addDays, diffDays, dow, eachDay, minutesBetween, nowLocal, round2, sum, today } from './util';
 
@@ -739,4 +739,45 @@ export function discountAggregate(db: DB, rows: DiscountRow[], view: DiscountVie
     key: e.key, label: e.label, count: Math.round(e.count * 100) / 100, granted: round2(e.granted), net: round2(e.net), revenueBefore: round2(e.revenueBefore), revenueAfter: round2(e.revenueAfter), gpBefore: round2(e.gpBefore), gpAfter: round2(e.gpAfter),
     marginBefore: e.revenueBefore ? round2((e.gpBefore / e.revenueBefore) * 100) : 0, marginAfter: e.revenueAfter ? round2((e.gpAfter / e.revenueAfter) * 100) : 0, avgPct: e.count ? round2(e._pct / e.count) : 0,
   })).sort((a, b) => b.granted - a.granted);
+}
+
+
+/* ============ Client Satisfaction Check ============ */
+export const RATING_LABEL: Record<SatisfactionRating, string> = { 1: 'Not Satisfied', 2: 'Satisfied', 3: 'Very Satisfied' };
+export const RATING_EMOJI: Record<SatisfactionRating, string> = { 1: '😞', 2: '😐', 3: '😊' };
+/** The 1–5 star value kept on the job for the employee scorecards. */
+export const RATING_STARS: Record<SatisfactionRating, number> = { 1: 1, 2: 4, 3: 5 };
+export const FEEDBACK_ASPECTS = ['Crew professionalism', 'Quality of cleaning', 'On-time arrival', 'Communication', 'Overall service'] as const;
+export const ISSUE_CATEGORIES: IssueCategory[] = ['Quality', 'Damage', 'Delay', 'Communication', 'Scope', 'Other'];
+export const feedbackOf = (d: Pick<DB, 'client_feedback'>, jobId: string) => d.client_feedback.find((f) => f.job_id === jobId && !f.deleted_at);
+/** Negative feedback the Admin has not acknowledged yet: the job cannot be fully closed while this exists. */
+export const openFollowUp = (d: Pick<DB, 'client_feedback'>, jobId: string) => d.client_feedback.find((f) => f.job_id === jobId && !f.deleted_at && f.follow_up === 'Required');
+
+export interface SatAgg { key: string; label: string; n: number; avg: number; notSat: number; sat: number; very: number }
+export interface SatisfactionStats {
+  n: number; avg: number; pctSatisfied: number; dist: Record<SatisfactionRating, number>;
+  byLeader: SatAgg[]; byCrew: SatAgg[]; byService: SatAgg[]; monthly: { month: string; avg: number; n: number }[]; followUps: ClientFeedback[];
+}
+export function satisfactionStats(db: DB, from: string, to: string): SatisfactionStats {
+  const rows = db.client_feedback.filter((f) => !f.deleted_at && f.service_date >= from && f.service_date <= to);
+  const agg = (pairs: [string, string, ClientFeedback][]): SatAgg[] => {
+    const m = new Map<string, SatAgg & { t: number }>();
+    for (const [key, label, f] of pairs) {
+      const e = m.get(key) ?? { key, label, n: 0, avg: 0, notSat: 0, sat: 0, very: 0, t: 0 };
+      e.n++; e.t += f.rating; if (f.rating === 1) e.notSat++; else if (f.rating === 2) e.sat++; else e.very++; m.set(key, e);
+    }
+    return [...m.values()].map(({ t, ...e }) => ({ ...e, avg: round2(t / e.n) })).sort((a, b) => b.avg - a.avg || b.n - a.n);
+  };
+  const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? 'Unassigned';
+  const dist: Record<SatisfactionRating, number> = { 1: 0, 2: 0, 3: 0 }; for (const f of rows) dist[f.rating]++;
+  const months = new Map<string, { t: number; n: number }>();
+  for (const f of rows) { const k = f.service_date.slice(0, 7); const e = months.get(k) ?? { t: 0, n: 0 }; e.t += f.rating; e.n++; months.set(k, e); }
+  return {
+    n: rows.length, avg: rows.length ? round2(sum(rows, (f) => f.rating) / rows.length) : 0, pctSatisfied: rows.length ? round2(((dist[2] + dist[3]) / rows.length) * 100) : 0, dist,
+    byLeader: agg(rows.map((f) => [f.leader_id ?? '-', emp(f.leader_id), f])),
+    byCrew: agg(rows.flatMap((f) => [...new Set([...(f.leader_id ? [f.leader_id] : []), ...f.crew_ids])].map((id): [string, string, ClientFeedback] => [id, emp(id), f]))),
+    byService: agg(rows.flatMap((f) => f.service_codes.map((c): [string, string, ClientFeedback] => [c, db.services.find((s) => s.code === c)?.name ?? c, f]))),
+    monthly: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, e]) => ({ month, avg: round2(e.t / e.n), n: e.n })),
+    followUps: db.client_feedback.filter((f) => !f.deleted_at && f.follow_up === 'Required').sort((a, b) => b.submitted_at.localeCompare(a.submitted_at)),
+  };
 }

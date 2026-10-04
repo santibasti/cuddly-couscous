@@ -7,6 +7,7 @@ import { invoiceFromJob, setJobStatus, updateJobField } from '@/lib/actions';
 import { finalContract, isDone, jobCost, JOB_FLOW, stockSummary } from '@/lib/business';
 import { Tabs } from '@/components/ui';
 import { useMedia } from '@/components/touch';
+import { FollowUpBanner } from '@/components/workflow/Satisfaction';
 import { WorkflowPanel } from '@/components/workflow/WorkflowPanel';
 import { ReportIncidentModal } from '@/components/workflow/Incidents';
 import { overrideJobStatus } from '@/lib/workflow';
@@ -55,6 +56,7 @@ export default function JobDetail() {
         {locked && can('invoices.edit') && !inv && <button className="btn primary" onClick={() => { const i = attempt(() => invoiceFromJob(j.id), 'Draft invoice created'); if (i) nav('/finance?tab=invoices'); }}>Create invoice</button>}
       </PageHead>
 
+      <FollowUpBanner jobId={j.id} />
       {(hasVars || fc.discount > 0) && <div className="alert info" style={{ marginBottom: 12 }}>Contract value: original {money(fc.originalNet)}{hasVars ? ` + approved variations ${money(fc.variationsNet)}` : ''}{fc.discount > 0 ? ` − discount granted ${money(fc.discountNet)}` : ''} = <b>{money(fc.payableNet)}</b> (ex-VAT). The original quotation is unchanged.{fc.discount > 0 && ' Discount approved by TopMop management and reflected in the final agreed amount.'}</div>}
       {!wide && <Tabs tabs={[{ id: 'workflow' as const, label: 'Workflow' }, { id: 'details' as const, label: 'Job details' }]} value={tab} onChange={setTab} />}
       {(wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><WorkflowPanel job={j} onDetails={() => { setTab('details'); window.scrollTo({ top: 0 }); }} /></div>}

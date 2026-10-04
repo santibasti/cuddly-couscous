@@ -278,6 +278,7 @@ export async function serviceReportPdf(db: DB, j: Job) {
   if (j.materials.length) { autoTable(doc, { startY: y, head: [['Materials used', 'Qty', 'UoM']], body: j.materials.map((m) => { const it = db.items.find((i) => i.id === m.item_id)!; return [it.name, m.used_qty ?? m.planned_qty, it.uom]; }), ...tableStyle, margin: { left: 12, right: 100 } }); y = ymax(doc) + 6; }
   if (wf?.start_at && wf.finish_at) sec('Work period', `${fmtDateTime(wf.start_at)} to ${fmtDateTime(wf.finish_at)}${wf.work_notes ? `\n${wf.work_notes}` : ''}`);
   sec('Findings', wf?.rep_findings || j.findings);
+  { const fb = db.client_feedback.find((x) => x.job_id === j.id && !x.deleted_at); if (fb) sec('Client satisfaction', `${['', 'Not Satisfied', 'Satisfied', 'Very Satisfied'][fb.rating]}${fb.aspects.length ? ` - ${fb.aspects.join(', ')}` : ''}${fb.comment ? ` - "${fb.comment}"` : ''}`); }
   sec('Limitations / exclusions', wf?.rep_limits || 'None noted.');
   sec('Recommendations', wf?.rep_recs || 'None.');
   sec('Complimentary services', wf?.rep_complimentary || 'None.');

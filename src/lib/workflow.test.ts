@@ -30,7 +30,7 @@ const load = (items: CheckItem[]): CheckItem[] => items.map((i) => ({ ...i, out_
 const prepForm = (wf: JobWorkflow, over: Record<string, unknown> = {}) => ({ items: load(wf.items), confirmed: true, ...over });
 const checkIn = (present: string[], over = {}) => ({ contact_name: 'Ms. Reyes', present, absent: [], ...over });
 const retItems = (wf: JobWorkflow, f: (i: CheckItem) => Partial<CheckItem>) => db().workflows.find((w) => w.id === wf.id)!.items.map((i) => ({ ...i, ret_condition: 'Good' as const, returned_qty: i.kind === 'material' ? 0 : i.loaded_qty, ...f(i) }));
-const handover = { scope: 'Wall cleaning', findings: 'None', recs: 'None', limits: 'None', client_name: 'Ms. Reyes', client_sig: PNG, tm_name: 'Leader', tm_sig: PNG };
+const handover = { scope: 'Wall cleaning', findings: 'None', recs: 'None', limits: 'None', client_name: 'Ms. Reyes', client_sig: PNG, tm_name: 'Leader', tm_sig: PNG, satisfaction: { rating: 3 as const } };
 const priorJob = (label: string, jobId: string) => { const j = db().jobs.find((x) => x.id === jobId)!; store.insert('jobs', { ...j, id: undefined, number: `PRIOR-${label}`, status: 'Closed', start_at: '2029-01-02T08:00', end_at: '2029-01-02T17:00' } as never); };
 
 /** Prep → dispatch → check-in (recurring jobs get a prior closed visit so the scope can simply be confirmed). */
@@ -530,5 +530,58 @@ describe('Controlled discounts', () => {
     W.completeCloseOut(wf.id, { items: retItems(wfOf(job.id), () => ({})), confirmed: true });
     expect(stat(job.id)).toBe('Closed');
     expect(db().assets.find((a) => a.id === eq.id)!.status).toBe('Available');
+  });
+});
+
+describe('Client Satisfaction Check', () => {
+  const lead = () => db().users.find((u) => u.email === 'leader@topmop.ph')!.employee_id!;
+  it('needs one tap; saves job, client, team leader, crew, service type and date; no typed feedback required', async () => {
+    await as('owner@topmop.ph');
+    const { job, wf } = upToWork('SAT1', lead());
+    W.finishWork(wf.id, {});
+    await as('leader@topmop.ph');
+    expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: undefined })).toThrow(/how satisfied/);
+    W.signServiceReport(wf.id, { ...handover, satisfaction: { rating: 3, aspects: ['Crew professionalism', 'Quality of cleaning', 'Bogus'] } });
+    const fb = db().client_feedback.find((x) => x.job_id === job.id)!;
+    const j = db().jobs.find((x) => x.id === job.id)!;
+    expect(fb).toMatchObject({ rating: 3, follow_up: 'None', client_id: j.client_id, leader_id: j.leader_id, service_codes: j.service_codes, service_date: j.start_at.slice(0, 10) });
+    expect(fb.crew_ids).toEqual(j.crew_ids); expect(fb.aspects).toEqual(['Crew professionalism', 'Quality of cleaning']);
+    expect(j.client_rating).toBe(5);
+    expect(B.openFollowUp(db(), job.id)).toBeUndefined();
+  });
+
+  it('Not Satisfied needs an issue category, alerts the Admin, and the job cannot fully close until the Admin acknowledges', async () => {
+    await as('owner@topmop.ph');
+    const { job, wf } = upToWork('SAT2', lead());
+    W.finishWork(wf.id, {});
+    await as('leader@topmop.ph');
+    expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: { rating: 1 } })).toThrow(/issue category/);
+    W.signServiceReport(wf.id, { ...handover, satisfaction: { rating: 1, issue_category: 'Delay', comment: 'Late again', aspects: ['On-time arrival'] } });
+    const fb = db().client_feedback.find((x) => x.job_id === job.id)!;
+    expect(fb).toMatchObject({ rating: 1, issue_category: 'Delay', follow_up: 'Required' });
+    expect(db().notifications.some((n) => n.key === `fb-follow:${fb.id}` && n.severity === 'critical')).toBe(true);
+    // the crew can still return the equipment, but the job stays open
+    const r = W.completeCloseOut(wf.id, { items: retItems(wfOf(job.id), () => ({})), confirmed: true });
+    expect(r.awaitingAck).toBe(true);
+    expect(wfOf(job.id).closed_at).toBeTruthy(); expect(stat(job.id)).toBe('Work Completed');
+    await as('ops@topmop.ph');
+    expect(() => W.overrideJobStatus(job.id, 'Closed', 'push it through')).toThrow(/acknowledge/);
+    expect(() => W.acknowledgeFeedback(fb.id, 'x')).toThrow(/not permitted/);
+    await as('owner@topmop.ph');
+    expect(() => W.acknowledgeFeedback(fb.id, '  ')).toThrow(/follow-up note/);
+    W.acknowledgeFeedback(fb.id, 'Called the client and rescheduled a free re-clean');
+    expect(db().client_feedback.find((x) => x.id === fb.id)).toMatchObject({ follow_up: 'Acknowledged', ack_by: expect.any(String) });
+    expect(stat(job.id)).toBe('Closed');
+    expect(db().notifications.some((n) => n.key === `fb-follow:${fb.id}`)).toBe(false);
+  });
+
+  it('satisfaction statistics: average, by leader / crew / service, monthly trend, follow-ups', async () => {
+    await as('owner@topmop.ph');
+    const st = B.satisfactionStats(db(), '2000-01-01', '2099-12-31');
+    expect(st.n).toBe(st.dist[1] + st.dist[2] + st.dist[3]);
+    expect(st.avg).toBeGreaterThanOrEqual(1); expect(st.avg).toBeLessThanOrEqual(3);
+    expect(st.byLeader.reduce((s, a) => s + a.n, 0)).toBe(st.n);
+    expect(st.byService.length).toBeGreaterThan(0); expect(st.monthly.length).toBeGreaterThan(0);
+    expect(st.followUps.every((f) => f.follow_up === 'Required')).toBe(true);
   });
 });
