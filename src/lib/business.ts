@@ -886,3 +886,14 @@ export function backJobStats(db: DB, from: string, to: string): BackJobStats {
     monthly: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, n]) => ({ month, n })),
   };
 }
+
+
+/* ============ Payment Method Confirmation ============ */
+export const CONFIRM_METHODS: import('./types').ConfirmMethod[] = ['Cash', 'GCash', 'Bank Transfer', 'Cheque', 'Terms / To Be Billed'];
+export const confirmationOf = (d: Pick<DB, 'payment_confirmations'>, jobId: string) => d.payment_confirmations.find((c) => c.job_id === jobId && !c.deleted_at);
+/** One line for receivables / invoices: what the client said on site. */
+export function paymentPlanLabel(c?: import('./types').PaymentConfirmation): string {
+  if (!c) return '';
+  if (c.method === 'Terms / To Be Billed') return `Terms${c.terms ? `: ${c.terms}` : ''}${c.due_date ? ` · due ${c.due_date}` : ''}`;
+  return `${c.method} · ${c.collection === 'Received' ? 'received on site' : 'to be paid later'}`;
+}

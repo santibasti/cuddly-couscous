@@ -5,7 +5,7 @@ import type {
   Payment, Quotation, QuoteStatus, StockTx,
 } from './types';
 import {
-  appliedDiscount, backJobStatusFor, buildPayrollLines, computeTimes, currentRequest, docTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
+  appliedDiscount, backJobStatusFor, paymentPlanLabel, buildPayrollLines, computeTimes, currentRequest, docTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
 import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
@@ -346,23 +346,49 @@ export function invoiceFromJob(jobId: string): Invoice {
   const wfr = db().workflows.find((w) => w.job_id === jobId && !w.deleted_at);
   const approvedVars = db().variations.filter((v) => v.job_id === jobId && v.status === 'Approved' && !v.deleted_at).map((v) => v.number);
   const notes = [approvedVars.length ? `Includes approved additional work: ${approvedVars.join(', ')}.` : '', wfr?.conf_deposit ? `Deposit / prior payment recorded at the site conforme: ${money(wfr.conf_deposit)}${wfr.conf_deposit_note ? ` (${wfr.conf_deposit_note})` : ''} — record the payment against this invoice.` : ''].filter(Boolean).join(' ');
+  const pc = db().payment_confirmations.find((x) => x.job_id === jobId && !x.deleted_at);
   const dr = appliedDiscount(db(), jobId);
   const mode = q?.vat_mode ?? (client.vat_status === 'VAT-registered' ? 'exclusive' : 'none'), vrate = db().settings.vat_rate;
   // The management-approved discount is VAT-inclusive; in an exclusive invoice it is taken off the ex-VAT subtotal so the invoice total drops by exactly that amount.
   const grantedNet = dr ? (mode === 'exclusive' ? round2((dr.approved_amount ?? 0) / (1 + vrate / 100)) : dr.approved_amount ?? 0) : 0;
   const drNote = dr ? `Discount ${dr.number} approved by TopMop management (${money(dr.approved_amount ?? 0)}) and reflected in the final agreed amount.` : '';
   return store.allowDiscount(() => saveInvoice({
-    notes: [notes, drNote].filter(Boolean).join(' ') || undefined, client_id: j.client_id, site_id: j.site_id, job_id: j.id, quotation_id: q?.id, issue_date: today(), due_date: addDays(today(), db().settings.payment_terms_days),
+    notes: [notes, drNote, pc ? `Client payment arrangement confirmed on site: ${paymentPlanLabel(pc)}.${pc.note ? ` Note: ${pc.note}` : ''}` : ''].filter(Boolean).join(' ') || undefined, client_id: j.client_id, site_id: j.site_id, job_id: j.id, quotation_id: q?.id, issue_date: today(), due_date: pc?.due_date && pc.due_date >= today() ? pc.due_date : addDays(today(), db().settings.payment_terms_days),
     items: [...(q?.items ?? [{ service_code: j.service_codes[0], description: j.scope, qty: 1, unit: 'lot', rate: fc.originalNet, discount: 0 }]), ...varItems],
     vat_mode: mode, vat_rate: vrate, discount: round2((q?.discount ?? 0) + grantedNet), discount_request_id: dr?.id, discount_granted: dr?.approved_amount,
     withholding_rate: client.withholding_rate, status: 'Draft', branch_id: j.branch_id,
   }) as Invoice);
 }
+/** Money the Team Leader collected on site becomes a Pending Verification payment on the invoice (never Verified by the Team Leader). Runs as soon as an approved invoice exists. */
+export function settleConfirmation(jobId: string) {
+  const c = db().payment_confirmations.find((x) => x.job_id === jobId && !x.deleted_at);
+  if (!c || c.collection !== 'Received' || c.payment_id || c.method === 'Terms / To Be Billed') return;
+  const inv = db().invoices.find((i) => i.job_id === jobId && i.status === 'Approved' && !i.deleted_at);
+  if (!inv) return;
+  const avail = invoiceLedger(db(), inv).available;
+  const amount = round2(Math.min(c.expected_today, avail));
+  if (amount <= 0.005) return;
+  const who = db().users.find((u) => u.id === c.confirmed_by)?.name ?? 'Team Leader';
+  const client = db().clients.find((x) => x.id === c.client_id);
+  const m = c.method as PayMethod;
+  const input: PaymentInput = { invoice_id: inv.id, method: m, amount, received_by: who, paid_at: c.confirmed_at.slice(0, 16),
+    ...(m === 'GCash' ? { gcash_ref: c.gcash_ref, sender: client?.contact_person || client?.name } : {}),
+    ...(m === 'Bank Transfer' ? { bank_name: c.bank_name, reference: c.transfer_ref, transfer_date: c.confirmed_at.slice(0, 10) } : {}),
+    ...(m === 'Cheque' ? { bank_name: c.bank_name, cheque_no: c.cheque_no, cheque_date: c.cheque_date, cheque_status: 'Pending Clearance' as ChequeStatus } : {}) };
+  checkPayment(input);
+  const when = c.confirmed_at.slice(0, 16);
+  const pay = store.insert('payments', { ...payFields(input), notes: ['Collected on site — confirmed by the Team Leader.', c.note].filter(Boolean).join(' '), invoice_id: inv.id, client_id: inv.client_id, job_id: jobId, confirmation_id: c.id, date: when.slice(0, 10), paid_at: when, receipt_no: store.nextNumber('OR'), wht_amount: 0, status: 'Pending Verification' } as never,
+    `Payment ${money(amount)} (${m}) collected on site for ${inv.number} — pending Finance verification`) as Payment;
+  store.system('payment_confirmations', c.id, { payment_id: pay.id } as never, 'Payment entry created from the Team Leader’s payment confirmation');
+}
 export function approveInvoice(id: string) {
   store.require('invoices.approve');
   const i = db().invoices.find((x) => x.id === id)!;
   if (i.status !== 'Draft') fail('Only draft invoices can be approved.');
-  return store.update('invoices', id, { status: 'Approved', approved_by: me()!.id, approved_at: isoNow() }, 'approve', `Approved invoice ${i.number} (${money(invoiceTotals(i).total)})`);
+  const r = store.update('invoices', id, { status: 'Approved', approved_by: me()!.id, approved_at: isoNow() }, 'approve', `Approved invoice ${i.number} (${money(invoiceTotals(i).total)})`);
+  if (i.job_id) settleConfirmation(i.job_id);      // money the Team Leader collected on site now lands on the invoice, awaiting verification
+  runAutomations();
+  return r;
 }
 export function reverseInvoice(id: string, reason: string) {
   store.require('invoices.approve');

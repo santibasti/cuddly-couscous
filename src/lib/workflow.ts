@@ -4,10 +4,10 @@
 // Photos are NOT kept in this app (TopMop uses its own file system for before / after, site and equipment photos).
 import { store, RuleError } from './store';
 import type {
-  ClientFeedback, ContainerCondition, DB, DiscountKind, DiscountRequest, FuelLevel, IncidentReport, IncidentType, IssueCategory, SatisfactionRating, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
+  ClientFeedback, ConfirmMethod, ContainerCondition, PaymentConfirmation, DB, DiscountKind, DiscountRequest, FuelLevel, IncidentReport, IncidentType, IssueCategory, SatisfactionRating, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
 } from './types';
 import { FEEDBACK_ASPECTS, ISSUE_CATEGORIES, RATING_STARS, openFollowUp, buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
-import { syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
+import { settleConfirmation, syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { nowLocal, today } from './util';
 
 const db = (): DB => store.getDB();
@@ -681,4 +681,55 @@ export function declineJob(id: string, f: { client_name: string; reason?: string
   store.update('workflows', id, { conf_mode: 'declined', conf_at: nowLocal(), conf_by: uidNow(), conf_name: f.client_name.trim(), conf_notes: f.reason?.trim() || 'Client declined the job on site', conf_lat: f.lat, conf_lng: f.lng, conf_gps_note: f.gps_note, conf_device: f.device } as never, 'update', `${job.number}: client ${f.client_name.trim()} declined the job on site — ${f.reason?.trim() || 'no reason given'}`);
   setStatus(db().jobs.find((j) => j.id === job.id)!, 'Work Completed', `${job.number}: client declined — no work done, proceed to close-out`);
   runAutomations();
+}
+
+
+/* ================= Payment Method Confirmation (shown just before Client Handover; never blocks it) ================= */
+export interface PaymentConfirmInput {
+  method: ConfirmMethod; collection?: 'Received' | 'To Be Paid Later'; expected_today?: number; note?: string; confirmed: boolean;
+  gcash_ref?: string; bank_name?: string; transfer_ref?: string; cheque_no?: string; cheque_date?: string; terms?: string; due_date?: string;
+}
+/** The remaining balance shown to the Team Leader: final approved bill (additional work, VAT and discount included) less any deposit and what is expected today. */
+export function paymentBalance(job: Job, wf: JobWorkflow | undefined, expectedToday: number) {
+  const sm = finalQuoteSummary(db(), job, { deposit: wf?.conf_deposit });
+  return { finalBill: sm.finalTotal, deposit: sm.deposit, due: sm.balance, remaining: Math.max(0, Math.round((sm.balance - (expectedToday || 0)) * 100) / 100) };
+}
+/** The Team Leader records how the client will pay. Money received becomes a Pending Verification payment (Finance verifies); the Team Leader can never mark it Verified. This is separate from the service record: handover and the service report are not held up. */
+export function confirmPaymentMethod(jobId: string, f: PaymentConfirmInput): PaymentConfirmation {
+  const job = db().jobs.find((j) => j.id === jobId) ?? fail('Job not found.');
+  needRun(job);
+  const wf = workflowFor(jobId) ?? fail('Open the job workflow first.');
+  if (!wf.finish_at) fail('Payment can be confirmed once the work is finished.');
+  if (job.back_job_id && db().back_jobs.find((b) => b.id === job.back_job_id)?.charge_type === 'No Charge') fail('This is a no-charge back job: there is nothing to pay.');
+  if (wf.conf_mode === 'declined') fail('The client declined this job: there is nothing to pay.');
+  if (!['Cash', 'GCash', 'Bank Transfer', 'Cheque', 'Terms / To Be Billed'].includes(f.method)) fail('Ask the client how payment will be made and choose one option.');
+  if (!f.confirmed) fail('Confirm with the client that this is how payment will be made.');
+  const prev = db().payment_confirmations.find((c) => c.job_id === jobId && !c.deleted_at);
+  if (prev?.payment_id) fail('A payment was already recorded from this confirmation. Finance handles it from here.');
+  const terms = f.method === 'Terms / To Be Billed';
+  const collection = terms ? 'To Be Paid Later' : f.collection ?? fail('Choose whether the payment was received or will be paid later.');
+  const bill = paymentBalance(job, wf, 0);
+  if (bill.finalBill <= 0) fail('There is no bill to pay for this job.');
+  const expected = Math.round(((terms ? 0 : f.expected_today ?? 0) + Number.EPSILON) * 100) / 100;
+  if (expected < 0) fail('The amount cannot be negative.');
+  if (expected > bill.due + 0.005) fail(`The amount is more than the balance due (${bill.due.toFixed(2)}).`);
+  if (collection === 'Received') {
+    if (!(expected > 0)) fail(f.method === 'Cash' ? 'Enter the amount received.' : 'Enter the amount received.');
+    if (f.method === 'GCash' && !f.gcash_ref?.trim()) fail('Enter the GCash reference number.');
+    if (f.method === 'Bank Transfer' && (!f.bank_name?.trim() || !f.transfer_ref?.trim())) fail('Enter the bank name and the transfer reference number.');
+    if (f.method === 'Cheque' && (!f.bank_name?.trim() || !f.cheque_no?.trim() || !f.cheque_date)) fail('Enter the bank name, cheque number and cheque date.');
+  }
+  if (terms && !f.terms?.trim() && !f.due_date) fail('Enter the agreed payment terms or due date.');
+  if (f.due_date && f.due_date < today()) fail('The due date cannot be in the past.');
+  const row = {
+    job_id: jobId, workflow_id: wf.id, client_id: job.client_id, final_bill: bill.finalBill, method: f.method, collection, expected_today: expected, balance_later: Math.max(0, Math.round((bill.due - expected) * 100) / 100),
+    note: f.note?.trim() || undefined, amount_received: f.method === 'Cash' && collection === 'Received' ? expected : undefined,
+    gcash_ref: f.method === 'GCash' ? f.gcash_ref?.trim() : undefined, bank_name: f.method === 'Bank Transfer' || f.method === 'Cheque' ? f.bank_name?.trim() : undefined, transfer_ref: f.method === 'Bank Transfer' ? f.transfer_ref?.trim() : undefined,
+    cheque_no: f.method === 'Cheque' ? f.cheque_no?.trim() : undefined, cheque_date: f.method === 'Cheque' ? f.cheque_date : undefined, terms: terms ? f.terms?.trim() || undefined : undefined, due_date: f.due_date || undefined,
+    confirmed_by: uidNow(), confirmed_at: nowLocal(),
+  };
+  const summary = `${job.number}: client payment — ${f.method}${terms ? '' : ` (${collection === 'Received' ? 'received on site' : 'to be paid later'})`}, final bill ${row.final_bill}, expected today ${expected}, balance later ${row.balance_later}`;
+  const saved = (prev ? store.update('payment_confirmations', prev.id, row as never, 'update', summary) : store.insert('payment_confirmations', row as never, summary)) as PaymentConfirmation;
+  settleConfirmation(jobId);          // creates the Pending Verification payment when money was received and an approved invoice exists
+  return db().payment_confirmations.find((c) => c.id === saved.id) ?? saved;
 }

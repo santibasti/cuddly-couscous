@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { Badge, Field, Modal, attempt } from '@/components/ui';
 import { CHEQUE_STATUSES, PAY_METHODS, editPayment, recordPayment, type PaymentInput } from '@/lib/actions';
-import { invoiceLedger, invoiceTotals, invoiceState } from '@/lib/business';
+import { invoiceLedger, invoiceTotals, invoiceState, paymentPlanLabel } from '@/lib/business';
 import { receiptPdf } from '@/lib/export';
 import { fmtDateTime, money, nowLocal, round2 } from '@/lib/util';
 import type { Invoice, Payment, PayMethod } from '@/lib/types';
@@ -24,7 +24,8 @@ export function RecordPaymentModal({ invoice, clientId, jobId, edit, onClose }: 
   const lg = inv ? invoiceLedger(db, inv) : undefined;
   const room = lg ? round2(lg.available + (edit && edit.status !== 'Rejected' ? edit.amount + edit.wht_amount : 0)) : 0;
   const t = inv ? invoiceTotals(inv) : undefined;
-  const [method, setMethod] = useState<PayMethod>(edit?.method ?? 'Cash');
+  const pc = inv ? db.payment_confirmations.find((c) => c.job_id === inv.job_id && !c.deleted_at) : undefined;
+  const [method, setMethod] = useState<PayMethod>(edit?.method ?? (pc && pc.method !== 'Terms / To Be Billed' ? (pc.method as PayMethod) : 'Cash'));
   const [amount, setAmount] = useState<number | undefined>(edit?.amount ?? (room > 0 ? room : undefined));
   const [wht, setWht] = useState<number | undefined>(edit?.wht_amount || undefined);
   const [paidAt, setPaidAt] = useState((edit?.paid_at ?? nowLocal()).slice(0, 16));
@@ -69,6 +70,7 @@ export function RecordPaymentModal({ invoice, clientId, jobId, edit, onClose }: 
             </tbody></table>
           </div>
         )}
+        {pc && !edit && <div className="alert info">Team Leader’s note from the site: <b>{paymentPlanLabel(pc)}</b>{pc.expected_today > 0 ? ` · ${money(pc.expected_today)} expected today` : ''}{pc.note ? ` — “${pc.note}”` : ''}.{pc.payment_id ? ' A pending payment was already created from this — verify it in Finance → Payments instead of recording it again.' : ''}</div>}
         <Field label="Payment method" required>
           <div className="chips" role="group" aria-label="Payment method">{methods.map((m) => <button key={m} type="button" className={method === m ? 'on' : ''} onClick={() => setMethod(m)}>{m}</button>)}</div>
           {!full && <div className="small muted" style={{ marginTop: 4 }}>Team Leaders can record cash only. It is saved as <b>Pending Verification</b> until Finance / Admin verifies it.</div>}

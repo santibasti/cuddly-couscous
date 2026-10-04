@@ -5,6 +5,7 @@ import { DraftBar, PresetChips } from '@/components/touch';
 import { Confirm } from './shared';
 import { billBase, signServiceReport, type SatisfactionInput } from '@/lib/workflow';
 import { SatisfactionCheck, FeedbackSummary } from './Satisfaction';
+import { PaymentMethodConfirm } from './PaymentMethodConfirm';
 import { FinalSummary } from './FinalQuote';
 import { discountBlock, finalQuoteSummary } from '@/lib/business';
 import { useDraft } from '@/lib/useDraft';
@@ -36,6 +37,7 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
         {fbk && <div style={{ margin: '6px 0' }}><FeedbackSummary fb={fbk} /></div>}
         <div className="row">{wf.rep_client_sig && <img src={wf.rep_client_sig} alt="Client signature" style={{ maxHeight: 80, border: '1px solid var(--line)', borderRadius: 6 }} />}{wf.rep_tm_sig && <img src={wf.rep_tm_sig} alt="Team leader signature" style={{ maxHeight: 80, border: '1px solid var(--line)', borderRadius: 6 }} />}</div>
         <div><button className="btn" onClick={() => attempt(() => serviceReportPdf(db, job))}>Download Service Accomplishment Report (PDF)</button></div>
+        <PaymentMethodConfirm wf={wf} job={job} run={run} />
       </div>
     );
   }
@@ -52,6 +54,7 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
           <dt>Work period</dt><dd>{fmtDateTime(wf.start_at)} → {fmtDateTime(wf.finish_at)}</dd><dt>Crew</dt><dd>{[job.leader_id, ...job.crew_ids].filter(Boolean).map((e) => emp(e)).join(', ')}</dd>
           <dt>Equipment used</dt><dd>{equip.join(', ') || '—'}</dd>{wf.work_notes && <><dt>Work notes</dt><dd>{wf.work_notes}</dd></>}</dl>
       </div>
+      <PaymentMethodConfirm wf={wf} job={job} run={run} />
       <div className="card" style={{ padding: 12 }}><div className="small muted" style={{ marginBottom: 6 }}>Final bill the client is signing for</div><FinalSummary sm={sm} /></div>
       {block && <div className="alert warn">{block}</div>}
       <Field label="Work completed" required><textarea disabled={!run} value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })} /></Field>

@@ -442,3 +442,5 @@ table.finalsum { max-width: 460px; margin-left: auto; }
 .backtrack { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
 .backtrack .bt { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: #eef2f6; color: #6b7c90; }
 .backtrack .bt.done { background: #e1f3e7; color: #1f7a3d; } .backtrack .bt.cur { background: var(--navy); color: #fff; }
+
+.chips.big button { min-height: 52px; padding: 10px 18px; font-size: 16px; }

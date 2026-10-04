@@ -13,7 +13,7 @@ const q = (v: unknown): string => {
   return `'${String(v).replace(/'/g, "''")}'`;
 };
 const rename: Record<string, Record<string, string>> = { periods: { start: 'period_start', end: 'period_end' } };
-const tables = ['branches', 'clients', 'sites', 'communications', 'complaints', 'services', 'inquiries', 'quotations', 'employees', 'jobs', 'attendance', 'corrections', 'holidays', 'reviews', 'adjustments', 'periods', 'runs', 'locations', 'items', 'stock', 'requests', 'assets', 'checkouts', 'tickets', 'invoices', 'payments', 'expenses', 'petty', 'workflows', 'variations', 'incidents', 'discount_requests', 'client_feedback', 'back_jobs'] as const;
+const tables = ['branches', 'clients', 'sites', 'communications', 'complaints', 'services', 'inquiries', 'quotations', 'employees', 'jobs', 'attendance', 'corrections', 'holidays', 'reviews', 'adjustments', 'periods', 'runs', 'locations', 'items', 'stock', 'requests', 'assets', 'checkouts', 'tickets', 'invoices', 'payments', 'expenses', 'petty', 'workflows', 'variations', 'incidents', 'discount_requests', 'client_feedback', 'back_jobs', 'payment_confirmations'] as const;
 
 // permissions (part of the schema — needed in production, not only for demo)
 const perms = Object.entries(DEFAULT_ACCESS).flatMap(([role, list]) => list.map((p) => `('${role}', '${p}')`));

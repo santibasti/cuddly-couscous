@@ -1,7 +1,7 @@
 // Realistic demo data for TopMop Window Cleaning Solutions Corp. Everything is generated relative to today (Manila),
 // so the dashboard always shows current activity. Names, TINs and amounts are fictional sample data.
 import type {
-  Asset, Attendance, BackJob, Checkout, Client, ClientFeedback, DB, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
+  Asset, Attendance, BackJob, Checkout, Client, ClientFeedback, DB, PaymentConfirmation, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
   PayrollAdjustment, PayrollPeriod, PayrollRun, Payment, PerfReview, PettyCashEntry, Quotation, QuoteItem, ServiceDef,
   Settings, Site, StockTx, StorageLocation, UserAccount, Communication, Complaint, Role, ServiceCode, Condition, PayrollType,
 } from './types';
@@ -784,6 +784,21 @@ export function seedDB(): DB {
     }
   }
 
+  // Payment Method Confirmation recorded by the Team Leader on recent jobs (what the client said they would do)
+  const confirmations: PaymentConfirmation[] = [];
+  for (const j of recentDone.slice(0, 9)) {
+    const inv = invoices.find((i) => i.job_id === j.id && i.status === 'Approved'); if (!inv) continue;
+    const total = invoiceTotals(inv).total; const d0 = j.start_at.slice(0, 10);
+    const p = payments.find((x) => x.invoice_id === inv.id);
+    const id0 = id('pc');
+    const c: PaymentConfirmation = p
+      ? { ...base('pc', d0), id: id0, job_id: j.id, workflow_id: workflows.find((w) => w.job_id === j.id)?.id, client_id: j.client_id, final_bill: total, method: p.method, collection: 'Received', expected_today: p.amount, balance_later: Math.max(0, round2(total - p.amount)), note: 'Client paid before the crew left the site.', confirmed_by: 'u-lead', confirmed_at: `${d0}T16:20`, payment_id: p.id,
+          ...(p.method === 'GCash' ? { gcash_ref: p.gcash_ref } : p.method === 'Bank Transfer' ? { bank_name: p.bank_name, transfer_ref: p.reference } : p.method === 'Cheque' ? { bank_name: p.bank_name, cheque_no: p.cheque_no, cheque_date: p.cheque_date } : { amount_received: p.amount }) }
+      : { ...base('pc', d0), id: id0, job_id: j.id, workflow_id: workflows.find((w) => w.job_id === j.id)?.id, client_id: j.client_id, final_bill: total, method: 'Terms / To Be Billed', collection: 'To Be Paid Later', expected_today: 0, balance_later: total, note: 'Accounts payable processes invoices every Friday.', terms: 'Net 30 — bill to accounts payable', due_date: inv.due_date, confirmed_by: 'u-lead', confirmed_at: `${d0}T16:20` };
+    confirmations.push(c);
+    if (p) p.confirmation_id = id0;
+  }
+
   // today's jobs spread across the tracker so every dashboard status has data
   const live1 = jobs.filter((j) => j.status === 'In Progress');
   const liveStage: Stage[] = ['rep', 'start', 'arr', 'disp', 'start', 'start'];
@@ -840,7 +855,7 @@ export function seedDB(): DB {
       { ...base('cor'), employee_id: FIELD[1].id, date: addDays(T, -2), clock_in: `${addDays(T, -2)}T08:00`, clock_out: `${addDays(T, -2)}T17:00`, reason: 'Forgot to clock out; was on site until 5PM per team leader.', status: 'Pending' },
     ], holidays, reviews, adjustments, periods, runs, locations, items, stock, requests: [
       { ...base('mr'), job_id: jobs.find((j) => j.status === 'Confirmed')?.id ?? jobs[0].id, requested_by: E_L1.id, lines: [{ item_id: item('CHM-001').id, qty: 4 }, { item_id: item('PPE-002').id, qty: 2 }], status: 'Pending', note: 'Extra chemical for large glass job.' },
-    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, audit: [], settings: { ...settings, counters }, version: 1,
+    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, payment_confirmations: confirmations, audit: [], settings: { ...settings, counters }, version: 1,
   };
 }
 

@@ -779,3 +779,80 @@ describe('Back Job / Callback', () => {
     void b;
   });
 });
+
+describe('Payment method confirmation', () => {
+  const lead = () => db().users.find((u) => u.email === 'leader@topmop.ph')!.employee_id!;
+  const gcash = { method: 'GCash' as const, collection: 'Received' as const, confirmed: true };
+
+  it('is asked after the work is finished, needs the method-specific details and never blocks the handover or report signature', async () => {
+    await as('owner@topmop.ph');
+    const { job, wf } = upToWork('PM1', lead());
+    await as('leader@topmop.ph');
+    expect(() => W.confirmPaymentMethod(job.id, { ...gcash, expected_today: 1000, gcash_ref: 'G1' })).toThrow(/work is finished/);
+    await as('owner@topmop.ph'); W.finishWork(wf.id, {}); await as('leader@topmop.ph');
+    expect(() => W.confirmPaymentMethod(job.id, { method: undefined as never, confirmed: true })).toThrow(/choose one option/);
+    expect(() => W.confirmPaymentMethod(job.id, { ...gcash, expected_today: 1000, gcash_ref: 'G1', confirmed: false })).toThrow(/Confirm with the client/);
+    expect(() => W.confirmPaymentMethod(job.id, { method: 'Cash' } as never)).toThrow();
+    expect(() => W.confirmPaymentMethod(job.id, { method: 'Cash', confirmed: true })).toThrow(/received or will be paid later/);
+    expect(() => W.confirmPaymentMethod(job.id, { method: 'Cash', collection: 'Received', confirmed: true })).toThrow(/amount received/);
+    expect(() => W.confirmPaymentMethod(job.id, { ...gcash, expected_today: 1000 })).toThrow(/GCash reference/);
+    expect(() => W.confirmPaymentMethod(job.id, { method: 'Bank Transfer', collection: 'Received', expected_today: 1000, bank_name: 'BDO', confirmed: true })).toThrow(/transfer reference/);
+    expect(() => W.confirmPaymentMethod(job.id, { method: 'Cheque', collection: 'Received', expected_today: 1000, bank_name: 'BPI', cheque_no: '1', confirmed: true })).toThrow(/cheque date/);
+    expect(() => W.confirmPaymentMethod(job.id, { method: 'Terms / To Be Billed', confirmed: true })).toThrow(/terms or due date/);
+    expect(() => W.confirmPaymentMethod(job.id, { ...gcash, expected_today: 99999999, gcash_ref: 'G1' })).toThrow(/more than the balance/);
+    // none of that held up the signed handover
+    W.signServiceReport(wf.id, handover);
+    expect(stat(job.id)).toBe('Work Completed');
+    expect(db().payment_confirmations.filter((c) => c.job_id === job.id).length).toBe(0);
+  });
+
+  it('records final bill, method, expected today, balance later, note and confirmation; money received waits for Finance and cannot be verified by the Team Leader', async () => {
+    await as('owner@topmop.ph');
+    const { job, wf } = upToHandover('PM2', lead());
+    await as('leader@topmop.ph');
+    const bill = W.paymentBalance(db().jobs.find((j) => j.id === job.id)!, wfOf(job.id), 0);
+    expect(bill.finalBill).toBeCloseTo(B.finalQuoteSummary(db(), db().jobs.find((j) => j.id === job.id)!).finalTotal, 2);
+    const c = W.confirmPaymentMethod(job.id, { ...gcash, expected_today: 2500, gcash_ref: 'GC-2026-1', note: 'Paid by the facility manager' });
+    expect(c).toMatchObject({ method: 'GCash', collection: 'Received', expected_today: 2500, gcash_ref: 'GC-2026-1', note: 'Paid by the facility manager', confirmed_by: expect.any(String) });
+    expect(c.final_bill).toBeCloseTo(bill.finalBill, 2); expect(c.balance_later).toBeCloseTo(bill.due - 2500, 2);
+    expect(c.payment_id).toBeUndefined();                                   // no approved invoice yet → the payment entry is created when Finance approves it
+    await as('finance@topmop.ph');
+    const inv = A.invoiceFromJob(job.id);
+    expect(inv.notes).toMatch(/GCash · received on site/);
+    A.approveInvoice(inv.id);
+    const c2 = db().payment_confirmations.find((x) => x.job_id === job.id)!;
+    const pay = db().payments.find((p) => p.id === c2.payment_id)!;
+    expect(pay).toMatchObject({ status: 'Pending Verification', method: 'GCash', gcash_ref: 'GC-2026-1', amount: 2500, confirmation_id: c2.id, invoice_id: inv.id });
+    const live = () => db().invoices.find((i) => i.id === inv.id)!;
+    expect(B.invoiceBalance(db(), live())).toBeCloseTo(B.invoiceTotals(inv).total, 2);          // pending money does not reduce the balance
+    await as('leader@topmop.ph');
+    expect(() => A.verifyPayment(pay.id)).toThrow(/not permitted/);
+    expect(() => W.confirmPaymentMethod(job.id, { ...gcash, expected_today: 100, gcash_ref: 'X' })).toThrow(/already recorded/);
+    await as('finance@topmop.ph');
+    A.verifyPayment(pay.id);
+    expect(B.invoiceBalance(db(), live())).toBeCloseTo(B.invoiceTotals(inv).total - 2500, 2);
+    void wf;
+  });
+
+  it('with an approved invoice the payment entry is created at once; cheque and bank transfer details carry over; "to be paid later" creates no payment', async () => {
+    await as('owner@topmop.ph');
+    const a = upToHandover('PM3', lead());
+    await as('finance@topmop.ph');
+    const inv = A.invoiceFromJob(a.job.id); A.approveInvoice(inv.id);
+    await as('leader@topmop.ph');
+    const c = W.confirmPaymentMethod(a.job.id, { method: 'Cheque', collection: 'Received', expected_today: 1500, bank_name: 'BPI', cheque_no: '778899', cheque_date: T(), confirmed: true });
+    const p = db().payments.find((x) => x.id === c.payment_id)!;
+    expect(p).toMatchObject({ status: 'Pending Verification', method: 'Cheque', cheque_no: '778899', bank_name: 'BPI', cheque_status: 'Pending Clearance' });
+    await as('owner@topmop.ph');
+    const b = upToHandover('PM4', lead());
+    await as('leader@topmop.ph');
+    const later = W.confirmPaymentMethod(b.job.id, { method: 'Bank Transfer', collection: 'To Be Paid Later', confirmed: true, note: 'Will transfer Friday' });
+    expect(later).toMatchObject({ collection: 'To Be Paid Later', expected_today: 0 }); expect(later.balance_later).toBeCloseTo(later.final_bill, 2);
+    expect(db().payments.some((x) => x.confirmation_id === later.id)).toBe(false);
+    // the Team Leader can change their answer until money has been recorded
+    const changed = W.confirmPaymentMethod(b.job.id, { method: 'Terms / To Be Billed', terms: 'Net 15', due_date: '2099-01-01', confirmed: true });
+    expect(changed.id).toBe(later.id); expect(changed).toMatchObject({ method: 'Terms / To Be Billed', collection: 'To Be Paid Later', terms: 'Net 15' });
+    await as('finance@topmop.ph');
+    expect(A.invoiceFromJob(b.job.id).due_date).toBe('2099-01-01');
+  });
+});

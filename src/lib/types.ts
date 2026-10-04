@@ -620,6 +620,24 @@ export interface Invoice extends Base {
   last_reminder?: string;
 }
 export type PayMethod = 'Cash' | 'Bank Transfer' | 'Cheque' | 'GCash';
+/* ---------- Payment Method Confirmation (before Client Handover; separate from the service record) ---------- */
+export type ConfirmMethod = 'Cash' | 'GCash' | 'Bank Transfer' | 'Cheque' | 'Terms / To Be Billed';
+export interface PaymentConfirmation extends Base {
+  job_id: string; workflow_id?: string; client_id: string;
+  final_bill: number;            // final approved bill incl. approved additional work, VAT and any approved discount
+  method: ConfirmMethod;
+  collection: 'Received' | 'To Be Paid Later';
+  expected_today: number;        // amount received / expected today
+  balance_later: number;         // still to be billed / collected later
+  note?: string;
+  amount_received?: number;      // Cash
+  gcash_ref?: string;
+  bank_name?: string; transfer_ref?: string;                 // Bank Transfer (bank also for Cheque)
+  cheque_no?: string; cheque_date?: string;
+  terms?: string; due_date?: string;                         // Terms / To Be Billed
+  confirmed_by?: string; confirmed_at: string;               // Team Leader confirmation
+  payment_id?: string;           // the Pending Verification payment entry created when money was received
+}
 export type ExpenseMethod = 'Cash' | 'Bank Transfer' | 'Check' | 'GCash' | 'Credit Card' | 'Other';
 export type PaymentStatus = 'Pending Verification' | 'Verified' | 'Rejected';
 export type ChequeStatus = 'Pending Clearance' | 'Deposited' | 'Cleared' | 'Bounced';
@@ -627,6 +645,7 @@ export interface Payment extends Base {
   invoice_id: string;
   client_id: string;
   job_id?: string;
+  confirmation_id?: string;   // created from the Team Leader's Payment Method Confirmation
   date: string;          // payment date (YYYY-MM-DD)
   paid_at?: string;      // payment date and time (YYYY-MM-DDTHH:mm)
   amount: number;        // amount received
@@ -733,7 +752,7 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations';
 
 export interface DB {
   users: UserAccount[]; branches: Branch[]; clients: Client[]; sites: Site[]; communications: Communication[];
@@ -742,7 +761,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[];
   audit: AuditLog[];
   settings: Settings;
   version: number;
