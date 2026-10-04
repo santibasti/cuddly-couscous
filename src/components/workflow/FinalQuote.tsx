@@ -7,7 +7,7 @@ import { confirmLeave } from '@/lib/sync';
 import { getGeo } from '@/lib/geo';
 import { ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, currentRequest, discountBlock, jobRequests, categoryLabel, finalQuoteSummary, lineTotals, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
 import { DISCOUNT_NOTICE, DeclineJobModal, DiscountSection } from './DiscountPanel';
-import { approveFinalQuote, billBase, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
+import { approveFinalQuote, billBase, markQuotePresented, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
 import { conformePdf } from '@/lib/export';
 import { fmtDateTime, fmtStamp, money } from '@/lib/util';
 import type { AdditionalCategory, Job, JobWorkflow, QuoteItem, Variation } from '@/lib/types';
@@ -181,6 +181,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
   const [name, setName] = useState(site?.contact_person ?? ''); const [sig, setSig] = useState<string>();
   const [agree, setAgree] = useState(false); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false);
   const dr = useDraft(`d:${wf.id}:conf`, { name, sig }, (d) => { setName(d.name); setSig(d.sig); }, run && !signed);
+  useEffect(() => { if (run && !signed && !wf.quote_presented_at) { try { markQuotePresented(wf.id); } catch { /* not allowed for this user */ } } }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { document.body.classList.add('noscroll'); return () => document.body.classList.remove('noscroll'); }, []);
   const close = () => { if (dr.dirty && !confirmLeave()) return; onClose(); };
   const geo = async () => { const g = await getGeo(); return { lat: g.lat, lng: g.lng, gps_note: g.lat === undefined ? 'Location unavailable on this device' : undefined, device: deviceInfo() }; };
