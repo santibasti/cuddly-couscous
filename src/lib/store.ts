@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { AuditLog, Base, DB, Invoice, PayrollPeriod, Role, TableName, UserAccount } from './types';
+import type { AuditLog, Base, DB, Invoice, Payment, PayrollPeriod, Role, TableName, UserAccount } from './types';
 import { permsFor } from './rbac';
 import { isoNow, sha256, uid } from './util';
 import { seedDB } from './seed';
@@ -30,7 +30,7 @@ class Store {
     let db: DB | null = null;
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { db = JSON.parse(raw) as DB; if (!db.discount_requests) db.discount_requests = []; if (!db.client_feedback) db.client_feedback = []; }   // data saved before Discount Requests existed
+      if (raw) { db = JSON.parse(raw) as DB; if (!db.discount_requests) db.discount_requests = []; if (!db.client_feedback) db.client_feedback = []; db.payments = db.payments.map((p) => ((p.method as string) === 'Check' ? { ...p, method: 'Cheque' as const } : (['Credit Card', 'Other'] as string[]).includes(p.method) ? { ...p, method: 'Bank Transfer' as const } : p)); }   // data saved before Discount Requests existed
     } catch { /* ignore corrupted / unavailable storage */ }
     this._db = db ?? seedDB();
     try { this.sessionUser = localStorage.getItem(SESSION); } catch { /* noop */ }
@@ -137,7 +137,7 @@ class Store {
     if (table === 'client_feedback') throw new RuleError('Client feedback cannot be deleted.');
     if (table === 'discount_requests') throw new RuleError('Discount requests cannot be deleted; they stay on record with their status.');
     if (table === 'checkouts' && (r.status === 'Released' || r.status === 'Returned')) throw new RuleError('Completed or active equipment out/in records cannot be deleted.');
-    if (table === 'payments') throw new RuleError('Payments cannot be deleted. Reverse the payment instead.');
+    if (table === 'payments' && ((r as unknown as Payment).status ?? 'Verified') === 'Verified') throw new RuleError('A verified payment cannot be deleted. Reverse the payment instead.');
     if (table === 'attendance' && r.approval === 'Approved') throw new RuleError('Approved attendance cannot be deleted. File a correction request.');
     if (table === 'users' && r.id === this.user?.id) throw new RuleError('You cannot delete your own account.');
     void nice;
@@ -153,6 +153,7 @@ class Store {
       const allowed = ['status', 'reversal_reason', 'reversed_at', 'last_reminder', 'notes', 'due_date'];
       if (!Object.keys(patch).every((k) => allowed.includes(k))) throw new RuleError('Approved invoices are locked. Reverse the invoice and issue a new one.');
     }
+    if (table === 'payments' && ((r.status as string | undefined) ?? 'Verified') === 'Verified' && !Object.keys(patch).every((k) => ['reversed', 'reversal_reason', 'cheque_status', 'cleared_at', 'notes'].includes(k))) throw new RuleError('A verified payment is locked. Reverse it with a reason and record a new one.');
     if (table === 'checkouts' && r.status === 'Returned') throw new RuleError('Completed out/in records are locked.');
     if (table === 'workflows' && r.closed_at && !(this._reason && (this.role === 'ops' || this.role === 'owner'))) throw new RuleError('A closed job workflow is locked. An Operations Manager or Admin can correct it with a reason.');
     if (table === 'variations' && r.status === 'Approved' && !this._reason) throw new RuleError('An approved variation is locked. Create a new variation or correct it with a reason.');

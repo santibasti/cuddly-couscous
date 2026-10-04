@@ -3,13 +3,14 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
-import { isDone, AGING_BUCKETS, aggregateProfit, agingBucket, docTotals, invoiceBalance, invoiceSettled, invoiceState, invoiceTotals, jobProfitRows, profitAndLoss, serviceProfitRows, discountAggregate, discountRows, type AgingBucket, type DiscountAgg, type DiscountRow, type DiscountView } from '@/lib/business';
-import { approveInvoice, decideExpense, invoiceFromJob, pettyBalance, pettyCash, recordPayment, reverseExpense, reverseInvoice, reversePayment, saveExpense, saveInvoice } from '@/lib/actions';
+import { paymentCounts, paymentPending, paymentStatusLabel, isDone, AGING_BUCKETS, aggregateProfit, agingBucket, docTotals, invoiceBalance, invoiceSettled, invoiceState, invoiceTotals, jobProfitRows, profitAndLoss, serviceProfitRows, discountAggregate, discountRows, type AgingBucket, type DiscountAgg, type DiscountRow, type DiscountView } from '@/lib/business';
+import { CHEQUE_STATUSES, approveInvoice, decideExpense, deletePayment, invoiceFromJob, pettyBalance, pettyCash, rejectPayment, reverseExpense, reverseInvoice, reversePayment, saveExpense, saveInvoice, setChequeStatus, verifyPayment } from '@/lib/actions';
+import { RecordPaymentModal, canRecordPayment } from '@/components/RecordPayment';
 import { invoicePdf, receiptPdf, statementPdf } from '@/lib/export';
-import { addDays, diffDays, fmtDate, monthEnd, monthStart, money, moneyShort, pct, round2, sum, today } from '@/lib/util';
-import type { Expense, ExpenseCategory, Invoice, PayMethod, Payment, QuoteItem } from '@/lib/types';
+import { addDays, diffDays, fmtDate, fmtDateTime, monthEnd, monthStart, money, moneyShort, pct, round2, sum, today } from '@/lib/util';
+import type { ChequeStatus, Expense, ExpenseCategory, ExpenseMethod, Invoice, Payment, QuoteItem } from '@/lib/types';
 
-const METHODS: PayMethod[] = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Credit Card', 'Other'];
+const METHODS: ExpenseMethod[] = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Credit Card', 'Other'];
 const CATEGORIES: ExpenseCategory[] = ['Payroll', 'Fuel', 'Materials', 'Equipment Repair', 'Transportation', 'Marketing', 'Rent', 'Utilities', 'Government Fees', 'Subcontractor', 'Other'];
 type Tab = 'overview' | 'invoices' | 'receivables' | 'payments' | 'expenses' | 'profit' | 'discounts';
 
@@ -34,24 +35,6 @@ function InvoiceModal({ initial, onClose }: { initial?: Invoice; onClose: () => 
       <div className="grid g2">
         <div className="form-grid"><Field label="VAT"><select {...f.bind('vat_mode')}><option value="exclusive">Exclusive</option><option value="inclusive">Inclusive</option><option value="none">None</option></select></Field><Field label="Withholding tax rate (%)"><input type="number" min="0" step="0.5" {...f.bind('withholding_rate')} /></Field><Field label="Discount (₱, ex-VAT)" hint={v.discount_request_id ? 'Includes the management-approved discount (locked)' : can('discount.approve') ? undefined : 'Owner / Admin only'}><input type="number" min="0" disabled={!can('discount.approve')} {...f.bind('discount')} /></Field></div>
         <table className="tbl"><tbody><tr><td>Subtotal (after discounts, ex-VAT)</td><td className="num">{money(t.net)}</td></tr><tr><td>VAT {v.vat_rate}%</td><td className="num">{money(t.vat)}</td></tr><tr><td><b>Invoice total</b></td><td className="num"><b>{money(t.total)}</b></td></tr><tr><td className="muted">Less expected withholding tax</td><td className="num muted">− {money(t.wht)}</td></tr><tr><td><b>Expected cash collection</b></td><td className="num"><b>{money(t.collectible)}</b></td></tr></tbody></table>
-      </div>
-    </Modal>
-  );
-}
-
-function PaymentModal({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
-  const { db } = useAuth();
-  const bal = invoiceBalance(db, inv); const t = invoiceTotals(inv); const st = invoiceSettled(db, inv);
-  const f = useObj({ date: today(), amount: round2(Math.max(0, bal - Math.max(0, t.wht - st.wht))), wht_amount: round2(Math.max(0, t.wht - st.wht)), method: 'Bank Transfer' as PayMethod, reference: '' });
-  const p = attempt as never;
-  void p;
-  return (
-    <Modal title={`Record payment – ${inv.number}`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => { const r = attempt(() => recordPayment({ invoice_id: inv.id, ...f.v }), 'Payment recorded') as Payment | undefined; if (r) { onClose(); attempt(() => receiptPdf(store.getDB(), r as Payment)); } }}>Save & download receipt</button></>}>
-      <div className="alert info" style={{ marginBottom: 12 }}>Outstanding balance <b>{money(bal)}</b> of {money(t.total)}. Partial payments are allowed.</div>
-      <div className="form-grid">
-        <Field label="Payment date"><input type="date" max={today()} {...f.bind('date')} /></Field><Field label="Method"><select {...f.bind('method')}>{METHODS.map((m) => <option key={m}>{m}</option>)}</select></Field>
-        <Field label="Cash received (₱)"><input type="number" min="0" step="0.01" {...f.bind('amount')} /></Field><Field label="Withholding tax credited (₱)" hint="BIR 2307 amount the client withheld"><input type="number" min="0" step="0.01" {...f.bind('wht_amount')} /></Field>
-        <Field label="Reference / check no." className="full"><input {...f.bind('reference')} /></Field>
       </div>
     </Modal>
   );
@@ -92,6 +75,8 @@ export default function Finance() {
   const setTab = (t: Tab) => { setTabS(t); setSp({ tab: t }, { replace: true }); };
   const [inv, setInv] = useState<Invoice | 'new' | null>(null);
   const [pay, setPay] = useState<Invoice | null>(null);
+  const [editPay, setEditPay] = useState<Payment | null>(null);
+  const [pst, setPst] = useState('');
   const [exp, setExp] = useState<Expense | 'new' | null>(null);
   const [status, setStatus] = useState(''); const [ecat, setEcat] = useState(''); const [eap, setEap] = useState('');
   const [pf, setPf] = useState<'job' | 'client' | 'service' | 'period'>('job');
@@ -143,7 +128,7 @@ export default function Finance() {
         <div className="stack">
           <div className="grid g4 keep2">
             <Stat k="Receivables" v={money(receivable)} s={`${open.length} open invoices`} tone="navy" /><Stat k="Overdue" v={money(sum(overdue, (i) => invoiceBalance(db, i)))} s={`${overdue.length} invoices`} tone={overdue.length ? 'bad' : 'good'} />
-            <Stat k="Collected this month" v={money(sum(live(db.payments).filter((p) => !p.reversed && p.date >= monthStart(T)), (p) => p.amount))} tone="good" /><Stat k="Completed, not yet invoiced" v={uninvoiced.length} s={money(sum(uninvoiced, (j) => j.contract_amount)) + ' ex-VAT'} tone={uninvoiced.length ? 'warn' : 'good'} />
+            <Stat k="Collected this month" v={money(sum(live(db.payments).filter((p) => paymentCounts(p) && p.date >= monthStart(T)), (p) => p.amount))} tone="good" /><Stat k="Completed, not yet invoiced" v={uninvoiced.length} s={money(sum(uninvoiced, (j) => j.contract_amount)) + ' ex-VAT'} tone={uninvoiced.length ? 'warn' : 'good'} />
           </div>
           <Card title={`P&L this month (${T.slice(0, 7)})`}>
             <div className="grid g4 keep2"><Stat k="Revenue" v={moneyShort(cm.revenue)} /><Stat k="Gross profit" v={moneyShort(cm.grossProfit)} s={`${pct(cm.grossMargin)} margin`} tone={cm.grossProfit >= 0 ? 'good' : 'bad'} /><Stat k="Operating expenses" v={moneyShort(cm.opex)} /><Stat k="Net profit" v={moneyShort(cm.netProfit)} s={`${pct(cm.netMargin)} margin`} tone={cm.netProfit >= 0 ? 'good' : 'bad'} /></div>
@@ -168,7 +153,7 @@ export default function Finance() {
               {i.status === 'Draft' && can('invoices.edit') && <button className="btn sm" onClick={() => setInv(i)}>Edit</button>}
               {i.status === 'Draft' && can('invoices.approve') && <button className="btn sm primary" onClick={() => attempt(() => approveInvoice(i.id), 'Invoice approved & locked')}>Approve</button>}
               {i.status === 'Draft' && can('invoices.edit') && <button className="btn sm danger" onClick={() => attempt(() => store.remove('invoices', i.id), 'Draft deleted')}>Delete</button>}
-              {i.status === 'Approved' && invoiceBalance(db, i) > 0.005 && can('invoices.edit') && <button className="btn sm primary" onClick={() => setPay(i)}>Pay</button>}
+              {i.status === 'Approved' && invoiceBalance(db, i) > 0.005 && canRecordPayment(can) && <button className="btn sm primary" onClick={() => setPay(i)}>Record Payment</button>}
               {i.status === 'Approved' && can('invoices.approve') && <button className="btn sm danger" onClick={async () => { const r = await ask('Reverse invoice', 'Reason for reversal'); if (r) attempt(() => reverseInvoice(i.id, r), 'Invoice reversed'); }}>Reverse</button>}</span> },
           ]} /></Card>
       )}
@@ -186,6 +171,7 @@ export default function Finance() {
             { key: 'n', header: 'Invoice', value: (i) => i.number }, { key: 'c', header: 'Client', value: (i) => cn(i.client_id) }, { key: 'due', header: 'Due', value: (i) => i.due_date, render: (i) => fmtDate(i.due_date) },
             { key: 'late', header: 'Days overdue', num: true, value: (i) => Math.max(0, diffDays(T, i.due_date)) }, { key: 'bal', header: 'Balance', num: true, type: 'money', value: (i) => invoiceBalance(db, i), render: (i) => money(invoiceBalance(db, i)) }, { key: 'lr', header: 'Last reminder', value: (i) => i.last_reminder ?? '', render: (i) => fmtDate(i.last_reminder) },
             { key: 'actions', header: '', noExport: true, sortable: false, render: (i) => { const c = db.clients.find((x) => x.id === i.client_id)!; const msg = `Hello ${c.contact_person}, friendly reminder from ${db.settings.company.name}: Invoice ${i.number} (${money(invoiceBalance(db, i))}) ${i.due_date < T ? 'was due on' : 'is due on'} ${fmtDate(i.due_date)}. Thank you!`; return <span className="row" onClick={(e) => e.stopPropagation()}>
+              {canRecordPayment(can) && <button className="btn sm primary" onClick={() => setPay(i)}>Record Payment</button>}
               <a className="btn sm" target="_blank" rel="noreferrer" href={`https://wa.me/${c.mobile.replace(/[^\d]/g, '').replace(/^0/, '63')}?text=${encodeURIComponent(msg)}`} onClick={() => can('invoices.edit') && store.update('invoices', i.id, { last_reminder: T }, 'update', `Reminder sent for ${i.number}`)}>WhatsApp</a>
               <a className="btn sm" href={`mailto:${c.email}?subject=${encodeURIComponent('Payment reminder – ' + i.number)}&body=${encodeURIComponent(msg)}`} onClick={() => can('invoices.edit') && store.update('invoices', i.id, { last_reminder: T }, 'update', `Reminder sent for ${i.number}`)}>Email</a></span>; } },
           ]} /></Card>
@@ -193,12 +179,34 @@ export default function Finance() {
       )}
 
       {tab === 'payments' && (
-        <Card flush><DataTable<Payment> rows={live(db.payments).sort((a, b) => b.date.localeCompare(a.date))} rowKey={(p) => p.id} exportTitle="Payments received" cols={[
-          { key: 'r', header: 'Receipt #', value: (p) => p.receipt_no }, { key: 'd', header: 'Date', value: (p) => p.date, render: (p) => fmtDate(p.date) }, { key: 'c', header: 'Client', value: (p) => cn(p.client_id) }, { key: 'i', header: 'Invoice', value: (p) => db.invoices.find((i) => i.id === p.invoice_id)?.number ?? '' },
-          { key: 'm', header: 'Method', value: (p) => p.method }, { key: 'ref', header: 'Reference', value: (p) => p.reference }, { key: 'a', header: 'Cash received', num: true, type: 'money', value: (p) => p.amount, render: (p) => money(p.amount) }, { key: 'w', header: 'WHT credited', num: true, type: 'money', value: (p) => p.wht_amount, render: (p) => money(p.wht_amount) },
-          { key: 's', header: 'Status', value: (p) => (p.reversed ? 'Reversed' : 'Posted'), render: (p) => <Badge>{p.reversed ? 'Reversed' : 'Posted'}</Badge> },
-          { key: 'actions', header: '', noExport: true, sortable: false, render: (p) => <span className="row"><button className="btn sm" onClick={() => attempt(() => receiptPdf(db, p))}>Receipt</button>{!p.reversed && can('invoices.approve') && <button className="btn sm danger" onClick={async () => { const r = await ask('Reverse payment', 'Reason'); if (r) attempt(() => reversePayment(p.id, r), 'Payment reversed'); }}>Reverse</button>}</span> },
-        ]} /></Card>
+        <div className="stack">
+          <div className="grid g4 keep2">
+            <Stat k="Pending verification" v={live(db.payments).filter((p) => (p.status ?? 'Verified') === 'Pending Verification' && !p.reversed).length} s={money(sum(live(db.payments).filter((p) => (p.status ?? 'Verified') === 'Pending Verification' && !p.reversed), (p) => p.amount))} tone={live(db.payments).some((p) => p.status === 'Pending Verification') ? 'warn' : undefined} />
+            <Stat k="Cheques awaiting clearance" v={live(db.payments).filter((p) => paymentPending(p) && p.method === 'Cheque' && (p.status ?? 'Verified') === 'Verified').length} s={money(sum(live(db.payments).filter((p) => paymentPending(p) && p.method === 'Cheque' && (p.status ?? 'Verified') === 'Verified'), (p) => p.amount))} />
+            <Stat k="Verified this month" v={money(sum(live(db.payments).filter((p) => paymentCounts(p) && p.date >= monthStart(T)), (p) => p.amount))} tone="good" />
+            <Stat k="Rejected / bounced" v={live(db.payments).filter((p) => p.status === 'Rejected' || p.cheque_status === 'Bounced').length} />
+          </div>
+          <Card flush><DataTable<Payment> rows={live(db.payments).filter((p) => !pst || paymentStatusLabel(p) === pst || (pst === 'Pending' && paymentPending(p))).sort((a, b) => (b.paid_at ?? b.date).localeCompare(a.paid_at ?? a.date))} rowKey={(p) => p.id} exportTitle="Payments received" pageSize={15}
+            filters={<select value={pst} onChange={(e) => setPst(e.target.value)} aria-label="Status"><option value="">All statuses</option><option value="Pending">Not counted yet</option><option>Pending Verification</option><option>Verified</option><option value="Verified · awaiting clearance">Verified · awaiting clearance</option><option>Rejected</option><option>Reversed</option></select>}
+            cols={[
+            { key: 'r', header: 'Payment #', value: (p) => p.receipt_no }, { key: 'd', header: 'Date & time', value: (p) => p.paid_at ?? p.date, render: (p) => (p.paid_at ? fmtDateTime(p.paid_at) : fmtDate(p.date)) }, { key: 'c', header: 'Client', value: (p) => cn(p.client_id) },
+            { key: 'j', header: 'Job', value: (p) => db.jobs.find((j) => j.id === p.job_id)?.number ?? '' }, { key: 'i', header: 'Invoice', value: (p) => db.invoices.find((i) => i.id === p.invoice_id)?.number ?? '' },
+            { key: 'm', header: 'Method', value: (p) => p.method }, { key: 'ref', header: 'Reference', value: (p) => p.reference },
+            { key: 'det', header: 'Details', value: (p) => (p.method === 'Bank Transfer' ? `${p.bank_name ?? ''} · ${fmtDate(p.transfer_date)}` : p.method === 'Cheque' ? `${p.bank_name ?? ''} · ${p.cheque_no} · ${fmtDate(p.cheque_date)} · ${p.cheque_status}` : p.method === 'GCash' ? `Sender ${p.sender ?? ''}` : ''), sortable: false },
+            { key: 'rb', header: 'Received by', value: (p) => p.received_by ?? '' },
+            { key: 'a', header: 'Amount', num: true, type: 'money', value: (p) => p.amount, render: (p) => money(p.amount) }, { key: 'w', header: 'WHT credited', num: true, type: 'money', value: (p) => p.wht_amount, render: (p) => money(p.wht_amount) },
+            { key: 's', header: 'Status', value: (p) => paymentStatusLabel(p), render: (p) => { const l = paymentStatusLabel(p); return <Badge tone={l === 'Verified' ? 'green' : l === 'Rejected' || l === 'Reversed' || l === 'Cheque Bounced' ? 'red' : 'amber'}>{l}</Badge>; } },
+            { key: 'actions', header: '', noExport: true, sortable: false, render: (p) => {
+              const st = p.status ?? 'Verified'; const v = can('payments.verify');
+              return <span className="row">
+                <button className="btn sm" onClick={() => attempt(() => receiptPdf(db, p))}>Receipt</button>
+                {v && st === 'Pending Verification' && !p.reversed && <><button className="btn sm primary" onClick={() => attempt(() => verifyPayment(p.id), 'Payment verified')}>Verify</button><button className="btn sm danger" onClick={async () => { const r = await ask('Reject payment', 'Reason'); if (r) attempt(() => rejectPayment(p.id, r), 'Payment rejected'); }}>Reject</button><button className="btn sm" onClick={() => setEditPay(p)}>Edit</button></>}
+                {v && p.method === 'Cheque' && !p.reversed && st !== 'Rejected' && <select aria-label="Cheque clearing status" value={p.cheque_status ?? 'Cleared'} onChange={(e) => attempt(() => setChequeStatus(p.id, e.target.value as ChequeStatus), 'Cheque status updated')}>{CHEQUE_STATUSES.map((c) => <option key={c}>{c}</option>)}</select>}
+                {v && st === 'Verified' && !p.reversed && <button className="btn sm danger" onClick={async () => { const r = await ask('Reverse payment', 'Reason'); if (r) attempt(() => reversePayment(p.id, r), 'Payment reversed'); }}>Reverse</button>}
+                {v && st !== 'Verified' && !p.reversed && <button className="btn sm danger" onClick={async () => { const r = await ask('Delete payment entry', 'Reason'); if (r) attempt(() => deletePayment(p.id, r), 'Payment entry removed (kept in the audit log)'); }}>Delete</button>}
+              </span>; } },
+          ]} /></Card>
+        </div>
       )}
 
       {tab === 'expenses' && can('expenses.view') && (
@@ -230,6 +238,7 @@ export default function Finance() {
                 { key: 'basis', header: 'Basis', value: (r) => r.cost.revenueBasis, render: (r) => <Badge tone={r.cost.revenueBasis === 'billed' ? 'green' : 'amber'}>{r.cost.revenueBasis}</Badge> },
                 { key: 'lab', header: 'Labor', num: true, type: 'money', value: (r) => r.cost.labor, render: (r) => money(r.cost.labor) }, { key: 'mat', header: 'Materials', num: true, type: 'money', value: (r) => r.cost.materials, render: (r) => money(r.cost.materials) }, { key: 'tr', header: 'Transport', num: true, type: 'money', value: (r) => r.cost.transport, render: (r) => money(r.cost.transport) },
                 { key: 'eq', header: 'Equipment', num: true, type: 'money', value: (r) => r.cost.equipment, render: (r) => money(r.cost.equipment) }, { key: 'sub', header: 'Subcon', num: true, type: 'money', value: (r) => r.cost.subcontractor, render: (r) => money(r.cost.subcontractor) }, { key: 'oth', header: 'Other', num: true, type: 'money', value: (r) => r.cost.other, render: (r) => money(r.cost.other) },
+                { key: 'col', header: 'Collected (verified)', num: true, type: 'money', value: (r) => r.cost.collected, render: (r) => money(r.cost.collected) }, { key: 'out', header: 'Outstanding', num: true, type: 'money', value: (r) => r.cost.outstanding, render: (r) => money(r.cost.outstanding) },
                 { key: 'disc', header: 'Discount granted', num: true, type: 'money', value: (r) => r.cost.discount, render: (r) => (r.cost.discount ? money(r.cost.discount) : '—') }, { key: 'gpb', header: 'GP before discount', num: true, type: 'money', value: (r) => r.cost.grossProfitBefore, render: (r) => money(r.cost.grossProfitBefore) },
                 { key: 'tot', header: 'Total cost', num: true, type: 'money', value: (r) => r.cost.total, render: (r) => money(r.cost.total) }, { key: 'gp', header: 'Gross profit', num: true, type: 'money', value: (r) => r.cost.grossProfit, render: (r) => <b style={{ color: r.cost.grossProfit < 0 ? 'var(--red)' : undefined }}>{money(r.cost.grossProfit)}</b> },
                 { key: 'm', header: 'Margin', num: true, type: 'pct', value: (r) => r.cost.margin, render: (r) => pct(r.cost.margin) }, { key: 'est', header: 'Cost basis', value: (r) => (r.cost.estimated ? 'Estimated' : 'Actual'), render: (r) => <Badge tone={r.cost.estimated ? 'amber' : 'green'}>{r.cost.estimated ? 'Estimated' : 'Actual'}</Badge> },
@@ -255,7 +264,8 @@ export default function Finance() {
       )}
       {tab === 'discounts' && can('profit.view') && <DiscountsTab range={range} setRange={setRange} />}
       {inv && <InvoiceModal initial={inv === 'new' ? undefined : inv} onClose={() => setInv(null)} />}
-      {pay && <PaymentModal inv={pay} onClose={() => setPay(null)} />}
+      {pay && <RecordPaymentModal invoice={pay} onClose={() => setPay(null)} />}
+      {editPay && <RecordPaymentModal edit={editPay} onClose={() => setEditPay(null)} />}
       {exp && <ExpenseModal initial={exp === 'new' ? undefined : exp} onClose={() => setExp(null)} />}
     </>
   );

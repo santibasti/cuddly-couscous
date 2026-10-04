@@ -1,5 +1,5 @@
 import type { DB, Invoice, Job, Payment, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
-import { categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
+import { paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
 import { fmtDate, fmtDateTime, nowLocal, round2, sum } from './util';
 import { store } from './store';
 
@@ -189,13 +189,23 @@ export async function invoicePdf(db: DB, inv: Invoice) {
 export async function receiptPdf(db: DB, p: Payment) {
   const { doc } = await newPdf();
   const inv = db.invoices.find((i) => i.id === p.invoice_id)!;
+  const job = db.jobs.find((j) => j.id === (p.job_id ?? inv?.job_id));
+  const st = paymentStatusLabel(p);
   header(doc, 'Payment Receipt', p.receipt_no);
-  let y = partyBlock(doc, 34, ['Received from', clientLines(db, p.client_id)], ['Receipt details', [`Date: ${fmtDate(p.date)}`, `Method: ${p.method}`, `Reference: ${p.reference || '—'}`, `Invoice: ${inv.number}`]]);
-  y += 6; doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text(`Amount received: ${pm(p.amount)}`, 12, y);
+  const det = p.method === 'Bank Transfer' ? [`Bank: ${p.bank_name ?? '-'}`, `Account / ref: ${p.reference || '-'}`, `Transfer date: ${fmtDate(p.transfer_date)}`]
+    : p.method === 'Cheque' ? [`Bank: ${p.bank_name ?? '-'}`, `Cheque no.: ${p.cheque_no ?? '-'}`, `Cheque date: ${fmtDate(p.cheque_date)}`, `Clearing: ${p.cheque_status ?? '-'}`]
+    : p.method === 'GCash' ? [`GCash ref: ${p.gcash_ref ?? '-'}`, `Sender: ${p.sender ?? '-'}`] : [];
+  let y = partyBlock(doc, 34, ['Received from', clientLines(db, p.client_id)], ['Receipt details', [`Payment no.: ${p.receipt_no}`, `Date & time: ${p.paid_at ? fmtDateTime(p.paid_at) : fmtDate(p.date)}`, `Method: ${p.method}`, `Job: ${job?.number ?? '-'}  Invoice: ${inv?.number ?? '-'}`, `Received by: ${p.received_by ?? '-'}`, ...det]]);
+  y += 8; doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(`Amount received: ${pm(p.amount)}`, 12, y);
   if (p.wht_amount) { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(`Withholding tax credited (BIR 2307): ${pm(p.wht_amount)}`, 12, y + 7); y += 7; }
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(`Invoice balance after this payment: ${pm(invoiceBalance(db, inv))}`, 12, y + 8);
-  if (p.reversed) { doc.setTextColor(198, 47, 62); doc.setFont('helvetica', 'bold'); doc.text(`REVERSED – ${p.reversal_reason ?? ''}`, 12, y + 18); }
-  doc.setTextColor(20, 36, 58); doc.setFontSize(9); doc.line(130, y + 40, 195, y + 40); doc.text('Authorized signature', 145, y + 45);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  if (inv) doc.text(`Final bill ${pm(invoiceTotals(inv).total)}  |  Outstanding balance on the invoice (verified payments only): ${pm(invoiceBalance(db, inv))}`, 12, y + 8);
+  if (p.notes) doc.text(clean(`Notes: ${p.notes}`), 12, y + 15);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+  if (p.reversed) { doc.setTextColor(198, 47, 62); doc.text(`REVERSED - ${p.reversal_reason ?? ''}`, 12, y + 24); }
+  else if (st !== 'Verified') { doc.setTextColor(176, 112, 0); doc.text(clean(`${st.toUpperCase()} - not yet counted against the invoice. This is an acknowledgement of receipt only.`), 12, y + 24); }
+  else { doc.setTextColor(30, 120, 70); doc.text('VERIFIED', 12, y + 24); }
+  doc.setTextColor(20, 36, 58); doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.line(130, y + 44, 195, y + 44); doc.text('Received by / authorized signature', 133, y + 49);
   footer(doc); doc.save(`${p.receipt_no}.pdf`);
 }
 
@@ -231,7 +241,7 @@ export async function statementPdf(db: DB, clientId: string, asOf: string) {
   const invs = db.invoices.filter((i) => i.client_id === clientId && i.status === 'Approved' && !i.deleted_at && i.issue_date <= asOf).sort((a, b) => a.issue_date.localeCompare(b.issue_date));
   const rows: (string | number)[][] = [];
   let bal = 0;
-  const ev = [...invs.map((i) => ({ d: i.issue_date, r: i.number, desc: 'Invoice', deb: invoiceTotals(i).total, cr: 0 })), ...db.payments.filter((p) => p.client_id === clientId && !p.reversed && !p.deleted_at && p.date <= asOf).map((p) => ({ d: p.date, r: p.receipt_no, desc: `Payment (${p.method})${p.wht_amount ? ' + WHT' : ''}`, deb: 0, cr: p.amount + p.wht_amount }))].sort((a, b) => a.d.localeCompare(b.d));
+  const ev = [...invs.map((i) => ({ d: i.issue_date, r: i.number, desc: 'Invoice', deb: invoiceTotals(i).total, cr: 0 })), ...db.payments.filter((p) => p.client_id === clientId && paymentCounts(p) && p.date <= asOf).map((p) => ({ d: p.date, r: p.receipt_no, desc: `Payment (${p.method})${p.wht_amount ? ' + WHT' : ''}`, deb: 0, cr: p.amount + p.wht_amount }))].sort((a, b) => a.d.localeCompare(b.d));
   for (const e of ev) { bal += e.deb - e.cr; rows.push([fmtDate(e.d), e.r, e.desc, e.deb ? pm(e.deb) : '', e.cr ? pm(e.cr) : '', pm(bal)]); }
   autoTable(doc, { startY: y + 2, head: [['Date', 'Reference', 'Description', 'Charges', 'Payments', 'Balance']], body: rows, ...tableStyle, margin: { left: 12, right: 12 }, columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } } });
   const fy = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;

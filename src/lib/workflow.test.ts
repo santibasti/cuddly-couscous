@@ -585,3 +585,84 @@ describe('Client Satisfaction Check', () => {
     expect(st.followUps.every((f) => f.follow_up === 'Required')).toBe(true);
   });
 });
+
+describe('Payment recording', () => {
+  const room = () => db().invoices.find((i) => i.status === 'Approved' && !i.deleted_at && B.invoiceLedger(db(), i).available > 3000 && i.job_id)!;
+  const cash = (inv: string, amount: number, extra = {}) => ({ invoice_id: inv, method: 'Cash' as const, amount, received_by: 'Jonathan D. Ramos', ...extra });
+
+  it('Team Leader can only record cash as Pending Verification; nothing changes until Finance verifies', async () => {
+    await as('leader@topmop.ph');
+    const inv = room(); const bal0 = B.invoiceBalance(db(), inv);
+    expect(() => A.recordPayment({ invoice_id: inv.id, method: 'GCash', amount: 100, gcash_ref: 'X', sender: 'Y', received_by: 'JD' })).toThrow(/cash/i);
+    expect(() => A.recordPayment(cash(inv.id, 500, { verify_now: true }) as never)).not.toThrow();      // verify_now is ignored without the permission
+    const p = db().payments.filter((x) => x.invoice_id === inv.id).at(-1)!;
+    expect(p).toMatchObject({ status: 'Pending Verification', method: 'Cash', received_by: 'Jonathan D. Ramos', job_id: inv.job_id });
+    expect(p.paid_at).toBeTruthy(); expect(p.receipt_no).toMatch(/^OR-/);
+    expect(B.invoiceBalance(db(), inv)).toBe(bal0);                                        // pending money does not reduce the balance
+    expect(() => A.verifyPayment(p.id)).toThrow(/not permitted/);
+    expect(() => A.reversePayment(p.id, 'x')).toThrow(/not permitted/);
+    expect(() => A.deletePayment(p.id, 'x')).toThrow(/not permitted/);
+    await as('finance@topmop.ph');
+    expect(B.invoiceLedger(db(), inv)).toMatchObject({ balance: bal0, waiting: 500 });
+    A.verifyPayment(p.id);
+    expect(B.invoiceBalance(db(), inv)).toBeCloseTo(bal0 - 500, 2);                        // Final bill − verified payments = outstanding
+    expect(B.jobCost(db(), db().jobs.find((j) => j.id === inv.job_id)!).collected).toBeGreaterThanOrEqual(500);
+    expect(() => store.update('payments', p.id, { amount: 1 } as never)).toThrow(/locked/);
+    expect(() => A.editPayment(p.id, cash(inv.id, 5) as never)).toThrow(/locked/);
+    expect(() => A.deletePayment(p.id, 'x')).toThrow(/reverse/);
+    A.reversePayment(p.id, 'entered on the wrong invoice');
+    expect(B.invoiceBalance(db(), inv)).toBeCloseTo(bal0, 2);
+  });
+
+  it('each method needs its own details; partial payments are allowed; over-payment is refused', async () => {
+    await as('finance@topmop.ph');
+    const inv = room();
+    const base = { invoice_id: inv.id, amount: 1000, received_by: 'Finance' };
+    expect(() => A.recordPayment({ ...base, method: 'Bank Transfer', bank_name: 'BDO' })).toThrow(/reference number/);
+    expect(() => A.recordPayment({ ...base, method: 'Bank Transfer', bank_name: 'BDO', reference: 'R1' })).toThrow(/transfer date/);
+    expect(() => A.recordPayment({ ...base, method: 'Cheque', bank_name: 'BPI', cheque_no: '001' })).toThrow(/cheque date/);
+    expect(() => A.recordPayment({ ...base, method: 'GCash', gcash_ref: 'G1' })).toThrow(/sender/);
+    expect(() => A.recordPayment({ ...base, method: 'Cash', received_by: ' ' })).toThrow(/received/);
+    expect(() => A.recordPayment({ ...base, method: 'Cash', amount: B.invoiceLedger(db(), inv).available + 1 })).toThrow(/exceeds/);
+    const t = T();
+    const bt = A.recordPayment({ ...base, method: 'Bank Transfer', bank_name: 'BDO', reference: 'TRF-1', transfer_date: t, verify_now: true });
+    const gc = A.recordPayment({ ...base, amount: 500, method: 'GCash', gcash_ref: 'G-77', sender: '0917 000 0000', verify_now: true });
+    expect(bt).toMatchObject({ status: 'Verified', bank_name: 'BDO', reference: 'TRF-1' }); expect(gc).toMatchObject({ gcash_ref: 'G-77', sender: '0917 000 0000' });
+    expect(B.invoiceLedger(db(), inv).received).toBeGreaterThanOrEqual(1500);
+  });
+
+  it('a cheque counts only when Cleared: the invoice is not fully paid before that, and a bounced cheque never counts', async () => {
+    await as('finance@topmop.ph');
+    const inv = room(); const lg = B.invoiceLedger(db(), inv);
+    const chq = (n: string) => A.recordPayment({ invoice_id: inv.id, method: 'Cheque', amount: lg.available, received_by: 'Finance', bank_name: 'BPI', cheque_no: n, cheque_date: T(), cheque_status: 'Pending Clearance', verify_now: true });
+    const c1 = chq('900001');
+    expect(c1.status).toBe('Verified');
+    expect(B.invoiceBalance(db(), inv)).toBeCloseTo(lg.balance, 2);                       // verified, but not cleared
+    expect(B.invoiceState(db(), inv)).not.toBe('Paid');
+    expect(B.paymentStatusLabel(c1)).toMatch(/awaiting clearance/);
+    A.setChequeStatus(c1.id, 'Deposited');
+    expect(B.invoiceBalance(db(), inv)).toBeCloseTo(lg.balance, 2);
+    A.setChequeStatus(c1.id, 'Cleared');
+    expect(B.invoiceBalance(db(), inv)).toBeCloseTo(lg.balance - lg.available, 2);
+    A.setChequeStatus(c1.id, 'Bounced');
+    expect(B.invoiceBalance(db(), inv)).toBeCloseTo(lg.balance, 2);
+    expect(db().payments.find((x) => x.id === c1.id)!.cheque_status).toBe('Bounced');
+    expect(() => A.setChequeStatus(db().payments.find((x) => x.method === 'Cash')!.id, 'Cleared')).toThrow(/cheque/);
+  });
+
+  it('pending entries can be edited, rejected or deleted (kept in the audit log); rejected money never counts', async () => {
+    await as('leader@topmop.ph');
+    const inv = room(); const bal0 = B.invoiceBalance(db(), inv);
+    A.recordPayment(cash(inv.id, 700));
+    const p = db().payments.filter((x) => x.invoice_id === inv.id).at(-1)!;
+    await as('finance@topmop.ph');
+    A.editPayment(p.id, cash(inv.id, 650, { notes: 'corrected' }) as never);
+    expect(db().payments.find((x) => x.id === p.id)).toMatchObject({ amount: 650, notes: 'corrected', status: 'Pending Verification' });
+    expect(() => A.rejectPayment(p.id, ' ')).toThrow(/reason/);
+    A.rejectPayment(p.id, 'No money was handed over');
+    expect(B.invoiceBalance(db(), inv)).toBeCloseTo(bal0, 2);
+    A.deletePayment(p.id, 'duplicate entry');
+    expect(db().payments.find((x) => x.id === p.id)!.deleted_at).toBeTruthy();
+    expect(db().audit.some((a) => a.record_id === p.id && a.action === 'delete' && a.reason === 'duplicate entry')).toBe(true);
+  });
+});

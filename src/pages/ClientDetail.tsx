@@ -4,9 +4,10 @@ import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj, ask } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { ClientForm } from './Clients';
-import { docTotals, invoiceBalance, invoiceState, invoiceTotals, isDone, isOpen } from '@/lib/business';
+import { paymentStatusLabel, docTotals, invoiceBalance, invoiceState, invoiceTotals, isDone, isOpen } from '@/lib/business';
 import { fmtDate, fmtDateTime, fmtStamp, money, sum, today } from '@/lib/util';
-import { serviceReportPdf, statementPdf } from '@/lib/export';
+import { receiptPdf, serviceReportPdf, statementPdf } from '@/lib/export';
+import { RecordPaymentModal, canRecordPayment, payableInvoices } from '@/components/RecordPayment';
 import type { Communication, Complaint, Site } from '@/lib/types';
 
 type Tab = 'overview' | 'sites' | 'quotes' | 'jobs' | 'billing' | 'reports' | 'complaints' | 'comms';
@@ -50,6 +51,7 @@ export default function ClientDetail() {
   const comms = live(db.communications).filter((x) => x.client_id === c.id).sort((a, b) => b.created_at.localeCompare(a.created_at));
   const cmps = live(db.complaints).filter((x) => x.client_id === c.id);
   const canFin = can('invoices.view');
+  const [payOpen, setPayOpen] = useState(false);
   const outstanding = sum(invs, (i) => invoiceBalance(db, i));
   const billed = sum(invs.filter((i) => i.status === 'Approved'), (i) => invoiceTotals(i).total);
   const done = jobs.filter((j) => isDone(j.status));
@@ -65,8 +67,10 @@ export default function ClientDetail() {
       <PageHead title={c.name} sub={<><Badge tone="blue">{c.type}</Badge> <Badge>{c.status}</Badge> · {c.contact_person} · {c.mobile}</>}>
         <Link to="/clients" className="btn">← Clients</Link>
         {can('clients.edit') && <button className="btn" onClick={() => setEdit(true)}><Icon name="edit" />Edit</button>}
+        {canRecordPayment(can) && payableInvoices(db, { clientId: c.id }).length > 0 && <button className="btn primary" onClick={() => setPayOpen(true)}>Record Payment</button>}
         {can('sales.edit') && <button className="btn primary" onClick={() => nav(`/sales/quote/new?client=${c.id}`)}><Icon name="plus" />New quotation</button>}
       </PageHead>
+      {payOpen && <RecordPaymentModal clientId={c.id} onClose={() => setPayOpen(false)} />}
       <div className="grid g4 keep2" style={{ marginBottom: 14 }}>
         <Stat k="Completed jobs" v={done.length} s={`${jobs.filter((j) => isOpen(j.status)).length} upcoming / active`} />
         <Stat k="Service sites" v={sites.length} />
@@ -133,7 +137,8 @@ export default function ClientDetail() {
             <DataTable rows={pays} rowKey={(p) => p.id} exportTitle={`Payments – ${c.name}`} cols={[
               { key: 'r', header: 'Receipt #', value: (p) => p.receipt_no }, { key: 'd', header: 'Date', value: (p) => p.date, render: (p) => fmtDate(p.date) }, { key: 'm', header: 'Method', value: (p) => p.method },
               { key: 'a', header: 'Amount', num: true, type: 'money', value: (p) => p.amount, render: (p) => money(p.amount) }, { key: 'w', header: 'WHT credited', num: true, type: 'money', value: (p) => p.wht_amount, render: (p) => money(p.wht_amount) },
-              { key: 'x', header: 'Status', value: (p) => (p.reversed ? 'Reversed' : 'Posted'), render: (p) => <Badge>{p.reversed ? 'Reversed' : 'Posted'}</Badge> },
+              { key: 'x', header: 'Status', value: (p) => paymentStatusLabel(p), render: (p) => <Badge tone={paymentStatusLabel(p) === 'Verified' ? 'green' : /Reject|Revers|Bounce/.test(paymentStatusLabel(p)) ? 'red' : 'amber'}>{paymentStatusLabel(p)}</Badge> },
+              { key: 'rc', header: '', noExport: true, sortable: false, render: (p) => <button className="btn sm" onClick={() => attempt(() => receiptPdf(db, p))}>Receipt</button> },
             ]} />
           </Card>
         </div>

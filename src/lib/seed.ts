@@ -367,6 +367,13 @@ export function seedDB(): DB {
     }
   };
   let recentPurchaseSkipped = false;
+  // payments: verified by Finance, with the details each method needs
+  const mkPay = (inv: Invoice, who: string, date: string, amount: number, wht: number, method: Payment['method'], ref: string, over: Partial<Payment> = {}): Payment => ({
+    ...base('pay', date), invoice_id: inv.id, client_id: inv.client_id, job_id: inv.job_id, date, paid_at: `${date}T10:30`, amount, wht_amount: wht, method, reference: ref, receipt_no: nn('OR'),
+    received_by: method === 'Cash' ? 'Finance Officer' : 'Finance Officer', status: 'Verified', verified_by: 'u-fin', verified_at: stamp(date, 11),
+    ...(method === 'Bank Transfer' ? { bank_name: 'BDO Unibank', transfer_date: date } : method === 'Cheque' ? { bank_name: 'BPI', cheque_no: ref.replace(/\D/g, '').slice(0, 7), cheque_date: date, cheque_status: 'Cleared' as const, cleared_at: stamp(addDays(date, 2), 9), reference: ref.replace(/\D/g, '').slice(0, 7) } : method === 'GCash' ? { gcash_ref: ref, sender: who } : {}),
+    ...over,
+  });
   for (const { job, team } of jobMeta) {
     const d = job.start_at.slice(0, 10);
     const client = clients.find((c) => c.id === job.client_id)!;
@@ -427,9 +434,9 @@ export function seedDB(): DB {
         const payDate = addDays(issue, between(4, 36));
         if (roll < 0.62 && payDate <= T) {
           const wht = tot.wht;
-          payments.push({ ...base('pay', payDate), invoice_id: inv.id, client_id: client.id, date: payDate, amount: round2(tot.total - wht), wht_amount: wht, method: pick(['Bank Transfer', 'Bank Transfer', 'Check', 'GCash']), reference: `REF${between(100000, 999999)}`, receipt_no: nn('OR') });
+          payments.push(mkPay(inv, client.name, payDate, round2(tot.total - wht), wht, pick(['Bank Transfer', 'Bank Transfer', 'Cheque', 'GCash']), `REF${between(100000, 999999)}`));
         } else if (roll < 0.76 && payDate <= T) {
-          payments.push({ ...base('pay', payDate), invoice_id: inv.id, client_id: client.id, date: payDate, amount: round2(tot.total * 0.5), wht_amount: 0, method: 'Bank Transfer', reference: `DP${between(100000, 999999)}`, receipt_no: nn('OR') });
+          payments.push(mkPay(inv, client.name, payDate, round2(tot.total * 0.5), 0, 'Bank Transfer', `DP${between(100000, 999999)}`));
         }
       }
       // job expenses
@@ -700,6 +707,14 @@ export function seedDB(): DB {
     if (idx === 3) mkInc(wf, 'Damaged asset', 'Medium', 'SFC-002 Surface Cleaner 24" - bearing noise and cracked skirt on return.', 'Acknowledged', { asset_id: A('SFC-002').id, ticket_id: tickets[0].id, resolution: 'Acknowledged by Operations; repair in progress under ticket.' });
     if (openHardHat) { const g = wf.items.find((i) => i.kind === 'ppe' && i.label === 'Hard hat'); if (g) { g.returned_qty = g.qty - 1; g.ret_condition = 'Good'; g.ret_note = 'Not on the truck at unloading'; mkInc(wf, 'Missing PPE', 'Medium', `Hard hat: 1 of ${g.qty} not returned. Not on the truck at unloading`, 'Open'); } }
   });
+  // Payments waiting for Finance: a cash payment recorded by a Team Leader, and a verified cheque that has not cleared yet
+  {
+    const open = invoices.filter((i) => i.status === 'Approved' && invoiceTotals(i).total > 2000 && !payments.some((p) => p.invoice_id === i.id)).sort((a, b) => b.issue_date.localeCompare(a.issue_date));
+    const [a, b] = open;
+    if (a) payments.push(mkPay(a, '', T, round2(invoiceTotals(a).total * 0.3), 0, 'Cash', '', { status: 'Pending Verification', verified_by: undefined, verified_at: undefined, received_by: 'Jonathan D. Ramos (Team Leader)', notes: 'Collected on site after the service.', created_by: 'u-lead' }));
+    if (b) payments.push(mkPay(b, '', addDays(T, -1), round2(invoiceTotals(b).total * 0.5), 0, 'Cheque', 'CHQ0045821', { cheque_status: 'Deposited', cleared_at: undefined }));
+  }
+
   // Client Satisfaction Check results for finished jobs (mostly happy; a few unhappy; the latest unhappy one still waits for the Admin)
   const feedback: ClientFeedback[] = [];
   const finished = jobs.filter((j) => ['Completed', 'Closed'].includes(j.status) && j.leader_id && j.start_at.slice(0, 10) <= T).sort((a, b) => a.start_at.localeCompare(b.start_at));

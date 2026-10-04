@@ -82,8 +82,8 @@ describe('business rules enforced by the store', () => {
     expect(() => m.store.remove('invoices', inv.id)).toThrow(/cannot be deleted/);
     expect(() => m.store.update('invoices', inv.id, { discount: 5 })).toThrow(/locked/);
     const bal = m.B.invoiceBalance(db(), inv);
-    expect(() => m.A.recordPayment({ invoice_id: inv.id, date: '2026-01-01', amount: bal + 1000, wht_amount: 0, method: 'Cash', reference: '' })).toThrow(/exceeds/);
-    const p = m.A.recordPayment({ invoice_id: inv.id, date: '2026-01-01', amount: 100, wht_amount: 0, method: 'GCash', reference: 'T' });
+    expect(() => m.A.recordPayment({ invoice_id: inv.id, amount: bal + 1000, method: 'Cash', received_by: 'Finance', verify_now: true })).toThrow(/exceeds/);
+    const p = m.A.recordPayment({ invoice_id: inv.id, amount: 100, method: 'GCash', gcash_ref: 'T', sender: '0917', received_by: 'Finance', verify_now: true });
     expect(m.B.invoiceBalance(db(), db().invoices.find((i) => i.id === inv.id)!)).toBeCloseTo(bal - 100, 2);
     expect(() => m.A.reverseInvoice(inv.id, 'oops')).toThrow(/Reverse the payments/);
     m.A.reversePayment(p.id, 'wrong invoice');

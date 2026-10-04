@@ -112,11 +112,26 @@ export const invoiceTotals = (i: Pick<Invoice, 'items' | 'discount' | 'vat_mode'
   return { ...t, wht, collectible: round2(t.total - wht) };
 };
 
+/* ---------- Payments: only Verified money counts ---------- */
+const payStatus = (p: Pick<Payment, 'status'>) => p.status ?? 'Verified';           // payments saved before verification existed were already posted
+/** A payment counts towards the invoice, statement, aging, revenue and profitability only when it is Verified — and, for a cheque, Cleared. */
+export const paymentCounts = (p: Payment) => !p.deleted_at && !p.reversed && payStatus(p) === 'Verified' && (p.method !== 'Cheque' || (p.cheque_status ?? 'Cleared') === 'Cleared');
+/** Recorded but not yet counted: awaiting verification, or a verified cheque that has not cleared. */
+export const paymentPending = (p: Payment) => !p.deleted_at && !p.reversed && (payStatus(p) === 'Pending Verification' || (payStatus(p) === 'Verified' && p.method === 'Cheque' && !paymentCounts(p) && p.cheque_status !== 'Bounced'));
+export const paymentStatusLabel = (p: Payment): string => (p.reversed ? 'Reversed' : p.deleted_at ? 'Deleted' : payStatus(p) === 'Rejected' ? 'Rejected' : payStatus(p) === 'Pending Verification' ? 'Pending Verification' : p.method === 'Cheque' && !paymentCounts(p) ? (p.cheque_status === 'Bounced' ? 'Cheque Bounced' : 'Verified · awaiting clearance') : 'Verified');
+
 export function invoiceSettled(db: Pick<DB, 'payments'>, inv: Invoice) {
-  const pays = db.payments.filter((p) => p.invoice_id === inv.id && !p.deleted_at && !p.reversed);
+  const pays = db.payments.filter((p) => p.invoice_id === inv.id && paymentCounts(p));
   const cash = sum(pays, (p) => p.amount);
   const wht = sum(pays, (p) => p.wht_amount);
   return { cash, wht, settled: round2(cash + wht) };
+}
+/** Final bill − verified payments = outstanding balance; plus what is still waiting to be verified / cleared. */
+export function invoiceLedger(db: Pick<DB, 'payments'>, inv: Invoice) {
+  const total = invoiceTotals(inv).total;
+  const received = invoiceSettled(db, inv).settled;
+  const waiting = sum(db.payments.filter((p) => p.invoice_id === inv.id && paymentPending(p)), (p) => p.amount + p.wht_amount);
+  return { total, received, balance: round2(total - received), waiting: round2(waiting), available: round2(total - received - waiting) };
 }
 export function invoiceBalance(db: Pick<DB, 'payments'>, inv: Invoice): number {
   if (inv.status !== 'Approved') return 0;
@@ -314,6 +329,8 @@ export interface JobCost {
   laborEstimated: boolean; materialsEstimated: boolean; estimated: boolean;
   /** Management-approved discount applied to this job (ex-VAT) and what revenue / profit would have been without it. */
   discount: number; revenueBefore: number; grossProfitBefore: number; marginBefore: number;
+  /** Verified (and cleared) payments received on this job's invoices, and what is still unpaid. */
+  collected: number; outstanding: number;
 }
 export function jobDays(j: Pick<Job, 'start_at' | 'end_at'>) { return Math.max(1, diffDays(j.end_at.slice(0, 10), j.start_at.slice(0, 10)) + 1); }
 
@@ -360,6 +377,7 @@ export function jobCost(db: DB, j: Job): JobCost {
     subcontractor: round2(subcontractor), other: round2(other), total: round2(total), revenue: round2(revenue), revenueBasis: basis,
     grossProfit: round2(revenue - total), margin: revenue ? round2(((revenue - total) / revenue) * 100) : 0,
     laborEstimated, materialsEstimated, estimated,
+    ...(() => { const invs = db.invoices.filter((i) => i.job_id === j.id && i.status === 'Approved' && !i.deleted_at); const col = sum(invs, (i) => invoiceSettled(db, i).settled); return { collected: round2(col), outstanding: round2(sum(invs, (i) => invoiceBalance(db, i))) }; })(),
     ...(() => { const dn = appliedDiscount(db, j.id)?.net_amount ?? 0; const rb = revenue + dn; return { discount: round2(dn), revenueBefore: round2(rb), grossProfitBefore: round2(rb - total), marginBefore: rb ? round2(((rb - total) / rb) * 100) : 0 }; })(),
   };
 }

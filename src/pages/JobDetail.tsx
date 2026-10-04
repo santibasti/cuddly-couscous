@@ -4,9 +4,10 @@ import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, attempt, ask } from '@/components/ui';
 import { JobForm } from '@/components/JobForm';
 import { invoiceFromJob, setJobStatus, updateJobField } from '@/lib/actions';
-import { finalContract, isDone, jobCost, JOB_FLOW, stockSummary } from '@/lib/business';
+import { invoiceBalance, finalContract, isDone, jobCost, JOB_FLOW, stockSummary } from '@/lib/business';
 import { Tabs } from '@/components/ui';
 import { useMedia } from '@/components/touch';
+import { RecordPaymentModal, canRecordPayment } from '@/components/RecordPayment';
 import { FollowUpBanner } from '@/components/workflow/Satisfaction';
 import { WorkflowPanel } from '@/components/workflow/WorkflowPanel';
 import { ReportIncidentModal } from '@/components/workflow/Incidents';
@@ -21,6 +22,7 @@ export default function JobDetail() {
   const nav = useNavigate();
   const [edit, setEdit] = useState(false);
   const [ovr, setOvr] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
   const [inc, setInc] = useState(false);
   const [tab, setTab] = useState<'workflow' | 'details'>('workflow');
   const wide = useMedia('(min-width: 1200px) and (orientation: landscape)');
@@ -53,9 +55,11 @@ export default function JobDetail() {
         {(can('dispatch.run') || can('incidents.manage')) && <button className="btn" onClick={() => setInc(true)}><Icon name="alert" />Report incident</button>}
         {can('dispatch.approve') && !['Cancelled', 'Rescheduled'].includes(j.status) && <button className="btn" onClick={() => setOvr(true)}>Override status…</button>}
         {locked && <button className="btn" onClick={() => attempt(() => serviceReportPdf(db, j))}><Icon name="download" />Service report (PDF)</button>}
+        {locked && canRecordPayment(can) && (!inv || inv.status !== 'Approved' || invoiceBalance(db, inv) > 0.005) && <button className="btn primary" onClick={() => setPayOpen(true)}>Record Payment</button>}
         {locked && can('invoices.edit') && !inv && <button className="btn primary" onClick={() => { const i = attempt(() => invoiceFromJob(j.id), 'Draft invoice created'); if (i) nav('/finance?tab=invoices'); }}>Create invoice</button>}
       </PageHead>
 
+      {payOpen && <RecordPaymentModal jobId={j.id} onClose={() => setPayOpen(false)} />}
       <FollowUpBanner jobId={j.id} />
       {(hasVars || fc.discount > 0) && <div className="alert info" style={{ marginBottom: 12 }}>Contract value: original {money(fc.originalNet)}{hasVars ? ` + approved variations ${money(fc.variationsNet)}` : ''}{fc.discount > 0 ? ` − discount granted ${money(fc.discountNet)}` : ''} = <b>{money(fc.payableNet)}</b> (ex-VAT). The original quotation is unchanged.{fc.discount > 0 && ' Discount approved by TopMop management and reflected in the final agreed amount.'}</div>}
       {!wide && <Tabs tabs={[{ id: 'workflow' as const, label: 'Workflow' }, { id: 'details' as const, label: 'Job details' }]} value={tab} onChange={setTab} />}

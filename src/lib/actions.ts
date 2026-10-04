@@ -1,11 +1,11 @@
 // Domain operations. Every function validates permissions and business rules, then writes through the audited store.
 import { store, RuleError } from './store';
 import type {
-  Attendance, Checkout, Condition, Expense, Invoice, Job, JobStatus, MaintenanceTicket, Notification, PayMethod, PayrollAdjustment,
+  Attendance, Checkout, ChequeStatus, Condition, Expense, Invoice, Job, JobStatus, MaintenanceTicket, Notification, PayMethod, PayrollAdjustment,
   Payment, Quotation, QuoteStatus, StockTx,
 } from './types';
 import {
-  appliedDiscount, buildPayrollLines, computeTimes, currentRequest, docTotals, finalContract, findConflicts, invoiceBalance, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
+  appliedDiscount, buildPayrollLines, computeTimes, currentRequest, docTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
 import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
@@ -369,21 +369,126 @@ export function reverseInvoice(id: string, reason: string) {
   if (db().payments.some((p) => p.invoice_id === id && !p.reversed)) fail('Reverse the payments on this invoice first.');
   return store.update('invoices', id, { status: 'Reversed', reversal_reason: reason, reversed_at: isoNow() }, 'reverse', `Reversed invoice ${i.number}: ${reason}`);
 }
-export function recordPayment(p: { invoice_id: string; date: string; amount: number; wht_amount: number; method: PayMethod; reference: string }): Payment {
-  store.require('invoices.edit');
-  const inv = db().invoices.find((x) => x.id === p.invoice_id)!;
+/* ---- Payments: recorded as Pending Verification; only Admin / Finance verify. Verified money (and Cleared cheques) is what counts. ---- */
+export interface PaymentInput {
+  invoice_id: string; method: PayMethod; amount: number; wht_amount?: number; paid_at?: string; received_by: string; notes?: string; reference?: string;
+  bank_name?: string; transfer_date?: string;                     // Bank Transfer / Cheque
+  cheque_no?: string; cheque_date?: string; cheque_status?: ChequeStatus;
+  gcash_ref?: string; sender?: string;
+  verify_now?: boolean;
+}
+export const PAY_METHODS: PayMethod[] = ['Cash', 'Bank Transfer', 'Cheque', 'GCash'];
+export const CHEQUE_STATUSES: ChequeStatus[] = ['Pending Clearance', 'Deposited', 'Cleared', 'Bounced'];
+function checkPayment(p: PaymentInput) {
+  if (!PAY_METHODS.includes(p.method)) fail('Choose the payment method.');
+  if (!(p.amount > 0)) fail('Enter the amount received.');
+  if ((p.wht_amount ?? 0) < 0) fail('Withholding tax cannot be negative.');
+  if (!p.received_by.trim()) fail('Enter who received the payment.');
+  if (p.paid_at && p.paid_at.slice(0, 16) > nowLocal().slice(0, 16)) fail('The payment date and time cannot be in the future.');
+  if (p.method === 'Bank Transfer') {
+    if (!p.bank_name?.trim()) fail('Enter the bank name.');
+    if (!p.reference?.trim()) fail('Enter the account / reference number.');
+    if (!p.transfer_date) fail('Enter the transfer date.');
+  }
+  if (p.method === 'Cheque') {
+    if (!p.bank_name?.trim()) fail('Enter the bank name.');
+    if (!p.cheque_no?.trim()) fail('Enter the cheque number.');
+    if (!p.cheque_date) fail('Enter the cheque date.');
+    if (!p.cheque_status) fail('Choose the cheque clearing status.');
+  }
+  if (p.method === 'GCash') {
+    if (!p.gcash_ref?.trim()) fail('Enter the GCash reference number.');
+    if (!p.sender?.trim()) fail('Enter the sender name or mobile number.');
+  }
+}
+const payFields = (p: PaymentInput) => ({
+  amount: round2(p.amount), wht_amount: round2(p.wht_amount ?? 0), method: p.method, received_by: p.received_by.trim(), notes: p.notes?.trim() || undefined,
+  reference: (p.method === 'Cheque' ? p.cheque_no : p.method === 'GCash' ? p.gcash_ref : p.reference)?.trim() ?? '',
+  bank_name: p.method === 'Bank Transfer' || p.method === 'Cheque' ? p.bank_name?.trim() : undefined, transfer_date: p.method === 'Bank Transfer' ? p.transfer_date : undefined,
+  cheque_no: p.method === 'Cheque' ? p.cheque_no?.trim() : undefined, cheque_date: p.method === 'Cheque' ? p.cheque_date : undefined, cheque_status: p.method === 'Cheque' ? p.cheque_status : undefined,
+  gcash_ref: p.method === 'GCash' ? p.gcash_ref?.trim() : undefined, sender: p.method === 'GCash' ? p.sender?.trim() : undefined,
+});
+export function recordPayment(p: PaymentInput): Payment {
+  const canAny = store.can('payments.record') || store.can('invoices.edit');
+  const canCash = store.can('payments.record_cash');
+  if (!canAny && !canCash) fail('Your role cannot record payments.');
+  if (!canAny && p.method !== 'Cash') fail('Team Leaders can only record a cash payment (it is saved as Pending Verification).');
+  const inv = db().invoices.find((x) => x.id === p.invoice_id) ?? fail('Invoice not found.');
   if (inv.status !== 'Approved') fail('Payments can only be recorded on approved invoices.');
-  if (p.amount < 0 || p.wht_amount < 0 || p.amount + p.wht_amount <= 0) fail('Enter a payment amount.');
-  const bal = invoiceBalance(db(), inv);
-  if (p.amount + p.wht_amount > bal + 0.005) fail(`Payment exceeds the outstanding balance of ${money(bal)}.`);
-  return store.insert('payments', { ...p, client_id: inv.client_id, receipt_no: store.nextNumber('OR') } as never, `Payment ${money(p.amount)} on ${inv.number}`) as Payment;
+  checkPayment(p);
+  const lg = invoiceLedger(db(), inv);
+  const total = round2(p.amount + (p.wht_amount ?? 0));
+  if (total > lg.available + 0.005) fail(`Payment exceeds the remaining balance of ${money(lg.available)}${lg.waiting ? ` (${money(lg.waiting)} more is already recorded and waiting for verification / clearing)` : ''}.`);
+  const when = p.paid_at?.slice(0, 16) || nowLocal().slice(0, 16);
+  const verifyNow = !!p.verify_now && store.can('payments.verify');
+  const now = isoNow();
+  const row = store.insert('payments', {
+    ...payFields(p), invoice_id: inv.id, client_id: inv.client_id, job_id: inv.job_id, date: when.slice(0, 10), paid_at: when, receipt_no: store.nextNumber('OR'),
+    status: verifyNow ? 'Verified' : 'Pending Verification', ...(verifyNow ? { verified_by: me()?.id, verified_at: now } : {}),
+  } as never, `Payment ${money(p.amount)} (${p.method}) recorded on ${inv.number}${verifyNow ? '' : ' — pending verification'}`) as Payment;
+  runAutomations();
+  return row;
+}
+const payOf = (id: string) => db().payments.find((x) => x.id === id) ?? fail('Payment not found.');
+const payIs = (p: Payment) => p.status ?? 'Verified';
+export function verifyPayment(id: string) {
+  store.require('payments.verify');
+  const p = payOf(id);
+  if (p.reversed || p.deleted_at) fail('This payment is no longer active.');
+  if (payIs(p) === 'Verified') fail('This payment is already verified.');
+  const r = store.update('payments', id, { status: 'Verified', verified_by: me()?.id, verified_at: isoNow(), reject_reason: undefined } as never, 'approve', `Verified payment ${p.receipt_no} (${money(p.amount)} ${p.method})`);
+  runAutomations();
+  return r;
+}
+export function rejectPayment(id: string, reason: string) {
+  store.require('payments.verify');
+  const p = payOf(id);
+  if (payIs(p) === 'Verified') fail('A verified payment cannot be rejected — reverse it with a reason instead.');
+  if (!reason.trim()) fail('A reason is required.');
+  const r = store.update('payments', id, { status: 'Rejected', verified_by: me()?.id, verified_at: isoNow(), reject_reason: reason.trim() } as never, 'update', `Rejected payment ${p.receipt_no}: ${reason.trim()}`);
+  runAutomations();
+  return r;
+}
+export function setChequeStatus(id: string, status: ChequeStatus) {
+  store.require('payments.verify');
+  const p = payOf(id);
+  if (p.method !== 'Cheque') fail('Only cheque payments have a clearing status.');
+  if (p.reversed) fail('This payment was reversed.');
+  const r = store.update('payments', id, { cheque_status: status, cleared_at: status === 'Cleared' ? isoNow() : undefined } as never, 'update', `Cheque ${p.cheque_no} (${p.receipt_no}) → ${status}`);
+  runAutomations();
+  return r;
+}
+/** Edit a payment that is still waiting for verification (verified payments are locked — reverse them instead). */
+export function editPayment(id: string, p: PaymentInput) {
+  store.require('payments.verify');
+  const cur = payOf(id);
+  if (payIs(cur) === 'Verified') fail('A verified payment is locked. Reverse it with a reason and record a new one.');
+  checkPayment(p);
+  const inv = db().invoices.find((x) => x.id === cur.invoice_id)!;
+  const lg = invoiceLedger(db(), inv);
+  const others = cur.deleted_at || cur.reversed || payIs(cur) === 'Rejected' ? 0 : cur.amount + cur.wht_amount;
+  if (round2(p.amount + (p.wht_amount ?? 0)) > lg.available + others + 0.005) fail(`Payment exceeds the remaining balance of ${money(lg.available + others)}.`);
+  const when = p.paid_at?.slice(0, 16) || cur.paid_at || nowLocal().slice(0, 16);
+  return store.update('payments', id, { ...payFields(p), date: when.slice(0, 10), paid_at: when, status: 'Pending Verification' } as never, 'update', `Edited payment ${cur.receipt_no}`);
 }
 export function reversePayment(id: string, reason: string) {
-  store.require('invoices.approve');
-  const p = db().payments.find((x) => x.id === id)!;
+  store.require('payments.verify');
+  const p = payOf(id);
   if (p.reversed) fail('Already reversed.');
+  if (payIs(p) !== 'Verified') fail('Only verified payments are reversed. Reject or delete a pending one instead.');
   if (!reason.trim()) fail('A reason is required.');
-  return store.update('payments', id, { reversed: true, reversal_reason: reason }, 'reverse', `Reversed payment ${p.receipt_no}: ${reason}`);
+  const r = store.update('payments', id, { reversed: true, reversal_reason: reason.trim() }, 'reverse', `Reversed payment ${p.receipt_no}: ${reason.trim()}`);
+  runAutomations();
+  return r;
+}
+/** Remove a payment entry that never counted (pending or rejected). It stays in the audit log. */
+export function deletePayment(id: string, reason: string) {
+  store.require('payments.verify');
+  const p = payOf(id);
+  if (payIs(p) === 'Verified' || p.reversed) fail('A verified payment cannot be deleted — reverse it instead.');
+  if (!reason.trim()) fail('A reason is required.');
+  store.withReason(reason.trim(), () => store.remove('payments', id));
+  runAutomations();
 }
 export function saveExpense(e: Omit<Expense, 'id' | 'created_at' | 'updated_at' | 'created_by'> & { id?: string }) {
   store.require('expenses.edit');
@@ -544,6 +649,13 @@ export function runAutomations() {
   }
   for (const j of d.jobs.filter((x) => !x.deleted_at && x.status === 'Work Completed' && !d.workflows.some((w) => w.job_id === x.id && w.closed_at && !w.deleted_at))) {
     add(`wf-return:${j.id}`, 'job', 'Close-out pending', `${j.number}: client handover signed — complete the close-out (equipment return, leave site, arrival at HQ).`, 'info', `/jobs/${j.id}`, [...ops, 'leader']);
+  }
+  for (const pay of d.payments.filter((x) => !x.deleted_at && !x.reversed && (x.status ?? 'Verified') === 'Pending Verification')) {
+    const inv = d.invoices.find((i) => i.id === pay.invoice_id);
+    add(`pay-verify:${pay.id}`, 'finance', 'Payment awaiting verification', `${pay.receipt_no} · ${inv?.number}: ${money(pay.amount)} by ${pay.method}, received by ${pay.received_by}. It does not reduce the balance until verified.`, 'warn', '/finance?tab=payments', ['owner', 'finance']);
+  }
+  for (const pay of d.payments.filter((x) => !x.deleted_at && !x.reversed && x.method === 'Cheque' && x.cheque_status === 'Bounced')) {
+    add(`chq-bounced:${pay.id}`, 'finance', 'Cheque bounced', `${pay.receipt_no} · cheque ${pay.cheque_no} (${money(pay.amount)}) bounced. The invoice balance was not reduced.`, 'critical', '/finance?tab=payments', ['owner', 'finance']);
   }
   for (const fb of d.client_feedback.filter((x) => !x.deleted_at && x.follow_up === 'Required')) {
     const j = d.jobs.find((x) => x.id === fb.job_id);

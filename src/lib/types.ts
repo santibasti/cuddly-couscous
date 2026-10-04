@@ -595,16 +595,28 @@ export interface Invoice extends Base {
   notes?: string;
   last_reminder?: string;
 }
-export type PayMethod = 'Cash' | 'Bank Transfer' | 'Check' | 'GCash' | 'Credit Card' | 'Other';
+export type PayMethod = 'Cash' | 'Bank Transfer' | 'Cheque' | 'GCash';
+export type ExpenseMethod = 'Cash' | 'Bank Transfer' | 'Check' | 'GCash' | 'Credit Card' | 'Other';
+export type PaymentStatus = 'Pending Verification' | 'Verified' | 'Rejected';
+export type ChequeStatus = 'Pending Clearance' | 'Deposited' | 'Cleared' | 'Bounced';
 export interface Payment extends Base {
   invoice_id: string;
   client_id: string;
-  date: string;
-  amount: number;        // cash received
+  job_id?: string;
+  date: string;          // payment date (YYYY-MM-DD)
+  paid_at?: string;      // payment date and time (YYYY-MM-DDTHH:mm)
+  amount: number;        // amount received
   wht_amount: number;    // withholding tax certificate credited (2307)
   method: PayMethod;
-  reference: string;
-  receipt_no: string;
+  reference: string;     // method reference: transfer ref / cheque no. / GCash ref / OR no.
+  receipt_no: string;    // payment number (official receipt)
+  received_by: string;   // name of the person who received the money
+  notes?: string;
+  status: PaymentStatus; // only Verified payments (and Cleared cheques) count towards the invoice, statement, aging, revenue and profitability
+  verified_by?: string; verified_at?: string; reject_reason?: string;
+  bank_name?: string; transfer_date?: string;                 // Bank Transfer / Cheque
+  cheque_no?: string; cheque_date?: string; cheque_status?: ChequeStatus; cleared_at?: string;   // Cheque
+  gcash_ref?: string; sender?: string;                        // GCash (sender name or mobile)
   reversed?: boolean;
   reversal_reason?: string;
 }
@@ -621,7 +633,7 @@ export interface Expense extends Base {
   amount: number;      // gross amount incl. VAT
   vat: number;
   wht: number;
-  method: PayMethod;
+  method: ExpenseMethod;
   receipt?: string;    // data URL
   approval: 'Pending' | 'Approved' | 'Rejected';
   approved_by?: string;
