@@ -1033,3 +1033,122 @@ describe('Quotation images', () => {
     expect(db().jobs.every((j) => !('photos' in j))).toBe(true);
   });
 });
+
+import { addDays as A2 } from './util';
+describe('Client lifetime value & maintenance follow-up', () => {
+  let F: typeof import('./followups'); let C: typeof import('./followup-core');
+  beforeAll(async () => { F = await import('./followups'); C = await import('./followup-core'); });
+  let n = 0;
+  const newClient = () => store.insert('clients', { name: `Follow-up Test ${++n}`, contact_person: 'Ms. Cruz', mobile: '+63 917 000 0000', email: '', address: 'Makati City', billing_address: '', type: 'Commercial', status: 'Active', notes: '', access_instructions: '', tin: '', vat_status: 'VAT-registered', withholding_rate: 0, withholding_notes: '', branch_id: db().branches[0].id } as never) as import('./types').Client;
+  const mkJob = (clientId: string, date: string, over: Record<string, unknown> = {}) => {
+    const site = db().sites[0];
+    return store.insert('jobs', { number: `FU-${++n}`, client_id: clientId, site_id: site.id, branch_id: db().branches[0].id, service_codes: ['WALL'], scope: 'Wall cleaning', start_at: `${date}T08:00`, end_at: `${date}T12:00`,
+      status: 'Closed', crew_ids: [], equipment_ids: [], materials: [], ppe: [], checklist: [], findings: '', damage_report: '', equipment_condition_notes: '', contract_amount: 1000, estimated_cost: 0, completed_at: `${date}T10:00`, ...over } as never) as import('./types').Job;
+  };
+  const fus = (clientId: string) => db().followups.filter((f) => f.client_id === clientId && !f.deleted_at);
+
+  it('shows lifetime billed, verified collections, receivables and completed services without touching the money maths', async () => {
+    await as('owner@topmop.ph');
+    const c = newClient();
+    mkJob(c.id, '2026-01-10'); mkJob(c.id, '2026-02-10'); mkJob(c.id, '2026-03-10', { status: 'Confirmed', completed_at: undefined });   // an unfinished job is not counted
+    const inv = store.insert('invoices', { number: `INV-FU-${n}`, client_id: c.id, issue_date: '2026-02-11', due_date: '2026-03-11', items: [{ service_code: 'WALL', description: 'Wall', qty: 10, unit: 'sqm', rate: 100, discount: 0 }], vat_mode: 'exclusive', vat_rate: 12, discount: 0, withholding_rate: 0, status: 'Approved', branch_id: db().branches[0].id } as never) as import('./types').Invoice;
+    store.insert('invoices', { ...inv, id: undefined, number: `INV-FU-D${n}`, status: 'Draft' } as never);                 // drafts are not finalized
+    const pay = (amount: number, status: string) => store.insert('payments', { invoice_id: inv.id, client_id: c.id, date: '2026-02-20', amount, wht_amount: 0, method: 'Cash', reference: '', receipt_no: `OR-FU-${++n}`, received_by: 'Test', status } as never);
+    pay(500, 'Verified'); pay(300, 'Pending Verification'); pay(200, 'Rejected');
+    const v = C.clientValue(db(), db().clients.find((x) => x.id === c.id)!);
+    expect(v).toMatchObject({ billed: 1120, collected: 500, outstanding: 620, completed: 2, lastDate: '2026-02-10' });
+    expect(v.outstanding).toBe(B.invoiceBalance(db(), inv));                    // same figure as the receivables module
+  });
+
+  it('adds 6-month and 1-year follow-ups from the newest completed service, once', async () => {
+    await as('owner@topmop.ph');
+    expect(C.addMonths('2026-08-31', 6)).toBe('2027-02-28');                    // month-end is clamped, never rolls over
+    const c = newClient(); const j = mkJob(c.id, '2026-03-15');
+    F.syncFollowUps(); F.syncFollowUps(); A.runAutomations();                     // running again never duplicates
+    const list = fus(c.id);
+    expect(list.map((f) => [f.slot, f.due_date, f.status, f.reference_job_id]).sort()).toEqual([['long', '2027-03-15', 'Open', j.id], ['short', '2026-09-15', 'Open', j.id]]);
+    expect(C.intervalLabel(6)).toBe('6 Months After Last Completed Service'); expect(C.intervalLabel(12)).toBe('1 Year After Last Completed Service');
+  });
+
+  it('lets Admin set a custom interval by client or service type (client wins) and only Admin', async () => {
+    await as('owner@topmop.ph');
+    const c = newClient(); mkJob(c.id, '2026-03-15', { service_codes: ['SOLAR'] }); F.syncFollowUps();
+    F.saveFollowUpRule({ service_code: 'SOLAR', short_months: 3, long_months: 6 });
+    expect(fus(c.id).find((f) => f.slot === 'short')!.due_date).toBe('2026-06-15');
+    F.saveFollowUpRule({ client_id: c.id, short_months: 2, long_months: 4 });
+    expect(fus(c.id).map((f) => f.due_date).sort()).toEqual(['2026-05-15', '2026-07-15']);
+    expect(fus(c.id).length).toBe(2);
+    expect(() => F.saveFollowUpRule({ client_id: c.id, short_months: 6, long_months: 6 })).toThrow(/after the first/);
+    expect(() => F.saveFollowUpRule({ client_id: c.id, service_code: 'SOLAR', short_months: 1, long_months: 2 })).toThrow(/either a client or a service type/);
+    for (const r of db().followup_rules.filter((x) => !x.deleted_at && (x.client_id === c.id || x.service_code === 'SOLAR'))) F.removeFollowUpRule(r.id);
+    await as('ops@topmop.ph');
+    expect(() => F.saveFollowUpRule({ client_id: c.id, short_months: 1, long_months: 2 })).toThrow(/not permitted/);
+  });
+
+  it('resets open reminders when a newer job completes and never sends a 1-year reminder after it', async () => {
+    await as('owner@topmop.ph');
+    const c = newClient(); const j1 = mkJob(c.id, '2026-01-05'); F.syncFollowUps();
+    expect(fus(c.id).length).toBe(2);
+    const j2 = mkJob(c.id, '2026-08-20'); F.syncFollowUps(); F.syncFollowUps();
+    const all = fus(c.id);
+    expect(all.filter((f) => f.reference_job_id === j1.id).every((f) => f.status === 'Superseded')).toBe(true);
+    const cur = all.filter((f) => f.status === 'Open');
+    expect(cur.map((f) => [f.slot, f.due_date, f.reference_job_id]).sort()).toEqual([['long', '2027-08-20', j2.id], ['short', '2027-02-20', j2.id]]);
+    expect(all.length).toBe(4);
+    // the 1-year date of the first service (2027-01-05) produces no alert: it was replaced
+    expect(C.followUpAlerts(db(), '2026-12-22').filter((a) => a.client_id === c.id)).toEqual([]);
+    expect(C.followUpAlerts(db(), '2027-01-05').filter((a) => a.client_id === c.id)).toEqual([]);
+  });
+
+  it('notifies Admin 14 days before and on each follow-up date with the full client details', async () => {
+    await as('owner@topmop.ph');
+    const c = newClient(); mkJob(c.id, '2026-03-15'); F.syncFollowUps();
+    const mine = (t: string) => C.followUpAlerts(db(), t).filter((a) => a.client_id === c.id);
+    expect(mine('2026-08-31')).toEqual([]);                                                   // 15 days before
+    const pre = mine('2026-09-01'); expect(pre.length).toBe(1); expect(pre[0].key).toMatch(/^fu-pre:/); expect(pre[0].title).toMatch(/in 14 days/);
+    const due = mine('2026-09-15'); expect(due.length).toBe(1); expect(due[0].key).toMatch(/^fu-due:/); expect(due[0].title).toMatch(/today/);
+    for (const part of [c.name, 'Ms. Cruz', '+63 917 000 0000', '2026-03-15', 'Wall', 'Lifetime billed', '1 completed service', 'Suggested:']) expect(due[0].body).toContain(part);
+    expect(mine('2027-03-01').find((a) => /1 Year/.test(a.title))!.title).toMatch(/1 Year follow-up in 14 days/);
+    A.runAutomations();
+    expect(db().notifications.filter((x) => x.key.startsWith('fu-')).every((x) => x.for_roles.join() === 'owner')).toBe(true);   // Admin only
+  });
+
+  it('lets only Admin mark follow-ups, validates, and acting stops the reminders', async () => {
+    await as('owner@topmop.ph');
+    const c = newClient(); mkJob(c.id, '2026-03-15'); F.syncFollowUps();
+    const f = fus(c.id).find((x) => x.slot === 'short')!;
+    await as('ops@topmop.ph');
+    expect(() => F.setFollowUpStatus(f.id, { status: 'Contacted' })).toThrow(/not permitted/);
+    await as('owner@topmop.ph');
+    expect(() => F.setFollowUpStatus(f.id, { status: 'Not Interested' })).toThrow(/reason/);
+    expect(() => F.setFollowUpStatus(f.id, { status: 'Snoozed', snoozed_until: '2020-01-01' })).toThrow(/future/);
+    F.setFollowUpStatus(f.id, { status: 'Contacted', note: 'Called' });
+    expect(C.clientFollow(db(), c.id, '2026-09-20')).toMatchObject({ status: 'Contacted', detail: 'Contacted' });
+    expect(C.followUpAlerts(db(), '2026-09-20').find((a) => a.client_id === c.id)).toBeUndefined();   // the 6-month one was acted on; the 1-year one is months away
+    for (const s of ['Follow-Up Scheduled', 'Quotation Sent'] as const) F.setFollowUpStatus(f.id, { status: s });
+    F.setFollowUpStatus(f.id, { status: 'Snoozed', snoozed_until: A2(T(), 60) });
+    expect(C.effectiveDue(db().followups.find((x) => x.id === f.id)!)).toBe(A2(T(), 60));
+    expect(db().followups.find((x) => x.id === f.id)!.history.map((h) => h.status)).toEqual(['Contacted', 'Follow-Up Scheduled', 'Quotation Sent', 'Snoozed']);
+    F.setFollowUpStatus(f.id, { status: 'Not Interested', note: 'Using another contractor' });
+    expect(C.clientFollow(db(), c.id, '2027-04-01').status).toBe('Not Interested');            // the cycle is finished: no 1-year reminder either
+    expect(C.followUpAlerts(db(), '2027-03-15').filter((a) => a.client_id === c.id)).toEqual([]);
+    expect(() => store.remove('followups', f.id)).toThrow(/cannot be deleted/);
+  });
+
+  it('counts follow-ups that turned into bookings, with the revenue of the linked job', async () => {
+    await as('owner@topmop.ph');
+    const c = newClient(); mkJob(c.id, '2026-03-15'); F.syncFollowUps();
+    const f = fus(c.id).find((x) => x.slot === 'short')!;
+    const before = C.followUpStats(db(), '2026-09-10');
+    F.setFollowUpStatus(f.id, { status: 'Contacted' });
+    const booking = mkJob(c.id, '2026-10-01', { status: 'Confirmed', completed_at: undefined, contract_amount: 25000 });   // created after the call → counted as the booking
+    F.syncFollowUps();
+    const now = db().followups.find((x) => x.id === f.id)!;
+    expect(now).toMatchObject({ status: 'Booked', booked_job_id: booking.id });
+    const st = C.followUpStats(db(), '2026-09-10');
+    expect(st.converted.length).toBe(before.converted.length + 1);
+    expect(st.revenue).toBeCloseTo(before.revenue + C.bookingRevenue(db(), now), 2);
+    expect(C.bookingRevenue(db(), now)).toBe(25000);
+    expect(st.overdue.every((o) => o.f.client_id !== c.id)).toBe(true);
+  });
+});

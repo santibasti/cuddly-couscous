@@ -6,6 +6,7 @@ import { Badge, Card, Field, PageHead, Stat, Bar, Empty } from '@/components/ui'
 import { BackJobDashboard } from '@/components/BackJobs';
 import { SatisfactionDashboard } from '@/components/workflow/Satisfaction';
 import { OcularWidget } from '@/components/Ocular';
+import { FollowUpWidget } from '@/components/FollowUps';
 import { DiscountInbox } from '@/components/workflow/DiscountPanel';
 import { addDays, eachDay, fmtDate, fmtTime, inRange, monthEnd, monthStart, money, moneyShort, nowLocal, pct, round2, sum, today, weekStart } from '@/lib/util';
 import { paymentCounts, AWAY_JOB, FIELD_JOB, variationTotals, docTotals, invoiceBalance, invoiceTotals, isDone, isOpen, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
@@ -57,6 +58,7 @@ export default function Dashboard() {
       <PageHead title="Executive dashboard" sub={`${fmtDate(from)} – ${fmtDate(to)} • live from operations data`} />
       <DiscountInbox />
       <OcularWidget />
+      <FollowUpWidget />
       <div className="filterbar no-print">
         <Field label="Period"><select value={preset} onChange={(e) => { setPreset(e.target.value); if (e.target.value !== 'custom') setRange(presetRange(e.target.value)); }}>{PRESETS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}<option value="custom">Custom…</option></select></Field>
         <Field label="From"><input type="date" value={from} onChange={(e) => { setPreset('custom'); setRange([e.target.value, to]); }} /></Field>

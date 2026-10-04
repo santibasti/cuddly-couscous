@@ -4,6 +4,7 @@ import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj, ask } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { ClientForm } from './Clients';
+import { ClientLifetimeCard } from '@/components/FollowUps';
 import { paymentStatusLabel, docTotals, invoiceBalance, invoiceState, invoiceTotals, isDone, isOpen } from '@/lib/business';
 import { fmtDate, fmtDateTime, fmtStamp, money, sum, today } from '@/lib/util';
 import { receiptPdf, serviceReportPdf, statementPdf } from '@/lib/export';
@@ -71,6 +72,7 @@ export default function ClientDetail() {
         {can('sales.edit') && <button className="btn primary" onClick={() => nav(`/sales/quote/new?client=${c.id}`)}><Icon name="plus" />New quotation</button>}
       </PageHead>
       {payOpen && <RecordPaymentModal clientId={c.id} onClose={() => setPayOpen(false)} />}
+      <div style={{ marginBottom: 14 }}><ClientLifetimeCard client={c} /></div>
       <div className="grid g4 keep2" style={{ marginBottom: 14 }}>
         <Stat k="Completed jobs" v={done.length} s={`${jobs.filter((j) => isOpen(j.status)).length} upcoming / active`} />
         <Stat k="Service sites" v={sites.length} />

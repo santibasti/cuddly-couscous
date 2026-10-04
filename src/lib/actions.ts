@@ -8,6 +8,8 @@ import {
   appliedDiscount, backJobStatusFor, paymentPlanLabel, buildPayrollLines, computeTimes, currentRequest, docTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
 import { copyQuoteImages } from './quoteimages';
+import { syncFollowUps } from './followups';
+import { followUpAlerts } from './followup-core';
 import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
 const db = () => store.getDB();
@@ -634,6 +636,7 @@ export function syncBackJobs() {
 }
 export function runAutomations() {
   syncBackJobs();
+  syncFollowUps();
   const d = db(); const s = d.settings; const now = nowLocal(); const t = today();
   const list: Omit<Notification, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'read_by'>[] = [];
   const add = (key: string, type: string, title: string, body: string, severity: Notification['severity'], link: string, roles: Notification['for_roles'], external = false) => {
@@ -731,6 +734,8 @@ export function runAutomations() {
   for (const v of d.variations.filter((x) => !x.deleted_at && x.status === 'Pending Approval')) {
     add(`var-pend:${v.id}`, 'job', 'Variation awaiting client approval', `${v.number}: ${v.reason}`, 'warn', `/jobs/${v.job_id}`, [...ops, 'leader']);
   }
+  // client follow-ups: Admin is told 14 days before and on each 6-month / 1-year follow-up date
+  for (const a of followUpAlerts(d, t)) add(a.key, 'crm', a.title, a.body, a.severity, `/clients/${a.client_id}`, ['owner']);
   // finance
   for (const i of d.invoices.filter((x) => x.status === 'Approved' && !x.deleted_at)) {
     const bal = invoiceBalance(d, i); if (bal <= 0.005) continue;

@@ -748,6 +748,35 @@ export interface Notification extends Base {
   read_by: string[];
   channels_queued: ('email' | 'sms' | 'whatsapp')[];
 }
+/* ---------- Client Lifetime Value & Maintenance Follow-Up ---------- */
+/** 'short' = the first reminder (default 6 months after the last completed service), 'long' = the second (default 1 year). */
+export type FollowUpSlot = 'short' | 'long';
+export type FollowUpState = 'Open' | 'Contacted' | 'Follow-Up Scheduled' | 'Quotation Sent' | 'Booked' | 'Not Interested' | 'Snoozed' | 'Superseded';
+export interface FollowUp extends Base {
+  client_id: string;
+  slot: FollowUpSlot;
+  months: number;                 // interval used when it was scheduled (default 6 / 12)
+  reference_job_id: string;       // the completed service the dates are counted from
+  reference_date: string;         // that service's completion date (YYYY-MM-DD)
+  service_codes: ServiceCode[];   // last service type at that time
+  due_date: string;               // reference_date + months
+  status: FollowUpState;          // Superseded = replaced by a newer completed service (kept as history)
+  snoozed_until?: string;
+  note?: string;
+  booked_job_id?: string;         // the booking this follow-up produced
+  superseded_by_job_id?: string;
+  actioned_by?: string; actioned_at?: string;
+  history: { at: string; by: string; status: FollowUpState; note?: string }[];
+}
+/** Admin-set custom interval for one client, or for every client whose last service was of this type. A client rule wins over a service rule. */
+export interface FollowUpRule extends Base {
+  client_id?: string;
+  service_code?: ServiceCode;
+  short_months: number;
+  long_months: number;
+  note?: string;
+}
+
 export interface AuditLog {
   id: string;
   at: string;
@@ -792,7 +821,7 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations' | 'ocular_visits' | 'quote_images';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations' | 'ocular_visits' | 'quote_images' | 'followups' | 'followup_rules';
 
 export interface DB {
   users: UserAccount[]; branches: Branch[]; clients: Client[]; sites: Site[]; communications: Communication[];
@@ -801,7 +830,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[]; ocular_visits: OcularVisit[]; quote_images: QuoteImage[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[]; ocular_visits: OcularVisit[]; quote_images: QuoteImage[]; followups: FollowUp[]; followup_rules: FollowUpRule[];
   audit: AuditLog[];
   settings: Settings;
   version: number;

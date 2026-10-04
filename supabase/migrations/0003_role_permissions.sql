@@ -11,6 +11,7 @@ insert into public.role_permissions (role, permission) values
 ('owner', 'ocular.view'),
 ('owner', 'ocular.schedule'),
 ('owner', 'ocular.complete'),
+('owner', 'followups.manage'),
 ('owner', 'quoteimg.manage'),
 ('owner', 'jobs.all'),
 ('owner', 'jobs.mine'),

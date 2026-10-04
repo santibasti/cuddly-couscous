@@ -22,6 +22,7 @@ export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'ocular.view', group: 'Jobs', label: 'View ocular visits (assigned ones for Team Leaders)' },
   { key: 'ocular.schedule', group: 'Jobs', label: 'Schedule, edit and cancel ocular visits' },
   { key: 'ocular.complete', group: 'Jobs', label: 'Complete an ocular visit and create a quotation from it' },
+  { key: 'followups.manage', group: 'Clients', label: 'Client follow-ups: update status, set custom intervals, export the client list (Admin)' },
   { key: 'quoteimg.manage', group: 'Sales', label: 'Upload / delete quotation images (Team Leaders: only on their assigned jobs)' },
   { key: 'jobs.all', group: 'Jobs', label: 'View all jobs & calendar' },
   { key: 'jobs.mine', group: 'Jobs', label: 'View assigned jobs only' },

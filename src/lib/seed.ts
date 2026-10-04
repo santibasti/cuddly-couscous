@@ -1,13 +1,14 @@
 // Realistic demo data for TopMop Window Cleaning Solutions Corp. Everything is generated relative to today (Manila),
 // so the dashboard always shows current activity. Names, TINs and amounts are fictional sample data.
 import type {
-  Asset, Attendance, BackJob, Checkout, OcularVisit, QuoteImage, PanelRow, Client, ClientFeedback, DB, PaymentConfirmation, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
+  Asset, Attendance, FollowUp, FollowUpRule, BackJob, Checkout, OcularVisit, QuoteImage, PanelRow, Client, ClientFeedback, DB, PaymentConfirmation, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
   PayrollAdjustment, PayrollPeriod, PayrollRun, Payment, PerfReview, PettyCashEntry, Quotation, QuoteItem, ServiceDef,
   Settings, Site, StockTx, StorageLocation, UserAccount, Communication, Complaint, Role, ServiceCode, Condition, PayrollType,
 } from './types';
 import { DEFAULT_ACCESS } from './rbac';
 import { findConflicts, buildChecklistItems, buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
 import { addDays, clone, diffDays, dow, eachDay, monthEnd, monthStart, round2, sum, today } from './util';
+import { planFollowUps } from './followup-core';
 
 /* Precomputed sha256("topmop:topmop123") – demo password for all seeded accounts. */
 export const DEMO_PASS_HASH = '31472fd57adb88f745afdec821538558171d7c892e8efa4432d2955e59520d40';
@@ -911,12 +912,26 @@ export function seedDB(): DB {
     for (let k = 0; k < 30 && findConflicts({ jobs: jobs.filter((x) => x.id !== link.id) }, link).length; k++) { const nd = addDays(link.start_at.slice(0, 10), 1); link.start_at = `${nd}T08:00`; link.end_at = `${nd}T13:00`; }
   }
 
+  // client follow-ups: 6-month and 1-year dates from each client's newest completed service (a few custom intervals so the demo has due / overdue items)
+  const byName = (n: string) => clients.find((c) => c.name.startsWith(n));
+  const followupRules: FollowUpRule[] = [
+    ...(byName('Parish') ? [{ ...base('fr'), client_id: byName('Parish')!.id, short_months: 1, long_months: 3, note: 'Church asked for monthly walkway and glass maintenance' }] : []),
+    ...(byName('Greenfield') ? [{ ...base('fr'), client_id: byName('Greenfield')!.id, short_months: 1, long_months: 2, note: 'Monthly plant wash-down' }] : []),
+    { ...base('fr'), service_code: 'SOLAR' as ServiceCode, short_months: 3, long_months: 6, note: 'Solar panels: clean every 3 months' },
+  ];
+  const followups: FollowUp[] = planFollowUps({ clients, jobs, followups: [], followup_rules: followupRules } as unknown as DB, T).inserts.map((x) => ({ ...base('fu', x.reference_date), ...x }) as FollowUp);
+  const fuOf = (name: string) => followups.find((f) => f.client_id === byName(name)?.id && f.slot === 'short');
+  const gf = fuOf('Greenfield');
+  if (gf) Object.assign(gf, { status: 'Contacted', note: 'Spoke with the plant manager; will confirm a schedule.', actioned_by: 'u-owner', actioned_at: stamp(addDays(T, -1)), history: [{ at: stamp(addDays(T, -1)), by: 'Owner / Admin', status: 'Contacted', note: 'Spoke with the plant manager; will confirm a schedule.' }] });
+  const dc = fuOf('Dela Cruz'); const booking = dc && jobs.find((j) => j.client_id === dc.client_id && ['Confirmed', 'Pending'].includes(j.status) && j.start_at.slice(0, 10) > T);
+  if (dc && booking) Object.assign(dc, { status: 'Booked', booked_job_id: booking.id, note: 'Booked after our call.', actioned_by: 'u-owner', actioned_at: stamp(addDays(T, -4)), history: [{ at: stamp(addDays(T, -4)), by: 'Owner / Admin', status: 'Booked', note: 'Booked after our call.' }] });
+
   return {
     users, branches, clients, sites, communications, complaints, services, inquiries, quotations, jobs, employees, attendance, corrections: [
       { ...base('cor'), employee_id: FIELD[1].id, date: addDays(T, -2), clock_in: `${addDays(T, -2)}T08:00`, clock_out: `${addDays(T, -2)}T17:00`, reason: 'Forgot to clock out; was on site until 5PM per team leader.', status: 'Pending' },
     ], holidays, reviews, adjustments, periods, runs, locations, items, stock, requests: [
       { ...base('mr'), job_id: jobs.find((j) => j.status === 'Confirmed')?.id ?? jobs[0].id, requested_by: E_L1.id, lines: [{ item_id: item('CHM-001').id, qty: 4 }, { item_id: item('PPE-002').id, qty: 2 }], status: 'Pending', note: 'Extra chemical for large glass job.' },
-    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, payment_confirmations: confirmations, ocular_visits: ocularVisits, quote_images: quoteImages, audit: [], settings: { ...settings, counters }, version: 1,
+    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, payment_confirmations: confirmations, ocular_visits: ocularVisits, quote_images: quoteImages, followups, followup_rules: followupRules, audit: [], settings: { ...settings, counters }, version: 1,
   };
 }
 

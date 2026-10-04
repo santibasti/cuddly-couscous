@@ -1,13 +1,16 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { store, useAuth } from '@/lib/store';
-import { Badge, Card, PageHead } from '@/components/ui';
+import { Badge, Card, PageHead, Tabs } from '@/components/ui';
+import { FollowUpTasks } from '@/components/FollowUps';
 import { DataTable } from '@/components/DataTable';
 import { fmtStamp } from '@/lib/util';
 import type { Notification } from '@/lib/types';
 
 export default function Notifications() {
-  const { db, user } = useAuth();
+  const { db, user, can } = useAuth();
   const nav = useNavigate();
+  const [sp, setSp] = useSearchParams();
+  const tab = can('followups.manage') && sp.get('tab') === 'followups' ? 'followups' : 'alerts';
   const rows = db.notifications.filter((n) => !n.deleted_at && user && n.for_roles.includes(user.role));
   const sevOrder = { critical: 0, warn: 1, info: 2 };
   rows.sort((a, b) => sevOrder[a.severity] - sevOrder[b.severity]);
@@ -16,7 +19,8 @@ export default function Notifications() {
       <PageHead title="Notifications & automations" sub="In-app alerts generated from live data. External channels are queued per Admin settings (email / SMS / WhatsApp-ready).">
         <button className="btn" onClick={() => store.markRead(rows.map((n) => n.id))}>Mark all read</button>
       </PageHead>
-      <Card flush>
+      {can('followups.manage') && <Tabs tabs={[{ id: 'alerts' as const, label: 'Alerts' }, { id: 'followups' as const, label: 'Client follow-up tasks' }]} value={tab} onChange={(t) => setSp(t === 'alerts' ? {} : { tab: t })} />}
+      {tab === 'followups' ? <FollowUpTasks /> : <Card flush>
         <DataTable<Notification>
           rows={rows} rowKey={(n) => n.id} exportTitle="Notifications" pageSize={15} initialSort={undefined}
           onRow={(n) => { store.markRead([n.id]); if (n.link) nav(n.link.replace(/\?.*/, '')); }}
@@ -29,7 +33,7 @@ export default function Notifications() {
             { key: 'at', header: 'Raised', value: (n) => fmtStamp(n.created_at) },
           ]}
         />
-      </Card>
+      </Card>}
     </>
   );
 }
