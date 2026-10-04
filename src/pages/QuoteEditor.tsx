@@ -124,7 +124,7 @@ export default function QuoteEditor() {
                     <td><input type="number" min="0" disabled={readOnly} value={it.qty} onChange={(e) => updItem(i, { qty: +e.target.value })} aria-label="Quantity" /></td>
                     <td><input disabled={readOnly} value={it.unit} onChange={(e) => updItem(i, { unit: e.target.value })} aria-label="Unit" /></td>
                     <td><input type="number" min="0" step="0.01" disabled={readOnly} value={it.rate} onChange={(e) => updItem(i, { rate: +e.target.value })} aria-label="Rate" /></td>
-                    <td><input type="number" min="0" step="0.01" disabled={readOnly} value={it.discount} onChange={(e) => updItem(i, { discount: +e.target.value })} aria-label="Discount" /></td>
+                    <td><input type="number" min="0" step="0.01" disabled={readOnly || !can('discount.approve')} title={can('discount.approve') ? undefined : 'Only the Owner / Admin can apply a discount'} value={it.discount} onChange={(e) => updItem(i, { discount: +e.target.value })} aria-label="Discount" /></td>
                     <td className="num">{money(it.qty * it.rate - it.discount)}</td>
                     <td>{!readOnly && <button className="icon-btn" onClick={() => setItems(v.items.filter((_, k) => k !== i))} aria-label="Remove line"><Icon name="trash" /></button>}</td>
                   </tr>
@@ -137,7 +137,7 @@ export default function QuoteEditor() {
             <div className="form-grid">
               <Field label="VAT treatment"><select disabled={readOnly} value={v.vat_mode} onChange={(e) => f.set('vat_mode', e.target.value as Form['vat_mode'])}><option value="exclusive">VAT exclusive (add VAT)</option><option value="inclusive">VAT inclusive</option><option value="none">No VAT (Non-VAT / exempt)</option></select></Field>
               <Field label="VAT rate (%)"><input type="number" disabled={readOnly || v.vat_mode === 'none'} {...f.bind('vat_rate')} /></Field>
-              <Field label="Additional discount (₱)"><input type="number" min="0" disabled={readOnly} {...f.bind('discount')} /></Field>
+              <Field label="Additional discount (₱)" hint={can('discount.approve') ? undefined : 'Owner / Admin only. Others submit a Discount Request on the job.'}><input type="number" min="0" disabled={readOnly || !can('discount.approve')} {...f.bind('discount')} /></Field>
             </div>
             <table className="tbl"><tbody>
               <tr><td>Subtotal</td><td className="num">{money(t.gross)}</td></tr>

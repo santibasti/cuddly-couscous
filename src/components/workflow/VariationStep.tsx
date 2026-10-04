@@ -23,7 +23,8 @@ export function VariationStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run
       <div className="tbl-wrap"><table className="tbl"><tbody>
         <tr><td>Original quotation <span className="muted small">(unchanged)</span></td><td className="num">{money(fc.originalTotal)}</td></tr>
         <tr><td>Approved variations</td><td className="num">{money(fc.variationsTotal)}</td></tr>
-        <tr><th>Final contract value <span className="muted small">(incl. VAT)</span></th><th className="num">{money(fc.finalTotal)}</th></tr>
+        {fc.discount > 0 && <tr><td>Discount granted <span className="muted small">(approved by TopMop management)</span></td><td className="num">− {money(fc.discount)}</td></tr>}
+        <tr><th>Final contract value <span className="muted small">(incl. VAT)</span></th><th className="num">{money(fc.payableTotal)}</th></tr>
       </tbody></table></div>
       {vars.map((v) => {
         const t = variationTotals(v);
@@ -53,7 +54,7 @@ export function VariationStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run
 }
 
 function VariationModal({ wf, job, initial, onClose }: { wf: JobWorkflow; job: Job; initial?: Variation; onClose: () => void }) {
-  const { db } = useAuth();
+  const { db, can } = useAuth();
   const q = db.quotations.find((x) => x.id === job.quotation_id);
   const [f, setF] = useState<VariationInput>(() => initial ? { reason: initial.reason, items: initial.items, discount: initial.discount, vat_mode: initial.vat_mode, vat_rate: initial.vat_rate, panel_row_ids: initial.panel_row_ids, notes: initial.notes } : { reason: '', items: [], discount: 0, vat_mode: q?.vat_mode ?? 'exclusive', vat_rate: q?.vat_rate ?? db.settings.vat_rate ?? 12, panel_row_ids: [] });
   const t = docTotals(f.items, f.discount, f.vat_mode, f.vat_rate);
@@ -86,13 +87,13 @@ function VariationModal({ wf, job, initial, onClose }: { wf: JobWorkflow; job: J
             <tr key={k}><td><input value={i.description} onChange={(e) => setItem(k, { description: e.target.value })} aria-label="Description" /></td>
               <td><select value={i.service_code} onChange={(e) => setItem(k, { service_code: e.target.value as QuoteItem['service_code'] })}>{db.services.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></td>
               <td className="num"><Stepper label="Qty" min={0} value={i.qty} onChange={(v) => setItem(k, { qty: v ?? 0 })} /></td><td><input value={i.unit} onChange={(e) => setItem(k, { unit: e.target.value })} style={{ width: 70 }} /></td>
-              <td className="num"><input type="number" inputMode="decimal" min="0" step="any" value={i.rate || ''} onChange={(e) => setItem(k, { rate: +e.target.value })} style={{ width: 120 }} aria-label="Rate" /></td><td className="num"><input type="number" min="0" value={i.discount || ''} onChange={(e) => setItem(k, { discount: +e.target.value })} style={{ width: 80 }} /></td>
+              <td className="num"><input type="number" inputMode="decimal" min="0" step="any" value={i.rate || ''} onChange={(e) => setItem(k, { rate: +e.target.value })} style={{ width: 120 }} aria-label="Rate" /></td><td className="num"><input type="number" min="0" disabled={!can('discount.approve')} title={can('discount.approve') ? undefined : 'Only the Owner / Admin can apply a discount'} value={i.discount || ''} onChange={(e) => setItem(k, { discount: +e.target.value })} style={{ width: 80 }} /></td>
               <td><button className="btn sm danger" onClick={() => setF({ ...f, items: f.items.filter((_, x) => x !== k) })}>✕</button></td></tr>
           ))}
           {!f.items.length && <tr><td colSpan={7} className="muted">No lines yet.</td></tr>}
         </tbody></table></div>
         <button className="btn sm" onClick={() => setF({ ...f, items: [...f.items, { service_code: job.service_codes[0] ?? 'OTHER', description: '', qty: 1, unit: 'lot', rate: 0, discount: 0 }] })}>+ Add line</button>
-        <div className="form-grid"><Field label="Overall discount (₱)"><input type="number" min="0" value={f.discount || ''} onChange={(e) => setF({ ...f, discount: +e.target.value })} /></Field>
+        <div className="form-grid">{can('discount.approve') && <Field label="Overall discount (₱)" hint="Owner / Admin only. Others use a Discount Request."><input type="number" min="0" value={f.discount || ''} onChange={(e) => setF({ ...f, discount: +e.target.value })} /></Field>}
           <Field label="VAT"><select value={f.vat_mode} onChange={(e) => setF({ ...f, vat_mode: e.target.value as VariationInput['vat_mode'] })}><option value="exclusive">Exclusive</option><option value="inclusive">Inclusive</option><option value="none">None</option></select></Field></div>
         <table className="tbl"><tbody><tr><td>Subtotal</td><td className="num">{money(t.gross)}</td></tr>{t.discount > 0 && <tr><td>Discount</td><td className="num">- {money(t.discount)}</td></tr>}{f.vat_mode !== 'none' && <tr><td>VAT {f.vat_rate}%</td><td className="num">{money(t.vat)}</td></tr>}<tr><th>Revised amount (this variation)</th><th className="num">{money(t.total)}</th></tr></tbody></table>
       </div>

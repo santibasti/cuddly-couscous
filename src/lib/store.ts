@@ -24,12 +24,13 @@ class Store {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private sessionUser: string | null = null;
   private _reason: string | null = null;
+  private _discountOK = false;
 
   constructor() {
     let db: DB | null = null;
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) db = JSON.parse(raw) as DB;
+      if (raw) { db = JSON.parse(raw) as DB; if (!db.discount_requests) db.discount_requests = []; }   // data saved before Discount Requests existed
     } catch { /* ignore corrupted / unavailable storage */ }
     this._db = db ?? seedDB();
     try { this.sessionUser = localStorage.getItem(SESSION); } catch { /* noop */ }
@@ -89,6 +90,7 @@ class Store {
 
   /* ---- generic CRUD with audit & guards ---- */
   insert<T extends TableName>(table: T, data: NewRow<T>, summary?: string): Rows[T] {
+    this.guardDiscountInsert(table, data as unknown as Record<string, unknown>);
     const now = isoNow();
     const row = { ...data, id: (data as { id?: string }).id ?? uid(), created_at: now, updated_at: now, created_by: this.user?.id ?? 'system' } as unknown as Rows[T];
     this.audit('create', table, (row as Base).id, summary ?? `Created ${table.replace(/s$/, '')} ${describe(row)}`, undefined, row);
@@ -101,6 +103,7 @@ class Store {
     const before = list.find((r) => r.id === id);
     if (!before) throw new RuleError(`Record not found in ${table}`);
     this.guardUpdate(table, before, patch as Record<string, unknown>);
+    this.guardDiscountUpdate(table, before, patch as Record<string, unknown>);
     const after = { ...before, ...patch, updated_at: isoNow(), updated_by: this.user?.id ?? 'system' };
     this.audit(action, table, id, summary ?? `Updated ${table.replace(/s$/, '')} ${describe(after)}`, pickChanged(before, patch as Record<string, unknown>), pickChanged(after, patch as Record<string, unknown>));
     this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? after : r)) }) as DB);
@@ -131,6 +134,7 @@ class Store {
     if (table === 'workflows') throw new RuleError('Job workflow records cannot be deleted.');
     if (table === 'variations') throw new RuleError('Variations cannot be deleted; reject them instead.');
     if (table === 'incidents') throw new RuleError('Incident reports cannot be deleted; resolve them instead.');
+    if (table === 'discount_requests') throw new RuleError('Discount requests cannot be deleted; they stay on record with their status.');
     if (table === 'checkouts' && (r.status === 'Released' || r.status === 'Returned')) throw new RuleError('Completed or active equipment out/in records cannot be deleted.');
     if (table === 'payments') throw new RuleError('Payments cannot be deleted. Reverse the payment instead.');
     if (table === 'attendance' && r.approval === 'Approved') throw new RuleError('Approved attendance cannot be deleted. File a correction request.');
@@ -154,12 +158,27 @@ class Store {
     if (table === 'incidents' && r.status === 'Resolved' && !this._reason) throw new RuleError('A resolved incident is locked. Correct it with a reason.');
   }
 
+  /** Discounts are never typed in directly by Team Leaders / Field staff — they submit a Discount Request and only Owner / Admin approves it. */
+  private static DISCOUNT_TABLES = ['quotations', 'variations', 'invoices'];
+  private lineDisc = (items: unknown) => ((items as { discount?: number }[] | undefined) ?? []).reduce((s, i) => s + (i.discount || 0), 0);
+  private guardDiscountInsert(table: TableName, row: Record<string, unknown>) {
+    if (!Store.DISCOUNT_TABLES.includes(table) || !this.user || this._discountOK || this.can('discount.approve')) return;
+    if (((row.discount as number) || 0) > 0 || this.lineDisc(row.items) > 0) throw new PermissionError('Discounts need Owner / Admin approval. Submit a Discount Request instead.');
+  }
+  private guardDiscountUpdate(table: TableName, before: Record<string, unknown>, patch: Record<string, unknown>) {
+    if (!Store.DISCOUNT_TABLES.includes(table) || !this.user || this._discountOK || this.can('discount.approve')) return;
+    const changed = ('discount' in patch && (patch.discount as number || 0) !== (before.discount as number || 0)) || ('items' in patch && this.lineDisc(patch.items) !== this.lineDisc(before.items));
+    if (changed) throw new PermissionError('Only the Owner / Admin can apply or edit a discount. Submit a Discount Request instead.');
+  }
+  /** Run a rule-checked action that carries an already-approved discount (e.g. invoicing an approved quotation). */
+  allowDiscount<T>(fn: () => T): T { this._discountOK = true; try { return fn(); } finally { this._discountOK = false; } }
+
   /** Settings & counters */
   patchSettings(patch: Partial<DB['settings']>, summary = 'Updated settings') {
     this.audit('update', 'settings', 'settings', summary, undefined, patch);
     this.set((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
   }
-  nextNumber(kind: 'QT' | 'JOB' | 'INV' | 'OR' | 'EMP' | 'INC'): string {
+  nextNumber(kind: 'QT' | 'JOB' | 'INV' | 'OR' | 'EMP' | 'INC' | 'DR'): string {
     const n = (this._db.settings.counters[kind] ?? 0) + 1;
     this._db = { ...this._db, settings: { ...this._db.settings, counters: { ...this._db.settings.counters, [kind]: n } } };
     const yr = new Date().getFullYear();

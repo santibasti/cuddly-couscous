@@ -120,7 +120,7 @@ function partyBlock(doc: Doc, y: number, left: [string, string[]], right?: [stri
   return y + 5 + Math.max(left[1].length, right?.[1].length ?? 0) * 4.6 + 4;
 }
 
-function itemsTable(doc: Doc, autoTable: Awaited<ReturnType<typeof newPdf>>['autoTable'], y: number, items: Quotation['items'], mode: Quotation['vat_mode'], rate: number, discount: number, extra?: { wht?: number; label?: string }) {
+function itemsTable(doc: Doc, autoTable: Awaited<ReturnType<typeof newPdf>>['autoTable'], y: number, items: Quotation['items'], mode: Quotation['vat_mode'], rate: number, discount: number, extra?: { wht?: number; label?: string; granted?: { net: number; label: string } }) {
   const t = docTotals(items, discount, mode, rate);
   autoTable(doc, {
     startY: y, head: [['#', 'Description', 'Qty', 'Unit', 'Unit Rate', 'Discount', 'Amount']],
@@ -130,14 +130,17 @@ function itemsTable(doc: Doc, autoTable: Awaited<ReturnType<typeof newPdf>>['aut
   const endY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
   const w = doc.internal.pageSize.getWidth();
   const rows: [string, string, boolean?][] = [['Subtotal', pm(t.gross)]];
-  if (t.discount) rows.push(['Discount', '- ' + pm(t.discount)]);
+  const gr = extra?.granted?.net ?? 0;
+  if (t.discount - gr > 0.005) rows.push(['Discount', '- ' + pm(t.discount - gr)]);
+  if (gr > 0) rows.push([extra!.granted!.label, '- ' + pm(gr)]);
   if (mode !== 'none') rows.push([mode === 'inclusive' ? `VAT ${rate}% (included)` : `VAT ${rate}%`, pm(t.vat)]);
   rows.push(['TOTAL', pm(t.total), true]);
   if (extra?.wht) rows.push([extra.label ?? 'Less: Withholding tax', '- ' + pm(extra.wht)], ['NET AMOUNT DUE', pm(t.total - extra.wht), true]);
   let yy = endY;
   for (const [k, v, b] of rows) {
-    doc.setFont('helvetica', b ? 'bold' : 'normal'); doc.setFontSize(b ? 11 : 9.5); doc.text(k, w - 70, yy); doc.text(v, w - 12, yy, { align: 'right' }); yy += b ? 6.5 : 5;
+    doc.setFont('helvetica', b ? 'bold' : 'normal'); doc.setFontSize(b ? 11 : 9.5); doc.text(k, w - 78, yy); doc.text(v, w - 12, yy, { align: 'right' }); yy += b ? 6.5 : 5;
   }
+  if (gr > 0) { doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); doc.setTextColor(30, 120, 70); doc.text(clean('Discount approved by TopMop management and reflected in the final agreed amount.'), 12, yy + 1); doc.setTextColor(20, 36, 58); yy += 6; }
   return yy;
 }
 function wrapText(doc: Doc, text: string, x: number, y: number, maxW: number, lh = 4.2): number {
@@ -170,7 +173,9 @@ export async function invoicePdf(db: DB, inv: Invoice) {
   const st = invoiceSettled(db, inv); const t = invoiceTotals(inv);
   header(doc, inv.status === 'Draft' ? 'Draft Invoice' : 'Billing Invoice', `${inv.number}${inv.status === 'Reversed' ? ' • REVERSED' : ''}`);
   let y = partyBlock(doc, 34, ['Bill to', clientLines(db, inv.client_id, inv.site_id)], ['Invoice details', [`Issued: ${fmtDate(inv.issue_date)}`, `Due: ${fmtDate(inv.due_date)}`, db.jobs.find((j) => j.id === inv.job_id) ? `Job ref: ${db.jobs.find((j) => j.id === inv.job_id)!.number}` : '', inv.quotation_id ? `Quotation: ${db.quotations.find((x) => x.id === inv.quotation_id)?.number}` : '']]);
-  y = itemsTable(doc, autoTable, y, inv.items, inv.vat_mode, inv.vat_rate, inv.discount, inv.withholding_rate ? { wht: t.wht, label: `Less: Expected withholding tax (${inv.withholding_rate}%)` } : undefined) + 4;
+  const drq = db.discount_requests.find((r) => r.id === inv.discount_request_id);
+  const gNet = drq && inv.discount_granted ? (inv.vat_mode === 'exclusive' ? Math.round((inv.discount_granted / (1 + inv.vat_rate / 100)) * 100) / 100 : inv.discount_granted) : 0;
+  y = itemsTable(doc, autoTable, y, inv.items, inv.vat_mode, inv.vat_rate, inv.discount, { ...(inv.withholding_rate ? { wht: t.wht, label: `Less: Expected withholding tax (${inv.withholding_rate}%)` } : {}), ...(gNet ? { granted: { net: gNet, label: `Discount granted (${drq!.number})` } } : {}) }) + 4;
   if (inv.status === 'Approved') {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
     doc.text(`Payments received: ${pm(st.cash)}   •   Withholding credited: ${pm(st.wht)}`, 12, y);
@@ -259,8 +264,8 @@ export async function serviceReportPdf(db: DB, j: Job) {
   const equip = wf ? wf.items.filter((i) => (i.loaded_qty ?? 0) > 0 && i.kind !== 'material' && i.kind !== 'ppe').map((i) => i.label).join(', ') : '';
   sec('Methodology and equipment used', `${wf?.rep_method ?? ''}${equip ? `\nEquipment: ${equip}` : ''}`.trim());
   const fc = finalContract(db, j);
-  if (fc.variationsTotal > 0) {
-    autoTable(doc, { startY: y, head: [['Contract value', 'Amount']], body: [['Original quotation', pm(fc.originalTotal)], ...db.variations.filter((v) => v.job_id === j.id && v.status === 'Approved').map((v) => [`Approved variation ${v.number}`, pm(variationTotals(v).total)]), ['Final contract value', pm(fc.finalTotal)]], ...tableStyle, columnStyles: { 1: { halign: 'right' } }, margin: { left: 12, right: 100 } });
+  if (fc.variationsTotal > 0 || fc.discount > 0) {
+    autoTable(doc, { startY: y, head: [['Contract value', 'Amount']], body: [['Original quotation', pm(fc.originalTotal)], ...db.variations.filter((v) => v.job_id === j.id && v.status === 'Approved').map((v) => [`Approved variation ${v.number}`, pm(variationTotals(v).total)]), ...(fc.discount > 0 ? [['Discount granted (approved by TopMop management)', '- ' + pm(fc.discount)]] : []), ['Final contract value', pm(fc.payableTotal)]], ...tableStyle, columnStyles: { 1: { halign: 'right' } }, margin: { left: 12, right: 100 } });
     y = ymax(doc) + 6;
   }
   if (wf?.panels.length) {
@@ -323,14 +328,18 @@ export async function conformePdf(db: DB, j: Job) {
 
   h('3. Final Billing Summary');
   const sm = finalQuoteSummary(db, j, { deposit: wf?.conf_deposit });
-  autoTable(doc, { startY: y, body: [
-    ['Original quote total (incl. VAT)', pm(sm.originalTotal)], ['Approved additional work total (incl. VAT)', pm(sm.additionalTotal)],
-    [`Discount included`, pm(sm.discount)], ['VAT included', pm(sm.vat)], ['FINAL TOTAL BILL', pm(sm.finalTotal)],
-    ['Less: deposit / prior payment' + (wf?.conf_deposit_note ? ` (${wf.conf_deposit_note})` : ''), '- ' + pm(sm.deposit)], ['BALANCE DUE', pm(sm.balance)],
-  ], theme: 'plain', styles: { fontSize: 10, cellPadding: 1.8 }, columnStyles: { 1: { halign: 'right' } }, margin: { left: 80, right: 12 },
-    didParseCell: (d: { row: { index: number }; cell: { styles: { fontStyle: string } } }) => { if (d.row.index === 4 || d.row.index === 6) d.cell.styles.fontStyle = 'bold'; } });
+  const sumRows: [string, string, boolean?][] = [
+    ['Original Total (incl. VAT)', pm(sm.originalTotal)], ['Approved Additional Work (incl. VAT)', pm(sm.additionalTotal)],
+    ...(sm.discount > 0 ? [['Discounts already in the quoted prices', pm(sm.discount)] as [string, string]] : []),
+    ...(sm.granted > 0 ? [[`Discount Granted${sm.request ? ` (${sm.request.number})` : ''}`, '- ' + pm(sm.granted)] as [string, string]] : []),
+    ['VAT (included)', pm(sm.vat)], ['FINAL TOTAL BILL', pm(sm.finalTotal), true],
+    ...(sm.deposit > 0 ? [['Less: deposit / prior payment' + (wf?.conf_deposit_note ? ` (${wf.conf_deposit_note})` : ''), '- ' + pm(sm.deposit)] as [string, string], ['BALANCE DUE', pm(sm.balance), true] as [string, string, boolean]] : []),
+  ];
+  autoTable(doc, { startY: y, body: sumRows.map((r) => [r[0], r[1]]), theme: 'plain', styles: { fontSize: 10, cellPadding: 1.8 }, columnStyles: { 1: { halign: 'right' } }, margin: { left: 80, right: 12 },
+    didParseCell: (d: { row: { index: number }; cell: { styles: { fontStyle: string } } }) => { if (sumRows[d.row.index]?.[2]) d.cell.styles.fontStyle = 'bold'; } });
   y = ymax(doc) + 6;
-  room(60); doc.setFont('helvetica', 'italic'); doc.setFontSize(9); y = wrapText(doc, 'Any additional work listed above has been discussed with and approved by the client before commencement.', 12, y, 186) + 4;
+  room(60); doc.setFont('helvetica', 'italic'); doc.setFontSize(9); y = wrapText(doc, 'Any additional work listed above has been discussed with and approved by the client before commencement.', 12, y, 186) + 1;
+  if (sm.granted > 0) y = wrapText(doc, 'Discount approved by TopMop management and reflected in the final agreed amount.', 12, y, 186) + 3; else y += 3;
   if (wf?.conf_mode === 'confirmed') {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Scope confirmed - no changes', 12, y); y += 5; doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
     doc.text(clean(`The existing approved scope was confirmed by the TopMop Team Leader (${db.users.find((u) => u.id === wf.conf_by)?.name ?? '-'}) on ${fmtDateTime(wf.conf_at)}. No new client signature was required.`), 12, y, { maxWidth: 186 });
@@ -360,7 +369,7 @@ export async function variationPdf(db: DB, v: Variation) {
   y = itemsTable(doc, autoTable, y, v.items, v.vat_mode, v.vat_rate, v.discount) + 3;
   const linked = wf?.panels.filter((p) => v.panel_row_ids.includes(p.id)) ?? [];
   if (linked.length) { autoTable(doc, { startY: y, head: [['Additional panels', 'Side', 'External', 'Internal', 'Total']], body: linked.map((p) => [p.area, p.side, p.external, p.internal, rowPanels(p)]), ...tableStyle, margin: { left: 12, right: 100 } }); y = ymax(doc) + 6; }
-  autoTable(doc, { startY: y, head: [['Contract value (incl. VAT)', 'Amount']], body: [['Original quotation', pm(fc.originalTotal)], ['Approved variations', pm(fc.variationsTotal)], ['Final contract value', pm(fc.finalTotal)]], ...tableStyle, columnStyles: { 1: { halign: 'right' } }, margin: { left: 12, right: 100 } });
+  autoTable(doc, { startY: y, head: [['Contract value (incl. VAT)', 'Amount']], body: [['Original quotation', pm(fc.originalTotal)], ['Approved variations', pm(fc.variationsTotal)], ...(fc.discount > 0 ? [['Discount granted (approved by TopMop management)', '- ' + pm(fc.discount)]] : []), ['Final contract value', pm(fc.payableTotal)]], ...tableStyle, columnStyles: { 1: { halign: 'right' } }, margin: { left: 12, right: 100 } });
   y = ymax(doc) + 10;
   if (y > 240) { doc.addPage(); y = 16; }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Client approval', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);

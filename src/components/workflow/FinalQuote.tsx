@@ -5,8 +5,9 @@ import { DraftBar, PresetChips, Stepper, Toggle } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { confirmLeave } from '@/lib/sync';
 import { getGeo } from '@/lib/geo';
-import { ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, categoryLabel, finalQuoteSummary, lineTotals, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
-import { approveFinalQuote, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
+import { ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, discountBlock, categoryLabel, finalQuoteSummary, lineTotals, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
+import { DISCOUNT_NOTICE } from './DiscountPanel';
+import { approveFinalQuote, billBase, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
 import { conformePdf } from '@/lib/export';
 import { fmtDateTime, fmtStamp, money } from '@/lib/util';
 import type { AdditionalCategory, Job, JobWorkflow, QuoteItem, Variation } from '@/lib/types';
@@ -39,15 +40,19 @@ export function QuoteLines({ items, mode, rate }: { items: QuoteItem[]; mode: Va
 export function FinalSummary({ sm, pendingLabel }: { sm: ReturnType<typeof finalQuoteSummary>; pendingLabel?: string }) {
   const row = (k: string, v: string, cls = '') => <tr className={cls}><td>{k}</td><td className="num">{v}</td></tr>;
   return (
-    <table className="tbl finalsum"><tbody>
-      {row('Original quote total', money(sm.originalTotal))}
-      {row(pendingLabel ?? 'Approved additional work total', money(sm.additionalTotal))}
-      {row('Discount included', money(sm.discount), 'sub')}
-      {row('VAT included', money(sm.vat), 'sub')}
-      {row('Final total bill', money(sm.finalTotal), 'big')}
-      {sm.deposit > 0 && row('Less: deposit / prior payment', `− ${money(sm.deposit)}`)}
-      {row('Balance due', money(sm.balance), 'big')}
-    </tbody></table>
+    <>
+      <table className="tbl finalsum"><tbody>
+        {row('Original Total', money(sm.originalTotal))}
+        {row(pendingLabel ?? 'Approved Additional Work', money(sm.additionalTotal))}
+        {sm.discount > 0 && row('Discounts already in the quoted prices', money(sm.discount), 'sub')}
+        {sm.granted > 0 && row(`Discount Granted${sm.request ? ` (${sm.request.number})` : ''}`, `− ${money(sm.granted)}`, 'disc')}
+        {row('VAT (included)', money(sm.vat), 'sub')}
+        {row('Final Total Bill', money(sm.finalTotal), 'big')}
+        {sm.deposit > 0 && row('Less: deposit / prior payment', `− ${money(sm.deposit)}`)}
+        {sm.deposit > 0 && row('Balance due', money(sm.balance), 'big')}
+      </tbody></table>
+      {sm.granted > 0 && <p className="small" style={{ margin: '6px 0 0', color: 'var(--green)' }}>{DISCOUNT_NOTICE}</p>}
+    </>
   );
 }
 
@@ -95,6 +100,7 @@ export function AdditionalWork({ wf, job, run, onPresent }: { wf: JobWorkflow; j
 function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job: Job; initial?: QuoteItem; onClose: () => void; onSave: (l: QuoteItem) => void }) {
   const { db, can } = useAuth();
   const authorised = can('admin.settings') || can('dispatch.approve');
+  const canDiscount = can('discount.approve');
   const q = db.quotations.find((x) => x.id === job.quotation_id);
   const vat = reviewVat(job);
   const pb = panelBreakdown(db, q, wf.panels);
@@ -140,7 +146,7 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
           <Field label="Quantity">{cat === 'glass' && linked ? <input disabled value={`${pb.additional} (from panel table)`} /> : <Stepper label="Quantity" min={0} step={1} value={qty} onChange={setQty} />}</Field>
           <Field label="Unit of measure"><div className="stack" style={{ gap: 6 }}><select value={unitSel} onChange={(e) => setUnitSel(e.target.value)}>{UNIT_OPTIONS.map((u) => <option key={u}>{u}</option>)}</select>{unitSel === 'custom' && <input value={customUnit} onChange={(e) => setCustomUnit(e.target.value)} placeholder="e.g. window, door, set" aria-label="Custom unit" />}</div></Field>
           <Field label="Unit rate (₱)" hint={authorised ? `Price-list default ${money(def.rate)}${def.min ? `, minimum ${def.min} ${def.unit}` : ''}` : `Price-list rate ${money(def.rate)}${def.min ? `, minimum ${def.min} ${def.unit}` : ''} — only an Operations Manager / Admin can change it`}><input type="number" inputMode="decimal" min="0" disabled={!authorised && cat !== 'other'} value={rate || ''} onChange={(e) => setRate(+e.target.value)} /></Field>
-          <Field label="Discount (₱)" hint={authorised ? undefined : 'Discounts need Operations Manager / Admin'}><input type="number" inputMode="decimal" min="0" disabled={!authorised} value={disc || ''} onChange={(e) => setDisc(Math.max(0, +e.target.value))} /></Field>
+          {canDiscount && <Field label="Line discount (₱)" hint="Owner / Admin only. Team Leaders use the Discount Request instead."><input type="number" inputMode="decimal" min="0" value={disc || ''} onChange={(e) => setDisc(Math.max(0, +e.target.value))} /></Field>}
         </div>
         {minApplied && <div className="alert info">Minimum of {def.min} {def.unit} applies — counted {res.entered_qty}, billed {res.qty}.</div>}
         <div className="finalsum card" style={{ padding: 12 }}>
@@ -168,6 +174,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
   const pb = panelBreakdown(db, q, wf.panels);
   const hasAdds = pendingItems.length > 0;
   const revision = !!draft?.revision_open;
+  const block = signed ? undefined : discountBlock(db, job, wf, billBase(job).base);
   const [mode, setMode] = useState<'approve' | 'decline' | 'revise' | null>(null);
   const [name, setName] = useState(site?.contact_person ?? ''); const [sig, setSig] = useState<string>();
   const [agree, setAgree] = useState(false); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false);
@@ -214,10 +221,11 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
         ) : run ? (
           <div className="cractions">
             {!mode && <>
-              <button className="btn primary lg" disabled={revision} onClick={() => setMode('approve')}>Approve Final Quote and Sign</button>
+              <button className="btn primary lg" disabled={revision || !!block} onClick={() => setMode('approve')}>Approve Final Quote and Sign</button>
               {hasAdds && <button className="btn lg" onClick={() => setMode('decline')}>Decline Additional Work</button>}
               {hasAdds && <button className="btn lg" onClick={() => setMode('revise')}>Request Revision</button>}
             </>}
+            {block && !mode && <div className="alert warn">{block}</div>}
             {revision && !mode && <div className="small muted">Present the updated additional work again before the client can sign.</div>}
             {mode === 'approve' && (
               <div className="stack card" style={{ padding: 14 }}>

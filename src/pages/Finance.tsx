@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
-import { isDone, AGING_BUCKETS, aggregateProfit, agingBucket, docTotals, invoiceBalance, invoiceSettled, invoiceState, invoiceTotals, jobProfitRows, profitAndLoss, serviceProfitRows, type AgingBucket } from '@/lib/business';
+import { isDone, AGING_BUCKETS, aggregateProfit, agingBucket, docTotals, invoiceBalance, invoiceSettled, invoiceState, invoiceTotals, jobProfitRows, profitAndLoss, serviceProfitRows, discountAggregate, discountRows, type AgingBucket, type DiscountAgg, type DiscountRow, type DiscountView } from '@/lib/business';
 import { approveInvoice, decideExpense, invoiceFromJob, pettyBalance, pettyCash, recordPayment, reverseExpense, reverseInvoice, reversePayment, saveExpense, saveInvoice } from '@/lib/actions';
 import { invoicePdf, receiptPdf, statementPdf } from '@/lib/export';
 import { addDays, diffDays, fmtDate, monthEnd, monthStart, money, moneyShort, pct, round2, sum, today } from '@/lib/util';
@@ -11,11 +11,11 @@ import type { Expense, ExpenseCategory, Invoice, PayMethod, Payment, QuoteItem }
 
 const METHODS: PayMethod[] = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Credit Card', 'Other'];
 const CATEGORIES: ExpenseCategory[] = ['Payroll', 'Fuel', 'Materials', 'Equipment Repair', 'Transportation', 'Marketing', 'Rent', 'Utilities', 'Government Fees', 'Subcontractor', 'Other'];
-type Tab = 'overview' | 'invoices' | 'receivables' | 'payments' | 'expenses' | 'profit';
+type Tab = 'overview' | 'invoices' | 'receivables' | 'payments' | 'expenses' | 'profit' | 'discounts';
 
 /* ---------- Invoice editor ---------- */
 function InvoiceModal({ initial, onClose }: { initial?: Invoice; onClose: () => void }) {
-  const { db } = useAuth();
+  const { db, can } = useAuth();
   const f = useObj<Omit<Invoice, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'number'>>(() => initial ?? { client_id: live(db.clients)[0].id, issue_date: today(), due_date: addDays(today(), db.settings.payment_terms_days), items: [{ service_code: 'OTHER', description: '', qty: 1, unit: 'lot', rate: 0, discount: 0 }], vat_mode: 'exclusive', vat_rate: db.settings.vat_rate, discount: 0, withholding_rate: 0, status: 'Draft', branch_id: db.branches[0].id });
   const v = f.v; const t = invoiceTotals(v);
   const upd = (i: number, p: Partial<QuoteItem>) => f.set('items', v.items.map((x, k) => (k === i ? { ...x, ...p } : x)));
@@ -28,10 +28,11 @@ function InvoiceModal({ initial, onClose }: { initial?: Invoice; onClose: () => 
         <Field label="Issue date"><input type="date" {...f.bind('issue_date')} /></Field><Field label="Due date"><input type="date" {...f.bind('due_date')} /></Field>
       </div>
       <div className="tbl-wrap" style={{ margin: '14px 0' }}><table className="tbl"><thead><tr><th>Description</th><th style={{ width: 80 }}>Qty</th><th style={{ width: 70 }}>Unit</th><th style={{ width: 110 }}>Rate</th><th style={{ width: 100 }}>Discount</th><th className="num">Amount</th><th /></tr></thead><tbody>
-        {v.items.map((it, i) => <tr key={i}><td><input value={it.description} onChange={(e) => upd(i, { description: e.target.value })} aria-label="Description" /></td><td><input type="number" value={it.qty} onChange={(e) => upd(i, { qty: +e.target.value })} aria-label="Qty" /></td><td><input value={it.unit} onChange={(e) => upd(i, { unit: e.target.value })} aria-label="Unit" /></td><td><input type="number" value={it.rate} onChange={(e) => upd(i, { rate: +e.target.value })} aria-label="Rate" /></td><td><input type="number" value={it.discount} onChange={(e) => upd(i, { discount: +e.target.value })} aria-label="Discount" /></td><td className="num">{money(it.qty * it.rate - it.discount)}</td><td><button className="icon-btn" onClick={() => f.set('items', v.items.filter((_, k) => k !== i))} aria-label="Remove"><Icon name="trash" /></button></td></tr>)}
+        {v.items.map((it, i) => <tr key={i}><td><input value={it.description} onChange={(e) => upd(i, { description: e.target.value })} aria-label="Description" /></td><td><input type="number" value={it.qty} onChange={(e) => upd(i, { qty: +e.target.value })} aria-label="Qty" /></td><td><input value={it.unit} onChange={(e) => upd(i, { unit: e.target.value })} aria-label="Unit" /></td><td><input type="number" value={it.rate} onChange={(e) => upd(i, { rate: +e.target.value })} aria-label="Rate" /></td><td><input type="number" disabled={!can('discount.approve')} value={it.discount} onChange={(e) => upd(i, { discount: +e.target.value })} aria-label="Discount" /></td><td className="num">{money(it.qty * it.rate - it.discount)}</td><td><button className="icon-btn" onClick={() => f.set('items', v.items.filter((_, k) => k !== i))} aria-label="Remove"><Icon name="trash" /></button></td></tr>)}
       </tbody></table><button className="btn sm" style={{ margin: 8 }} onClick={() => f.set('items', [...v.items, { service_code: 'OTHER', description: '', qty: 1, unit: 'lot', rate: 0, discount: 0 }])}><Icon name="plus" />Add line</button></div>
+      {v.discount_request_id && <div className="alert info" style={{ marginBottom: 10 }}>Includes discount {db.discount_requests.find((r) => r.id === v.discount_request_id)?.number} ({money(v.discount_granted ?? 0)}, incl. VAT) — approved by TopMop management and reflected in the final agreed amount.</div>}
       <div className="grid g2">
-        <div className="form-grid"><Field label="VAT"><select {...f.bind('vat_mode')}><option value="exclusive">Exclusive</option><option value="inclusive">Inclusive</option><option value="none">None</option></select></Field><Field label="Withholding tax rate (%)"><input type="number" min="0" step="0.5" {...f.bind('withholding_rate')} /></Field><Field label="Additional discount (₱)"><input type="number" min="0" {...f.bind('discount')} /></Field></div>
+        <div className="form-grid"><Field label="VAT"><select {...f.bind('vat_mode')}><option value="exclusive">Exclusive</option><option value="inclusive">Inclusive</option><option value="none">None</option></select></Field><Field label="Withholding tax rate (%)"><input type="number" min="0" step="0.5" {...f.bind('withholding_rate')} /></Field><Field label="Discount (₱, ex-VAT)" hint={v.discount_request_id ? 'Includes the management-approved discount (locked)' : can('discount.approve') ? undefined : 'Owner / Admin only'}><input type="number" min="0" disabled={!can('discount.approve')} {...f.bind('discount')} /></Field></div>
         <table className="tbl"><tbody><tr><td>Subtotal (after discounts, ex-VAT)</td><td className="num">{money(t.net)}</td></tr><tr><td>VAT {v.vat_rate}%</td><td className="num">{money(t.vat)}</td></tr><tr><td><b>Invoice total</b></td><td className="num"><b>{money(t.total)}</b></td></tr><tr><td className="muted">Less expected withholding tax</td><td className="num muted">− {money(t.wht)}</td></tr><tr><td><b>Expected cash collection</b></td><td className="num"><b>{money(t.collectible)}</b></td></tr></tbody></table>
       </div>
     </Modal>
@@ -116,7 +117,7 @@ export default function Finance() {
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     ...(can('invoices.view') ? [{ id: 'overview' as Tab, label: 'Overview' }, { id: 'invoices' as Tab, label: 'Invoices', count: invoices.length }, { id: 'receivables' as Tab, label: 'Receivables & aging', count: open.length }, { id: 'payments' as Tab, label: 'Payments' }] : []),
-    ...(can('expenses.view') ? [{ id: 'expenses' as Tab, label: 'Expenses & petty cash' }] : []), ...(can('profit.view') ? [{ id: 'profit' as Tab, label: 'Profitability' }] : []),
+    ...(can('expenses.view') ? [{ id: 'expenses' as Tab, label: 'Expenses & petty cash' }] : []), ...(can('profit.view') ? [{ id: 'profit' as Tab, label: 'Profitability' }, { id: 'discounts' as Tab, label: 'Discounts', count: db.discount_requests.filter((r) => r.status === 'Pending Admin Approval' && !r.deleted_at).length || undefined }] : []),
   ];
 
   /* profitability data */
@@ -229,6 +230,7 @@ export default function Finance() {
                 { key: 'basis', header: 'Basis', value: (r) => r.cost.revenueBasis, render: (r) => <Badge tone={r.cost.revenueBasis === 'billed' ? 'green' : 'amber'}>{r.cost.revenueBasis}</Badge> },
                 { key: 'lab', header: 'Labor', num: true, type: 'money', value: (r) => r.cost.labor, render: (r) => money(r.cost.labor) }, { key: 'mat', header: 'Materials', num: true, type: 'money', value: (r) => r.cost.materials, render: (r) => money(r.cost.materials) }, { key: 'tr', header: 'Transport', num: true, type: 'money', value: (r) => r.cost.transport, render: (r) => money(r.cost.transport) },
                 { key: 'eq', header: 'Equipment', num: true, type: 'money', value: (r) => r.cost.equipment, render: (r) => money(r.cost.equipment) }, { key: 'sub', header: 'Subcon', num: true, type: 'money', value: (r) => r.cost.subcontractor, render: (r) => money(r.cost.subcontractor) }, { key: 'oth', header: 'Other', num: true, type: 'money', value: (r) => r.cost.other, render: (r) => money(r.cost.other) },
+                { key: 'disc', header: 'Discount granted', num: true, type: 'money', value: (r) => r.cost.discount, render: (r) => (r.cost.discount ? money(r.cost.discount) : '—') }, { key: 'gpb', header: 'GP before discount', num: true, type: 'money', value: (r) => r.cost.grossProfitBefore, render: (r) => money(r.cost.grossProfitBefore) },
                 { key: 'tot', header: 'Total cost', num: true, type: 'money', value: (r) => r.cost.total, render: (r) => money(r.cost.total) }, { key: 'gp', header: 'Gross profit', num: true, type: 'money', value: (r) => r.cost.grossProfit, render: (r) => <b style={{ color: r.cost.grossProfit < 0 ? 'var(--red)' : undefined }}>{money(r.cost.grossProfit)}</b> },
                 { key: 'm', header: 'Margin', num: true, type: 'pct', value: (r) => r.cost.margin, render: (r) => pct(r.cost.margin) }, { key: 'est', header: 'Cost basis', value: (r) => (r.cost.estimated ? 'Estimated' : 'Actual'), render: (r) => <Badge tone={r.cost.estimated ? 'amber' : 'green'}>{r.cost.estimated ? 'Estimated' : 'Actual'}</Badge> },
               ]} /></Card>
@@ -251,10 +253,45 @@ export default function Finance() {
           )}
         </div>
       )}
+      {tab === 'discounts' && can('profit.view') && <DiscountsTab range={range} setRange={setRange} />}
       {inv && <InvoiceModal initial={inv === 'new' ? undefined : inv} onClose={() => setInv(null)} />}
       {pay && <PaymentModal inv={pay} onClose={() => setPay(null)} />}
       {exp && <ExpenseModal initial={exp === 'new' ? undefined : exp} onClose={() => setExp(null)} />}
     </>
+  );
+}
+
+function DiscountsTab({ range, setRange }: { range: [string, string]; setRange: (r: [string, string]) => void }) {
+  const { db } = useAuth();
+  const [view, setView] = useState<DiscountView>('client');
+  const rows = useMemo(() => discountRows(db, range[0], range[1]), [db, range]);
+  const agg = useMemo(() => discountAggregate(db, rows, view), [db, rows, view]);
+  const tot = useMemo(() => ({ n: rows.length, granted: sum(rows, (r) => r.granted), net: sum(rows, (r) => r.net), rb: sum(rows, (r) => r.revenueBefore), ra: sum(rows, (r) => r.revenueAfter), gb: sum(rows, (r) => r.gpBefore), ga: sum(rows, (r) => r.gpAfter) }), [rows]);
+  const pending = live(db.discount_requests).filter((r) => r.status === 'Pending Admin Approval');
+  const label: Record<DiscountView, string> = { client: 'Client', service: 'Service type', leader: 'Team Leader', reason: 'Reason', month: 'Month', job: 'Job' };
+  return (
+    <div className="stack">
+      <div className="filterbar"><Field label="From"><input type="date" value={range[0]} onChange={(e) => setRange([e.target.value, range[1]])} /></Field><Field label="To"><input type="date" value={range[1]} onChange={(e) => setRange([range[0], e.target.value])} /></Field>
+        <Field label="Group by"><select value={view} onChange={(e) => setView(e.target.value as DiscountView)}>{(Object.keys(label) as DiscountView[]).map((k) => <option key={k} value={k}>{label[k]}</option>)}</select></Field></div>
+      {pending.length > 0 && <div className="alert warn">{pending.length} discount request(s) waiting for Admin approval: {pending.map((r) => <Link key={r.id} to={`/jobs/${r.job_id}`} style={{ marginRight: 8 }}>{r.number}</Link>)}</div>}
+      <div className="grid g4 keep2">
+        <Stat k="Total discounts granted" v={money(tot.granted)} s={`${tot.n} job(s), incl. VAT`} tone="warn" />
+        <Stat k="Revenue impact (ex-VAT)" v={`− ${money(tot.net)}`} s={`${money(tot.rb)} → ${money(tot.ra)}`} />
+        <Stat k="Gross profit impact" v={`− ${money(tot.gb - tot.ga)}`} s={`${money(tot.gb)} → ${money(tot.ga)}`} tone={tot.ga < 0 ? 'bad' : undefined} />
+        <Stat k="Gross margin" v={pct(tot.ra ? (tot.ga / tot.ra) * 100 : 0)} s={`was ${pct(tot.rb ? (tot.gb / tot.rb) * 100 : 0)} before discounts`} tone="navy" />
+      </div>
+      <Card flush><DataTable<DiscountAgg> rows={agg} rowKey={(a) => a.key} exportTitle={`Discounts by ${label[view].toLowerCase()}`} cols={[
+        { key: 'l', header: label[view], value: (a) => a.label }, { key: 'n', header: 'Discounts', num: true, value: (a) => a.count }, { key: 'g', header: 'Granted (incl. VAT)', num: true, type: 'money', value: (a) => a.granted, render: (a) => <b>{money(a.granted)}</b> },
+        { key: 'p', header: 'Avg % of bill', num: true, type: 'pct', value: (a) => a.avgPct, render: (a) => pct(a.avgPct) }, { key: 'rb', header: 'Revenue before', num: true, type: 'money', value: (a) => a.revenueBefore, render: (a) => money(a.revenueBefore) }, { key: 'ra', header: 'Revenue after', num: true, type: 'money', value: (a) => a.revenueAfter, render: (a) => money(a.revenueAfter) },
+        { key: 'gb', header: 'GP before', num: true, type: 'money', value: (a) => a.gpBefore, render: (a) => money(a.gpBefore) }, { key: 'ga', header: 'GP after', num: true, type: 'money', value: (a) => a.gpAfter, render: (a) => <b style={{ color: a.gpAfter < 0 ? 'var(--red)' : undefined }}>{money(a.gpAfter)}</b> },
+        { key: 'mb', header: 'Margin before', num: true, type: 'pct', value: (a) => a.marginBefore, render: (a) => pct(a.marginBefore) }, { key: 'ma', header: 'Margin after', num: true, type: 'pct', value: (a) => a.marginAfter, render: (a) => pct(a.marginAfter) },
+      ]} /></Card>
+      <Card title="Discount register" flush><DataTable<DiscountRow> rows={rows} rowKey={(r) => r.req.id} exportTitle="Discount register" pageSize={10} cols={[
+        { key: 'n', header: 'Request', value: (r) => r.req.number }, { key: 'j', header: 'Job', value: (r) => r.job.number, render: (r) => <Link to={`/jobs/${r.job.id}`}>{r.job.number}</Link> }, { key: 'c', header: 'Client', value: (r) => db.clients.find((c) => c.id === r.clientId)?.name ?? '' },
+        { key: 'tl', header: 'Team Leader', value: (r) => db.employees.find((e) => e.id === r.leaderId)?.full_name ?? '' }, { key: 'rs', header: 'Reason', value: (r) => r.req.reason }, { key: 'm', header: 'Month', value: (r) => r.month },
+        { key: 'g', header: 'Granted', num: true, type: 'money', value: (r) => r.granted, render: (r) => money(r.granted) }, { key: 'by', header: 'Approved by', value: (r) => db.users.find((u) => u.id === r.req.decided_by)?.name ?? '' }, { key: 'nt', header: 'Approval note', value: (r) => r.req.decision_note ?? '' },
+      ]} /></Card>
+    </div>
   );
 }
 void docTotals;

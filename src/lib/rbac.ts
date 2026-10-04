@@ -45,6 +45,8 @@ export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'dispatch.view', group: 'Dispatch', label: 'View job workflows & incident reports' },
   { key: 'dispatch.run', group: 'Dispatch', label: 'Complete job workflow steps (checklists, arrival, work, return)' },
   { key: 'dispatch.approve', group: 'Dispatch', label: 'Override job status (with reason)' },
+  { key: 'discount.request', group: 'Discounts', label: 'Submit a Discount Request (cannot apply or edit discounts)' },
+  { key: 'discount.approve', group: 'Discounts', label: 'Approve / reject / modify discounts; edit discount fields' },
   { key: 'incidents.manage', group: 'Dispatch', label: 'Investigate & resolve incident reports' },
   { key: 'invoices.view', group: 'Finance', label: 'View invoices & receivables' },
   { key: 'invoices.edit', group: 'Finance', label: 'Create invoices, record payments' },
@@ -71,7 +73,7 @@ export const DEFAULT_ACCESS: Record<Role, string[]> = {
     'employees.view', 'employees.edit', 'performance.view', 'performance.edit',
     'inventory.view', 'inventory.edit', 'inventory.approve', 'inventory.request',
     'assets.view', 'assets.edit', 'assets.request', 'assets.approve', 'reports.ops',
-    'dispatch.view', 'dispatch.run', 'dispatch.approve', 'incidents.manage',
+    'dispatch.view', 'dispatch.run', 'dispatch.approve', 'incidents.manage', 'discount.request',
   ],
   finance: [
     'dashboard.view', 'dashboard.finance', 'clients.view', 'clients.tax', 'sales.view',
@@ -83,9 +85,9 @@ export const DEFAULT_ACCESS: Record<Role, string[]> = {
   leader: [
     'dashboard.view', 'jobs.mine', 'jobs.complete', 'attendance.own', 'attendance.view', 'attendance.approve',
     'inventory.view', 'inventory.request', 'assets.view', 'assets.request', 'clients.view', 'employees.view',
-    'dispatch.view', 'dispatch.run',
+    'dispatch.view', 'dispatch.run', 'discount.request',
   ],
-  field: ['jobs.mine', 'jobs.complete', 'attendance.own', 'assets.request', 'dispatch.view'],
+  field: ['jobs.mine', 'jobs.complete', 'attendance.own', 'assets.request', 'dispatch.view', 'discount.request'],
   viewer: ['reports.finance'],
 };
 

@@ -97,7 +97,7 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
             {q.items.map((i, k) => <tr key={k}><td>{i.description}</td><td className="num">{i.qty}</td><td>{i.unit}</td><td className="num">{money(i.rate)}</td><td className="num">{money(i.qty * i.rate - i.discount)}</td></tr>)}
           </tbody><tfoot>
             <tr><td colSpan={4} className="num">Subtotal</td><td className="num">{money(t.gross)}</td></tr>
-            {t.discount > 0 && <tr><td colSpan={4} className="num">Discount</td><td className="num">- {money(t.discount)}</td></tr>}
+            {t.discount > 0 && <tr><td colSpan={4} className="num">Discount (in the approved quotation)</td><td className="num">- {money(t.discount)}</td></tr>}
             {q.vat_mode !== 'none' && <tr><td colSpan={4} className="num">VAT {q.vat_rate}%{q.vat_mode === 'inclusive' ? ' (included)' : ''}</td><td className="num">{money(t.vat)}</td></tr>}
             <tr><th colSpan={4} className="num">Total</th><th className="num">{money(t.total)}</th></tr></tfoot></table></div>
         ) : <div className="muted">No quotation is linked to this job — agreed contract amount {money(job.contract_amount)}.</div>}

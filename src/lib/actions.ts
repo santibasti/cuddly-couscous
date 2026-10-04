@@ -5,7 +5,7 @@ import type {
   Payment, Quotation, QuoteStatus, StockTx,
 } from './types';
 import {
-  buildPayrollLines, computeTimes, docTotals, finalContract, findConflicts, invoiceBalance, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
+  appliedDiscount, buildPayrollLines, computeTimes, currentRequest, docTotals, finalContract, findConflicts, invoiceBalance, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
 import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
@@ -331,6 +331,8 @@ export function invoiceFromJob(jobId: string): Invoice {
   const j = db().jobs.find((x) => x.id === jobId)!;
   if (!isDone(j.status)) fail('Only jobs with completed work can be invoiced.');
   if (db().invoices.some((i) => i.job_id === jobId && i.status !== 'Reversed' && !i.deleted_at)) fail('This job already has an invoice.');
+  const open = currentRequest(db(), jobId);
+  if (open && open.status !== 'Applied') fail(`Discount request ${open.number} is ${open.status === 'Approved' ? 'approved but not yet applied to the final bill' : 'waiting for Admin approval'}. Settle it before invoicing.`);
   const client = db().clients.find((c) => c.id === j.client_id)!;
   const q = db().quotations.find((x) => x.id === j.quotation_id);
   // approved variations are billed as extra lines; the original quotation lines are copied unchanged
@@ -340,12 +342,17 @@ export function invoiceFromJob(jobId: string): Invoice {
   const wfr = db().workflows.find((w) => w.job_id === jobId && !w.deleted_at);
   const approvedVars = db().variations.filter((v) => v.job_id === jobId && v.status === 'Approved' && !v.deleted_at).map((v) => v.number);
   const notes = [approvedVars.length ? `Includes approved additional work: ${approvedVars.join(', ')}.` : '', wfr?.conf_deposit ? `Deposit / prior payment recorded at the site conforme: ${money(wfr.conf_deposit)}${wfr.conf_deposit_note ? ` (${wfr.conf_deposit_note})` : ''} — record the payment against this invoice.` : ''].filter(Boolean).join(' ');
-  return saveInvoice({
-    notes: notes || undefined, client_id: j.client_id, site_id: j.site_id, job_id: j.id, quotation_id: q?.id, issue_date: today(), due_date: addDays(today(), db().settings.payment_terms_days),
+  const dr = appliedDiscount(db(), jobId);
+  const mode = q?.vat_mode ?? (client.vat_status === 'VAT-registered' ? 'exclusive' : 'none'), vrate = db().settings.vat_rate;
+  // The management-approved discount is VAT-inclusive; in an exclusive invoice it is taken off the ex-VAT subtotal so the invoice total drops by exactly that amount.
+  const grantedNet = dr ? (mode === 'exclusive' ? round2((dr.approved_amount ?? 0) / (1 + vrate / 100)) : dr.approved_amount ?? 0) : 0;
+  const drNote = dr ? `Discount ${dr.number} approved by TopMop management (${money(dr.approved_amount ?? 0)}) and reflected in the final agreed amount.` : '';
+  return store.allowDiscount(() => saveInvoice({
+    notes: [notes, drNote].filter(Boolean).join(' ') || undefined, client_id: j.client_id, site_id: j.site_id, job_id: j.id, quotation_id: q?.id, issue_date: today(), due_date: addDays(today(), db().settings.payment_terms_days),
     items: [...(q?.items ?? [{ service_code: j.service_codes[0], description: j.scope, qty: 1, unit: 'lot', rate: fc.originalNet, discount: 0 }]), ...varItems],
-    vat_mode: q?.vat_mode ?? (client.vat_status === 'VAT-registered' ? 'exclusive' : 'none'), vat_rate: db().settings.vat_rate, discount: q?.discount ?? 0,
+    vat_mode: mode, vat_rate: vrate, discount: round2((q?.discount ?? 0) + grantedNet), discount_request_id: dr?.id, discount_granted: dr?.approved_amount,
     withholding_rate: client.withholding_rate, status: 'Draft', branch_id: j.branch_id,
-  }) as Invoice;
+  }) as Invoice);
 }
 export function approveInvoice(id: string) {
   store.require('invoices.approve');
@@ -536,6 +543,14 @@ export function runAutomations() {
   }
   for (const j of d.jobs.filter((x) => !x.deleted_at && x.status === 'Work Completed')) {
     add(`wf-return:${j.id}`, 'job', 'Close-out pending', `${j.number}: client handover signed — complete the close-out (equipment return, leave site, arrival at HQ).`, 'info', `/jobs/${j.id}`, [...ops, 'leader']);
+  }
+  for (const r of d.discount_requests.filter((x) => !x.deleted_at && x.status === 'Pending Admin Approval')) {
+    const j = d.jobs.find((x) => x.id === r.job_id);
+    add(`disc-pend:${r.id}`, 'job', 'Discount request awaiting approval', `${r.number} · ${j?.number}: ${money(r.requested_amount)} off ${money(r.base_total)} — ${r.reason}. The client cannot sign the final bill until it is decided.`, 'warn', `/jobs/${r.job_id}`, ['owner']);
+  }
+  for (const r of d.discount_requests.filter((x) => !x.deleted_at && x.status === 'Approved')) {
+    const j = d.jobs.find((x) => x.id === r.job_id);
+    add(`disc-apply:${r.id}`, 'job', 'Approved discount ready to apply', `${r.number} · ${j?.number}: ${money(r.approved_amount ?? 0)} approved. Apply it to the final bill before the client signs.`, 'info', `/jobs/${r.job_id}`, [...ops, 'leader']);
   }
   for (const v of d.variations.filter((x) => !x.deleted_at && x.status === 'Pending Approval')) {
     add(`var-pend:${v.id}`, 'job', 'Variation awaiting client approval', `${v.number}: ${v.reason}`, 'warn', `/jobs/${v.job_id}`, [...ops, 'leader']);

@@ -3,7 +3,9 @@ import { useAuth } from '@/lib/store';
 import { Badge, Field, SignaturePad, attempt } from '@/components/ui';
 import { DraftBar, PresetChips } from '@/components/touch';
 import { Confirm } from './shared';
-import { signServiceReport } from '@/lib/workflow';
+import { billBase, signServiceReport } from '@/lib/workflow';
+import { FinalSummary } from './FinalQuote';
+import { discountBlock, finalQuoteSummary } from '@/lib/business';
 import { useDraft } from '@/lib/useDraft';
 import { PRESETS } from '@/lib/presets';
 import { fmtDateTime } from '@/lib/util';
@@ -34,6 +36,8 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
     );
   }
   const ready = [{ ok: !!wf.finish_at, t: 'Work finished (step 5)' }];
+  const block = discountBlock(db, job, wf, billBase(job).base);
+  const sm = finalQuoteSummary(db, job, { deposit: wf.conf_deposit });
   return (
     <div className="stack">
       {run && <DraftBar d={dr} />}
@@ -44,6 +48,8 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
           <dt>Work period</dt><dd>{fmtDateTime(wf.start_at)} → {fmtDateTime(wf.finish_at)}</dd><dt>Crew</dt><dd>{[job.leader_id, ...job.crew_ids].filter(Boolean).map((e) => emp(e)).join(', ')}</dd>
           <dt>Equipment used</dt><dd>{equip.join(', ') || '—'}</dd>{wf.work_notes && <><dt>Work notes</dt><dd>{wf.work_notes}</dd></>}</dl>
       </div>
+      <div className="card" style={{ padding: 12 }}><div className="small muted" style={{ marginBottom: 6 }}>Final bill the client is signing for</div><FinalSummary sm={sm} /></div>
+      {block && <div className="alert warn">{block}</div>}
       <Field label="Work completed" required><textarea disabled={!run} value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })} /></Field>
       <Field label="Findings" required><textarea disabled={!run} value={f.findings} onChange={(e) => setF({ ...f, findings: e.target.value })} placeholder="Tap a finding below, type, or enter “None”" /><PresetChips replace options={PRESETS.findings} value={f.findings} onChange={(v) => setF({ ...f, findings: v })} disabled={!run} /></Field>
       <div className="form-grid">
@@ -59,7 +65,7 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
         </div></details>
       {run && <div className="form-grid"><div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad value={csig} onChange={setCsig} /></div><div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>TopMop team leader signature</div><SignaturePad value={tsig} onChange={setTsig} /></div></div>}
       {run && <Confirm checked={ok} onChange={setOk}>The work and findings above were reviewed with the client.</Confirm>}
-      {run && <button className="btn primary lg" disabled={!ok} onClick={() => attempt(() => signServiceReport(wf.id, { ...f, client_sig: csig, tm_sig: tsig }), 'Handover signed — Work Completed')}>Sign &amp; complete handover</button>}
+      {run && <button className="btn primary lg" disabled={!ok || !!block} onClick={() => attempt(() => signServiceReport(wf.id, { ...f, client_sig: csig, tm_sig: tsig }), 'Handover signed — Work Completed')}>Sign &amp; complete handover</button>}
     </div>
   );
 }

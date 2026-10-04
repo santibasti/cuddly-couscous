@@ -378,3 +378,115 @@ describe('Close-out: equipment accountability', () => {
     expect(db().audit.find((a) => a.record_id === sc.job.id && a.reason === 'Admin close')).toBeTruthy();
   });
 });
+
+describe('Controlled discounts', () => {
+  const lead = () => db().users.find((u) => u.email === 'leader@topmop.ph')!.employee_id!;
+  const reqOf = (jobId: string) => db().discount_requests.filter((r) => r.job_id === jobId && !r.deleted_at);
+
+  it('nobody but Owner / Admin can type a discount into a quotation, variation or invoice', async () => {
+    await as('leader@topmop.ph');
+    const q = db().quotations.find((x) => x.status === 'Approved')!;
+    expect(() => store.update('quotations', q.id, { discount: 500 } as never)).toThrow(/Owner \/ Admin/);
+    expect(() => store.update('quotations', q.id, { items: q.items.map((i) => ({ ...i, discount: 50 })) } as never)).toThrow(/Owner \/ Admin/);
+    expect(() => store.insert('invoices', { client_id: q.client_id, items: q.items, discount: 100 } as never)).toThrow(/Discount Request/);
+    await as('ops@topmop.ph');
+    expect(() => store.update('quotations', q.id, { discount: 500 } as never)).toThrow(/Owner \/ Admin/);
+    await as('owner@topmop.ph');
+    store.update('quotations', q.id, { discount: q.discount } as never);       // unchanged is fine
+  });
+
+  it('request → admin approval → apply → client signs; the client cannot sign before; the original quotation is untouched', async () => {
+    await as('owner@topmop.ph');
+    const { job, wf, q } = upToCheckIn('DISC1', lead(), false);
+    const before = JSON.stringify(db().quotations.find((x) => x.id === q.id)!.items);
+    const base = B.finalQuoteSummary(db(), db().jobs.find((j) => j.id === job.id)!).subtotal;
+    await as('leader@topmop.ph');
+    expect(() => W.submitDiscountRequest(job.id, { kind: 'percent', value: 5, reason: '' })).toThrow(/reason/);
+    expect(() => W.submitDiscountRequest(job.id, { kind: 'percent', value: 120, reason: 'Promotion' })).toThrow(/below 100/);
+    expect(() => W.submitDiscountRequest(job.id, { kind: 'fixed', value: base + 1, reason: 'Promotion' })).toThrow(/more than the bill/);
+    const r = W.submitDiscountRequest(job.id, { kind: 'percent', value: 5, reason: 'Repeat / loyal client', client_notes: 'Asked for repeat rate' });
+    expect(r).toMatchObject({ status: 'Pending Admin Approval', requested_amount: Math.round(base * 5) / 100, base_total: base });
+    expect(r.proposed_final).toBeCloseTo(base - r.requested_amount, 2);
+    expect(() => W.submitDiscountRequest(job.id, { kind: 'percent', value: 3, reason: 'Promotion' })).toThrow(/already waiting/);
+    // leaders cannot decide
+    expect(() => W.decideDiscount(r.id, { approve: true, note: 'ok' })).toThrow(/not permitted/);
+    // client cannot sign while pending
+    expect(() => W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true })).toThrow(/waiting for Admin approval/);
+    await as('owner@topmop.ph');
+    expect(() => W.decideDiscount(r.id, { approve: true, note: '  ' })).toThrow(/approval note/);
+    const a = W.decideDiscount(r.id, { approve: true, note: 'One-time repeat client rate' });
+    expect(a).toMatchObject({ status: 'Approved', approved_amount: r.requested_amount, approved_base: base, decision_note: 'One-time repeat client rate' });
+    expect(a.est_cost).toBeGreaterThan(0); expect(a.gp_after).toBeLessThan(a.gp_before!);
+    // approved but not applied → still cannot sign
+    await as('leader@topmop.ph');
+    expect(() => W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true })).toThrow(/not yet applied/);
+    W.applyDiscount(r.id);
+    expect(reqOf(job.id)[0].status).toBe('Applied');
+    const sm = B.finalQuoteSummary(db(), db().jobs.find((j) => j.id === job.id)!);
+    expect(sm.granted).toBe(r.requested_amount); expect(sm.finalTotal).toBeCloseTo(base - r.requested_amount, 2);
+    W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true });
+    expect(wfOf(job.id).conf_final_total).toBeCloseTo(base - r.requested_amount, 2);
+    expect(JSON.stringify(db().quotations.find((x) => x.id === q.id)!.items)).toBe(before);   // rates untouched
+    // locked once signed
+    await as('owner@topmop.ph');
+    expect(() => W.decideDiscount(r.id, { approve: true, note: 'again' })).toThrow(/final/);
+    expect(() => W.submitDiscountRequest(job.id, { kind: 'fixed', value: 10, reason: 'Promotion' })).toThrow(/already signed|already applied|already/);
+    expect(db().audit.some((x) => x.record_id === r.id && /approved ₱/.test(x.summary))).toBe(true);
+    // revenue + job costing + invoice all carry the discount
+    const j = db().jobs.find((x) => x.id === job.id)!;
+    const fc = B.finalContract(db(), j);
+    expect(fc.discount).toBe(r.requested_amount); expect(fc.payableTotal).toBeCloseTo(fc.finalTotal - fc.discount, 2);
+    const cost = B.jobCost(db(), j);
+    expect(cost.discount).toBeCloseTo(a.net_amount!, 2); expect(cost.revenueBefore).toBeCloseTo(cost.revenue + cost.discount, 2); expect(cost.grossProfitBefore).toBeGreaterThan(cost.grossProfit);
+    W.startWork(wf.id, {}); W.finishWork(wf.id, {}); W.signServiceReport(wf.id, handover);
+    await as('finance@topmop.ph');
+    const inv = A.invoiceFromJob(job.id);
+    expect(inv.discount_request_id).toBe(r.id); expect(inv.discount_granted).toBe(r.requested_amount);
+    expect(B.invoiceTotals(inv).total).toBeCloseTo(sm.finalTotal, 0);
+    expect(inv.notes).toMatch(/approved by TopMop management/);
+    const rows = B.discountRows(db(), '2000-01-01', '2099-12-31').filter((x) => x.req.id === r.id);
+    expect(rows.length).toBe(1); expect(rows[0].gpBefore - rows[0].gpAfter).toBeCloseTo(rows[0].net, 2);
+    for (const view of ['client', 'service', 'leader', 'reason', 'month', 'job'] as const) expect(B.discountAggregate(db(), rows, view).reduce((s, x) => s + x.granted, 0)).toBeCloseTo(r.requested_amount, 1);
+  });
+
+  it('admin can modify the amount; a rejection frees the Team Leader to sign (and to request again)', async () => {
+    await as('owner@topmop.ph');
+    const { job, wf } = upToCheckIn('DISC2', lead(), false);
+    await as('leader@topmop.ph');
+    const r = W.submitDiscountRequest(job.id, { kind: 'fixed', value: 2000, reason: 'Other', reason_note: 'Facility budget' });
+    await as('owner@topmop.ph');
+    const m = W.decideDiscount(r.id, { approve: true, kind: 'fixed', value: 1200, note: 'Meet halfway' });
+    expect(m.approved_amount).toBe(1200); expect(m.requested_amount).toBe(2000);
+    expect(db().audit.some((x) => x.record_id === r.id && /modified/.test(x.summary))).toBe(true);
+    const rej = W.decideDiscount(r.id, { approve: false, note: 'Margin too thin' });
+    expect(rej.status).toBe('Rejected');
+    await as('leader@topmop.ph');
+    expect(B.discountBlock(db(), db().jobs.find((j) => j.id === job.id)!, wfOf(job.id), 1)).toBeUndefined();   // nothing blocks signing now
+    const again = W.submitDiscountRequest(job.id, { kind: 'percent', value: 2, reason: 'Promotion' });
+    expect(again.number).not.toBe(r.number);
+    expect(() => W.applyDiscount(again.id)).toThrow(/approved discount/);
+    void wf;
+  });
+
+  it('a field employee not on the job cannot request; the bill changing after approval needs re-approval', async () => {
+    await as('owner@topmop.ph');
+    const { job, wf } = upToCheckIn('DISC3', lead(), false);
+    await as('field@topmop.ph');
+    expect(() => W.submitDiscountRequest(job.id, { kind: 'percent', value: 5, reason: 'Promotion' })).toThrow(/assigned Team Leader/);
+    await as('leader@topmop.ph');
+    const r = W.submitDiscountRequest(job.id, { kind: 'percent', value: 5, reason: 'Promotion' });
+    await as('owner@topmop.ph');
+    W.decideDiscount(r.id, { approve: true, note: 'ok' });
+    // additional work is added after the approval → the approved base is stale
+    await as('leader@topmop.ph');
+    W.savePanels(wf.id, [{ id: 'p1', area: '1st Floor', side: 'Front', external: 10, internal: 0, additional: true }]);
+    W.saveFinalReview(wf.id, { items: [{ service_code: 'GLASS_EXT', category: 'glass', description: '', qty: 0, entered_qty: 0, unit: 'panel', rate: 140, discount: 0, linked_panels: true }] });
+    expect(() => W.applyDiscount(r.id)).toThrow(/changed after the discount was approved/);
+    await as('owner@topmop.ph');
+    W.decideDiscount(r.id, { approve: true, note: 're-approved on the new total' });
+    await as('leader@topmop.ph');
+    W.applyDiscount(r.id);
+    W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true });
+    expect(db().variations.find((v) => v.job_id === job.id && v.status === 'Approved')).toBeTruthy();
+  });
+});

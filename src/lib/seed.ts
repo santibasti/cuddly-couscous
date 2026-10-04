@@ -1,7 +1,7 @@
 // Realistic demo data for TopMop Window Cleaning Solutions Corp. Everything is generated relative to today (Manila),
 // so the dashboard always shows current activity. Names, TINs and amounts are fictional sample data.
 import type {
-  Asset, Attendance, Checkout, Client, DB, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
+  Asset, Attendance, Checkout, Client, DB, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
   PayrollAdjustment, PayrollPeriod, PayrollRun, Payment, PerfReview, PettyCashEntry, Quotation, QuoteItem, ServiceDef,
   Settings, Site, StockTx, StorageLocation, UserAccount, Communication, Complaint, Role, ServiceCode, Condition, PayrollType,
 } from './types';
@@ -268,12 +268,14 @@ export function seedDB(): DB {
   /* ---- jobs, quotations, invoices, payments, attendance, stock usage ---- */
   const quotations: Quotation[] = [];
   const invoices: Invoice[] = [];
+  const discountRequests: DiscountRequest[] = [];
+  let discSeq = 0;
   const payments: Payment[] = [];
   const expenses: Expense[] = [];
   const attendance: Attendance[] = [];
   const checkouts: Checkout[] = [];
   const jobs: Job[] = [];
-  const counters: Record<string, number> = { QT: 0, JOB: 0, INV: 0, OR: 0, EMP: employees.length, INC: 0 };
+  const counters: Record<string, number> = { QT: 0, JOB: 0, INV: 0, OR: 0, EMP: employees.length, INC: 0, DR: 0 };
   const nn = (k: string) => { counters[k] += 1; return `${k}-${yr}-${String(counters[k]).padStart(4, '0')}`; };
 
   const teamAssets = { A: ['VEH-001', 'ROD-001', 'WFP-001', 'WFP-003', 'PWR-001', 'EXC-001', 'SAF-001'], B: ['VEH-002', 'ROD-002', 'WFP-002', 'PWR-002', 'SFC-001', 'EXC-002', 'SAF-002'] };
@@ -401,6 +403,24 @@ export function seedDB(): DB {
           due_date: addDays(issue, settings.payment_terms_days), items: quote.items, vat_mode: quote.vat_mode, vat_rate: 12, discount: 0, withholding_rate: client.withholding_rate,
           status: 'Approved', approved_by: 'u-fin', approved_at: stamp(issue), branch_id: job.branch_id,
         };
+        // a few closed jobs carry a management-approved discount (Team Leader request → Admin approval → applied before the client signed)
+        const dk = discSeq++;
+        if (dk % 6 === 2 || dk % 11 === 5) {
+          const bt = docTotals(quote.items, quote.discount, quote.vat_mode, 12).total;
+          const fixed = dk % 12 === 8, pctv = [3, 5, 7.5][dk % 3], reason = ['Repeat / loyal client', 'Volume – large or multi-floor job', 'Competitor price match', 'Client budget limit'][dk % 4];
+          const rejected = dk % 6 !== 2;
+          const amt = fixed ? Math.round(bt * 0.04 / 100) * 100 : round2(bt * pctv / 100);
+          const kind = fixed ? 'fixed' as const : 'percent' as const, val = fixed ? amt : pctv;
+          const gnet = quote.vat_mode === 'exclusive' ? round2(amt / 1.12) : amt;
+          const rq: DiscountRequest = {
+            ...base('dr', d), number: nn('DR'), job_id: job.id, client_id: client.id, quotation_id: quote.id, original_total: bt, additional_total: 0, base_total: bt, kind, value: val, requested_amount: amt, proposed_final: round2(bt - amt),
+            reason, client_notes: rejected ? 'Client asked for a larger discount on the next quarterly service.' : 'Client asked for a repeat-client rate at the site.', status: rejected ? 'Rejected' : 'Applied', submitted_by: 'u-lead', submitted_at: `${d}T08:40:00.000Z`,
+            decision_note: rejected ? 'Rates already at the contract minimum. Not approved.' : 'Approved for the repeat contract — one time only.', decided_by: 'u-owner', decided_at: `${d}T09:10:00.000Z`,
+            ...(rejected ? {} : { approved_kind: kind, approved_value: val, approved_amount: amt, approved_final: round2(bt - amt), approved_base: bt, applied_at: `${d}T09:30:00.000Z`, applied_by: 'u-lead', net_amount: gnet }),
+          };
+          discountRequests.push(rq);
+          if (!rejected) Object.assign(inv, { discount: round2(quote.discount + gnet), discount_request_id: rq.id, discount_granted: amt });
+        }
         invoices.push(inv);
         const tot = invoiceTotals(inv);
         const roll = R();
@@ -719,6 +739,20 @@ export function seedDB(): DB {
       j.contract_amount = round2(j.contract_amount + docTotals(v.items, v.discount, v.vat_mode, v.vat_rate).net);
     }
   });
+  // demo of the controlled discount flow on the next two bookings: one waiting for Admin, one approved and ready to apply
+  jobs.filter((x) => x.status === 'Confirmed' && x.start_at.slice(0, 10) > T && x.quotation_id).sort((a, b) => a.start_at.localeCompare(b.start_at)).slice(0, 2).forEach((j, k) => {
+    const q = quotations.find((x) => x.id === j.quotation_id); if (!q) return;
+    const bt = docTotals(q.items, q.discount, q.vat_mode, 12).total; const d0 = addDays(T, 0);
+    const amt = k === 0 ? round2(bt * 0.05) : Math.round(bt * 0.03 / 100) * 100;
+    const approved = k === 1;
+    discountRequests.push({
+      ...base('dr', d0), number: nn('DR'), job_id: j.id, client_id: j.client_id, quotation_id: q.id, original_total: bt, additional_total: 0, base_total: bt,
+      kind: k === 0 ? 'percent' : 'fixed', value: k === 0 ? 5 : amt, requested_amount: amt, proposed_final: round2(bt - amt),
+      reason: k === 0 ? 'Repeat / loyal client' : 'Client budget limit', client_notes: k === 0 ? 'Client asked if a repeat-client rate is possible before signing.' : 'Facility manager has a fixed budget for this cleaning.',
+      status: approved ? 'Approved' : 'Pending Admin Approval', submitted_by: 'u-lead', submitted_at: `${d0}T07:50:00.000Z`,
+      ...(approved ? { approved_kind: 'fixed' as const, approved_value: amt, approved_amount: amt, approved_final: round2(bt - amt), approved_base: bt, decision_note: 'OK for this job only; quote the standard rate next time.', decided_by: 'u-owner', decided_at: `${d0}T08:05:00.000Z`, net_amount: q.vat_mode === 'exclusive' ? round2(amt / 1.12) : amt } : {}),
+    });
+  });
   // tomorrow's first confirmed job: HQ checklist started but not finished
   const inUseNow = (aid?: string) => !!aid && checkouts.some((c) => c.asset_id === aid && c.status === 'Released');
   // the crew is still out with vans 1 & 2 today, so tomorrow's first job is booked on the spare van and free equipment
@@ -735,7 +769,7 @@ export function seedDB(): DB {
       { ...base('cor'), employee_id: FIELD[1].id, date: addDays(T, -2), clock_in: `${addDays(T, -2)}T08:00`, clock_out: `${addDays(T, -2)}T17:00`, reason: 'Forgot to clock out; was on site until 5PM per team leader.', status: 'Pending' },
     ], holidays, reviews, adjustments, periods, runs, locations, items, stock, requests: [
       { ...base('mr'), job_id: jobs.find((j) => j.status === 'Confirmed')?.id ?? jobs[0].id, requested_by: E_L1.id, lines: [{ item_id: item('CHM-001').id, qty: 4 }, { item_id: item('PPE-002').id, qty: 2 }], status: 'Pending', note: 'Extra chemical for large glass job.' },
-    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, audit: [], settings: { ...settings, counters }, version: 1,
+    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, audit: [], settings: { ...settings, counters }, version: 1,
   };
 }
 

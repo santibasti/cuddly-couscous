@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, PageHead, attempt } from '@/components/ui';
-import { finalContract, panelTotals, isDone, AGING_BUCKETS, agingBucket, aggregateProfit, docTotals, invoiceBalance, invoiceSettled, invoiceTotals, jobProfitRows, nextDue, onHand, profitAndLoss, scorecard, serviceProfitRows, stockSummary } from '@/lib/business';
+import { finalContract, panelTotals, isDone, AGING_BUCKETS, agingBucket, aggregateProfit, discountAggregate, discountRows, type DiscountView, docTotals, invoiceBalance, invoiceSettled, invoiceTotals, jobProfitRows, nextDue, onHand, profitAndLoss, scorecard, serviceProfitRows, stockSummary } from '@/lib/business';
 import { exportCsv, exportPdf, exportXlsx, payslipPdf, serviceReportPdf, statementPdf, type ExportTable } from '@/lib/export';
 import { round2, addDays, dow, fmtDate, fmtDateTime, fmtTime, monthEnd, monthStart, money, pct, sum, today } from '@/lib/util';
 import type { DB } from '@/lib/types';
@@ -89,6 +89,18 @@ const DEFS: Def[] = [
     jobProfitRows(db, p.from, p.to).map((r) => [r.job.number, cn(db, r.clientId), r.cost.revenue, r.cost.revenueBasis, r.cost.labor, r.cost.materials, r.cost.transport, r.cost.equipment, r.cost.subcontractor, r.cost.other, r.cost.total, r.cost.grossProfit, r.cost.margin, r.cost.estimated ? 'Estimated' : 'Actual']), rng(p)) },
   { id: 'clientprofit', title: 'Client profitability', group: 'Finance', perm: 'reports.finance', params: ['range'], desc: 'Gross profit by client.', build: (db, p) => T('Client profitability', ['Client', 'Jobs', 'Revenue', 'Direct cost', 'Gross profit', 'Margin %', 'Basis'], ['text', 'num', 'money', 'money', 'money', 'pct', 'text'], aggregateProfit(jobProfitRows(db, p.from, p.to).map((r) => ({ key: r.clientId, label: cn(db, r.clientId), revenue: r.cost.revenue, cost: r.cost.total, estimated: r.cost.estimated }))).map((a) => [a.label, a.jobs, a.revenue, a.cost, a.gp, a.margin, a.estimated ? 'Includes estimates' : 'Actual']), rng(p)) },
   { id: 'svcprofit', title: 'Service-type profitability', group: 'Finance', perm: 'reports.finance', params: ['range'], desc: 'Gross profit by service line.', build: (db, p) => T('Service-type profitability', ['Service', 'Jobs', 'Revenue', 'Direct cost', 'Gross profit', 'Margin %', 'Basis'], ['text', 'num', 'money', 'money', 'money', 'pct', 'text'], aggregateProfit(serviceProfitRows(db, p.from, p.to)).map((a) => [a.label, a.jobs, a.revenue, a.cost, a.gp, a.margin, a.estimated ? 'Includes estimates' : 'Actual']), rng(p)) },
+  { id: 'disc-register', title: 'Discount requests register', group: 'Finance', perm: 'reports.finance', params: ['range'], desc: 'Every Discount Request with its status, Team Leader, reason, approved amount and approval note (audit view).', build: (db, p) =>
+    T('Discount requests register', ['Request', 'Job', 'Client', 'Team Leader', 'Submitted', 'Original total', 'Type', 'Requested', 'Approved', 'Final amount', 'Status', 'Reason', 'Approved / rejected by', 'Note'], ['text', 'text', 'text', 'text', 'text', 'money', 'text', 'money', 'money', 'money', 'text', 'text', 'text', 'text'],
+      live(db.discount_requests).filter((r) => r.submitted_at.slice(0, 10) >= p.from && r.submitted_at.slice(0, 10) <= p.to).sort((a, b) => a.submitted_at.localeCompare(b.submitted_at)).map((r) => { const j = db.jobs.find((x) => x.id === r.job_id); return [r.number, j?.number ?? '', cn(db, r.client_id), en(db, j?.leader_id), fmtDate(r.submitted_at.slice(0, 10)), r.base_total, r.kind === 'percent' ? `${r.value}%` : 'Fixed ₱', r.requested_amount, r.approved_amount ?? 0, r.approved_final ?? r.proposed_final, r.status, r.reason, db.users.find((u) => u.id === r.decided_by)?.name ?? '', r.decision_note ?? '']; }), rng(p)) },
+  ...(['client', 'service', 'leader', 'reason', 'month', 'job'] as DiscountView[]).map((view): Def => {
+    const nm = { client: 'client', service: 'service type', leader: 'Team Leader', reason: 'reason', month: 'month', job: 'job' }[view];
+    return { id: `disc-${view}`, title: `Discounts by ${nm}`, group: 'Finance', perm: 'reports.finance', params: ['range'], desc: `Management-approved discounts granted, grouped by ${nm}, with the effect on revenue, gross profit and margin.`, build: (db, p) => {
+      const rows = discountRows(db, p.from, p.to); const a = discountAggregate(db, rows, view);
+      const tot = ['TOTAL', a.reduce((s, x) => s + x.count, 0), sum(a, (x) => x.granted), '', sum(a, (x) => x.revenueBefore), sum(a, (x) => x.revenueAfter), sum(a, (x) => x.gpBefore), sum(a, (x) => x.gpAfter)];
+      return T(`Discounts by ${nm}`, [nm[0].toUpperCase() + nm.slice(1), 'Discounts', 'Granted (incl. VAT)', 'Avg % of bill', 'Revenue before', 'Revenue after', 'GP before', 'GP after', 'Margin before %', 'Margin after %'], ['text', 'num', 'money', 'pct', 'money', 'money', 'money', 'money', 'pct', 'pct'],
+        a.map((x) => [x.label, x.count, x.granted, x.avgPct, x.revenueBefore, x.revenueAfter, x.gpBefore, x.gpAfter, x.marginBefore, x.marginAfter]), rng(p), [tot[0], tot[1], tot[2], '', tot[4], tot[5], tot[6], tot[7], '', ''] as never);
+    } };
+  }),
 ];
 
 export default function Reports() {

@@ -4,9 +4,9 @@
 // Photos are NOT kept in this app (TopMop uses its own file system for before / after, site and equipment photos).
 import { store, RuleError } from './store';
 import type {
-  ContainerCondition, DB, FuelLevel, IncidentReport, IncidentType, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
+  ContainerCondition, DB, DiscountKind, DiscountRequest, FuelLevel, IncidentReport, IncidentType, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
 } from './types';
-import { buildChecklistItems, categoryDefaults, docTotals, finalContract, finalQuoteSummary, hqGaps, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
+import { buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
 import { performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { nowLocal, today } from './util';
 
@@ -226,7 +226,7 @@ export function saveFinalReview(id: string, f: FinalReviewInput) {
     const def = categoryDefaults(db().services, it.category!);
     if (it.category !== 'other' && Math.abs(it.rate - def.rate) > 0.004 && !authorised) fail(`The price list rate (${def.rate} per ${def.unit}) for ${it.description || 'this line'} can only be changed by an Operations Manager or Admin.`);
     if (it.discount < 0) fail('Discount cannot be negative.');
-    if (it.discount > 0 && !authorised) fail('Only an Operations Manager or Admin can apply a discount.');
+    if (it.discount > 0 && !store.can('discount.approve')) fail('Only the Owner / Admin can apply a discount. Submit a Discount Request instead.');
     if (it.rate < 0) fail('Unit rate cannot be negative.');
   }
   const items = resolveReviewItems(db(), wf.panels, f.items);
@@ -280,6 +280,7 @@ export function approveFinalQuote(id: string, f: { name: string; signature?: str
   if (!f.confirmed) fail('Confirm that the quotation and any additional work were reviewed with the client on site.');
   if (!f.name.trim()) fail('Enter the client name.');
   if (!f.signature) fail('Capture the client signature.');
+  const dBlock = discountBlock(db(), job, wf, billBase(job).base); if (dBlock) fail(dBlock);
   const q = db().quotations.find((x) => x.id === job.quotation_id);
   const now = new Date().toISOString();
   let variationId: string | undefined;
@@ -359,6 +360,8 @@ export function approveVariation(id: string, f: { client_name: string; signature
   if (v.status !== 'Draft') fail(`This variation is already ${v.status.toLowerCase()}.`);
   if (!f.client_name.trim()) fail('Enter the client name.');
   if (!f.signature) fail('Client approval needs the client signature.');
+  const cr = currentRequest(db(), job.id);
+  if (cr && cr.status !== 'Applied') fail(discountBlock(db(), job, workflowFor(job.id), cr.approved_base ?? 0) ?? 'A discount request is still open on this job.');
   store.update('variations', id, { status: 'Approved', client_name: f.client_name.trim(), client_signature: f.signature, signed_at: new Date().toISOString(), decided_by: uidNow() } as never, 'approve', `Variation ${v.number} approved by ${f.client_name.trim()}`);
   const fc = finalContract(db(), db().jobs.find((j) => j.id === job.id)!);
   store.update('jobs', job.id, { contract_amount: fc.finalNet }, 'update', `${job.number}: contract value ${fc.originalNet} + variations ${fc.variationsNet} = ${fc.finalNet}`);
@@ -394,6 +397,7 @@ export function signServiceReport(id: string, f: ReportForm) {
   if (!f.client_name.trim()) fail('Enter the client name.');
   if (!f.client_sig) fail('The client signature is required.');
   if (!f.tm_name.trim() || !f.tm_sig) fail('The TopMop team leader name and signature are required.');
+  const dBlock = discountBlock(db(), job, wf, billBase(job).base); if (dBlock) fail(dBlock);
   const cur = db().jobs.find((j) => j.id === job.id)!;
   const at = nowLocal();
   store.update('jobs', job.id, { findings: f.findings, signoff_name: f.client_name.trim(), signoff_data: f.client_sig, signoff_at: at, client_rating: f.rating, completed_at: at }, 'approve', `Service report signed for ${job.number}`);
@@ -536,3 +540,94 @@ export function overrideJobStatus(id: string, status: JobStatus, reason: string)
 }
 
 export { variationTotals };
+
+
+/* ================= Controlled discounts: Team Leader requests → Owner / Admin decides → applied to the final bill ================= */
+/** The bill the client is looking at (VAT-inclusive), before any discount: original quotation + additional work (approved or presented). */
+export function billBase(job: Job): { original: number; additional: number; base: number } {
+  const wf = workflowFor(job.id);
+  const draft = reviewDraft(job.id);
+  const vat = reviewVat(job);
+  const pending = draft && draft.items.length && !wf?.conf_at ? { items: resolveReviewItems(db(), wf?.panels ?? [], draft.items), ...vat } : undefined;
+  const sm = finalQuoteSummary(db(), job, { pending });
+  return { original: sm.originalTotal, additional: sm.additionalTotal, base: sm.subtotal };
+}
+const reqOf = (id: string) => db().discount_requests.find((r) => r.id === id) ?? fail('Discount request not found.');
+const jobHasInvoice = (jobId: string) => db().invoices.some((i) => i.job_id === jobId && i.status !== 'Reversed' && !i.deleted_at);
+const canTouchJob = (job: Job) => store.can('discount.approve') || canRunWorkflow(job) || (store.can('discount.request') && !!store.user?.employee_id && (job.leader_id === store.user.employee_id || job.crew_ids.includes(store.user.employee_id)));
+function checkAmount(kind: DiscountKind, value: number, base: number): number {
+  if (!(value > 0)) fail('Enter the discount amount.');
+  if (kind === 'percent' && value >= 100) fail('A percentage discount must be below 100%.');
+  const amt = discountAmount(kind, value, base);
+  if (!(amt > 0)) fail('The discount works out to ₱0.');
+  if (amt >= base) fail('The discount cannot be equal to or more than the bill total.');
+  return amt;
+}
+export interface DiscountRequestForm { kind: DiscountKind; value: number; reason: string; reason_note?: string; client_notes?: string }
+
+/** Team Leader (or Ops) submits a request. This never changes the bill — only the Owner / Admin can approve it. */
+export function submitDiscountRequest(jobId: string, f: DiscountRequestForm): DiscountRequest {
+  store.require('discount.request');
+  const job = db().jobs.find((j) => j.id === jobId) ?? fail('Job not found.');
+  if (!canTouchJob(job)) fail('Only the assigned Team Leader or a manager can request a discount for this job.');
+  if (['Cancelled', 'Closed'].includes(job.status)) fail(`A ${job.status.toLowerCase()} job cannot take a discount request.`);
+  const wf = workflowFor(jobId);
+  if (wf?.conf_mode === 'approval' && wf.conf_at) fail('The client has already signed the final bill. A discount must be agreed before the client signs.');
+  if (wf?.rep_client_at) fail('The service report is already signed with the client.');
+  if (jobHasInvoice(jobId)) fail('This job is already invoiced.');
+  const open = currentRequest(db(), jobId);
+  if (open) fail(`${open.number} is already ${open.status === 'Pending Admin Approval' ? 'waiting for Admin approval' : open.status.toLowerCase()} for this job.`);
+  if (!f.reason.trim()) fail('Choose the reason for the discount.');
+  if (f.reason === 'Other' && !f.reason_note?.trim()) fail('Describe the reason for the discount.');
+  const b = billBase(job);
+  const amt = checkAmount(f.kind, f.value, b.base);
+  const r = store.insert('discount_requests', {
+    number: store.nextNumber('DR'), job_id: jobId, client_id: job.client_id, quotation_id: job.quotation_id,
+    original_total: b.original, additional_total: b.additional, base_total: b.base,
+    kind: f.kind, value: f.value, requested_amount: amt, proposed_final: round2d(b.base - amt),
+    reason: f.reason.trim(), reason_note: f.reason_note?.trim() || undefined, client_notes: f.client_notes?.trim() || undefined,
+    status: 'Pending Admin Approval', submitted_by: store.user?.id, submitted_at: new Date().toISOString(),
+  } as never, `${job.number}: discount requested — ${f.kind === 'percent' ? `${f.value}%` : `₱${f.value}`} (₱${amt}) on ₱${b.base}`) as DiscountRequest;
+  runAutomations();
+  return r;
+}
+const round2d = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/** Owner / Admin only: approve (optionally at a modified amount) or reject. An approval note is mandatory. */
+export function decideDiscount(id: string, f: { approve: boolean; kind?: DiscountKind; value?: number; note: string }): DiscountRequest {
+  store.require('discount.approve');
+  const r = reqOf(id); const job = db().jobs.find((j) => j.id === r.job_id)!;
+  const wf = workflowFor(job.id);
+  if (r.status === 'Rejected') fail('This request was rejected. The Team Leader can submit a new one.');
+  if (discountLocked(wf, r)) fail('The client has already signed the discounted bill — the discount is final.');
+  if (jobHasInvoice(job.id)) fail('This job is already invoiced.');
+  if (!f.note.trim()) fail(f.approve ? 'Enter an approval note.' : 'Enter the reason for rejecting the discount.');
+  if (!f.approve) {
+    return store.update('discount_requests', id, { status: 'Rejected', decision_note: f.note.trim(), decided_by: store.user?.id, decided_at: new Date().toISOString(), applied_at: undefined, applied_by: undefined, net_amount: undefined, approved_amount: undefined, approved_final: undefined } as never, 'update', `${r.number}: discount rejected — ${f.note.trim()}`);
+  }
+  const b = billBase(job);
+  const kind = f.kind ?? r.kind, value = f.value ?? r.value;
+  const amt = checkAmount(kind, value, b.base);
+  const im = discountImpact(db(), job, b, amt);
+  const modified = Math.abs(amt - r.requested_amount) > 0.004;
+  return store.update('discount_requests', id, {
+    status: 'Approved', approved_kind: kind, approved_value: value, approved_amount: amt, approved_final: round2d(b.base - amt), approved_base: b.base,
+    original_total: b.original, additional_total: b.additional,
+    est_cost: im.cost, gp_before: im.gpBefore, gp_after: im.gpAfter, margin_after: im.marginAfter, net_amount: im.net,
+    decision_note: f.note.trim(), decided_by: store.user?.id, decided_at: new Date().toISOString(), applied_at: undefined, applied_by: undefined,
+  } as never, 'approve', `${r.number}: discount ${modified ? `approved at a modified ₱${amt} (requested ₱${r.requested_amount})` : `approved ₱${amt}`} — ${f.note.trim()}`);
+}
+
+/** Put the approved discount on the final bill. After this the client may sign. */
+export function applyDiscount(id: string): DiscountRequest {
+  const r = reqOf(id); const job = db().jobs.find((j) => j.id === r.job_id)!;
+  if (!canTouchJob(job)) fail('Only the assigned Team Leader or a manager can apply the approved discount.');
+  if (r.status !== 'Approved') fail(r.status === 'Applied' ? 'This discount is already applied.' : 'Only an approved discount can be applied.');
+  if (jobHasInvoice(job.id)) fail('This job is already invoiced.');
+  const wf = workflowFor(job.id);
+  if (wf?.conf_mode === 'approval' && wf.conf_at) fail('The client has already signed the final bill.');
+  const b = billBase(job);
+  if (Math.abs((r.approved_base ?? b.base) - b.base) > 0.01) fail('The final bill changed after the discount was approved. Ask the Admin to re-approve it.');
+  return store.update('discount_requests', id, { status: 'Applied', applied_at: new Date().toISOString(), applied_by: store.user?.id } as never, 'approve', `${r.number}: approved discount ₱${r.approved_amount} applied to the final bill of ${job.number}`);
+}
+export { jobRequests };

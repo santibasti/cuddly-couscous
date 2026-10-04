@@ -504,6 +504,39 @@ export interface Variation extends Base {
   decided_at?: string;       // when the client approved / declined
   sign_lat?: number; sign_lng?: number; sign_gps_note?: string; sign_device?: string;
 }
+/* ---------- Controlled discounts ---------- */
+export type DiscountStatus = 'Pending Admin Approval' | 'Approved' | 'Rejected' | 'Applied';
+export type DiscountKind = 'percent' | 'fixed';
+export interface DiscountRequest extends Base {
+  number: string;                 // DR-2026-0001
+  job_id: string;
+  client_id: string;
+  quotation_id?: string;
+  /** VAT-inclusive totals at the time of the request. The original quotation and rates are never changed. */
+  original_total: number;         // original quotation total
+  additional_total: number;       // approved / presented additional work total
+  base_total: number;             // original + additional, before this discount
+  kind: DiscountKind;
+  value: number;                  // % or peso amount as typed by the Team Leader
+  requested_amount: number;       // peso value of the request
+  proposed_final: number;         // base_total - requested_amount
+  reason: string;                 // category
+  reason_note?: string;
+  client_notes?: string;          // client request / negotiation notes
+  status: DiscountStatus;
+  submitted_by?: string; submitted_at: string;
+  // Admin decision (Owner / Admin only)
+  approved_kind?: DiscountKind; approved_value?: number;
+  approved_amount?: number;       // peso discount granted (may differ from the request)
+  approved_final?: number;
+  approved_base?: number;         // final-bill total before discount that the Admin approved against
+  decision_note?: string; decided_by?: string; decided_at?: string;
+  // snapshots shown to the Admin
+  est_cost?: number; gp_before?: number; gp_after?: number; margin_after?: number;
+  // applied to the final bill
+  applied_at?: string; applied_by?: string;
+  net_amount?: number;            // discount ex-VAT (what revenue is reduced by)
+}
 export type IncidentType = 'Missing asset' | 'Damaged asset' | 'Vehicle damage' | 'Material shortage' | 'Missing PPE' | 'Safety' | 'Other';
 export interface IncidentReport extends Base {
   number: string;
@@ -535,6 +568,8 @@ export interface Invoice extends Base {
   vat_mode: 'exclusive' | 'inclusive' | 'none';
   vat_rate: number;
   discount: number;
+  discount_request_id?: string; // management-approved discount (Discount Request) included in `discount`
+  discount_granted?: number;    // that discount, VAT-inclusive
   withholding_rate: number; // % withheld by client
   status: InvoiceStatus;
   approved_by?: string;
@@ -647,7 +682,7 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests';
 
 export interface DB {
   users: UserAccount[]; branches: Branch[]; clients: Client[]; sites: Site[]; communications: Communication[];
@@ -656,7 +691,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[];
   audit: AuditLog[];
   settings: Settings;
   version: number;

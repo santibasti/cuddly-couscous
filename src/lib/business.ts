@@ -5,7 +5,7 @@ import type {
   Variation,
   JobStatus,
   Asset, Attendance, DB, Employee, Holiday, Invoice, Job, PayrollAdjustment, PayrollLine, PayrollPeriod,
-  Payment, Quotation, QuoteItem, ServiceDef, Settings, StatutoryRate, AdditionalCategory, ServiceCode,
+  Payment, Quotation, QuoteItem, ServiceDef, Settings, StatutoryRate, AdditionalCategory, ServiceCode, DiscountRequest, DiscountKind,
 } from './types';
 import { addDays, diffDays, dow, eachDay, minutesBetween, nowLocal, round2, sum, today } from './util';
 
@@ -308,6 +308,8 @@ export interface JobCost {
   labor: number; materials: number; transport: number; equipment: number; subcontractor: number; other: number;
   total: number; revenue: number; revenueBasis: 'billed' | 'expected' | 'none'; grossProfit: number; margin: number;
   laborEstimated: boolean; materialsEstimated: boolean; estimated: boolean;
+  /** Management-approved discount applied to this job (ex-VAT) and what revenue / profit would have been without it. */
+  discount: number; revenueBefore: number; grossProfitBefore: number; marginBefore: number;
 }
 export function jobDays(j: Pick<Job, 'start_at' | 'end_at'>) { return Math.max(1, diffDays(j.end_at.slice(0, 10), j.start_at.slice(0, 10)) + 1); }
 
@@ -315,7 +317,8 @@ export function jobRevenue(db: DB, j: Job): { revenue: number; basis: 'billed' |
   const inv = db.invoices.filter((i) => i.job_id === j.id && i.status === 'Approved' && !i.deleted_at);
   if (inv.length) return { revenue: sum(inv, (i) => invoiceTotals(i).net), basis: 'billed' };
   if (j.status === 'Cancelled') return { revenue: 0, basis: 'none' };
-  return { revenue: j.contract_amount, basis: j.contract_amount ? 'expected' : 'none' };
+  const disc = appliedDiscount(db, j.id);
+  return { revenue: round2(j.contract_amount - (disc?.net_amount ?? 0)), basis: j.contract_amount ? 'expected' : 'none' };
 }
 
 export function jobCost(db: DB, j: Job): JobCost {
@@ -353,6 +356,7 @@ export function jobCost(db: DB, j: Job): JobCost {
     subcontractor: round2(subcontractor), other: round2(other), total: round2(total), revenue: round2(revenue), revenueBasis: basis,
     grossProfit: round2(revenue - total), margin: revenue ? round2(((revenue - total) / revenue) * 100) : 0,
     laborEstimated, materialsEstimated, estimated,
+    ...(() => { const dn = appliedDiscount(db, j.id)?.net_amount ?? 0; const rb = revenue + dn; return { discount: round2(dn), revenueBefore: round2(rb), grossProfitBefore: round2(rb - total), marginBefore: rb ? round2(((rb - total) / rb) * 100) : 0 }; })(),
   };
 }
 
@@ -482,17 +486,21 @@ export function aggregateProfit(rows: { key: string; label: string; revenue: num
   }
   return [...m.values()].map((e) => ({ ...e, revenue: round2(e.revenue), cost: round2(e.cost), gp: round2(e.revenue - e.cost), margin: e.revenue ? round2(((e.revenue - e.cost) / e.revenue) * 100) : 0 })).sort((a, b) => b.gp - a.gp);
 }
+/** How a job's money is split across its services: by quotation line share (or evenly when there is no quotation). */
+export function serviceShares(db: DB, job: Job): Record<string, number> {
+  const q = db.quotations.find((x) => x.id === job.quotation_id);
+  const items = q?.items ?? [];
+  const total = sum(items, (i) => i.qty * i.rate - i.discount);
+  const shares: Record<string, number> = {};
+  if (total > 0) for (const i of items) shares[i.service_code] = (shares[i.service_code] || 0) + (i.qty * i.rate - i.discount) / total;
+  else for (const c of job.service_codes) shares[c] = 1 / job.service_codes.length;
+  return shares;
+}
 /** Service-type profitability: each job's revenue and cost are split across its services by billed-line share. */
 export function serviceProfitRows(db: DB, from: string, to: string) {
   const out: { key: string; label: string; revenue: number; cost: number; estimated: boolean }[] = [];
   for (const { job, cost } of jobProfitRows(db, from, to)) {
-    const q = db.quotations.find((x) => x.id === job.quotation_id);
-    const items = q?.items ?? [];
-    const total = sum(items, (i) => i.qty * i.rate - i.discount);
-    const shares: Record<string, number> = {};
-    if (total > 0) for (const i of items) shares[i.service_code] = (shares[i.service_code] || 0) + (i.qty * i.rate - i.discount) / total;
-    else for (const c of job.service_codes) shares[c] = 1 / job.service_codes.length;
-    for (const [code, sh] of Object.entries(shares)) out.push({ key: code, label: db.services.find((s) => s.code === code)?.name ?? code, revenue: cost.revenue * sh, cost: cost.total * sh, estimated: cost.estimated });
+    for (const [code, sh] of Object.entries(serviceShares(db, job))) out.push({ key: code, label: db.services.find((s) => s.code === code)?.name ?? code, revenue: cost.revenue * sh, cost: cost.total * sh, estimated: cost.estimated });
   }
   return out;
 }
@@ -547,14 +555,20 @@ export function quotedPanels(d: Pick<DB, 'services'>, q?: Quotation): number {
   });
 }
 export const variationTotals = (v: Pick<Variation, 'items' | 'discount' | 'vat_mode' | 'vat_rate'>) => docTotals(v.items, v.discount, v.vat_mode, v.vat_rate);
-/** Original quotation + approved variations = final contract value (the original quotation is never modified). */
-export function finalContract(d: Pick<DB, 'quotations' | 'variations'>, job: Job) {
+/** Original quotation + approved variations − management-approved discount = final contract value (the original quotation is never modified). */
+export function finalContract(d: Pick<DB, 'quotations' | 'variations'> & Partial<Pick<DB, 'discount_requests'>>, job: Job) {
   const q = d.quotations.find((x) => x.id === job.quotation_id);
   const orig = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
   const approved = d.variations.filter((v) => v.job_id === job.id && v.status === 'Approved' && !v.deleted_at).map(variationTotals);
   const varTotal = sum(approved, (t) => t.total), varNet = sum(approved, (t) => t.net);
   const originalNet = orig?.net ?? round2(job.contract_amount - varNet), originalTotal = orig?.total ?? originalNet;
-  return { originalTotal: round2(originalTotal), originalNet: round2(originalNet), variationsTotal: round2(varTotal), variationsNet: round2(varNet), finalTotal: round2(originalTotal + varTotal), finalNet: round2(originalNet + varNet) };
+  const dr = d.discount_requests ? appliedDiscount({ discount_requests: d.discount_requests }, job.id) : undefined;
+  const discount = dr?.approved_amount ?? 0, discountNet = dr?.net_amount ?? 0;
+  return {
+    originalTotal: round2(originalTotal), originalNet: round2(originalNet), variationsTotal: round2(varTotal), variationsNet: round2(varNet),
+    finalTotal: round2(originalTotal + varTotal), finalNet: round2(originalNet + varNet),
+    discount, discountNet, payableTotal: round2(originalTotal + varTotal - discount), payableNet: round2(originalNet + varNet - discountNet),
+  };
 }
 export const round2Safe = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
@@ -614,9 +628,13 @@ export interface FinalQuoteSummary {
   originalTotal: number; originalNet: number; originalDiscount: number; originalVat: number;
   additionalTotal: number; additionalNet: number; additionalDiscount: number; additionalVat: number;
   discount: number; vat: number; finalTotal: number; deposit: number; balance: number;
+  /** original + additional work, before any management-approved discount */
+  subtotal: number;
+  /** Discount Request that is applied to this bill (peso value incl. VAT) */
+  granted: number; request?: DiscountRequest;
 }
 /** Original quote + additional work → final bill. `pending` previews additions that the client has not approved yet. */
-export function finalQuoteSummary(d: Pick<DB, 'quotations' | 'variations'>, job: Job, o: { pending?: { items: QuoteItem[]; vat_mode: Variation['vat_mode']; vat_rate: number }; deposit?: number } = {}): FinalQuoteSummary {
+export function finalQuoteSummary(d: Pick<DB, 'quotations' | 'variations'> & Partial<Pick<DB, 'discount_requests'>>, job: Job, o: { pending?: { items: QuoteItem[]; vat_mode: Variation['vat_mode']; vat_rate: number }; deposit?: number } = {}): FinalQuoteSummary {
   const q = d.quotations.find((x) => x.id === job.quotation_id);
   const orig = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
   const fc = finalContract(d, job);
@@ -625,14 +643,95 @@ export function finalQuoteSummary(d: Pick<DB, 'quotations' | 'variations'>, job:
   const parts = pend ? [...approved, pend] : approved;
   const additionalTotal = round2(sum(parts, (t) => t.total)), additionalNet = round2(sum(parts, (t) => t.net)), additionalDiscount = round2(sum(parts, (t) => t.discount)), additionalVat = round2(sum(parts, (t) => t.vat));
   const originalTotal = orig?.total ?? fc.originalTotal;
-  const finalTotal = round2(originalTotal + additionalTotal);
+  const subtotal = round2(originalTotal + additionalTotal);
+  const request = d.discount_requests ? appliedDiscount({ discount_requests: d.discount_requests }, job.id) : undefined;
+  const granted = request?.approved_amount ?? 0;
+  const finalTotal = round2(subtotal - granted);
   const deposit = round2(Math.max(0, o.deposit ?? 0));
   return {
     originalTotal, originalNet: orig?.net ?? fc.originalNet, originalDiscount: orig?.discount ?? 0, originalVat: orig?.vat ?? 0,
     additionalTotal, additionalNet, additionalDiscount, additionalVat,
-    discount: round2((orig?.discount ?? 0) + additionalDiscount), vat: round2((orig?.vat ?? 0) + additionalVat),
-    finalTotal, deposit, balance: round2(Math.max(0, finalTotal - deposit)),
+    discount: round2((orig?.discount ?? 0) + additionalDiscount), vat: round2((orig?.vat ?? 0) + additionalVat - (granted ? vatPortion(granted, q?.vat_mode ?? 'none', q?.vat_rate ?? 0) : 0)),
+    subtotal, granted, request, finalTotal, deposit, balance: round2(Math.max(0, finalTotal - deposit)),
   };
 }
 /** Additions waiting for the client (drafts with at least one line). */
 export const openVariations = (d: Pick<DB, 'variations'>, jobId: string) => d.variations.filter((v) => v.job_id === jobId && v.status === 'Draft' && v.items.length > 0 && !v.deleted_at);
+
+
+/* ============ Controlled discounts (Discount Request workflow) ============ */
+export const DISCOUNT_REASONS = ['Repeat / loyal client', 'Volume – large or multi-floor job', 'Competitor price match', 'Client budget limit', 'Goodwill / service concern', 'Promotion', 'Other'] as const;
+/** VAT contained in a VAT-inclusive amount. */
+export const vatPortion = (amount: number, mode: 'exclusive' | 'inclusive' | 'none', rate: number) => (mode === 'none' ? 0 : round2((amount * rate) / (100 + rate)));
+export const discountAmount = (kind: DiscountKind, value: number, base: number) => round2(kind === 'percent' ? (base * value) / 100 : value);
+export const jobRequests = (d: Pick<DB, 'discount_requests'>, jobId: string) => d.discount_requests.filter((r) => r.job_id === jobId && !r.deleted_at).sort((a, b) => a.submitted_at.localeCompare(b.submitted_at));
+/** The request that currently governs the job's bill (Pending / Approved / Applied — a Rejected one does not). */
+export const currentRequest = (d: Pick<DB, 'discount_requests'>, jobId: string) => [...jobRequests(d, jobId)].reverse().find((r) => r.status !== 'Rejected');
+export const appliedDiscount = (d: Pick<DB, 'discount_requests'>, jobId: string) => [...jobRequests(d, jobId)].reverse().find((r) => r.status === 'Applied');
+/** Peso value of the discount the client is being offered (what the final bill will show once applied). */
+export const requestAmount = (r: DiscountRequest) => (r.status === 'Pending Admin Approval' ? r.requested_amount : r.approved_amount ?? r.requested_amount);
+
+/** Admin screen figures: original, additional work, requested discount, cost and profit before / after. */
+export function discountImpact(db: DB, job: Job, base: { original: number; additional: number }, amount: number) {
+  const q = db.quotations.find((x) => x.id === job.quotation_id);
+  const mode = q?.vat_mode ?? 'none', rate = q?.vat_rate ?? 0;
+  const total = round2(base.original + base.additional);
+  const cost = jobCost(db, job).total;
+  const netBefore = round2(total - vatPortion(total, mode, rate));
+  const after = round2(total - amount);
+  const netAfter = round2(after - vatPortion(after, mode, rate));
+  const net = round2(netBefore - netAfter);
+  const gpBefore = round2(netBefore - cost), gpAfter = round2(netAfter - cost);
+  return { total, after, net, cost, netBefore, netAfter, gpBefore, gpAfter, marginBefore: netBefore ? round2((gpBefore / netBefore) * 100) : 0, marginAfter: netAfter ? round2((gpAfter / netAfter) * 100) : 0 };
+}
+
+/** Why the client cannot sign the (discounted) final bill yet, if anything. */
+export function discountBlock(db: DB, job: Job, wf: JobWorkflow | undefined, base: number): string | undefined {
+  const r = currentRequest(db, job.id); if (!r) return undefined;
+  if (r.status === 'Pending Admin Approval') return `Discount request ${r.number} is waiting for Admin approval. The client cannot sign the final bill until it is approved and applied.`;
+  if (r.status === 'Approved') return `Discount request ${r.number} is approved but not yet applied to the final bill. Apply it first, then ask the client to sign.`;
+  if (r.status === 'Applied' && !discountLocked(wf, r) && Math.abs((r.approved_base ?? base) - base) > 0.01) return `The final bill changed after discount ${r.number} was approved. Ask the Admin to re-approve the discount before the client signs.`;
+  return undefined;
+}
+/** Once the client has signed the discounted bill the discount is fixed. */
+export const discountLocked = (wf: JobWorkflow | undefined, r: DiscountRequest) => !!wf && r.status === 'Applied' && !!r.applied_at && ((wf.conf_mode === 'approval' && !!wf.conf_at) || !!wf.rep_client_at);
+
+export interface DiscountRow {
+  req: DiscountRequest; job: Job; clientId: string; leaderId?: string; month: string;
+  granted: number; net: number; revenueBefore: number; revenueAfter: number; cost: number; gpBefore: number; gpAfter: number;
+}
+/** Applied discounts (by the date they were applied to the bill) with their effect on revenue and gross profit. */
+export function discountRows(db: DB, from: string, to: string): DiscountRow[] {
+  const out: DiscountRow[] = [];
+  for (const req of db.discount_requests) {
+    if (req.deleted_at || req.status !== 'Applied') continue;
+    const day = (req.applied_at ?? req.decided_at ?? req.submitted_at).slice(0, 10);
+    if (day < from || day > to) continue;
+    const job = db.jobs.find((j) => j.id === req.job_id); if (!job) continue;
+    const c = jobCost(db, job);
+    out.push({ req, job, clientId: job.client_id, leaderId: job.leader_id, month: day.slice(0, 7), granted: req.approved_amount ?? 0, net: req.net_amount ?? 0, revenueBefore: c.revenueBefore, revenueAfter: c.revenue, cost: c.total, gpBefore: c.grossProfitBefore, gpAfter: c.grossProfit });
+  }
+  return out;
+}
+export type DiscountView = 'client' | 'service' | 'leader' | 'reason' | 'month' | 'job';
+export interface DiscountAgg { key: string; label: string; count: number; granted: number; net: number; revenueBefore: number; revenueAfter: number; gpBefore: number; gpAfter: number; marginBefore: number; marginAfter: number; avgPct: number }
+export function discountAggregate(db: DB, rows: DiscountRow[], view: DiscountView): DiscountAgg[] {
+  const m = new Map<string, DiscountAgg & { _pct: number }>();
+  const add = (key: string, label: string, r: DiscountRow, sh: number) => {
+    const e = m.get(key) ?? { key, label, count: 0, granted: 0, net: 0, revenueBefore: 0, revenueAfter: 0, gpBefore: 0, gpAfter: 0, marginBefore: 0, marginAfter: 0, avgPct: 0, _pct: 0 };
+    e.count += sh; e.granted += r.granted * sh; e.net += r.net * sh; e.revenueBefore += r.revenueBefore * sh; e.revenueAfter += r.revenueAfter * sh; e.gpBefore += r.gpBefore * sh; e.gpAfter += r.gpAfter * sh;
+    e._pct += (r.req.approved_base ? (r.granted / r.req.approved_base) * 100 : 0) * sh; m.set(key, e);
+  };
+  for (const r of rows) {
+    if (view === 'client') add(r.clientId, db.clients.find((c) => c.id === r.clientId)?.name ?? '—', r, 1);
+    else if (view === 'leader') add(r.leaderId ?? '—', db.employees.find((e) => e.id === r.leaderId)?.full_name ?? 'Unassigned', r, 1);
+    else if (view === 'reason') add(r.req.reason, r.req.reason, r, 1);
+    else if (view === 'month') add(r.month, r.month, r, 1);
+    else if (view === 'job') add(r.job.id, `${r.job.number} · ${db.clients.find((c) => c.id === r.clientId)?.name ?? ''}`, r, 1);
+    else for (const [code, sh] of Object.entries(serviceShares(db, r.job))) add(code, db.services.find((s) => s.code === code)?.name ?? code, r, sh);
+  }
+  return [...m.values()].map((e) => ({
+    key: e.key, label: e.label, count: Math.round(e.count * 100) / 100, granted: round2(e.granted), net: round2(e.net), revenueBefore: round2(e.revenueBefore), revenueAfter: round2(e.revenueAfter), gpBefore: round2(e.gpBefore), gpAfter: round2(e.gpAfter),
+    marginBefore: e.revenueBefore ? round2((e.gpBefore / e.revenueBefore) * 100) : 0, marginAfter: e.revenueAfter ? round2((e.gpAfter / e.revenueAfter) * 100) : 0, avgPct: e.count ? round2(e._pct / e.count) : 0,
+  })).sort((a, b) => b.granted - a.granted);
+}
