@@ -15,7 +15,7 @@ const fail = (m: string): never => { throw new RuleError(m); };
 export interface Geo { lat?: number; lng?: number }
 
 /* ================= Attendance ================= */
-export function clockIn(employeeId: string, geo: Geo, photo?: string, jobId?: string) {
+export function clockIn(employeeId: string, geo: Geo, jobId?: string) {
   store.require('attendance.own');
   const d = db(); const emp = d.employees.find((e) => e.id === employeeId)!;
   if (store.role !== 'owner' && store.user?.employee_id !== employeeId && !store.can('attendance.approve')) fail('You can only clock in for yourself.');
@@ -24,11 +24,11 @@ export function clockIn(employeeId: string, geo: Geo, photo?: string, jobId?: st
   if (existing?.clock_in) fail('Already clocked in today.');
   const at = nowLocal();
   const t = computeTimes(emp, at, undefined, d.settings.grace_minutes);
-  const patch = { kind: 'Present' as const, clock_in: at, job_id: jobId, field_work: !!jobId, in_lat: geo.lat, in_lng: geo.lng, in_photo: photo, late_min: t.late_min };
+  const patch = { kind: 'Present' as const, clock_in: at, job_id: jobId, field_work: !!jobId, in_lat: geo.lat, in_lng: geo.lng, late_min: t.late_min };
   if (existing) return store.update('attendance', existing.id, patch, 'update', `${emp.full_name} clocked in`);
   return store.insert('attendance', { employee_id: employeeId, date, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending', ...patch } as never, `${emp.full_name} clocked in ${at.slice(11)}`);
 }
-export function clockOut(employeeId: string, geo: Geo, photo?: string) {
+export function clockOut(employeeId: string, geo: Geo) {
   store.require('attendance.own');
   const d = db(); const emp = d.employees.find((e) => e.id === employeeId)!;
   if (store.role !== 'owner' && store.user?.employee_id !== employeeId && !store.can('attendance.approve')) fail('You can only clock out for yourself.');
@@ -36,7 +36,7 @@ export function clockOut(employeeId: string, geo: Geo, photo?: string) {
   if (!rec) fail('No open clock-in found for today.');
   const at = nowLocal();
   const t = computeTimes(emp, rec!.clock_in, at, d.settings.grace_minutes);
-  return store.update('attendance', rec!.id, { clock_out: at, out_lat: geo.lat, out_lng: geo.lng, out_photo: photo, ...t }, 'update', `${emp.full_name} clocked out ${at.slice(11)}`);
+  return store.update('attendance', rec!.id, { clock_out: at, out_lat: geo.lat, out_lng: geo.lng, ...t }, 'update', `${emp.full_name} clocked out ${at.slice(11)}`);
 }
 export function decideAttendance(id: string, approve: boolean, note?: string) {
   store.require('attendance.approve');
@@ -258,37 +258,37 @@ export function requestCheckout(p: { asset_id: string; job_id: string; responsib
   const other = db().jobs.find((j) => j.id !== job.id && !j.deleted_at && isOpen(j.status) && (j.equipment_ids.includes(a.id) || j.vehicle_id === a.id) && overlaps(j.start_at, j.end_at, job.start_at, job.end_at));
   if (other) fail(`${a.name} is already assigned to ${other.number} at that time.`);
   if (db().checkouts.some((c) => c.asset_id === p.asset_id && c.job_id === p.job_id && ['Requested', 'Released'].includes(c.status))) fail('This asset is already requested or checked out for that job.');
-  return store.insert('checkouts', { ...p, requested_by: store.user?.employee_id ?? me()!.id, status: 'Requested', out_photos: [], in_photos: [] } as never, `Requested ${a.name} for ${job.number}`);
+  return store.insert('checkouts', { ...p, requested_by: store.user?.employee_id ?? me()!.id, status: 'Requested' } as never, `Requested ${a.name} for ${job.number}`);
 }
-export function releaseCheckout(id: string, p: { condition: Condition; meter?: number; photos: string[] }) {
+export function releaseCheckout(id: string, p: { condition: Condition; meter?: number }) {
   store.require('assets.approve');
   return performRelease(id, p);
 }
 /** Release without a permission check — used by the job workflow when an approver completes the HQ checklist. */
-export function performRelease(id: string, p: { condition: Condition; meter?: number; photos: string[] }) {
+export function performRelease(id: string, p: { condition: Condition; meter?: number }) {
   const c = db().checkouts.find((x) => x.id === id)!; const a = asset(c.asset_id);
   if (c.status !== 'Requested') fail('Only requested items can be released.');
   if (['Retired', 'Damaged', 'Under Maintenance', 'Missing'].includes(a.status)) fail(`${a.name} is ${a.status.toLowerCase()}.`);
   const active = db().checkouts.find((x) => x.asset_id === c.asset_id && x.status === 'Released');
   if (active) fail(`${a.name} is still checked out to ${db().jobs.find((j) => j.id === active.job_id)?.number ?? 'another job'}. Return it first – equipment can never be on two jobs at once.`);
-  store.update('checkouts', id, { status: 'Released', approved_by: me()!.id, out_at: nowLocal(), out_condition: p.condition, out_meter: p.meter, out_photos: p.photos }, 'approve', `Released ${a.name}`);
+  store.update('checkouts', id, { status: 'Released', approved_by: me()!.id, out_at: nowLocal(), out_condition: p.condition, out_meter: p.meter }, 'approve', `Released ${a.name}`);
   store.update('assets', a.id, { status: 'In Use', custodian_id: c.responsible_id, location: 'On site', condition: p.condition, ...(p.meter ? { meter_reading: p.meter } : {}) });
 }
 export function rejectCheckout(id: string, note: string) {
   store.require('assets.approve');
   store.update('checkouts', id, { status: 'Rejected', approved_by: me()!.id, note }, 'update', 'Equipment request rejected');
 }
-export function returnCheckout(id: string, p: { condition: Condition; meter?: number; damage_notes: string; missing: string; photos: string[] }) {
+export function returnCheckout(id: string, p: { condition: Condition; meter?: number; damage_notes: string; missing: string }) {
   store.require('assets.request');
   return performReturn(id, p);
 }
-export function performReturn(id: string, p: { condition: Condition; meter?: number; damage_notes: string; missing: string; photos: string[]; repair?: boolean }): { ticketId?: string } {
+export function performReturn(id: string, p: { condition: Condition; meter?: number; damage_notes: string; missing: string; repair?: boolean }): { ticketId?: string } {
   const c = db().checkouts.find((x) => x.id === id)!; const a = asset(c.asset_id);
   if (c.status !== 'Released') fail('This item is not checked out.');
   const damaged = p.condition === 'Damaged' || p.condition === 'Poor' || !!p.damage_notes.trim();
   if (damaged && !p.damage_notes.trim()) fail('Describe the damage.');
   if (p.meter !== undefined && c.out_meter !== undefined && p.meter < c.out_meter) fail('Return meter reading cannot be lower than the reading at release.');
-  store.update('checkouts', id, { status: 'Returned', in_at: nowLocal(), in_condition: p.condition, in_meter: p.meter, damage_notes: p.damage_notes, missing_accessories: p.missing, in_photos: p.photos }, 'update', `Returned ${a.name}`);
+  store.update('checkouts', id, { status: 'Returned', in_at: nowLocal(), in_condition: p.condition, in_meter: p.meter, damage_notes: p.damage_notes, missing_accessories: p.missing }, 'update', `Returned ${a.name}`);
   store.update('assets', a.id, {
     status: damaged && p.repair !== false ? 'Damaged' : 'Available', condition: damaged && p.repair === false ? 'Fair' : p.condition, location: damaged && p.repair !== false ? 'Workshop' : (a.category === 'Vehicle' ? 'Yard' : 'Main Warehouse'),
     custodian_id: undefined, ...(p.meter ? { meter_reading: p.meter } : {}),
@@ -534,19 +534,11 @@ export function runAutomations() {
   for (const j of d.jobs.filter((x) => !x.deleted_at && x.start_at.startsWith(t))) {
     if (['Confirmed', 'Dispatch Checklist Pending'].includes(j.status) && now > addMinutes(j.start_at, 30)) add(`wf-late:${j.id}`, 'job', 'Crew not yet dispatched', `${j.number} was due to start ${j.start_at.slice(11)} — HQ checklist / dispatch not completed.`, 'warn', `/jobs/${j.id}`, [...ops, 'leader'], true);
   }
-  for (const j of d.jobs.filter((x) => !x.deleted_at && ['Work Completed', 'Leaving Site'].includes(x.status))) {
-    add(`wf-return:${j.id}`, 'job', j.status === 'Work Completed' ? 'Return equipment check pending' : 'Crew heading back to HQ', `${j.number}: ${j.status === 'Work Completed' ? 'service report signed — complete the equipment return check before leaving site.' : 'awaiting arrival at HQ.'}`, 'info', `/jobs/${j.id}`, [...ops, 'leader']);
-  }
-  for (const j of d.jobs.filter((x) => !x.deleted_at && x.status === 'Arrived at HQ')) {
-    const open = d.incidents.filter((i) => i.job_id === j.id && !i.deleted_at && ['Open', 'Investigating'].includes(i.status)).length;
-    add(`wf-close:${j.id}`, 'job', 'Job awaiting closure', `${j.number}: back at HQ${open ? ` — ${open} incident(s) need Admin review before closing` : ' — ready to close'}.`, open ? 'warn' : 'info', `/jobs/${j.id}`, [...ops]);
+  for (const j of d.jobs.filter((x) => !x.deleted_at && x.status === 'Work Completed')) {
+    add(`wf-return:${j.id}`, 'job', 'Close-out pending', `${j.number}: client handover signed — complete the close-out (equipment return, leave site, arrival at HQ).`, 'info', `/jobs/${j.id}`, [...ops, 'leader']);
   }
   for (const v of d.variations.filter((x) => !x.deleted_at && x.status === 'Pending Approval')) {
     add(`var-pend:${v.id}`, 'job', 'Variation awaiting client approval', `${v.number}: ${v.reason}`, 'warn', `/jobs/${v.job_id}`, [...ops, 'leader']);
-  }
-  for (const w of d.workflows.filter((x) => !x.deleted_at && x.hqa_at && x.hqa_at.slice(0, 10) >= addDays(t, -2) && (x.hqa_fuel === 'Empty' || x.hqa_fuel === '1/4'))) {
-    const j = d.jobs.find((x) => x.id === w.job_id);
-    add(`fuel:${w.id}`, 'job', 'Refuel vehicle', `${d.assets.find((a) => a.id === j?.vehicle_id)?.name ?? 'Vehicle'} returned with ${w.hqa_fuel} fuel after ${j?.number}.`, 'info', `/jobs/${w.job_id}`, [...ops]);
   }
   // finance
   for (const i of d.invoices.filter((x) => x.status === 'Approved' && !x.deleted_at)) {

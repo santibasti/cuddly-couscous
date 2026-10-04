@@ -337,7 +337,7 @@ export function seedDB(): DB {
           if (ex) ex.planned_qty += q; else acc.push({ item_id: it.id, planned_qty: q });
           return acc;
         }, []),
-        ppe: ppeFor(codes), checklist: checklistFor(codes), photos: [], findings: '', damage_report: '', equipment_condition_notes: '',
+        ppe: ppeFor(codes), checklist: checklistFor(codes), findings: '', damage_report: '', equipment_condition_notes: '',
         contract_amount: totals.net, estimated_cost: est,
       };
       jobs.push(job); jobMeta.push({ job, team: tk });
@@ -352,7 +352,7 @@ export function seedDB(): DB {
     jobs.push({
       ...base('job', addDays(d, -6)), number: nn('JOB'), client_id: client.id, site_id: site.id, quotation_id: q.id, branch_id: client.branch_id, service_codes: ['GLASS_EXT'],
       scope: q.scope, start_at: `${d}T08:00`, end_at: `${d}T17:00`, status: i === 0 ? 'Cancelled' : 'Rescheduled', leader_id: E_L1.id, crew_ids: [], equipment_ids: [], materials: [],
-      ppe: [], checklist: [], photos: [], findings: '', damage_report: i === 0 ? 'Cancelled by client – building maintenance conflict.' : '', equipment_condition_notes: '', contract_amount: 0, estimated_cost: 0,
+      ppe: [], checklist: [], findings: '', damage_report: i === 0 ? 'Cancelled by client – building maintenance conflict.' : '', equipment_condition_notes: '', contract_amount: 0, estimated_cost: 0,
     });
   }
   jobs.sort((a, b) => a.start_at.localeCompare(b.start_at));
@@ -373,10 +373,6 @@ export function seedDB(): DB {
       job.client_rating = pick([5, 5, 5, 4, 4, 3, 5]);
       job.signoff_name = client.contact_person; job.signoff_at = job.completed_at; job.signoff_data = svgPhoto('Signature', '#123A63');
       job.checklist = job.checklist.map((c) => ({ ...c, done: true }));
-      job.photos = [
-        { kind: 'before', caption: 'Before – exterior', data: svgPhoto('BEFORE', '#3B4A5A'), taken_at: `${d}T08:20` },
-        { kind: 'after', caption: 'After – exterior', data: svgPhoto('AFTER', '#0B2545'), taken_at: `${d}T15:30` },
-      ];
       job.findings = pick(['Heavy mineral deposits on lower panels; recommended quarterly maintenance.', 'Moss growth on north-facing surfaces removed. No structural concerns.', 'Work completed without issues.', 'Minor sealant deterioration noted at two window frames – reported to client.']);
       job.materials = job.materials.map((m) => ({ ...m, used_qty: m.planned_qty }));
       // stock issue (skip the very recent ones to keep some reservations live)
@@ -392,8 +388,8 @@ export function seedDB(): DB {
         const dmg = a.code === 'SFC-002' || a.code === 'LAD-002';
         checkouts.push({
           ...base('co', d), asset_id: aid, job_id: job.id, requested_by: job.leader_id!, responsible_id: job.leader_id!, status: 'Returned', expected_return: `${d}T18:00`, approved_by: 'u-ops',
-          out_at: `${d}T07:30`, out_condition: 'Good', out_meter: a.meter_reading ? a.meter_reading - between(20, 400) : undefined, out_photos: [], in_at: `${d}T${between(16, 18)}:20`,
-          in_condition: dmg ? 'Fair' : 'Good', in_meter: a.meter_reading ? a.meter_reading - between(1, 20) : undefined, in_photos: [], damage_notes: '', missing_accessories: '',
+          out_at: `${d}T07:30`, out_condition: 'Good', out_meter: a.meter_reading ? a.meter_reading - between(20, 400) : undefined, in_at: `${d}T${between(16, 18)}:20`,
+          in_condition: dmg ? 'Fair' : 'Good', in_meter: a.meter_reading ? a.meter_reading - between(1, 20) : undefined, damage_notes: '', missing_accessories: '',
         });
       }
       // labor attendance handled below; invoice
@@ -422,18 +418,17 @@ export function seedDB(): DB {
       if (job.service_codes.includes('ROOF') && R() < 0.4) expenses.push({ ...base('exp', d), date: d, payee: 'Scaffolding Rentals Co.', category: 'Subcontractor', job_id: job.id, branch_id: job.branch_id, amount: 6720, vat: 720, wht: 120, method: 'Bank Transfer', approval: 'Approved', approved_by: 'u-fin', paid: true, petty_cash: false, notes: 'Scaffold rental' } as Expense);
     } else if (job.status === 'In Progress') {
       job.checklist = job.checklist.map((c, i) => ({ ...c, done: i < 3 }));
-      job.photos = [{ kind: 'before', caption: 'Before – façade', data: svgPhoto('BEFORE', '#3B4A5A'), taken_at: `${d}T08:25` }];
       job.materials.forEach((m) => tx(items.find((i) => i.id === m.item_id)!, 'Issue to Job', -Math.min(m.planned_qty, Math.max(0, running[m.item_id] || 0)), d, { job_id: job.id, reason: 'Job materials (issued at dispatch)' }));
       for (const aid of [job.vehicle_id!, ...job.equipment_ids]) {
         const a = assets.find((x) => x.id === aid)!;
-        checkouts.push({ ...base('co', d), asset_id: aid, job_id: job.id, requested_by: job.leader_id!, responsible_id: job.leader_id!, status: 'Released', expected_return: `${addDays(d, 1)}T08:00`, approved_by: 'u-ops', out_at: `${d}T07:30`, out_condition: 'Good', out_meter: a.meter_reading, out_photos: [], in_photos: [] });
+        checkouts.push({ ...base('co', d), asset_id: aid, job_id: job.id, requested_by: job.leader_id!, responsible_id: job.leader_id!, status: 'Released', expected_return: `${addDays(d, 1)}T08:00`, approved_by: 'u-ops', out_at: `${d}T07:30`, out_condition: 'Good', out_meter: a.meter_reading });
         a.status = 'In Use'; a.custodian_id = job.leader_id!; a.location = 'On site';
       }
     } else if (job.status === 'Confirmed' && d <= addDays(T, 2) && !recentPurchaseSkipped) {
       // one pending equipment request for the next job
       const a = A('LAD-001');
       if (!checkouts.some((c) => c.asset_id === a.id && c.job_id === job.id)) {
-        checkouts.push({ ...base('co'), asset_id: a.id, job_id: job.id, requested_by: job.leader_id!, responsible_id: job.leader_id!, status: 'Requested', expected_return: `${d}T18:00`, out_photos: [], in_photos: [], note: 'Needed for upper floors.' });
+        checkouts.push({ ...base('co'), asset_id: a.id, job_id: job.id, requested_by: job.leader_id!, responsible_id: job.leader_id!, status: 'Requested', expected_return: `${d}T18:00`, note: 'Needed for upper floors.' });
         recentPurchaseSkipped = true;
       }
     }
@@ -441,7 +436,7 @@ export function seedDB(): DB {
   // Overdue equipment return: SFC-001 released yesterday, never returned (idle asset, no job conflict) – attach to the latest completed job
   const lastDone = [...jobs].reverse().find((j) => j.status === 'Completed')!;
   const overdueAsset = A('VAC-001');
-  checkouts.push({ ...base('co', addDays(T, -3)), asset_id: overdueAsset.id, job_id: lastDone.id, requested_by: E_L2.id, responsible_id: FIELD[3].id, status: 'Released', expected_return: `${addDays(T, -2)}T18:00`, approved_by: 'u-ops', out_at: `${addDays(T, -3)}T07:45`, out_condition: 'Good', out_meter: 296, out_photos: [], in_photos: [], note: 'Borrowed for post-job debris cleanup.' });
+  checkouts.push({ ...base('co', addDays(T, -3)), asset_id: overdueAsset.id, job_id: lastDone.id, requested_by: E_L2.id, responsible_id: FIELD[3].id, status: 'Released', expected_return: `${addDays(T, -2)}T18:00`, approved_by: 'u-ops', out_at: `${addDays(T, -3)}T07:45`, out_condition: 'Good', out_meter: 296, note: 'Borrowed for post-job debris cleanup.' });
   overdueAsset.status = 'In Use'; overdueAsset.custodian_id = FIELD[3].id; overdueAsset.location = 'With employee';
   // damaged returns → tickets already seeded; add a returned-with-damage record
   const dmgJob = jobs.find((j) => j.status === 'Completed' && j.equipment_ids.includes(A('SFC-001').id));
@@ -635,47 +630,39 @@ export function seedDB(): DB {
   const workflows: JobWorkflow[] = [];
   const variations: Variation[] = [];
   const incidents: IncidentReport[] = [];
-  const HQ = { lat: 14.5547, lng: 121.0244 };
-  const jit = (v: number, k: number) => +(v + (R() - 0.5) * k).toFixed(6);
-  type Stage = 'hq' | 'disp' | 'arr' | 'start' | 'rep' | 'rc' | 'leave' | 'hqa' | 'closed';
-  const ORDER: Stage[] = ['hq', 'disp', 'arr', 'start', 'rep', 'rc', 'leave', 'hqa', 'closed'];
+  type Stage = 'hq' | 'disp' | 'arr' | 'conf' | 'start' | 'finish' | 'rep' | 'closed';
+  const ORDER: Stage[] = ['hq', 'disp', 'arr', 'conf', 'start', 'finish', 'rep', 'closed'];
   const mkWorkflow = (job: Job, upTo: Stage | 'draft'): JobWorkflow => {
     const d = job.start_at.slice(0, 10);
     const site = sites.find((x) => x.id === job.site_id)!;
     const q = quotations.find((x) => x.id === job.quotation_id);
-    const vehAsset = assets.find((a) => a.id === job.vehicle_id);
-    const hq_odo = (vehAsset?.meter_reading ?? 40000) - between(300, 1200);
-    const distance = between(18, 85);
     const crew = [...new Set([...(job.leader_id ? [job.leader_id] : []), ...job.crew_ids])];
     const lvl = upTo === 'draft' ? -1 : ORDER.indexOf(upTo);
     const has = (s: Stage) => lvl >= ORDER.indexOf(s);
-    const returned = has('rc');
+    const closed = upTo === 'closed';
     const its = buildChecklistItems({ assets, items: items0 }, job).map((i) => ({
       ...i, out_ok: true, out_by: (R() < 0.8 ? 'scan' : 'id') as 'scan' | 'id', loaded_qty: i.qty,
       ...(i.kind === 'material' ? { out_container: 'Good' as const } : { out_condition: 'Good' as const }),
-      ...(returned && i.kind !== 'vehicle' ? { returned_qty: i.kind === 'material' ? 0 : i.qty, ret_condition: 'Good' as const, ret_by: 'scan' as const, ...(i.kind === 'material' ? { used_qty: i.qty } : {}) } : {}),
+      ...(closed ? { returned_qty: i.kind === 'material' ? 0 : i.qty, ret_condition: 'Good' as const, ret_by: 'scan' as const, ...(i.kind === 'material' ? { used_qty: i.qty } : {}) } : {}),
     }));
     const at = (h: number, m = between(0, 55)) => `${d}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    const wf: JobWorkflow = { ...base('wf', d), job_id: job.id, items: its, panels: [], arr_photos: [], start_photos: [], rc_photos: [] };
-    if (has('hq')) Object.assign(wf, { hq_at: at(7, 5), hq_by: 'u-lead', hq_odo, hq_fuel: pick(['Full', '3/4', '3/4']), hq_veh_condition: 'Good', hq_veh_photo: svgPhoto('VEHICLE CHECK', '#123A63') });
-    if (has('disp')) Object.assign(wf, { disp_at: at(7, between(20, 45)), disp_by: 'u-lead', disp_lat: jit(HQ.lat, 0.0006), disp_lng: jit(HQ.lng, 0.0006), disp_photo: svgPhoto('DEPARTURE - crew and loaded van', '#123A63') });
-    if (has('arr')) Object.assign(wf, {
-      arr_at: at(8, between(10, 40)), arr_by: 'u-lead', arr_lat: jit(14.58, 0.2), arr_lng: jit(121.03, 0.2), arr_photos: [svgPhoto('BEFORE - arrival', '#3B4A5A')],
-      arr_contact_name: site.contact_person, arr_contact_mobile: site.contact_mobile, arr_notes: 'Access via service entrance; water source at basement pump room. Safety: working at heights, wet-floor signage.',
-      arr_crew_present: crew, arr_crew_absent: [],
-      conf_at: at(8, between(41, 55)), conf_by: 'u-lead', conf_quotation_id: q?.id, conf_original_total: q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).total : job.contract_amount, conf_name: site.contact_person, conf_signature: svgPhoto('Conforme', '#123A63'),
-    });
-    if (has('start')) Object.assign(wf, { start_at: at(9, between(0, 20)), start_by: 'u-lead', start_crew_present: crew, start_safety: true, start_ppe: true, start_photos: [svgPhoto('WORK START', '#3B4A5A')] });
+    const wf: JobWorkflow = { ...base('wf', d), job_id: job.id, items: its, panels: [] };
+    if (has('hq')) Object.assign(wf, { hq_at: at(7, 5), hq_by: 'u-lead', hq_fuel: pick(['Full', '3/4', '3/4']) });
+    if (has('disp')) Object.assign(wf, { disp_at: at(7, between(20, 45)), disp_by: 'u-lead' });
+    if (has('arr')) Object.assign(wf, { arr_at: at(8, between(10, 40)), arr_by: 'u-lead', arr_contact_name: site.contact_person, arr_contact_mobile: site.contact_mobile, arr_notes: 'Access via service entrance.', arr_crew_present: crew, arr_crew_absent: [] });
+    if (has('conf')) {
+      const total = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).total : job.contract_amount;
+      const recurring = R() < 0.6;   // returning client, unchanged scope → confirmed by the Team Leader, no new signature
+      Object.assign(wf, { conf_at: at(8, between(41, 55)), conf_by: 'u-lead', conf_quotation_id: q?.id, conf_original_total: total, conf_final_total: total, ...(recurring ? { conf_mode: 'confirmed' } : { conf_mode: 'approval', conf_name: site.contact_person, conf_signature: svgPhoto('Conforme', '#123A63') }) });
+    }
+    if (has('start')) Object.assign(wf, { start_at: at(9, between(0, 20)), start_by: 'u-lead' });
+    if (has('finish')) Object.assign(wf, { finish_at: at(15, between(0, 40)), finish_by: 'u-lead' });
     if (has('rep')) Object.assign(wf, {
-      rep_at: at(15, between(0, 40)), rep_by: 'u-lead', rep_scope: job.scope, rep_method: 'Water-fed pole and purified-water system, soft-brush agitation, squeegee finish; roped access where required.',
-      rep_findings: job.findings || 'Work completed without issues.', rep_limits: 'Areas not reachable from the building face were excluded; no work above permitted height.', rep_recs: 'Quarterly maintenance cleaning recommended.',
-      rep_complimentary: 'Entrance door glass wiped at no charge.', rep_client_name: site.contact_person, rep_client_sig: svgPhoto('Signature', '#123A63'), rep_client_at: at(15, 45),
+      rep_at: at(15, between(41, 50)), rep_by: 'u-lead', rep_scope: job.scope, rep_findings: job.findings || 'Work completed without issues.', rep_limits: 'Areas beyond reach excluded.', rep_recs: 'Quarterly maintenance cleaning recommended.',
+      rep_complimentary: 'Entrance door glass wiped at no charge.', rep_client_name: site.contact_person, rep_client_sig: svgPhoto('Signature', '#123A63'), rep_client_at: at(15, 55),
       rep_tm_name: employees.find((e) => e.id === job.leader_id)?.full_name ?? 'Team Leader', rep_tm_sig: svgPhoto('TopMop', '#0B2545'), rep_rating: 5,
     });
-    if (has('rc')) Object.assign(wf, { rc_at: at(16, between(0, 30)), rc_by: 'u-lead', rc_photos: [svgPhoto('RETURN CHECK - at site', '#0B2545')] });
-    if (has('leave')) Object.assign(wf, { leave_at: at(16, between(31, 50)), leave_by: 'u-lead', leave_lat: jit(14.58, 0.2), leave_lng: jit(121.03, 0.2), leave_photo: svgPhoto('LEAVING SITE', '#123A63') });
-    if (has('hqa')) Object.assign(wf, { hqa_at: at(17, between(5, 40)), hqa_by: 'u-lead', hqa_lat: jit(HQ.lat, 0.0006), hqa_lng: jit(HQ.lng, 0.0006), hqa_odo: hq_odo + distance, hqa_fuel: pick(['1/2', '1/2', '1/4', '3/4']), hqa_veh_condition: 'Good', hqa_equipment_ok: true, distance_km: distance });
-    if (has('closed')) Object.assign(wf, { closed_at: at(17, 50), closed_by: 'u-ops' });
+    if (closed) Object.assign(wf, { rc_at: at(17, 40), rc_by: 'u-lead', leave_at: at(16, between(10, 30)), leave_by: 'u-lead', hqa_at: at(17, between(5, 35)), hqa_by: 'u-lead', hqa_fuel: pick(['1/2', '1/2', '1/4', '3/4']), closed_at: at(17, 40), closed_by: 'u-lead' });
     workflows.push(wf);
     return wf;
   };
@@ -685,8 +672,8 @@ export function seedDB(): DB {
   const recentDone = jobs.filter((j) => j.status === 'Completed' && j.start_at.slice(0, 10) >= addDays(T, -21) && j.vehicle_id);
   recentDone.forEach((job, idx) => {
     const openHardHat = idx === recentDone.length - 2 && idx > 3;
-    const wf = mkWorkflow(job, openHardHat ? 'hqa' : 'closed');
-    job.status = openHardHat ? 'Arrived at HQ' : 'Closed';
+    const wf = mkWorkflow(job, 'closed');
+    job.status = 'Closed';
     if (idx === 0) { const m = wf.items.find((i) => i.kind === 'material'); if (m) { m.ret_condition = 'Missing'; m.ret_note = 'Container not on the truck'; m.used_qty = m.qty; mkInc(wf, 'Material shortage', 'Medium', `${m.label}: container reported missing on return check. Container not on the truck`, 'Resolved', { item_id: m.item_id }); } }
     if (idx === 1) { const g = wf.items.find((i) => i.kind === 'ppe' && i.label === 'Gloves'); if (g) { g.returned_qty = g.qty - 1; g.ret_note = 'One pair left on site roof'; mkInc(wf, 'Missing PPE', 'Medium', `Gloves: 1 of ${g.qty} not returned. One pair left on site roof`, 'Resolved'); } }
     if (idx === 2) mkInc(wf, 'Damaged asset', 'Medium', 'LAD-002 Extension Ladder 32ft returned with a bent rail. Taken out of service.', 'Investigating', { asset_id: A('LAD-002').id, ticket_id: tickets[1].id });
@@ -706,7 +693,6 @@ export function seedDB(): DB {
       Object.assign(j, {
         completed_at: `${d0}T15:30`, checklist: j.checklist.map((c) => ({ ...c, done: true })), findings: 'Work completed without issues.', signoff_name: sites.find((x) => x.id === j.site_id)!.contact_person,
         signoff_at: `${d0}T15:30`, signoff_data: svgPhoto('Signature', '#123A63'), client_rating: 5,
-        photos: [...j.photos, { kind: 'after' as const, caption: 'After - exterior', data: svgPhoto('AFTER', '#0B2545'), taken_at: `${d0}T15:20` }],
       });
     }
     if (k === 1 && j.service_codes.includes('GLASS_EXT')) {

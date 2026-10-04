@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/store';
-import { Badge, Field, Modal, PhotoInput, SignaturePad, attempt } from '@/components/ui';
+import { Badge, Field, Modal, SignaturePad, attempt } from '@/components/ui';
 import { DraftBar, PresetChips, Stepper, Toggle } from '@/components/touch';
-import { PhotoField } from './shared';
 import { useDraft } from '@/lib/useDraft';
 import { confirmLeave } from '@/lib/sync';
 import { getGeo } from '@/lib/geo';
@@ -25,12 +24,12 @@ export const useReview = (job: Job) => {
 };
 
 /* ---------------- shared tables ---------------- */
-export function QuoteLines({ items, mode, rate, photos }: { items: QuoteItem[]; mode: Variation['vat_mode']; rate: number; photos?: boolean }) {
+export function QuoteLines({ items, mode, rate }: { items: QuoteItem[]; mode: Variation['vat_mode']; rate: number }) {
   return (
     <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Service</th><th>Description / area</th><th className="num">Qty</th><th>Unit</th><th className="num">Rate</th><th className="num">Discount</th><th className="num">VAT</th><th className="num">Line total</th></tr></thead><tbody>
       {items.map((i, k) => { const t = lineTotals(i, mode, rate); return (
         <tr key={k}><td>{categoryLabel(i.category)}</td>
-          <td><b>{i.description}</b>{i.note && <div className="small muted">Reason: {i.note}</div>}{i.entered_qty !== undefined && i.entered_qty !== i.qty && <div className="small" style={{ color: 'var(--amber)' }}>Counted {i.entered_qty} — minimum of {i.qty} {i.unit} applies</div>}{photos && i.photo && <img src={i.photo} alt="Before" style={{ height: 54, borderRadius: 6, marginTop: 4 }} />}</td>
+          <td><b>{i.description}</b>{i.note && <div className="small muted">Reason: {i.note}</div>}{i.entered_qty !== undefined && i.entered_qty !== i.qty && <div className="small" style={{ color: 'var(--amber)' }}>Counted {i.entered_qty} — minimum of {i.qty} {i.unit} applies</div>}</td>
           <td className="num">{i.qty}</td><td>{i.unit}</td><td className="num">{money(i.rate)}</td><td className="num">{i.discount ? money(i.discount) : '—'}</td><td className="num">{money(t.vat)}</td><td className="num"><b>{money(t.total)}</b></td></tr>
       ); })}
     </tbody></table></div>
@@ -79,7 +78,7 @@ export function AdditionalWork({ wf, job, run, onPresent }: { wf: JobWorkflow; j
       <div className="row between"><div><b>Additional work (optional)</b><div className="small muted">Work requested or found on site. It is only billed if the client approves and signs.</div></div>{run && <button className="btn navy" onClick={() => setEdit({ idx: null })}>+ Add additional work</button>}</div>
       {run && <DraftBar d={dr} />}
       {draft?.revision_open && <div className="alert warn"><b>The client asked for a revision:</b> “{draft.revision_note}”. Update the lines below, then present the final quote again.</div>}
-      {resolved.length ? <QuoteLines items={resolved} mode={vat.vat_mode} rate={vat.vat_rate} photos /> : <div className="muted">No additional work. The original quotation is the final bill.</div>}
+      {resolved.length ? <QuoteLines items={resolved} mode={vat.vat_mode} rate={vat.vat_rate} /> : <div className="muted">No additional work. The original quotation is the final bill.</div>}
       {run && resolved.length > 0 && <div className="row">{items.map((it, k) => <span key={k} className="row" style={{ gap: 6 }}><button className="btn sm" onClick={() => setEdit({ idx: k, line: it })}>Edit line {k + 1}</button><button className="btn sm danger" onClick={() => setItems(items.filter((_, x) => x !== k))}>Remove {k + 1}</button></span>)}</div>}
       {history.length > 0 && <div className="small muted">Previously offered: {history.map((h) => `${h.number} ${h.status === 'Rejected' ? 'declined' : h.status.toLowerCase()}`).join(' · ')}</div>}
       <div className="form-grid">
@@ -109,12 +108,11 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
   const [linked, setLinked] = useState(initial?.linked_panels ?? true);
   const [rate, setRate] = useState<number>(initial?.rate ?? def.rate);
   const [disc, setDisc] = useState<number>(initial?.discount ?? 0);
-  const [photo, setPhoto] = useState<string | undefined>(initial?.photo);
   const [note, setNote] = useState(initial?.note ?? '');
-  const dr = useDraft(`d:${wf.id}:conf:line:${initial ? 'edit' : 'new'}`, { cat, unitSel, customUnit, desc, qty, linked, rate, disc, photo, note }, (d) => { setCat(d.cat); setUnitSel(d.unitSel); setCustomUnit(d.customUnit); setDesc(d.desc); setQty(d.qty); setLinked(d.linked); setRate(d.rate); setDisc(d.disc); setPhoto(d.photo); setNote(d.note); });
+  const dr = useDraft(`d:${wf.id}:conf:line:${initial ? 'edit' : 'new'}`, { cat, unitSel, customUnit, desc, qty, linked, rate, disc, note }, (d) => { setCat(d.cat); setUnitSel(d.unitSel); setCustomUnit(d.customUnit); setDesc(d.desc); setQty(d.qty); setLinked(d.linked); setRate(d.rate); setDisc(d.disc); setNote(d.note); });
   const pickCat = (k: AdditionalCategory) => { const d = categoryDefaults(db.services, k); setCat(k); setRate(d.rate); setUnitSel(d.unit); setLinked(k === 'glass'); };
   const unit = unitSel === 'custom' ? customUnit.trim() : unitSel;
-  const line: QuoteItem = { service_code: ADDITIONAL_CATEGORIES.find((c) => c.key === cat)!.code, category: cat, description: desc, qty: qty ?? 0, entered_qty: qty ?? 0, unit, rate, discount: disc, photo, note: note.trim() || undefined, linked_panels: cat === 'glass' && linked };
+  const line: QuoteItem = { service_code: ADDITIONAL_CATEGORIES.find((c) => c.key === cat)!.code, category: cat, description: desc, qty: qty ?? 0, entered_qty: qty ?? 0, unit, rate, discount: disc, note: note.trim() || undefined, linked_panels: cat === 'glass' && linked };
   const [res] = resolveReviewItems(db, wf.panels, [line]);
   const t = lineTotals(res, vat.vat_mode, vat.vat_rate);
   const minApplied = def.min > 0 && (res.entered_qty ?? 0) > 0 && res.qty > (res.entered_qty ?? 0);
@@ -150,7 +148,6 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
           <div className="row between"><span>VAT {vat.vat_mode === 'none' ? '(none)' : `${vat.vat_rate}%${vat.vat_mode === 'inclusive' ? ' included' : ''}`}</span><b>{money(t.vat)}</b></div>
           <div className="row between big"><span>Line total</span><b>{money(t.total)}</b></div>
         </div>
-        <Field label="Before photo (if applicable)"><PhotoField label="Take before photo" value={photo} onChange={setPhoto} /></Field>
         <Field label="Notes / reason for additional work"><textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why this work is needed" /><PresetChips replace options={['Client requested at site', 'Found on site – not in original scope', 'Quantity higher than quoted', 'Safety / access requirement']} value={note} onChange={setNote} /></Field>
       </div>
     </Modal>
@@ -172,13 +169,13 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
   const hasAdds = pendingItems.length > 0;
   const revision = !!draft?.revision_open;
   const [mode, setMode] = useState<'approve' | 'decline' | 'revise' | null>(null);
-  const [name, setName] = useState(site?.contact_person ?? ''); const [sig, setSig] = useState<string>(); const [file, setFile] = useState<{ data: string; name: string }>();
+  const [name, setName] = useState(site?.contact_person ?? ''); const [sig, setSig] = useState<string>();
   const [agree, setAgree] = useState(false); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false);
-  const dr = useDraft(`d:${wf.id}:conf`, { name, sig, file }, (d) => { setName(d.name); setSig(d.sig); setFile(d.file); }, run && !signed);
+  const dr = useDraft(`d:${wf.id}:conf`, { name, sig }, (d) => { setName(d.name); setSig(d.sig); }, run && !signed);
   useEffect(() => { document.body.classList.add('noscroll'); return () => document.body.classList.remove('noscroll'); }, []);
   const close = () => { if (dr.dirty && !confirmLeave()) return; onClose(); };
   const geo = async () => { const g = await getGeo(); return { lat: g.lat, lng: g.lng, gps_note: g.lat === undefined ? 'Location unavailable on this device' : undefined, device: deviceInfo() }; };
-  const doApprove = async () => { setBusy(true); const g = await geo(); const r = attempt(() => approveFinalQuote(wf.id, { name, signature: sig, file: file?.data, file_name: file?.name, confirmed: agree, ...g }), hasAdds ? 'Final quote approved — additional work recorded as a change order' : 'Final quote signed'); setBusy(false); if (r) { dr.markSaved(); onClose(); } };
+  const doApprove = async () => { setBusy(true); const g = await geo(); const r = attempt(() => approveFinalQuote(wf.id, { name, signature: sig, confirmed: agree, ...g }), hasAdds ? 'Final quote approved — additional work recorded as a change order' : 'Final quote signed'); setBusy(false); if (r) { dr.markSaved(); onClose(); } };
   const doDecline = async () => { setBusy(true); const g = await geo(); const r = attempt(() => declineAdditionalWork(wf.id, { client_name: name, reason, ...g }), 'Additional work declined — recorded as offered and declined'); setBusy(false); if (r) { setMode(null); setReason(''); } };
   const doRevise = () => { if (attempt(() => requestFinalQuoteRevision(wf.id, reason), 'Revision requested')) onClose(); };
   const adds = signed ? approved : [];
@@ -200,7 +197,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
 
         <h3 className="crh">2 · Additional Work Requested / Confirmed at Site</h3>
         {revision && <div className="alert warn">A revision was requested: “{draft?.revision_note}”. The additional work is being updated.</div>}
-        {hasAdds ? <QuoteLines items={pendingItems} mode={vat.vat_mode} rate={vat.vat_rate} photos /> : adds.length ? adds.map((v) => <div key={v.id}><div className="small muted">{v.number} · approved {fmtDateTime(v.signed_at)}</div><QuoteLines items={v.items} mode={v.vat_mode} rate={v.vat_rate} photos /></div>) : <p className="muted">No additional work.</p>}
+        {hasAdds ? <QuoteLines items={pendingItems} mode={vat.vat_mode} rate={vat.vat_rate} /> : adds.length ? adds.map((v) => <div key={v.id}><div className="small muted">{v.number} · approved {fmtDateTime(v.signed_at)}</div><QuoteLines items={v.items} mode={v.vat_mode} rate={v.vat_rate} /></div>) : <p className="muted">No additional work.</p>}
         {history.filter((h) => h.status === 'Rejected').map((h) => <div key={h.id} className="alert info" style={{ marginTop: 8 }}>Offered and declined by the client ({h.number}): {h.items.map((i) => i.description).join('; ')} — <b>not included</b> in the final bill.</div>)}
 
         <h3 className="crh">3 · Final Billing Summary</h3>
@@ -212,7 +209,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
             <b>Approved and signed</b>
             <dl className="kv" style={{ marginTop: 8 }}><dt>Client</dt><dd>{wf.conf_name}</dd><dt>Date & time</dt><dd>{fmtDateTime(wf.conf_at)}</dd><dt>Location</dt><dd>{wf.conf_lat !== undefined ? `${wf.conf_lat}, ${wf.conf_lng}` : wf.conf_gps_note ?? '—'}</dd><dt>Device</dt><dd>{wf.conf_device || '—'}</dd></dl>
             {wf.conf_signature && <img src={wf.conf_signature} alt="Client signature" style={{ maxHeight: 90, border: '1px solid var(--line)', borderRadius: 6 }} />}
-            <div style={{ marginTop: 10 }}><button className="btn" onClick={() => attempt(() => conformePdf(db, job))}>Download final quote &amp; conforme (PDF)</button></div>
+            <div style={{ marginTop: 10 }}><button className="btn" onClick={() => attempt(() => conformePdf(db, job))}>Download scope &amp; final quote (PDF)</button></div>
           </div>
         ) : run ? (
           <div className="cractions">
@@ -227,7 +224,6 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
                 <b>Client approval{hasAdds ? ` — final total ${money(sm.finalTotal)}` : ''}</b>
                 <Field label="Client name" required><input value={name} onChange={(e) => setName(e.target.value)} /></Field>
                 <div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad value={sig} onChange={setSig} /></div>
-                <div className="row"><PhotoInput label="Attach signed copy (optional)" accept="image/*,application/pdf" onAdd={(d, n) => setFile({ data: d, name: n })} />{file && <Badge tone="green">{file.name}</Badge>}</div>
                 <Toggle checked={agree} onChange={setAgree}>{hasAdds ? 'I have reviewed the original quotation, the additional work and the final bill, and I approve them.' : 'I have reviewed the quotation and I agree to its scope, rates and terms.'}</Toggle>
                 <div className="small muted">Date, time, device and GPS location are recorded when you tap Approve.</div>
                 <div className="row"><button className="btn lg" onClick={() => setMode(null)}>Back</button><button className="btn primary lg" disabled={busy} onClick={doApprove}>{busy ? 'Saving…' : 'Approve & Sign'}</button></div>

@@ -286,13 +286,11 @@ function compute(db: DB, from: string, to: string, f: { branch: string; service:
   const T0 = today();
   const cnt = (s: string) => allJobs.filter((j) => j.status === s);
   const byStatus: { status: string; label: string; count: number; hint?: string; tone?: 'navy' | 'warn' | 'good' | 'bad' }[] = [
-    { status: 'Dispatch Checklist Pending', label: 'Equipment checklist (HQ)', count: cnt('Dispatch Checklist Pending').length + allJobs.filter((j) => j.status === 'Confirmed' && j.start_at.startsWith(T0)).length, hint: 'confirmed today / in progress' },
+    { status: 'Dispatch Checklist Pending', label: 'Job prep (HQ)', count: cnt('Dispatch Checklist Pending').length + allJobs.filter((j) => j.status === 'Confirmed' && j.start_at.startsWith(T0)).length, hint: 'confirmed today / in progress' },
     { status: 'Dispatched', label: 'Dispatched', count: cnt('Dispatched').length, hint: 'on the road', tone: 'navy' },
-    { status: 'On Site', label: 'On site', count: cnt('On Site').length, hint: 'awaiting conforme / start' },
+    { status: 'On Site', label: 'On site', count: cnt('On Site').length, hint: 'awaiting scope approval' },
     { status: 'In Progress', label: 'Work in progress', count: cnt('In Progress').length, tone: 'navy' },
-    { status: 'Work Completed', label: 'Work completed', count: cnt('Work Completed').length, hint: 'return check pending', tone: cnt('Work Completed').length ? 'warn' : undefined },
-    { status: 'Leaving Site', label: 'Leaving site', count: cnt('Leaving Site').length },
-    { status: 'Arrived at HQ', label: 'Arrived at HQ', count: cnt('Arrived at HQ').length, hint: 'awaiting closure', tone: cnt('Arrived at HQ').length ? 'warn' : undefined },
+    { status: 'Work Completed', label: 'Handover signed', count: cnt('Work Completed').length, hint: 'close-out pending', tone: cnt('Work Completed').length ? 'warn' : undefined },
     { status: 'Closed', label: 'Closed (7 days)', count: allJobs.filter((j) => (j.status === 'Closed' || j.status === 'Completed') && j.start_at.slice(0, 10) >= addDays(T0, -7)).length, tone: 'good' },
   ];
   const inField = allJobs.filter((j) => AWAY_JOB.includes(j.status));

@@ -23,28 +23,30 @@ export const LIVE_JOB: JobStatus[] = ['Confirmed', 'Dispatch Checklist Pending',
 export const isDone = (s: JobStatus) => DONE_JOB.includes(s);
 export const isOpen = (s: JobStatus) => OPEN_JOB.includes(s);
 /** Forward-only status path (Cancelled / Rescheduled are side exits before dispatch). */
-export const JOB_FLOW: JobStatus[] = ['Confirmed', 'Dispatch Checklist Pending', 'Dispatched', 'On Site', 'In Progress', 'Work Completed', 'Leaving Site', 'Arrived at HQ', 'Closed'];
+export const JOB_FLOW: JobStatus[] = ['Confirmed', 'Dispatch Checklist Pending', 'Dispatched', 'On Site', 'In Progress', 'Work Completed', 'Closed'];
 
-/** The 11-step job workflow shown as the progress tracker in every Job Card. */
-export const WORKFLOW_STEPS = [
-  'Equipment Checklist (HQ)', 'Dispatch', 'Site Arrival + Attendance', 'Quotation / Conforme', 'Start Work', 'Final Quotation / Variation',
-  'Service Report + Client Signature', 'Equipment Checklist (Return)', 'Leave Site', 'Arrived at HQ', 'Job Closed',
-] as const;
+/** The 7-step job workflow shown as the progress tracker in every Job Card. */
+export const WORKFLOW_STEPS = ['Job Prep at HQ', 'Dispatch', 'Site Check-In', 'Scope Approval', 'Work in Progress', 'Client Handover', 'Close-Out'] as const;
 export type StepState = 'done' | 'current' | 'open' | 'locked';
-/** Step 6 (variation) is optional: it is available from Start Work until the report is signed, and never blocks the tracker. */
+/** Step state + the stamp (time, user) shown in the tracker. Step 4's variation approvals live inside step 4. */
 export function workflowProgress(wf: JobWorkflow | undefined, variations: Variation[] = []): { state: StepState; at?: string; by?: string }[] {
+  void variations;
   const w = wf ?? ({} as Partial<JobWorkflow>);
-  const stamps: ({ at?: string; by?: string } | undefined)[] = [
-    { at: w.hq_at, by: w.hq_by }, { at: w.disp_at, by: w.disp_by }, { at: w.arr_at, by: w.arr_by }, { at: w.conf_at, by: w.conf_by }, { at: w.start_at, by: w.start_by },
-    variations.length ? { at: nowLocal(new Date(variations[variations.length - 1].signed_at ?? variations[variations.length - 1].created_at)), by: variations[variations.length - 1].decided_by ?? variations[variations.length - 1].created_by } : undefined,
-    { at: w.rep_at, by: w.rep_by }, { at: w.rc_at, by: w.rc_by }, { at: w.leave_at, by: w.leave_by }, { at: w.hqa_at, by: w.hqa_by }, { at: w.closed_at, by: w.closed_by },
+  const stamps = [
+    { at: w.hq_at, by: w.hq_by }, { at: w.disp_at, by: w.disp_by }, { at: w.arr_at, by: w.arr_by }, { at: w.conf_at, by: w.conf_by },
+    { at: w.finish_at, by: w.finish_by }, { at: w.rep_at, by: w.rep_by }, { at: w.closed_at, by: w.closed_by },
   ];
-  const done = [!!w.hq_at, !!w.disp_at, !!w.arr_at, !!w.conf_at, !!w.start_at, !!w.rep_at && true, !!w.rep_at, !!w.rc_at, !!w.leave_at, !!w.hqa_at, !!w.closed_at];
-  done[5] = !!w.start_at && (!!w.rep_at || (variations.length > 0 && variations.every((v) => v.status === 'Approved' || v.status === 'Rejected')));
-  let cur = -1;
-  for (let i = 0; i < done.length; i++) { if (i === 5) continue; if (!done[i]) { cur = i; break; } }
-  return done.map((d, i) => ({ state: d ? 'done' : i === cur ? 'current' : i === 5 && !!w.start_at && !w.rep_at ? 'open' : 'locked', at: stamps[i]?.at, by: stamps[i]?.by }));
+  const done = stamps.map((s) => !!s.at);
+  const cur = done.findIndex((d) => !d);
+  return done.map((d, i) => ({ state: d ? 'done' : i === cur ? 'current' : 'locked', ...stamps[i] }));
 }
+
+/** A returning customer: an earlier finished job at the same site with an overlapping service. */
+export function isRecurringJob(d: Pick<DB, 'jobs'>, job: Job): boolean {
+  return d.jobs.some((j) => j.id !== job.id && !j.deleted_at && j.client_id === job.client_id && j.site_id === job.site_id && ['Closed', 'Completed'].includes(j.status) && j.start_at < job.start_at && j.service_codes.some((c) => job.service_codes.includes(c)));
+}
+/** Scope Approval route: a new client / job or a changed scope needs the client's signature; a recurring job with no change is just confirmed. */
+export const scopeRoute = (d: Pick<DB, 'jobs'>, job: Job, wf?: Pick<JobWorkflow, 'scope_changed'>): 'approval' | 'recurring' => (isRecurringJob(d, job) && !wf?.scope_changed ? 'recurring' : 'approval');
 
 /* ============ Glass panel counting & service pricing ============ */
 export interface GlassRow { w: number; h: number; qty: number; grouped?: boolean }
@@ -516,19 +518,13 @@ export function buildChecklistItems(d: Pick<DB, 'assets' | 'items'>, job: Job): 
 }
 
 export interface HqGaps { incomplete: string[]; shortages: string[] }
-/** What still blocks the HQ checklist (`incomplete`) and which items are short / damaged / missing (`shortages` — need a reason, raise incidents). */
-export function hqGaps(wf: Pick<JobWorkflow, 'items' | 'hq_odo' | 'hq_fuel' | 'hq_veh_condition' | 'hq_veh_notes'>): HqGaps {
+/** What still blocks the job-prep checklist (`incomplete`) and which items are short / damaged / missing (`shortages` — need a reason, raise incidents). */
+export function hqGaps(wf: Pick<JobWorkflow, 'items'>): HqGaps {
   const incomplete: string[] = []; const shortages: string[] = [];
-  if (wf.items.some((i) => i.kind === 'vehicle')) {
-    if (!(wf.hq_odo && wf.hq_odo > 0)) incomplete.push('Starting odometer');
-    if (!wf.hq_fuel) incomplete.push('Starting fuel level');
-    if (wf.hq_veh_condition === 'With Issue' && !wf.hq_veh_notes?.trim()) incomplete.push('Vehicle issue notes');
-  }
   for (const i of wf.items) {
-    if (i.kind === 'vehicle') { if (!i.out_ok) incomplete.push(`${i.label} – confirm`); continue; }
     if (!i.out_ok) { incomplete.push(`${i.label} – confirm`); continue; }
+    if (i.kind === 'vehicle') { if (i.out_condition === 'Damaged' || i.out_condition === 'Missing') shortages.push(`${i.label} ${i.out_condition.toLowerCase()}`); continue; }
     const cond = i.kind === 'material' ? i.out_container ?? 'Good' : i.out_condition ?? 'Good';
-    if (i.kind !== 'material' && i.out_condition === 'Damaged' && !i.out_photo) incomplete.push(`${i.label} – damage photo`);
     if ((i.loaded_qty ?? 0) < i.qty) shortages.push(`${i.label}: loaded ${i.loaded_qty ?? 0} of ${i.qty}${i.unit ? ' ' + i.unit : ''}`);
     if (cond === 'Missing') shortages.push(`${i.label} missing`);
     if (cond === 'Damaged' || cond === 'Leaking') shortages.push(`${i.label} ${String(cond).toLowerCase()}`);

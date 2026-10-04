@@ -123,7 +123,6 @@ export interface QuoteItem {
   category?: AdditionalCategory;
   entered_qty?: number;      // what was counted / entered; qty is the billable quantity (minimum applied)
   linked_panels?: boolean;   // glass: quantity comes from the panel-counting table
-  photo?: string;            // before photo
   note?: string;             // reason for the additional work
 }
 export interface Quotation extends Base {
@@ -154,7 +153,6 @@ export type JobStatus =
   | 'Cancelled' | 'Rescheduled';
 export interface ChecklistItem { label: string; done: boolean }
 export interface JobMaterial { item_id: string; planned_qty: number; used_qty?: number }
-export interface JobPhoto { kind: 'before' | 'after' | 'damage' | 'signoff'; caption: string; data: string; taken_at: string }
 
 export interface Job extends Base {
   number: string;
@@ -174,7 +172,6 @@ export interface Job extends Base {
   materials: JobMaterial[];
   ppe: string[];
   checklist: ChecklistItem[];
-  photos: JobPhoto[];
   findings: string;
   damage_report: string;
   equipment_condition_notes: string;
@@ -232,7 +229,6 @@ export interface Attendance extends Base {
   job_id?: string;
   field_work: boolean;
   in_lat?: number; in_lng?: number; out_lat?: number; out_lng?: number;
-  in_photo?: string; out_photo?: string;
   late_min: number;
   undertime_min: number;
   ot_min: number;
@@ -402,13 +398,11 @@ export interface Checkout extends Base {
   out_at?: string;
   out_condition?: Condition;
   out_meter?: number;
-  out_photos: string[];
   in_at?: string;
   in_condition?: Condition;
   in_meter?: number;
   damage_notes?: string;
   missing_accessories?: string;
-  in_photos: string[];
   note?: string;
 }
 export interface MaintenanceTicket extends Base {
@@ -424,12 +418,10 @@ export interface MaintenanceTicket extends Base {
 }
 
 /* ---------- Job workflow (lives inside each Job Card) ---------- */
-// 1 Equipment Checklist (HQ) → 2 Dispatch → 3 Site Arrival + Attendance → 4 Quotation / Conforme → 5 Start Work →
-// 6 Final Quotation / Variation → 7 Service Report + Client Signature → 8 Equipment Checklist (Return) → 9 Leave Site →
-// 10 Arrived at HQ → 11 Job Closed.  Every step stores date/time (`*_at`), user (`*_by`), notes, photos and GPS where applicable.
+// 1 Job Prep at HQ → 2 Dispatch → 3 Site Check-In → 4 Scope Approval → 5 Work in Progress → 6 Client Handover → 7 Close-Out.
+// Every step stores its date/time (`*_at`) and user (`*_by`). Job photos live in TopMop's own file system, not in this app.
 export type FuelLevel = 'Empty' | '1/4' | '1/2' | '3/4' | 'Full';
 export type ItemCondition = 'Good' | 'Damaged' | 'Missing';
-export type VehicleCondition = 'Good' | 'With Issue';
 export type ContainerCondition = 'Good' | 'Damaged' | 'Leaking';
 export interface CheckItem {
   key: string;
@@ -442,19 +434,17 @@ export interface CheckItem {
   qty: number;                // required quantity
   extra?: boolean;            // added by the team leader
   responsible_id?: string;
-  // step 1 – HQ checklist
+  // step 1 – job prep checklist
   loaded_qty?: number;        // actual quantity loaded (materials: quantity issued)
   out_ok?: boolean;           // confirmed by scan, typed asset ID or manual tick
   out_by?: 'scan' | 'id' | 'manual';
   out_condition?: ItemCondition;
   out_container?: ContainerCondition; // chemicals / materials
-  out_photo?: string;
   out_note?: string;
-  // step 8 – return check (at the client site)
+  // step 7 – close-out (return) check
   returned_qty?: number;
   ret_condition?: ItemCondition;
   ret_by?: 'scan' | 'id' | 'manual';
-  ret_photo?: string;
   ret_note?: string;
   repair_required?: boolean;
   used_qty?: number;          // materials: issued − returned (calculated)
@@ -472,29 +462,27 @@ export interface JobWorkflow extends Base {
   job_id: string;
   items: CheckItem[];
   panels: PanelRow[];
-  // 1 Equipment Checklist (HQ)
-  hq_at?: string; hq_by?: string; hq_odo?: number; hq_fuel?: FuelLevel; hq_veh_condition?: VehicleCondition; hq_veh_photo?: string; hq_veh_notes?: string; hq_notes?: string; hq_shortage_reason?: string;
-  // 2 Dispatch
-  disp_at?: string; disp_by?: string; disp_lat?: number; disp_lng?: number; disp_gps_note?: string; disp_photo?: string; disp_notes?: string;
-  // 3 Site Arrival + Attendance
-  arr_at?: string; arr_by?: string; arr_lat?: number; arr_lng?: number; arr_gps_note?: string; arr_photos: string[];
-  arr_contact_name?: string; arr_contact_mobile?: string; arr_notes?: string; arr_crew_present?: string[]; arr_crew_absent?: { id: string; reason: string }[];
-  // 4 Quotation / Conforme
-  conf_at?: string; conf_by?: string; conf_quotation_id?: string; conf_original_total?: number; conf_name?: string; conf_signature?: string; conf_file?: string; conf_file_name?: string; conf_notes?: string;
+  // 1 Job Prep at HQ
+  hq_at?: string; hq_by?: string; hq_fuel?: FuelLevel; hq_notes?: string; hq_shortage_reason?: string;
+  // 2 Dispatch (actual departure time + leader confirmation)
+  disp_at?: string; disp_by?: string;
+  // 3 Site Check-In (arrival + attendance)
+  arr_at?: string; arr_by?: string; arr_contact_name?: string; arr_contact_mobile?: string; arr_notes?: string;
+  arr_crew_present?: string[]; arr_crew_absent?: { id: string; reason: string }[];
+  // 4 Scope Approval: 'approval' = quotation / conforme signed by the client, 'confirmed' = recurring job, scope unchanged
+  scope_changed?: boolean;
+  conf_mode?: 'approval' | 'confirmed';
+  conf_at?: string; conf_by?: string; conf_quotation_id?: string; conf_original_total?: number; conf_name?: string; conf_signature?: string; conf_notes?: string;
   conf_variation_id?: string; conf_final_total?: number; conf_deposit?: number; conf_deposit_note?: string; conf_lat?: number; conf_lng?: number; conf_gps_note?: string; conf_device?: string;
-  // 5 Start Work
-  start_at?: string; start_by?: string; start_crew_present?: string[]; start_safety?: boolean; start_ppe?: boolean; start_photos: string[]; start_notes?: string;
-  // 7 Service Accomplishment Report
+  // 5 Work in Progress
+  start_at?: string; start_by?: string; finish_at?: string; finish_by?: string; work_notes?: string;
+  // 6 Client Handover (Service Accomplishment Report)
   rep_at?: string; rep_by?: string; rep_scope?: string; rep_method?: string; rep_findings?: string; rep_limits?: string; rep_recs?: string; rep_complimentary?: string;
   rep_client_name?: string; rep_client_sig?: string; rep_client_at?: string; rep_tm_name?: string; rep_tm_sig?: string; rep_rating?: number; rep_notes?: string;
-  // 8 Equipment Checklist (Return)
-  rc_at?: string; rc_by?: string; rc_notes?: string; rc_photos: string[];
-  // 9 Leave Site
-  leave_at?: string; leave_by?: string; leave_lat?: number; leave_lng?: number; leave_gps_note?: string; leave_photo?: string; leave_notes?: string;
-  // 10 Arrived at HQ
-  hqa_at?: string; hqa_by?: string; hqa_lat?: number; hqa_lng?: number; hqa_gps_note?: string; hqa_odo?: number; hqa_fuel?: FuelLevel;
-  hqa_veh_condition?: VehicleCondition; hqa_veh_notes?: string; hqa_equipment_ok?: boolean; hqa_notes?: string; distance_km?: number;
-  // 11 Job Closed
+  // 7 Close-Out (equipment return + leaving site + arrival at HQ + leader confirmation)
+  rc_at?: string; rc_by?: string; rc_notes?: string;
+  leave_at?: string; leave_by?: string;
+  hqa_at?: string; hqa_by?: string; hqa_fuel?: FuelLevel;
   closed_at?: string; closed_by?: string; closed_notes?: string;
 }
 export type VariationStatus = 'Draft' | 'Pending Approval' | 'Approved' | 'Rejected';
@@ -508,7 +496,7 @@ export interface Variation extends Base {
   vat_rate: number;
   panel_row_ids: string[];    // additional glass panels linked from the panel-counting table
   status: VariationStatus;
-  client_name?: string; client_signature?: string; signed_at?: string; signed_file?: string; signed_file_name?: string;
+  client_name?: string; client_signature?: string; signed_at?: string;
   decided_by?: string; notes?: string;
   // Client Final Quote Review (step 4): additions offered at the site before the conforme is signed
   source?: 'final_review';

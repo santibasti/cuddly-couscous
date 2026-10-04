@@ -55,7 +55,7 @@ export function DraftBar({ d }: { d: DraftApi }) {
     <div className="draftbar">
       <span className={`syncbadge ${state}`} role="status"><b aria-hidden="true">{ICON[state]}</b><span>{SYNC_LABEL[state]}</span></span>
       {d.dirty && <span className="small muted">{!s.online ? 'Draft kept on this tablet — it will sync when you are back online.' : 'Draft kept on this tablet until you submit this step.'}</span>}
-      {d.status === 'trimmed' && <span className="small" style={{ color: 'var(--amber)' }}>Storage is full — large photos were left out of the draft.</span>}
+      {d.status === 'trimmed' && <span className="small" style={{ color: 'var(--amber)' }}>Storage is full — large attachments were left out of the draft.</span>}
       {d.restoredAt && d.dirty && <span className="small">Restored from {fmtStamp(d.restoredAt)}. <button type="button" className="linkbtn" onClick={() => { if (window.confirm('Discard this draft and start the step over?')) d.discard(); }}>Discard draft</button></span>}
     </div>
   );

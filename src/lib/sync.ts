@@ -49,7 +49,7 @@ export interface Draft<T> { at: string; data: T; trimmed?: boolean }
 export function loadDraft<T>(key: string): Draft<T> | null {
   try { const raw = localStorage.getItem(PFX + key); return raw ? (JSON.parse(raw) as Draft<T>) : null; } catch { return null; }
 }
-/** 'trimmed' = storage was full, so large photos were left out of the draft. */
+/** 'trimmed' = storage was full, so large attachments were left out of the draft. */
 export function saveDraft<T>(key: string, data: T): 'ok' | 'trimmed' | 'failed' {
   const put = (d: unknown, trimmed?: boolean) => localStorage.setItem(PFX + key, JSON.stringify({ at: new Date().toISOString(), data: d, trimmed }));
   try { put(data); return 'ok'; } catch { /* quota — retry without big attachments */ }

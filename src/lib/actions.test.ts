@@ -36,15 +36,15 @@ describe('business rules enforced by the store', () => {
     await as('owner@topmop.ph');
     const active = db().checkouts.find((c) => c.status === 'Released')!;
     const other = db().jobs.find((j) => j.id !== active.job_id && ['Pending', 'Confirmed'].includes(j.status))!;
-    const co = m.store.insert('checkouts', { asset_id: active.asset_id, job_id: other.id, requested_by: other.leader_id!, responsible_id: other.leader_id!, status: 'Requested', expected_return: `${other.end_at}`, out_photos: [], in_photos: [] } as never);
-    expect(() => m.A.releaseCheckout(co.id, { condition: 'Good', photos: [] })).toThrow(/still checked out/);
+    const co = m.store.insert('checkouts', { asset_id: active.asset_id, job_id: other.id, requested_by: other.leader_id!, responsible_id: other.leader_id!, status: 'Requested', expected_return: `${other.end_at}`, out_in_photos: [] } as never);
+    expect(() => m.A.releaseCheckout(co.id, { condition: 'Good' })).toThrow(/still checked out/);
   });
 
   it('opens a repair ticket and takes the asset out of service when damage is reported on return', async () => {
     await as('owner@topmop.ph');
     const active = db().checkouts.find((c) => c.status === 'Released' && db().assets.find((a) => a.id === c.asset_id)!.category !== 'Vehicle')!;
     const before = db().tickets.length;
-    m.A.returnCheckout(active.id, { condition: 'Damaged', damage_notes: 'Cracked hose fitting', missing: '', photos: [] });
+    m.A.returnCheckout(active.id, { condition: 'Damaged', damage_notes: 'Cracked hose fitting', missing: '' });
     expect(db().tickets.length).toBe(before + 1);
     expect(db().assets.find((a) => a.id === active.asset_id)!.status).toBe('Damaged');
     expect(() => m.store.remove('checkouts', active.id)).toThrow(/cannot be deleted/);

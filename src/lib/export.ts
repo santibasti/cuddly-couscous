@@ -271,20 +271,11 @@ export async function serviceReportPdf(db: DB, j: Job) {
   autoTable(doc, { startY: y, head: [['Crew', 'Role']], body: [...(j.leader_id ? [[jobEmp(db, j.leader_id), 'Team Leader']] : []), ...j.crew_ids.map((id) => [jobEmp(db, id), 'Technician'])], ...tableStyle, margin: { left: 12, right: 100 } });
   y = ymax(doc) + 6;
   if (j.materials.length) { autoTable(doc, { startY: y, head: [['Materials used', 'Qty', 'UoM']], body: j.materials.map((m) => { const it = db.items.find((i) => i.id === m.item_id)!; return [it.name, m.used_qty ?? m.planned_qty, it.uom]; }), ...tableStyle, margin: { left: 12, right: 100 } }); y = ymax(doc) + 6; }
-  sec('Checklist', j.checklist.map((c) => `${c.done ? '[x]' : '[ ]'} ${c.label}`).join('   '));
+  if (wf?.start_at && wf.finish_at) sec('Work period', `${fmtDateTime(wf.start_at)} to ${fmtDateTime(wf.finish_at)}${wf.work_notes ? `\n${wf.work_notes}` : ''}`);
   sec('Findings', wf?.rep_findings || j.findings);
   sec('Limitations / exclusions', wf?.rep_limits || 'None noted.');
   sec('Recommendations', wf?.rep_recs || 'None.');
   sec('Complimentary services', wf?.rep_complimentary || 'None.');
-  const ph = j.photos.filter((p) => p.kind === 'before' || p.kind === 'after').slice(-4);
-  if (ph.length) {
-    if (y > 200) { doc.addPage(); y = 16; }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Before / after photos', 12, y); y += 3;
-    for (const [i, p] of ph.entries()) {
-      try { const r = await toRaster(p.data); doc.addImage(r.data, r.fmt, 12 + (i % 2) * 94, y + Math.floor(i / 2) * 52, 90, 48); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text(clean(p.caption || p.kind), 12 + (i % 2) * 94, y + Math.floor(i / 2) * 52 + 51); } catch { /* unsupported image */ }
-    }
-    y += Math.ceil(ph.length / 2) * 54;
-  }
   if (y > 235) { doc.addPage(); y = 16; }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Client acceptance', 12, y + 4); doc.text('TopMop representative', 110, y + 4);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
@@ -328,9 +319,6 @@ export async function conformePdf(db: DB, j: Job) {
     y = ymax(doc) + 3;
     if (v.status === 'Approved') { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(`Approved by ${clean(v.client_name ?? '')} on ${fmtDateTime(v.signed_at)}`, 12, y); y += 5; }
     if (v.status === 'Rejected' && v.notes) { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(clean(`Client note: ${v.notes}`), 12, y); y += 5; }
-    const ph = v.items.filter((i) => i.photo).slice(0, 4);
-    for (const [k, i] of ph.entries()) { try { room(36); const r = await toRaster(i.photo!); doc.addImage(r.data, r.fmt, 12 + k * 46, y, 42, 28); } catch { /* skip */ } }
-    if (ph.length) y += 32;
   }
 
   h('3. Final Billing Summary');
@@ -343,12 +331,18 @@ export async function conformePdf(db: DB, j: Job) {
     didParseCell: (d: { row: { index: number }; cell: { styles: { fontStyle: string } } }) => { if (d.row.index === 4 || d.row.index === 6) d.cell.styles.fontStyle = 'bold'; } });
   y = ymax(doc) + 6;
   room(60); doc.setFont('helvetica', 'italic'); doc.setFontSize(9); y = wrapText(doc, 'Any additional work listed above has been discussed with and approved by the client before commencement.', 12, y, 186) + 4;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Client conforme', 12, y); y += 5; doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-  doc.text('I have reviewed the original quotation, the additional work and the final bill above, and I agree to the scope, rates and terms.', 12, y, { maxWidth: 186 }); y += 9;
-  doc.text(`${clean(wf?.conf_name ?? '—')} - ${fmtDateTime(wf?.conf_at)}`, 12, y);
-  const where = wf?.conf_lat !== undefined ? `GPS ${wf.conf_lat}, ${wf.conf_lng}` : wf?.conf_gps_note ? `GPS not captured (${clean(wf.conf_gps_note)})` : '';
-  doc.setFontSize(8); doc.setTextColor(110, 125, 145); doc.text(clean([where, wf?.conf_device ? `Device: ${wf.conf_device}` : ''].filter(Boolean).join('   ')), 12, y + 4.5); doc.setTextColor(20, 36, 58);
-  sigImg(doc, wf?.conf_signature, 12, y + 7);
+  if (wf?.conf_mode === 'confirmed') {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Scope confirmed - no changes', 12, y); y += 5; doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    doc.text(clean(`The existing approved scope was confirmed by the TopMop Team Leader (${db.users.find((u) => u.id === wf.conf_by)?.name ?? '-'}) on ${fmtDateTime(wf.conf_at)}. No new client signature was required.`), 12, y, { maxWidth: 186 });
+  } else {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Client conforme', 12, y); y += 5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    doc.text('I have reviewed the original quotation, the additional work and the final bill above, and I agree to the scope, rates and terms.', 12, y, { maxWidth: 186 }); y += 9;
+    doc.text(`${clean(wf?.conf_name ?? '—')} - ${fmtDateTime(wf?.conf_at)}`, 12, y);
+    const where = wf?.conf_lat !== undefined ? `GPS ${wf.conf_lat}, ${wf.conf_lng}` : wf?.conf_gps_note ? `GPS not captured (${clean(wf.conf_gps_note)})` : '';
+    doc.setFontSize(8); doc.setTextColor(110, 125, 145); doc.text(clean([where, wf?.conf_device ? `Device: ${wf.conf_device}` : ''].filter(Boolean).join('   ')), 12, y + 4.5); doc.setTextColor(20, 36, 58);
+    sigImg(doc, wf?.conf_signature, 12, y + 7);
+  }
   void w;
   footer(doc); doc.save(`final-quote-${j.number}.pdf`);
   store.audit('export', 'jobs', j.id, `Exported final quote & conforme ${j.number}`);

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '@/lib/store';
-import { Badge, Field, Modal, PhotoInput, SignaturePad, attempt, ask } from '@/components/ui';
+import { Badge, Field, Modal, SignaturePad, attempt, ask } from '@/components/ui';
 import { DraftBar, PresetChips, Stepper } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { PRESETS } from '@/lib/presets';
@@ -104,16 +104,15 @@ function ApproveModal({ v, onClose }: { v: Variation; onClose: () => void }) {
   const { db } = useAuth();
   const job = db.jobs.find((j) => j.id === v.job_id)!;
   const [name, setName] = useState(db.sites.find((s) => s.id === job.site_id)?.contact_person ?? '');
-  const [sig, setSig] = useState<string>(); const [file, setFile] = useState<{ data: string; name: string }>();
-  const dr = useDraft(`d:${v.job_id}:varsign:${v.id}`, { name, sig, file }, (d) => { setName(d.name); setSig(d.sig); setFile(d.file); });
+  const [sig, setSig] = useState<string>();
+  const dr = useDraft(`d:${v.job_id}:varsign:${v.id}`, { name, sig }, (d) => { setName(d.name); setSig(d.sig); });
   const close = () => { if (dr.dirty && !confirmLeave()) return; onClose(); };
   return (
-    <Modal title={`Client approval – ${v.number}`} onClose={close} footer={<><button className="btn" onClick={close}>Cancel</button><button className="btn primary" onClick={() => { if (attempt(() => approveVariation(v.id, { client_name: name, signature: sig, file: file?.data, file_name: file?.name }), 'Variation approved — additional work may begin')) { dr.markSaved(); onClose(); } }}>Approve &amp; sign</button></>}>
+    <Modal title={`Client approval – ${v.number}`} onClose={close} footer={<><button className="btn" onClick={close}>Cancel</button><button className="btn primary" onClick={() => { if (attempt(() => approveVariation(v.id, { client_name: name, signature: sig }), 'Variation approved — additional work may begin')) { dr.markSaved(); onClose(); } }}>Approve &amp; sign</button></>}>
       <div className="alert warn" style={{ marginBottom: 10 }}>Additional work must not begin until the client has approved and signed. Variation total: <b>{money(variationTotals(v).total)}</b>.</div>
       <div className="stack">
         <Field label="Client name" required><input value={name} onChange={(e) => setName(e.target.value)} /></Field>
         <div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad value={sig} onChange={setSig} /></div>
-        <div className="row"><PhotoInput label="Attach signed copy (optional)" accept="image/*,application/pdf" onAdd={(d, n) => setFile({ data: d, name: n })} />{file && <Badge tone="green">{file.name}</Badge>}</div>
       </div>
     </Modal>
   );

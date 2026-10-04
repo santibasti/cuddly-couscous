@@ -8,7 +8,7 @@ import { syncHub } from './sync';
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
 
-const KEY = 'topmop-ops-db-v3';
+const KEY = 'topmop-ops-db-v4';
 const SESSION = 'topmop-ops-session-v1';
 
 export class PermissionError extends Error {}

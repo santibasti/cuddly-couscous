@@ -61,14 +61,12 @@ function ReleaseModal({ co, onClose }: { co: Checkout; onClose: () => void }) {
   const a = db.assets.find((x) => x.id === co.asset_id)!;
   const [cond, setCond] = useState<Condition>(a.condition);
   const [meter, setMeter] = useState<number | undefined>(a.meter_reading);
-  const [photos, setPhotos] = useState<string[]>([]);
   return (
-    <Modal title={`Release ${a.name}`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => { if (attempt(() => releaseCheckout(co.id, { condition: cond, meter, photos }), 'Released — asset is now checked out')) onClose(); }}>Release equipment</button></>}>
+    <Modal title={`Release ${a.name}`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => { if (attempt(() => releaseCheckout(co.id, { condition: cond, meter: a.category === 'Vehicle' ? undefined : meter }), 'Released — asset is now checked out')) onClose(); }}>Release equipment</button></>}>
       <div className="form-grid">
         <div className="full alert info">Releasing to <b>{db.employees.find((e) => e.id === co.responsible_id)?.full_name}</b> for <b>{db.jobs.find((j) => j.id === co.job_id)?.number}</b>. Out time is stamped now ({fmtDateTime(nowLocal())}).</div>
         <Field label="Condition at release"><select value={cond} onChange={(e) => setCond(e.target.value as Condition)}>{CONDS.map((c) => <option key={c}>{c}</option>)}</select></Field>
-        {a.meter_unit && <Field label={`Meter reading (${a.meter_unit})`}><input type="number" value={meter ?? ''} onChange={(e) => setMeter(e.target.value === '' ? undefined : +e.target.value)} /></Field>}
-        <div className="full"><PhotoInput label="Add condition photo" capture="environment" onAdd={(d) => setPhotos([...photos, d])} /><div style={{ marginTop: 8 }}><Photos items={photos.map((p) => ({ src: p }))} onRemove={(i) => setPhotos(photos.filter((_, k) => k !== i))} /></div></div>
+        {a.meter_unit && a.category !== 'Vehicle' && <Field label={`Meter reading (${a.meter_unit})`}><input type="number" value={meter ?? ''} onChange={(e) => setMeter(e.target.value === '' ? undefined : +e.target.value)} /></Field>}
       </div>
     </Modal>
   );
@@ -78,15 +76,13 @@ function ReturnModal({ co, onClose }: { co: Checkout; onClose: () => void }) {
   const { db } = useAuth();
   const a = db.assets.find((x) => x.id === co.asset_id)!;
   const f = useObj({ cond: 'Good' as Condition, meter: undefined as number | undefined, damage: '', missing: '' });
-  const [photos, setPhotos] = useState<string[]>([]);
   return (
-    <Modal title={`Return ${a.name}`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => { if (attempt(() => returnCheckout(co.id, { condition: f.v.cond, meter: f.v.meter, damage_notes: f.v.damage, missing: f.v.missing, photos }), 'Returned')) onClose(); }}>Confirm return</button></>}>
+    <Modal title={`Return ${a.name}`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => { if (attempt(() => returnCheckout(co.id, { condition: f.v.cond, meter: a.category === 'Vehicle' ? undefined : f.v.meter, damage_notes: f.v.damage, missing: f.v.missing }), 'Returned')) onClose(); }}>Confirm return</button></>}>
       <div className="form-grid">
         <Field label="Condition on return"><select value={f.v.cond} onChange={(e) => f.set('cond', e.target.value as Condition)}>{CONDS.map((c) => <option key={c}>{c}</option>)}</select></Field>
-        {a.meter_unit && <Field label={`Meter reading (${a.meter_unit})`} hint={co.out_meter !== undefined ? `Out: ${co.out_meter}` : undefined}><input type="number" value={f.v.meter ?? ''} onChange={(e) => f.set('meter', e.target.value === '' ? undefined : +e.target.value)} /></Field>}
+        {a.meter_unit && a.category !== 'Vehicle' && <Field label={`Meter reading (${a.meter_unit})`} hint={co.out_meter !== undefined ? `Out: ${co.out_meter}` : undefined}><input type="number" value={f.v.meter ?? ''} onChange={(e) => f.set('meter', e.target.value === '' ? undefined : +e.target.value)} /></Field>}
         <Field label="Damage notes" className="full" hint="Damage automatically opens a repair ticket and takes the asset out of service."><textarea value={f.v.damage} onChange={(e) => f.set('damage', e.target.value)} /></Field>
         <Field label="Missing accessories" className="full"><input value={f.v.missing} onChange={(e) => f.set('missing', e.target.value)} /></Field>
-        <div className="full"><PhotoInput label="Add return photo" capture="environment" onAdd={(d) => setPhotos([...photos, d])} /><div style={{ marginTop: 8 }}><Photos items={photos.map((p) => ({ src: p }))} onRemove={(i) => setPhotos(photos.filter((_, k) => k !== i))} /></div></div>
       </div>
     </Modal>
   );
@@ -181,8 +177,7 @@ export default function Assets() {
           { key: 'st', header: 'Status', value: (c) => (isOverdue(c) ? 'Overdue' : c.status), render: (c) => <span className="row" style={{ gap: 4 }}><Badge>{c.status}</Badge>{isOverdue(c) && <Badge tone="red">Overdue</Badge>}</span> },
           { key: 'actions', header: '', noExport: true, sortable: false, render: (c) => <span className="row">
             {c.status === 'Requested' && can('assets.approve') && <><button className="btn sm primary" onClick={() => setRel(c)}>Release</button><button className="btn sm" onClick={async () => { const n = await ask('Reject request', 'Reason'); if (n) attempt(() => rejectCheckout(c.id, n), 'Request rejected'); }}>Reject</button></>}
-            {c.status === 'Released' && can('assets.request') && <button className="btn sm navy" onClick={() => setRet(c)}>Return</button>}
-            {(c.out_photos.length > 0 || c.in_photos.length > 0) && <span className="small muted">{c.out_photos.length + c.in_photos.length} photo(s)</span>}</span> },
+            {c.status === 'Released' && can('assets.request') && <button className="btn sm navy" onClick={() => setRet(c)}>Return</button>}</span> },
         ]} /></Card>
       )}
 

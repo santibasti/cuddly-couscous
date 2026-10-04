@@ -19,7 +19,6 @@ function MyClock({ emp }: { emp: Employee }) {
   const { db } = useAuth();
   const T = today();
   const rec = db.attendance.find((a) => a.employee_id === emp.id && a.date === T && !a.deleted_at);
-  const [photo, setPhoto] = useState<string | undefined>();
   const [job, setJob] = useState('');
   const [busy, setBusy] = useState(false);
   const [corr, setCorr] = useState(false);
@@ -31,8 +30,8 @@ function MyClock({ emp }: { emp: Employee }) {
     setBusy(true);
     const geo = await getGeo();
     if (geo.lat === undefined) attempt(() => { throw new Error('Location unavailable — clocking without GPS. Allow location access for verified attendance.'); });
-    attempt(() => (kind === 'in' ? clockIn(emp.id, geo, photo, job || undefined) : clockOut(emp.id, geo, photo)), kind === 'in' ? 'Clocked in' : 'Clocked out');
-    setPhoto(undefined); setBusy(false);
+    attempt(() => (kind === 'in' ? clockIn(emp.id, geo, job || undefined) : clockOut(emp.id, geo)), kind === 'in' ? 'Clocked in' : 'Clocked out');
+    setBusy(false);
   };
   return (
     <div className="grid g2">
@@ -47,7 +46,6 @@ function MyClock({ emp }: { emp: Employee }) {
         {state !== 'out' && (
           <div className="stack" style={{ maxWidth: 360, margin: '0 auto' }}>
             {state === 'none' && myJobs.length > 0 && <Field label="Job / site today"><select value={job} onChange={(e) => setJob(e.target.value)}>{myJobs.map((j) => <option key={j.id} value={j.id}>{j.number} – {db.sites.find((s) => s.id === j.site_id)?.name}</option>)}<option value="">Yard / office / standby</option></select></Field>}
-            <div className="row" style={{ justifyContent: 'center' }}><PhotoInput label={photo ? 'Retake selfie' : 'Selfie (optional)'} capture="user" onAdd={(d) => setPhoto(d)} />{photo && <img src={photo} alt="selfie" style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover' }} />}</div>
             {state === 'none' ? <button className="btn primary lg block" disabled={busy} onClick={() => go('in')}><Icon name="pin" />{busy ? 'Getting location…' : 'Clock in'}</button> : <button className="btn navy lg block" disabled={busy} onClick={() => go('out')}><Icon name="pin" />{busy ? 'Getting location…' : 'Clock out'}</button>}
             <div className="small muted">GPS location and timestamp are captured automatically.</div>
           </div>
@@ -147,7 +145,6 @@ export default function Attendance() {
                 { key: 'hrs', header: 'Hours', num: true, value: (r) => r.a?.worked_hours ?? 0 },
                 { key: 'flags', header: 'Indicators', value: (r) => (r.a ? [r.a.kind, r.a.late_min > db.settings.grace_minutes ? 'late' : '', r.a.ot_min ? 'overtime' : '', r.a.field_work ? 'field work' : ''].join(' ') : r.isRest ? 'Rest day' : r.hol ? 'Holiday' : 'No record'), render: (r) => r.a ? <Flags a={r.a} emp={r.e} /> : r.isRest ? <Badge tone="blue">Rest day</Badge> : r.hol ? <Badge tone="blue">{r.hol.kind} holiday</Badge> : date < T ? <Badge tone="red">Absent / no record</Badge> : <Badge tone="amber">Not in</Badge> },
                 { key: 'gps', header: 'GPS', value: (r) => (r.a?.in_lat ? `${r.a.in_lat},${r.a.in_lng}` : ''), render: (r) => r.a?.in_lat ? <a target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${r.a.in_lat},${r.a.in_lng}`} onClick={(e) => e.stopPropagation()}>Map ↗</a> : r.a?.clock_in ? <span className="muted small">no GPS</span> : '—' },
-                { key: 'selfie', header: 'Photo', noExport: true, sortable: false, render: (r) => r.a?.in_photo ? <img src={r.a.in_photo} alt="" width={28} height={28} style={{ borderRadius: 4, objectFit: 'cover' }} /> : '—' },
                 { key: 'appr', header: 'Approval', value: (r) => r.a?.approval ?? '', render: (r) => r.a ? <Badge>{r.a.approval}</Badge> : '' },
                 { key: 'actions', header: '', noExport: true, sortable: false, render: (r) => approve && r.a?.approval === 'Pending' ? <span className="row"><button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></span> : null },
               ]}

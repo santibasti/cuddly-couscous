@@ -1,59 +1,41 @@
 import { useState } from 'react';
 import { useAuth, live } from '@/lib/store';
-import { Badge, Field, Icon, Modal, PhotoInput, attempt, toast } from '@/components/ui';
+import { Badge, Field, Icon, Modal, attempt, toast } from '@/components/ui';
 import { Stepper, Toggle } from '@/components/touch';
 import { uid } from '@/lib/util';
-import { getGeo } from '@/lib/geo';
 import { ITEM_CONDITIONS, kindOfAsset } from '@/lib/workflow';
 import type { CheckItem, ItemCondition, Job } from '@/lib/types';
 
 export const KIND_LABEL: Record<CheckItem['kind'], string> = { vehicle: 'Vehicle', equipment: 'Machines & equipment', tool: 'Tools, hoses, cords & ladders', ppe: 'PPE & safety gear', material: 'Chemicals & materials' };
-export type Geo = { lat?: number; lng?: number; note: string };
 
 export function Seg<T extends string>({ value, options, onChange, disabled, tone }: { value?: T; options: readonly T[]; onChange: (v: T) => void; disabled?: boolean; tone?: (v: T) => 'good' | 'bad' | 'warn' }) {
   return <div className="seg" role="group">{options.map((o) => <button key={o} type="button" disabled={disabled} className={`${value === o ? 'on' : ''} ${tone?.(o) ?? ''}`} onClick={() => onChange(o)}>{o}</button>)}</div>;
 }
 export const condTone = (v: string) => (v === 'Good' ? 'good' : v === 'With Issue' ? 'warn' : 'bad') as 'good' | 'bad' | 'warn';
 
-export function GpsField({ value, onChange, label, disabled }: { value: Geo; onChange: (g: Geo) => void; label: string; disabled?: boolean }) {
-  const [busy, setBusy] = useState(false);
-  const has = value.lat !== undefined && value.lng !== undefined;
-  return (
-    <div className="stack" style={{ gap: 6 }}>
-      <div className="row">
-        <button type="button" className="btn" disabled={busy || disabled} onClick={async () => { setBusy(true); const g = await getGeo(); setBusy(false); if (g.lat === undefined) toast('GPS unavailable — allow location access, or explain below.', 'err'); onChange({ ...value, lat: g.lat, lng: g.lng }); }}><Icon name="pin" />{busy ? 'Locating…' : has ? 'Re-capture GPS' : label}</button>
-        {has && <><Badge tone="green">GPS captured</Badge><a className="small" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${value.lat},${value.lng}`}>{value.lat}, {value.lng}</a></>}
-      </div>
-      {!has && !disabled && <input value={value.note} onChange={(e) => onChange({ ...value, note: e.target.value })} placeholder="If GPS is unavailable, say why (e.g. no signal in basement)" aria-label="GPS unavailable reason" />}
-    </div>
-  );
+/** Actual time entered by the Team Leader (defaults to now). */
+export function TimeField({ label, value, onChange, disabled, hint }: { label: string; value: string; onChange: (v: string) => void; disabled?: boolean; hint?: string }) {
+  return <label className="f"><span>{label}</span><input type="datetime-local" step={60} disabled={disabled} value={value} onChange={(e) => onChange(e.target.value)} />{hint && <span className="small muted" style={{ fontWeight: 400 }}>{hint}</span>}</label>;
 }
 
-export function PhotoField({ label, value, onChange, required, disabled }: { label: string; value?: string; onChange: (v: string) => void; required?: boolean; disabled?: boolean }) {
-  return <div className="row"><PhotoInput label={value ? `Retake ${label.toLowerCase()}` : label} capture="environment" onAdd={onChange} disabled={disabled} />{value ? <img src={value} alt={label} style={{ height: 48, borderRadius: 6 }} /> : required && <span className="small muted">required</span>}</div>;
-}
-
-/** One line of the HQ checklist (vehicle, machine, tool, PPE). */
-export function ItemCard({ it, setItem, confirmItem, onScan, crew, disabled, emp, onRemove }: { it: CheckItem; setItem: (k: string, p: Partial<CheckItem>) => void; confirmItem: (i: CheckItem, by: 'scan' | 'id' | 'manual') => void; onScan: () => void; crew: string[]; disabled: boolean; emp: (id?: string) => string; onRemove?: () => void }) {
+/** One line of the job-prep checklist (vehicle, machine, tool, PPE): quantity, condition, optional note, optional QR scan. */
+export function ItemCard({ it, setItem, confirmItem, onScan, disabled, onRemove }: { it: CheckItem; setItem: (k: string, p: Partial<CheckItem>) => void; confirmItem: (i: CheckItem, by: 'scan' | 'id' | 'manual') => void; onScan: () => void; disabled: boolean; onRemove?: () => void }) {
   const [typed, setTyped] = useState('');
   const cond = it.out_condition ?? 'Good';
   const verify = () => { if (typed.trim().toUpperCase() === it.code?.toUpperCase()) { confirmItem(it, 'id'); toast(`✓ ${it.label} confirmed by Asset ID`, 'ok'); setTyped(''); } else toast(`“${typed}” does not match ${it.code}.`, 'err'); };
   return (
     <div className={`itemcard ${it.out_ok ? (cond === 'Good' && (it.loaded_qty ?? 0) >= it.qty ? 'ok' : 'bad') : ''}`}>
-      <div className="row between"><div><b>{it.label}</b> {it.extra && <Badge tone="blue">added</Badge>} <span className="muted small">{it.code ?? 'no Asset ID'}</span></div>{it.out_ok ? <Badge tone="green">{it.out_by === 'scan' ? '✓ Scanned' : it.out_by === 'id' ? '✓ ID entered' : '✓ Confirmed'}</Badge> : <Badge tone="amber">Not confirmed</Badge>}</div>
+      <div className="row between"><div><b>{it.label}</b> {it.extra && <Badge tone="blue">added</Badge>} <span className="muted small">{it.code ?? ''}</span></div>{it.out_ok ? <Badge tone="green">{it.out_by === 'scan' ? '✓ Scanned' : it.out_by === 'id' ? '✓ ID entered' : '✓ Confirmed'}</Badge> : <Badge tone="amber">Not confirmed</Badge>}</div>
       <div className="itemgrid">
-        <Field label="Qty required"><input disabled value={it.qty} /></Field>
-        <Field label="Qty loaded"><Stepper label={`Quantity loaded ${it.label}`} min={0} disabled={disabled || it.kind === 'vehicle'} value={it.loaded_qty} onChange={(v) => setItem(it.key, { loaded_qty: v })} /></Field>
-        <Field label="Responsible"><select disabled={disabled} value={it.responsible_id ?? ''} onChange={(e) => setItem(it.key, { responsible_id: e.target.value || undefined })}>{crew.map((e) => <option key={e} value={e}>{emp(e)}</option>)}</select></Field>
+        {it.kind !== 'vehicle' && <Field label={`Qty loaded (need ${it.qty})`}><Stepper label={`Quantity loaded ${it.label}`} min={0} disabled={disabled} value={it.loaded_qty} onChange={(v) => setItem(it.key, { loaded_qty: v })} /></Field>}
+        <Field label="Condition"><Seg value={cond} options={ITEM_CONDITIONS} disabled={disabled} tone={condTone} onChange={(v: ItemCondition) => setItem(it.key, { out_condition: v, ...(v === 'Missing' && it.kind !== 'vehicle' ? { loaded_qty: 0 } : {}) })} /></Field>
       </div>
-      {it.kind !== 'vehicle' && <Field label="Condition"><Seg value={cond} options={ITEM_CONDITIONS} disabled={disabled} tone={condTone} onChange={(v: ItemCondition) => setItem(it.key, { out_condition: v, ...(v === 'Missing' ? { loaded_qty: 0 } : {}) })} /></Field>}
-      {cond === 'Damaged' && <PhotoField label="Damage photo" value={it.out_photo} onChange={(d) => setItem(it.key, { out_photo: d })} required disabled={disabled} />}
-      <Field label="Notes"><input disabled={disabled} value={it.out_note ?? ''} onChange={(e) => setItem(it.key, { out_note: e.target.value })} /></Field>
+      {(cond !== 'Good' || it.out_note) && <Field label="Note"><input disabled={disabled} value={it.out_note ?? ''} onChange={(e) => setItem(it.key, { out_note: e.target.value })} /></Field>}
       {!disabled && (
         <div className="row">
+          <label className="check"><input type="checkbox" checked={!!it.out_ok} onChange={(e) => (e.target.checked ? confirmItem(it, 'manual') : setItem(it.key, { out_ok: false }))} />Confirm</label>
           {it.code && <button className="btn sm navy" onClick={onScan}><Icon name="qr" size={14} />Scan QR</button>}
           {it.code && <span className="row" style={{ gap: 4 }}><input value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && verify()} placeholder="Type Asset ID" aria-label={`Asset ID for ${it.label}`} style={{ width: 160 }} /><button className="btn sm" onClick={verify}>Verify</button></span>}
-          <label className="check"><input type="checkbox" checked={!!it.out_ok} onChange={(e) => (e.target.checked ? confirmItem(it, 'manual') : setItem(it.key, { out_ok: false }))} />Confirm</label>
           {onRemove && <button className="btn sm danger" onClick={onRemove}>Remove</button>}
         </div>
       )}
@@ -82,7 +64,7 @@ export function AddToolModal({ items, job, onAdd, onClose }: { items: CheckItem[
         <datalist id="avail-assets">{avail.map((a) => <option key={a.id} value={a.code}>{a.name}</option>)}</datalist>
         {byCode && <div className="alert info">{byCode.name} · {byCode.status}</div>}
         <div className="muted small" style={{ textAlign: 'center' }}>— or a small tool with no Asset ID —</div>
-        <div className="form-grid"><Field label="Tool name"><input value={name} onChange={(e) => setName(e.target.value)} /></Field><Field label="Quantity"><input type="number" min="1" value={qty} onChange={(e) => setQty(+e.target.value)} /></Field></div>
+        <div className="form-grid"><Field label="Tool name"><input value={name} onChange={(e) => setName(e.target.value)} /></Field><Field label="Quantity"><Stepper label="Quantity" min={1} value={qty} onChange={(v) => setQty(v ?? 1)} /></Field></div>
       </div>
     </Modal>
   );

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
-import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Photos, Stat, attempt, ask } from '@/components/ui';
+import { Badge, Card, Field, Icon, Modal, PageHead, Stat, attempt, ask } from '@/components/ui';
 import { JobForm } from '@/components/JobForm';
 import { invoiceFromJob, setJobStatus, updateJobField } from '@/lib/actions';
 import { finalContract, isDone, jobCost, JOB_FLOW, stockSummary } from '@/lib/business';
@@ -12,7 +12,7 @@ import { ReportIncidentModal } from '@/components/workflow/Incidents';
 import { overrideJobStatus } from '@/lib/workflow';
 import { serviceReportPdf } from '@/lib/export';
 import { fmtDateTime, fmtStamp, money, nowLocal } from '@/lib/util';
-import type { Job, JobPhoto } from '@/lib/types';
+import type { Job } from '@/lib/types';
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -41,7 +41,6 @@ export default function JobDetail() {
   const logs = db.audit.filter((a) => a.record_id === j.id).slice(0, 12);
 
   const upd = (patch: Partial<Job>, ok?: string) => attempt(() => updateJobField(j.id, patch), ok);
-  const addPhoto = (kind: JobPhoto['kind'], data: string) => upd({ photos: [...j.photos, { kind, caption: kind === 'before' ? 'Before' : kind === 'after' ? 'After' : 'Damage', data, taken_at: nowLocal() }] }, 'Photo added');
 
   return (
     <>
@@ -86,9 +85,6 @@ export default function JobDetail() {
               ))}
               {!j.checklist.length && <span className="muted">Checklist is generated when the job is saved.</span>}
             </div>
-          </Card>
-          <Card title="Before & after photos" actions={canWork && <span className="row"><PhotoInput label="Before" capture="environment" onAdd={(d) => addPhoto('before', d)} /><PhotoInput label="After" capture="environment" onAdd={(d) => addPhoto('after', d)} /></span>}>
-            <Photos items={j.photos.map((p) => ({ src: p.data, caption: `${p.kind.toUpperCase()} · ${fmtDateTime(p.taken_at)}` }))} onRemove={canWork ? (i) => upd({ photos: j.photos.filter((_, k) => k !== i) }) : undefined} />
           </Card>
           <Card title="Findings & damage report">
             <div className="stack">
