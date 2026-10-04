@@ -5,7 +5,7 @@ import type {
   Payment, Quotation, QuoteStatus, StockTx,
 } from './types';
 import {
-  appliedDiscount, buildPayrollLines, computeTimes, currentRequest, docTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
+  appliedDiscount, backJobStatusFor, buildPayrollLines, computeTimes, currentRequest, docTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
 import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
@@ -112,8 +112,10 @@ export function setJobStatus(id: string, status: JobStatus, note?: string) {
   if (!store.can('jobs.edit')) fail('Not permitted.');
   if (!['Pending', 'Confirmed', 'Cancelled', 'Rescheduled'].includes(status)) fail('That status is set by the job workflow inside the Job Card.');
   if (!['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)) fail(`A job that is ${j.status.toLowerCase()} can only change status through the job workflow, or by an Operations Manager / Admin override with a reason.`);
-  if (status === 'Cancelled' && note) return store.update('jobs', id, { status, damage_report: note }, 'update', `Cancelled ${j.number}: ${note}`);
-  return store.update('jobs', id, { status }, 'update', `${j.number} → ${status}`);
+  if (j.back_job_id && status === 'Confirmed') { const bj = db().back_jobs.find((b) => b.id === j.back_job_id); if (bj && ['Reported', 'Under Review', 'Rejected'].includes(bj.status)) fail(`Back job ${bj.number} must be approved by Admin / Operations before it can be scheduled.`); }
+  const r = status === 'Cancelled' && note ? store.update('jobs', id, { status, damage_report: note }, 'update', `Cancelled ${j.number}: ${note}`) : store.update('jobs', id, { status }, 'update', `${j.number} → ${status}`);
+  syncBackJobs();
+  return r;
 }
 export function updateJobField(id: string, patch: Partial<Job>) {
   if (!store.can('jobs.complete') && !store.can('jobs.edit')) fail('Not permitted.');
@@ -331,6 +333,7 @@ export function invoiceFromJob(jobId: string): Invoice {
   const j = db().jobs.find((x) => x.id === jobId)!;
   if (!isDone(j.status)) fail('Only jobs with completed work can be invoiced.');
   if (db().invoices.some((i) => i.job_id === jobId && i.status !== 'Reversed' && !i.deleted_at)) fail('This job already has an invoice.');
+  { const bj = j.back_job_id ? db().back_jobs.find((b) => b.id === j.back_job_id) : undefined; if (bj?.charge_type === 'No Charge') fail(`${bj.number} is a no-charge back job: there is nothing to bill. Its cost is tracked against the original job.`); }
   if (db().workflows.some((w) => w.job_id === jobId && w.conf_mode === 'declined' && !w.deleted_at)) fail('The client declined this job — there is nothing to invoice.');
   const open = currentRequest(db(), jobId);
   if (open && open.status !== 'Applied') fail(`Discount request ${open.number} is ${open.status === 'Approved' ? 'approved but not yet applied to the final bill' : 'waiting for Admin approval'}. Settle it before invoicing.`);
@@ -588,7 +591,20 @@ const addMinutes = (local: string, m: number) => new Date(Date.parse(local + ':0
 const daysTo = (d: string) => Math.round((Date.parse(d + 'T00:00:00Z') - Date.parse(today() + 'T00:00:00Z')) / 86400000);
 
 /** Recompute the in-app notification set from current data. Queues external channels per Settings. */
+/** Keep each Back Job's status in step with its linked follow-up job (Approved → Scheduled → In Progress → Resolved → Closed) and mark a chargeable quotation approved once the client has signed. */
+export function syncBackJobs() {
+  for (const b of db().back_jobs) {
+    if (b.deleted_at) continue;
+    const job = db().jobs.find((j) => j.id === b.job_id);
+    const st = backJobStatusFor(b, job);
+    if (st !== b.status) store.system('back_jobs', b.id, { status: st, ...(st === 'Resolved' ? { resolved_at: isoNow() } : {}), ...(st === 'Closed' ? { closed_at: isoNow(), resolved_at: b.resolved_at ?? isoNow() } : {}) } as never, `${b.number}: ${b.status} → ${st}`);
+    const wf = db().workflows.find((w) => w.job_id === b.job_id && !w.deleted_at);
+    const q = b.quotation_id ? db().quotations.find((x) => x.id === b.quotation_id) : undefined;
+    if (q && q.status !== 'Approved' && wf?.conf_mode === 'approval' && wf.conf_at) store.system('quotations', q.id, { status: 'Approved', decided_at: isoNow() } as never, `${q.number} approved by the client for back job ${b.number}`);
+  }
+}
 export function runAutomations() {
+  syncBackJobs();
   const d = db(); const s = d.settings; const now = nowLocal(); const t = today();
   const list: Omit<Notification, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'read_by'>[] = [];
   const add = (key: string, type: string, title: string, body: string, severity: Notification['severity'], link: string, roles: Notification['for_roles'], external = false) => {
@@ -649,6 +665,9 @@ export function runAutomations() {
   }
   for (const j of d.jobs.filter((x) => !x.deleted_at && x.status === 'Work Completed' && !d.workflows.some((w) => w.job_id === x.id && w.closed_at && !w.deleted_at))) {
     add(`wf-return:${j.id}`, 'job', 'Close-out pending', `${j.number}: client handover signed — complete the close-out (equipment return, leave site, arrival at HQ).`, 'info', `/jobs/${j.id}`, [...ops, 'leader']);
+  }
+  for (const b of d.back_jobs.filter((x) => !x.deleted_at && ['Reported', 'Under Review'].includes(x.status))) {
+    add(`bj-new:${b.id}`, 'job', `Back job ${b.status === 'Reported' ? 'reported' : 'under review'}`, `${b.number} · ${d.jobs.find((j) => j.id === b.origin_job_id)?.number}: ${b.reason} — ${b.description}. ${b.charge_type}. Needs approval by Admin / Operations.`, 'warn', `/jobs/${b.job_id}`, ['owner', 'ops']);
   }
   for (const pay of d.payments.filter((x) => !x.deleted_at && !x.reversed && (x.status ?? 'Verified') === 'Pending Verification')) {
     const inv = d.invoices.find((i) => i.id === pay.invoice_id);

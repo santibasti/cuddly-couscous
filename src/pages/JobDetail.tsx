@@ -7,6 +7,8 @@ import { invoiceFromJob, setJobStatus, updateJobField } from '@/lib/actions';
 import { invoiceBalance, finalContract, isDone, jobCost, JOB_FLOW, stockSummary } from '@/lib/business';
 import { Tabs } from '@/components/ui';
 import { useMedia } from '@/components/touch';
+import { BackJobSection, CreateBackJobModal } from '@/components/BackJobs';
+import { canCreateBackJob } from '@/lib/backjobs';
 import { RecordPaymentModal, canRecordPayment } from '@/components/RecordPayment';
 import { FollowUpBanner } from '@/components/workflow/Satisfaction';
 import { WorkflowPanel } from '@/components/workflow/WorkflowPanel';
@@ -23,6 +25,7 @@ export default function JobDetail() {
   const [edit, setEdit] = useState(false);
   const [ovr, setOvr] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [bjOpen, setBjOpen] = useState(false);
   const [inc, setInc] = useState(false);
   const [tab, setTab] = useState<'workflow' | 'details'>('workflow');
   const wide = useMedia('(min-width: 1200px) and (orientation: landscape)');
@@ -55,11 +58,14 @@ export default function JobDetail() {
         {(can('dispatch.run') || can('incidents.manage')) && <button className="btn" onClick={() => setInc(true)}><Icon name="alert" />Report incident</button>}
         {can('dispatch.approve') && !['Cancelled', 'Rescheduled'].includes(j.status) && <button className="btn" onClick={() => setOvr(true)}>Override status…</button>}
         {locked && <button className="btn" onClick={() => attempt(() => serviceReportPdf(db, j))}><Icon name="download" />Service report (PDF)</button>}
+        {canCreateBackJob(j) && <button className="btn" onClick={() => setBjOpen(true)}>↩ Create Back Job / Callback</button>}
         {locked && canRecordPayment(can) && (!inv || inv.status !== 'Approved' || invoiceBalance(db, inv) > 0.005) && <button className="btn primary" onClick={() => setPayOpen(true)}>Record Payment</button>}
         {locked && can('invoices.edit') && !inv && <button className="btn primary" onClick={() => { const i = attempt(() => invoiceFromJob(j.id), 'Draft invoice created'); if (i) nav('/finance?tab=invoices'); }}>Create invoice</button>}
       </PageHead>
 
       {payOpen && <RecordPaymentModal jobId={j.id} onClose={() => setPayOpen(false)} />}
+      {bjOpen && <CreateBackJobModal origin={j} onClose={() => setBjOpen(false)} />}
+      <BackJobSection job={j} />
       <FollowUpBanner jobId={j.id} />
       {(hasVars || fc.discount > 0) && <div className="alert info" style={{ marginBottom: 12 }}>Contract value: original {money(fc.originalNet)}{hasVars ? ` + approved variations ${money(fc.variationsNet)}` : ''}{fc.discount > 0 ? ` − discount granted ${money(fc.discountNet)}` : ''} = <b>{money(fc.payableNet)}</b> (ex-VAT). The original quotation is unchanged.{fc.discount > 0 && ' Discount approved by TopMop management and reflected in the final agreed amount.'}</div>}
       {!wide && <Tabs tabs={[{ id: 'workflow' as const, label: 'Workflow' }, { id: 'details' as const, label: 'Job details' }]} value={tab} onChange={setTab} />}
@@ -117,6 +123,8 @@ export default function JobDetail() {
             </Card>
           )}
           {cost && (
+            <>
+            {cost.chargedTo && <div className="alert info" style={{ marginBottom: 8 }}>No-charge back job: this cost is charged to the original job {cost.chargedTo}, not shown as a loss here.</div>}
             <Card title="Job costing" actions={<Badge tone={cost.estimated ? 'amber' : 'green'}>{cost.estimated ? 'Contains estimates' : 'Actual cost'}</Badge>}>
               <div className="grid g2" style={{ marginBottom: 10 }}>
                 <Stat k={cost.revenueBasis === 'billed' ? 'Revenue (billed, ex-VAT)' : 'Revenue (expected)'} v={money(cost.revenue)} tone="navy" />
@@ -129,11 +137,13 @@ export default function JobDetail() {
                 <tr><td>Transportation & fuel</td><td className="num">{money(cost.transport)}</td></tr>
                 <tr><td>Equipment cost allocation</td><td className="num">{money(cost.equipment)}</td></tr>
                 <tr><td>Subcontractors</td><td className="num">{money(cost.subcontractor)}</td></tr>
+                {cost.backJobCost > 0 && <tr><td><b>Back Job Cost</b> <span className="small muted">(no-charge callbacks)</span></td><td className="num" style={{ color: 'var(--red)' }}>{money(cost.backJobCost)}</td></tr>}
                 <tr><td>Other job expenses</td><td className="num">{money(cost.other)}</td></tr>
                 <tr><td><b>Total direct cost</b></td><td className="num"><b>{money(cost.total)}</b></td></tr>
                 <tr><td className="muted">Budgeted (estimate at booking)</td><td className="num muted">{money(j.estimated_cost)}</td></tr>
               </tbody></table>
             </Card>
+            </>
           )}
           <Card title="Record trail" flush>
             <ul className="list"><li><span className="muted small">Created {fmtStamp(j.created_at)} by {db.users.find((u) => u.id === j.created_by)?.name ?? 'System'} · updated {fmtStamp(j.updated_at)}</span></li>

@@ -7,7 +7,7 @@ import type {
   ClientFeedback, ContainerCondition, DB, DiscountKind, DiscountRequest, FuelLevel, IncidentReport, IncidentType, IssueCategory, SatisfactionRating, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
 } from './types';
 import { FEEDBACK_ASPECTS, ISSUE_CATEGORIES, RATING_STARS, openFollowUp, buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
-import { performRelease, performReturn, requestCheckout, runAutomations } from './actions';
+import { syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { nowLocal, today } from './util';
 
 const db = (): DB => store.getDB();
@@ -36,7 +36,7 @@ export function canRunWorkflow(job: Job): boolean {
 const needRun = (job: Job) => { store.require('dispatch.run'); if (!canRunWorkflow(job)) fail('Only the assigned Team Leader or a manager can complete this step.'); };
 const jobOf = (w: JobWorkflow) => db().jobs.find((j) => j.id === w.job_id)!;
 const getWf = (id: string) => db().workflows.find((x) => x.id === id) ?? fail('Workflow not found.');
-const setStatus = (job: Job, status: JobStatus, summary?: string) => store.update('jobs', job.id, { status }, 'update', summary ?? `${job.number}: ${job.status} → ${status}`);
+const setStatus = (job: Job, status: JobStatus, summary?: string) => { const r = store.update('jobs', job.id, { status }, 'update', summary ?? `${job.number}: ${job.status} → ${status}`); syncBackJobs(); return r; };
 const uidNow = () => store.user?.id;
 const issuedNet = (jobId: string, itemId: string) => -sumBy(db().stock.filter((t) => t.approval === 'Approved' && t.job_id === jobId && t.item_id === itemId && ['Issue to Job', 'Return from Job'].includes(t.type)), (t) => t.qty);
 

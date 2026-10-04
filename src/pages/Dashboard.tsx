@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Bar as RBar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, PageHead, Stat, Bar, Empty } from '@/components/ui';
+import { BackJobDashboard } from '@/components/BackJobs';
 import { SatisfactionDashboard } from '@/components/workflow/Satisfaction';
 import { DiscountInbox } from '@/components/workflow/DiscountPanel';
 import { addDays, eachDay, fmtDate, fmtTime, inRange, monthEnd, monthStart, money, moneyShort, nowLocal, pct, round2, sum, today, weekStart } from '@/lib/util';
@@ -97,6 +98,7 @@ export default function Dashboard() {
       )}
 
       {!mine && can('reports.ops') && <div style={{ marginBottom: 14 }}><SatisfactionDashboard from={from} to={to} /></div>}
+      {!mine && can('reports.ops') && <div style={{ marginBottom: 14 }}><BackJobDashboard from={from} to={to} /></div>}
       {fin && (
         <>
           <div className="grid g4 keep2" style={{ marginBottom: 14 }}>
@@ -283,7 +285,7 @@ function compute(db: DB, from: string, to: string, f: { branch: string; service:
     const ex = sum(live(db.expenses).filter((x) => x.approval === 'Approved' && !x.reversed && x.date >= s && x.date <= e && (!f.branch || x.branch_id === f.branch)), (x) => x.amount - x.vat);
     if (!trend.some((t) => t.label === s.slice(0, 7))) trend.push({ label: s.slice(0, 7), revenue: round2(rev), expenses: round2(ex) });
   }
-  const loss = jobs.filter((j) => isDone(j.status) || j.status === 'In Progress').map((j) => ({ j, c: jobCost(db, j) })).filter((x) => x.c.revenue > 0 && x.c.grossProfit < 0).slice(0, 5)
+  const loss = jobs.filter((j) => isDone(j.status) || j.status === 'In Progress').map((j) => ({ j, c: jobCost(db, j) })).filter((x) => x.c.revenue > 0 && !x.c.chargedTo && x.c.grossProfit < 0).slice(0, 5)
     .map((x) => ({ id: x.j.id, number: x.j.number, client: db.clients.find((c) => c.id === x.j.client_id)?.name, gp: x.c.grossProfit, estimated: x.c.estimated }));
   // dispatch & field widgets (current state, not date-range based)
   const allJobs = live(db.jobs).filter((j) => (!f.branch || j.branch_id === f.branch) && (!f.client || j.client_id === f.client) && (!mineEmp || j.leader_id === mineEmp || j.crew_ids.includes(mineEmp)));

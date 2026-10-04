@@ -4,11 +4,12 @@ import { useAuth, live } from '@/lib/store';
 import { Badge, Card, Icon, PageHead, Tabs, attempt } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { JobForm } from '@/components/JobForm';
+import { BackJobsTable } from '@/components/BackJobs';
 import { moveJob } from '@/lib/actions';
 import { addDays, dow, eachDay, fmtDate, fmtTime, monthEnd, monthStart, money, today, weekStart } from '@/lib/util';
 import type { Job } from '@/lib/types';
 
-type View = 'month' | 'week' | 'day' | 'list';
+type View = 'month' | 'week' | 'day' | 'list' | 'backjobs';
 const STATUSES = ['Pending', 'Confirmed', 'Dispatch Checklist Pending', 'Dispatched', 'On Site', 'In Progress', 'Work Completed', 'Closed', 'Completed', 'Cancelled', 'Rescheduled'];
 const chipClass = (s: string) => (['Dispatched', 'On Site', 'In Progress'].includes(s) ? 's-field' : ['Work Completed', 'Closed', 'Completed'].includes(s) ? 's-done' : s === 'Dispatch Checklist Pending' ? 's-Confirmed' : `s-${s}`);
 
@@ -44,7 +45,7 @@ export default function Jobs() {
   };
   const chip = (j: Job) => (
     <Link key={j.id} to={`/jobs/${j.id}`} className={`chip ${chipClass(j.status)}`} draggable={edit && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)} onDragStart={(e) => e.dataTransfer.setData('text/job', j.id)} title={`${j.number} · ${cn(j.client_id)} · ${j.status}`}>
-      <b>{fmtTime(j.start_at)}</b> {cn(j.client_id)}
+      {j.back_job_id && '↩ '}<b>{fmtTime(j.start_at)}</b> {cn(j.client_id)}
     </Link>
   );
 
@@ -54,10 +55,11 @@ export default function Jobs() {
         {edit && <button className="btn primary" onClick={() => setForm({})}><Icon name="plus" />Book a job</button>}
       </PageHead>
       <div className="row between" style={{ marginBottom: 12 }}>
-        <Tabs tabs={[{ id: 'month', label: 'Month' }, { id: 'week', label: 'Week' }, { id: 'day', label: 'Day' }, { id: 'list', label: 'List', count: jobs.length }]} value={view} onChange={setView} />
+        <Tabs tabs={[{ id: 'month', label: 'Month' }, { id: 'week', label: 'Week' }, { id: 'day', label: 'Day' }, { id: 'list', label: 'List', count: jobs.length }, ...(can('backjobs.create') || can('backjobs.approve') || can('reports.ops') ? [{ id: 'backjobs' as View, label: 'Back jobs', count: db.back_jobs.filter((b) => !b.deleted_at && b.status !== 'Closed' && b.status !== 'Rejected').length || undefined }] : [])]} value={view} onChange={setView} />
       </div>
 
-      {view !== 'list' && (
+      {view === 'backjobs' && <BackJobsTable />}
+      {view !== 'list' && view !== 'backjobs' && (
         <div className="row between no-print" style={{ marginBottom: 10 }}>
           <div className="row"><button className="btn sm" onClick={() => step(-1)} aria-label="Previous"><Icon name="chevL" /></button><button className="btn sm" onClick={() => setAnchor(today())}>Today</button><button className="btn sm" onClick={() => step(1)} aria-label="Next"><Icon name="chevR" /></button><h2 style={{ marginLeft: 8 }}>{title}</h2></div>
           <div className="row">

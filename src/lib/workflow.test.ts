@@ -666,3 +666,115 @@ describe('Payment recording', () => {
     expect(db().audit.some((a) => a.record_id === p.id && a.action === 'delete' && a.reason === 'duplicate entry')).toBe(true);
   });
 });
+
+describe('Back Job / Callback', () => {
+  let BJ: typeof import('./backjobs');
+  beforeAll(async () => { BJ = await import('./backjobs'); });
+  const lead = () => db().users.find((u) => u.email === 'leader@topmop.ph')!.employee_id!;
+  const form = (over = {}) => ({ reason: 'Missed Area' as const, description: 'Two panels were missed', reported_on: T(), reported_by: 'Ms. Reyes (client)', responsible: 'Field crew', charge_type: 'No Charge' as const, ...over });
+  const finished = async (label: string) => { await as('owner@topmop.ph'); const r = upToHandover(label, lead()); return r; };
+
+  it('only Admin / Operations can create one, and only for a completed or closed job; the original job is never changed', async () => {
+    const { job } = await finished('BJ1');
+    const snap = JSON.stringify([db().jobs.find((j) => j.id === job.id), db().workflows.find((w) => w.job_id === job.id), db().invoices.filter((i) => i.job_id === job.id), db().payments.filter((p) => p.job_id === job.id)]);
+    await as('leader@topmop.ph');
+    expect(() => BJ.createBackJob(job.id, form())).toThrow(/not permitted/);
+    await as('ops@topmop.ph');
+    expect(() => BJ.createBackJob(job.id, form({ description: ' ' }))).toThrow(/Describe/);
+    expect(() => BJ.createBackJob(job.id, form({ responsible: '' }))).toThrow(/responsible/);
+    expect(() => BJ.createBackJob(job.id, form({ reported_on: '2099-01-01' }))).toThrow(/future/);
+    const open = db().jobs.find((j) => j.status === 'Confirmed')!;
+    expect(() => BJ.createBackJob(open.id, form())).toThrow(/completed or closed/);
+    const { backJob, job: link } = BJ.createBackJob(job.id, form());
+    expect(backJob).toMatchObject({ status: 'Reported', origin_job_id: job.id, job_id: link.id, client_id: link.client_id, site_id: link.site_id, charge_type: 'No Charge' });
+    expect(backJob.number).toMatch(/^BJ-/); expect(link.number).not.toBe(db().jobs.find((j) => j.id === job.id)!.number);
+    expect(link).toMatchObject({ status: 'Pending', back_job_id: backJob.id, origin_job_id: job.id, contract_amount: 0 });
+    expect(backJob.origin_workflow_id).toBe(db().workflows.find((w) => w.job_id === job.id)!.id);
+    expect(JSON.stringify([db().jobs.find((j) => j.id === job.id), db().workflows.find((w) => w.job_id === job.id), db().invoices.filter((i) => i.job_id === job.id), db().payments.filter((p) => p.job_id === job.id)])).toBe(snap);
+    expect(db().notifications.some((n) => n.key === `bj-new:${backJob.id}`)).toBe(true);
+  });
+
+  it('status flow: needs approval before it can be scheduled, then follows the linked job through its own workflow to Closed', async () => {
+    const { job, eq } = await finished('BJ2');
+    await as('ops@topmop.ph');
+    const { backJob, job: link } = BJ.createBackJob(job.id, form());
+    expect(() => A.setJobStatus(link.id, 'Confirmed')).toThrow(/must be approved/);
+    BJ.reviewBackJob(backJob.id);
+    expect(db().back_jobs.find((b) => b.id === backJob.id)!.status).toBe('Under Review');
+    await as('leader@topmop.ph');
+    expect(() => BJ.approveBackJob(backJob.id, { note: 'ok' })).toThrow(/not permitted/);
+    await as('ops@topmop.ph');
+    expect(() => BJ.approveBackJob(backJob.id, { note: ' ' })).toThrow(/approval note/);
+    BJ.approveBackJob(backJob.id, { note: 'Our miss, redo free' });
+    expect(db().back_jobs.find((b) => b.id === backJob.id)).toMatchObject({ status: 'Approved', approval_note: 'Our miss, redo free' });
+    store.update('jobs', link.id, { leader_id: lead(), crew_ids: [], start_at: '2030-02-04T08:00', end_at: '2030-02-04T14:00' } as never);
+    A.setJobStatus(link.id, 'Confirmed');
+    expect(db().back_jobs.find((b) => b.id === backJob.id)!.status).toBe('Scheduled');
+    // the follow-up runs through the normal workflow: own checklist, attendance, report and closure
+    const wf = W.openWorkflow(link.id);
+    W.completeHqChecklist(wf.id, prepForm(wf) as never); W.dispatchJob(wf.id, { confirmed: true }); W.arriveAtSite(wf.id, checkIn([lead()]));
+    expect(db().back_jobs.find((b) => b.id === backJob.id)!.status).toBe('In Progress');
+    W.confirmScopeNoChanges(wf.id);                                                        // no charge: no new client signature
+    W.startWork(wf.id, {}); W.finishWork(wf.id, {}); W.signServiceReport(wf.id, handover);
+    expect(db().back_jobs.find((b) => b.id === backJob.id)).toMatchObject({ status: 'Resolved' });
+    W.completeCloseOut(wf.id, { items: retItems(wfOf(link.id), () => ({})), confirmed: true });
+    expect(db().back_jobs.find((b) => b.id === backJob.id)).toMatchObject({ status: 'Closed' });
+    expect(db().assets.find((a) => a.id === eq.id)!.status).toBeDefined();
+    await as('finance@topmop.ph');
+    expect(() => A.invoiceFromJob(link.id)).toThrow(/no-charge/);
+  });
+
+  it('no-charge cost is tracked against the original job as Back Job Cost, not as a separate loss', async () => {
+    const { job } = await finished('BJ3');
+    await as('ops@topmop.ph');
+    const before = B.jobCost(db(), db().jobs.find((j) => j.id === job.id)!);
+    const { backJob, job: link } = BJ.createBackJob(job.id, form({ reason: 'Quality Issue' }));
+    BJ.approveBackJob(backJob.id, { note: 'free redo' });
+    store.update('jobs', link.id, { leader_id: lead(), crew_ids: [] } as never);
+    const after = B.jobCost(db(), db().jobs.find((j) => j.id === job.id)!);
+    expect(after.backJobCost).toBeGreaterThan(0); expect(after.total).toBeCloseTo(before.total + after.backJobCost, 2);
+    expect(after.grossProfit).toBeLessThan(before.grossProfit);
+    expect(B.jobCost(db(), db().jobs.find((j) => j.id === link.id)!).chargedTo).toBe(db().jobs.find((j) => j.id === job.id)!.number);
+    expect(B.jobProfitRows(db(), '2000-01-01', '2099-12-31').some((r) => r.job.id === link.id)).toBe(false);
+  });
+
+  it('chargeable: a new quotation the client must approve before work starts; the new invoice is linked to the back job', async () => {
+    const { job } = await finished('BJ4');
+    await as('ops@topmop.ph');
+    const { backJob, job: link } = BJ.createBackJob(job.id, form({ reason: 'Client Complaint', charge_type: 'Chargeable Additional Work', description: 'Extra glass' }));
+    expect(() => BJ.approveBackJob(backJob.id, { note: 'ok' })).toThrow(/quoted amount/);
+    BJ.approveBackJob(backJob.id, { note: 'Client agreed to pay', amount: 5000 });
+    const b = db().back_jobs.find((x) => x.id === backJob.id)!;
+    const q = db().quotations.find((x) => x.id === b.quotation_id)!;
+    expect(q.status).toBe('Sent'); expect(db().jobs.find((j) => j.id === link.id)).toMatchObject({ quotation_id: q.id, contract_amount: B.docTotals(q.items, 0, q.vat_mode, q.vat_rate).net });
+    store.update('jobs', link.id, { leader_id: lead(), crew_ids: [] } as never);
+    A.setJobStatus(link.id, 'Confirmed');
+    const wf = W.openWorkflow(link.id);
+    W.completeHqChecklist(wf.id, prepForm(wf) as never); W.dispatchJob(wf.id, { confirmed: true }); W.arriveAtSite(wf.id, checkIn([lead()]));
+    expect(B.scopeRoute(db(), db().jobs.find((j) => j.id === link.id)!, wfOf(link.id))).toBe('approval');
+    expect(() => W.confirmScopeNoChanges(wf.id)).toThrow(/client must review and sign/);
+    expect(() => W.startWork(wf.id, {})).toThrow(/scope is approved/);
+    W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true });
+    expect(db().quotations.find((x) => x.id === q.id)!.status).toBe('Approved');
+    W.startWork(wf.id, {}); W.finishWork(wf.id, {}); W.signServiceReport(wf.id, handover);
+    await as('finance@topmop.ph');
+    const inv = A.invoiceFromJob(link.id);
+    expect(inv.job_id).toBe(link.id); expect(inv.quotation_id).toBe(q.id);
+    expect(B.jobProfitRows(db(), '2000-01-01', '2099-12-31').some((r) => r.job.id === link.id)).toBe(true);   // billed back jobs stand on their own
+  });
+
+  it('rejecting cancels the follow-up job; statistics cover open, reason, cost, repeats, resolution time and satisfaction', async () => {
+    const { job } = await finished('BJ5');
+    await as('ops@topmop.ph');
+    const a = BJ.createBackJob(job.id, form()); const b = BJ.createBackJob(job.id, form({ reason: 'Warranty/Touch-Up' }));
+    BJ.rejectBackJob(a.backJob.id, 'Outside the warranty');
+    expect(db().jobs.find((j) => j.id === a.job.id)!.status).toBe('Cancelled'); expect(db().back_jobs.find((x) => x.id === a.backJob.id)!.status).toBe('Rejected');
+    const st = B.backJobStats(db(), '2000-01-01', '2099-12-31');
+    expect(st.total).toBeGreaterThan(0); expect(st.open.every((r) => B.isOpenBackJob(r.b))).toBe(true);
+    expect(st.byReason.reduce((s, r) => s + r.n, 0)).toBe(st.total); expect(st.byClient.length).toBeGreaterThan(0); expect(st.byService.length).toBeGreaterThan(0);
+    expect(st.repeated.some((r) => r.originId === job.id && r.n >= 2)).toBe(true);
+    expect(st.resolved).toBeGreaterThan(0); expect(st.avgResolutionDays).toBeGreaterThanOrEqual(0);
+    expect(st.ratedCount).toBeGreaterThan(0);
+    void b;
+  });
+});

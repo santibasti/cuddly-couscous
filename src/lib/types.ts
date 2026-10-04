@@ -184,6 +184,8 @@ export interface Job extends Base {
   estimated_cost: number;
   reminder_sent?: boolean;
   rescheduled_from?: string;
+  /** Back Job / Callback: this job is the linked follow-up of a finished job (the original is never reopened or changed). */
+  back_job_id?: string; origin_job_id?: string;
 }
 
 /* ---------- HR ---------- */
@@ -504,6 +506,28 @@ export interface Variation extends Base {
   decided_at?: string;       // when the client approved / declined
   sign_lat?: number; sign_lng?: number; sign_gps_note?: string; sign_device?: string;
 }
+/* ---------- Back Jobs / Callbacks ---------- */
+export type BackJobReason = 'Missed Area' | 'Quality Issue' | 'Client Complaint' | 'Damage' | 'Warranty/Touch-Up' | 'Other';
+export type BackJobStatus = 'Reported' | 'Under Review' | 'Approved' | 'Scheduled' | 'In Progress' | 'Resolved' | 'Closed' | 'Rejected';
+export type BackJobCharge = 'No Charge' | 'Chargeable Additional Work';
+export interface BackJob extends Base {
+  number: string;                      // BJ-2026-0001
+  origin_job_id: string;               // the finished job (never changed)
+  job_id: string;                      // the linked follow-up job: own number, schedule, attendance, checklist, service report and closure
+  client_id: string; site_id: string;
+  origin_workflow_id?: string;         // original service report
+  origin_quotation_id?: string; origin_invoice_id?: string;
+  origin_leader_id?: string; origin_crew_ids: string[];
+  reason: BackJobReason; description: string;
+  reported_on: string; reported_by: string; responsible: string;
+  charge_type: BackJobCharge;
+  status: BackJobStatus;
+  reviewed_by?: string; reviewed_at?: string;
+  approved_by?: string; approved_at?: string; approval_note?: string;
+  quotation_id?: string;               // chargeable: the new quotation the client must approve before work starts
+  resolved_at?: string; closed_at?: string;
+}
+
 /* ---------- Client Satisfaction Check (end of Client Handover) ---------- */
 export type SatisfactionRating = 1 | 2 | 3;     // 1 Not Satisfied · 2 Satisfied · 3 Very Satisfied
 export type IssueCategory = 'Quality' | 'Damage' | 'Delay' | 'Communication' | 'Scope' | 'Other';
@@ -709,7 +733,7 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs';
 
 export interface DB {
   users: UserAccount[]; branches: Branch[]; clients: Client[]; sites: Site[]; communications: Communication[];
@@ -718,7 +742,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[];
   audit: AuditLog[];
   settings: Settings;
   version: number;

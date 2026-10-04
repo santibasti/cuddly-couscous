@@ -5,7 +5,7 @@ import type {
   Variation,
   JobStatus,
   Asset, Attendance, DB, Employee, Holiday, Invoice, Job, PayrollAdjustment, PayrollLine, PayrollPeriod,
-  Payment, Quotation, QuoteItem, ServiceDef, Settings, StatutoryRate, AdditionalCategory, ServiceCode, DiscountRequest, DiscountKind, ClientFeedback, IssueCategory, SatisfactionRating,
+  Payment, Quotation, QuoteItem, ServiceDef, Settings, StatutoryRate, AdditionalCategory, ServiceCode, DiscountRequest, DiscountKind, ClientFeedback, IssueCategory, SatisfactionRating, BackJob,
 } from './types';
 import { addDays, diffDays, dow, eachDay, minutesBetween, nowLocal, round2, sum, today } from './util';
 
@@ -46,7 +46,10 @@ export function isRecurringJob(d: Pick<DB, 'jobs'>, job: Job): boolean {
   return d.jobs.some((j) => j.id !== job.id && !j.deleted_at && j.client_id === job.client_id && j.site_id === job.site_id && ['Closed', 'Completed'].includes(j.status) && j.start_at < job.start_at && j.service_codes.some((c) => job.service_codes.includes(c)));
 }
 /** Scope Approval route: a new client / job or a changed scope needs the client's signature; a recurring job with no change is just confirmed. */
-export const scopeRoute = (d: Pick<DB, 'jobs'> & Partial<Pick<DB, 'discount_requests'>>, job: Job, wf?: Pick<JobWorkflow, 'scope_changed'>): 'approval' | 'recurring' => {
+export const scopeRoute = (d: Pick<DB, 'jobs'> & Partial<Pick<DB, 'discount_requests' | 'back_jobs'>>, job: Job, wf?: Pick<JobWorkflow, 'scope_changed'>): 'approval' | 'recurring' => {
+  // Back job: chargeable work needs the client's approval of the new quotation; a no-charge fix is simply confirmed
+  const bj = job.back_job_id ? d.back_jobs?.find((b) => b.id === job.back_job_id) : undefined;
+  if (bj) return bj.charge_type === 'Chargeable Additional Work' ? 'approval' : 'recurring';
   // a discounted bill (open, approved or applied request) always needs the client's signature
   const discounted = !!d.discount_requests?.some((r) => r.job_id === job.id && !r.deleted_at && r.status !== 'Rejected');
   return isRecurringJob(d, job) && !wf?.scope_changed && !discounted ? 'recurring' : 'approval';
@@ -331,6 +334,10 @@ export interface JobCost {
   discount: number; revenueBefore: number; grossProfitBefore: number; marginBefore: number;
   /** Verified (and cleared) payments received on this job's invoices, and what is still unpaid. */
   collected: number; outstanding: number;
+  /** Cost of no-charge back jobs / callbacks on this job (labor, materials, transport, equipment), already included in `total`. */
+  backJobCost: number;
+  /** This job is itself a no-charge back job: its cost is charged to the original job, not shown as a loss of its own. */
+  chargedTo?: string;
 }
 export function jobDays(j: Pick<Job, 'start_at' | 'end_at'>) { return Math.max(1, diffDays(j.end_at.slice(0, 10), j.start_at.slice(0, 10)) + 1); }
 
@@ -342,6 +349,13 @@ export function jobRevenue(db: DB, j: Job): { revenue: number; basis: 'billed' |
   return { revenue: round2(j.contract_amount - (disc?.net_amount ?? 0)), basis: j.contract_amount ? 'expected' : 'none' };
 }
 
+/** No-charge back jobs raised against a finished job. */
+export const noChargeBackJobs = (db: Pick<DB, 'back_jobs'>, originJobId: string) => db.back_jobs.filter((b) => b.origin_job_id === originJobId && b.charge_type === 'No Charge' && !b.deleted_at && b.status !== 'Rejected');
+/** When `j` is a no-charge back job, the number of the job whose profitability carries its cost. */
+export const noChargeOrigin = (db: Pick<DB, 'back_jobs' | 'jobs'>, j: Job): string | undefined => {
+  const b = j.back_job_id ? db.back_jobs.find((x) => x.id === j.back_job_id) : undefined;
+  return b && b.charge_type === 'No Charge' ? db.jobs.find((x) => x.id === b.origin_job_id)?.number : undefined;
+};
 export function jobCost(db: DB, j: Job): JobCost {
   const s = db.settings;
   const att = db.attendance.filter((a) => a.job_id === j.id && a.approval !== 'Rejected' && !a.deleted_at && a.clock_in && a.clock_out);
@@ -370,11 +384,13 @@ export function jobCost(db: DB, j: Job): JobCost {
   const other = sum(exp.filter((e) => !['Transportation', 'Fuel', 'Subcontractor'].includes(e.category)), net);
   const equipment = sum([...j.equipment_ids, ...(j.vehicle_id ? [j.vehicle_id] : [])], (id) => (db.assets.find((a: Asset) => a.id === id)?.daily_allocation ?? 0) * jobDays(j));
   const { revenue, basis } = jobRevenue(db, j);
-  const total = labor + materials + transport + equipment + subcontractor + other;
+  const bjs = noChargeBackJobs(db, j.id);
+  const backJobCost = sum(bjs, (b) => { const l = db.jobs.find((x) => x.id === b.job_id); return l && l.status !== 'Cancelled' ? jobCost(db, l).total : 0; });
+  const total = labor + materials + transport + equipment + subcontractor + other + backJobCost;
   const estimated = !isDone(j.status) || laborEstimated || materialsEstimated;
   return {
     labor: round2(labor), materials: round2(materials), transport: round2(transport), equipment: round2(equipment),
-    subcontractor: round2(subcontractor), other: round2(other), total: round2(total), revenue: round2(revenue), revenueBasis: basis,
+    subcontractor: round2(subcontractor), other: round2(other), backJobCost: round2(backJobCost), chargedTo: noChargeOrigin(db, j), total: round2(total), revenue: round2(revenue), revenueBasis: basis,
     grossProfit: round2(revenue - total), margin: revenue ? round2(((revenue - total) / revenue) * 100) : 0,
     laborEstimated, materialsEstimated, estimated,
     ...(() => { const invs = db.invoices.filter((i) => i.job_id === j.id && i.status === 'Approved' && !i.deleted_at); const col = sum(invs, (i) => invoiceSettled(db, i).settled); return { collected: round2(col), outstanding: round2(sum(invs, (i) => invoiceBalance(db, i))) }; })(),
@@ -496,7 +512,7 @@ export interface JobProfitRow { job: Job; cost: JobCost; clientId: string }
 /** Jobs (completed or already invoiced) whose service date falls in range. */
 export function jobProfitRows(db: DB, from: string, to: string): JobProfitRow[] {
   return db.jobs
-    .filter((j) => !j.deleted_at && j.start_at.slice(0, 10) >= from && j.start_at.slice(0, 10) <= to && (isDone(j.status) || j.status === 'In Progress'))
+    .filter((j) => !j.deleted_at && j.start_at.slice(0, 10) >= from && j.start_at.slice(0, 10) <= to && (isDone(j.status) || j.status === 'In Progress') && !noChargeOrigin(db, j))
     .map((job) => ({ job, cost: jobCost(db, job), clientId: job.client_id }));
 }
 export interface ProfitAgg { key: string; label: string; jobs: number; revenue: number; cost: number; gp: number; margin: number; estimated: boolean }
@@ -797,5 +813,76 @@ export function satisfactionStats(db: DB, from: string, to: string): Satisfactio
     byService: agg(rows.flatMap((f) => f.service_codes.map((c): [string, string, ClientFeedback] => [c, db.services.find((s) => s.code === c)?.name ?? c, f]))),
     monthly: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, e]) => ({ month, avg: round2(e.t / e.n), n: e.n })),
     followUps: db.client_feedback.filter((f) => !f.deleted_at && f.follow_up === 'Required').sort((a, b) => b.submitted_at.localeCompare(a.submitted_at)),
+  };
+}
+
+/* ============ Back Jobs / Callbacks ============ */
+export const BACKJOB_REASONS: import('./types').BackJobReason[] = ['Missed Area', 'Quality Issue', 'Client Complaint', 'Damage', 'Warranty/Touch-Up', 'Other'];
+export const BACKJOB_FLOW: import('./types').BackJobStatus[] = ['Reported', 'Under Review', 'Approved', 'Scheduled', 'In Progress', 'Resolved', 'Closed'];
+export const RESPONSIBLE_PRESETS = ['Field crew', 'Team Leader', 'Operations', 'Sales / quotation', 'Equipment / materials', 'Client / third party'];
+export const isOpenBackJob = (b: BackJob) => !b.deleted_at && !['Closed', 'Rejected'].includes(b.status);
+export const backJobsOf = (d: Pick<DB, 'back_jobs'>, originJobId: string) => d.back_jobs.filter((b) => b.origin_job_id === originJobId && !b.deleted_at);
+/** The job a back-job chain started from (a back job of a back job still counts against the first job). */
+export function rootJobId(d: Pick<DB, 'back_jobs'>, jobId: string): string {
+  let id = jobId;
+  for (let n = 0; n < 10; n++) { const b = d.back_jobs.find((x) => x.job_id === id && !x.deleted_at); if (!b) break; id = b.origin_job_id; }
+  return id;
+}
+/** Which back-job status the linked job's progress implies (only once the back job is approved). */
+export function backJobStatusFor(b: BackJob, job?: Job): BackJob['status'] {
+  if (!job || ['Reported', 'Under Review', 'Rejected', 'Closed'].includes(b.status)) return b.status;
+  switch (job.status) {
+    case 'Closed': return 'Closed';
+    case 'Work Completed': case 'Completed': case 'Leaving Site': case 'Arrived at HQ': return 'Resolved';
+    case 'Dispatched': case 'On Site': case 'In Progress': return 'In Progress';
+    case 'Confirmed': case 'Dispatch Checklist Pending': case 'Rescheduled': return 'Scheduled';
+    case 'Cancelled': return 'Rejected';
+    default: return 'Approved';
+  }
+}
+
+export interface BackJobRow { b: BackJob; origin?: Job; link?: Job; cost: number; revenue: number; ageDays: number; resolutionDays?: number; rating?: SatisfactionRating; originRating?: SatisfactionRating }
+export interface BackJobAgg { key: string; label: string; n: number; cost: number }
+export interface BackJobStats {
+  rows: BackJobRow[]; open: BackJobRow[]; total: number; totalCost: number; noChargeCost: number; chargeableRevenue: number;
+  byReason: BackJobAgg[]; byClient: BackJobAgg[]; byCrew: BackJobAgg[]; byService: BackJobAgg[];
+  repeated: { originId: string; origin?: Job; n: number; cost: number; reasons: string[] }[];
+  avgResolutionDays: number; resolved: number; avgRating: number; ratedCount: number; avgOriginRating: number;
+  monthly: { month: string; n: number }[];
+}
+export function backJobStats(db: DB, from: string, to: string): BackJobStats {
+  const todayS = today();
+  const rows: BackJobRow[] = db.back_jobs.filter((b) => !b.deleted_at && b.reported_on >= from && b.reported_on <= to).map((b) => {
+    const link = db.jobs.find((j) => j.id === b.job_id); const origin = db.jobs.find((j) => j.id === b.origin_job_id);
+    const cost = link && link.status !== 'Cancelled' ? jobCost(db, link).total : 0;
+    const revenue = b.charge_type === 'Chargeable Additional Work' && link ? jobRevenue(db, link).revenue : 0;
+    const done = b.resolved_at ?? b.closed_at;
+    const fb = link ? db.client_feedback.find((f) => f.job_id === link.id && !f.deleted_at) : undefined;
+    const ofb = origin ? db.client_feedback.find((f) => f.job_id === origin.id && !f.deleted_at) : undefined;
+    return { b, origin, link, cost, revenue, ageDays: Math.max(0, diffDays(done ? done.slice(0, 10) : todayS, b.reported_on)), resolutionDays: done ? Math.max(0, diffDays(done.slice(0, 10), b.reported_on)) : undefined, rating: fb?.rating, originRating: ofb?.rating };
+  });
+  const agg = (pairs: [string, string, BackJobRow, number][]): BackJobAgg[] => {
+    const m = new Map<string, BackJobAgg>();
+    for (const [key, label, r, share] of pairs) { const e = m.get(key) ?? { key, label, n: 0, cost: 0 }; e.n += share; e.cost += r.cost * share; m.set(key, e); }
+    return [...m.values()].map((e) => ({ ...e, n: round2(e.n), cost: round2(e.cost) })).sort((a, b) => b.cost - a.cost || b.n - a.n);
+  };
+  const emp = (id: string) => db.employees.find((e) => e.id === id)?.full_name ?? id;
+  const crewOf = (r: BackJobRow) => [...new Set([...(r.link?.leader_id ? [r.link.leader_id] : r.b.origin_leader_id ? [r.b.origin_leader_id] : []), ...(r.link?.crew_ids.length ? r.link.crew_ids : r.b.origin_crew_ids)])];
+  const roots = new Map<string, BackJobRow[]>();
+  for (const r of rows) { const k = rootJobId(db, r.b.origin_job_id); roots.set(k, [...(roots.get(k) ?? []), r]); }
+  const done = rows.filter((r) => r.resolutionDays !== undefined);
+  const rated = rows.filter((r) => r.rating); const orated = rows.filter((r) => r.originRating);
+  const months = new Map<string, number>(); for (const r of rows) months.set(r.b.reported_on.slice(0, 7), (months.get(r.b.reported_on.slice(0, 7)) ?? 0) + 1);
+  return {
+    rows, open: rows.filter((r) => isOpenBackJob(r.b)).sort((a, b) => b.ageDays - a.ageDays), total: rows.length, totalCost: round2(sum(rows, (r) => r.cost)),
+    noChargeCost: round2(sum(rows.filter((r) => r.b.charge_type === 'No Charge'), (r) => r.cost)), chargeableRevenue: round2(sum(rows, (r) => r.revenue)),
+    byReason: agg(rows.map((r) => [r.b.reason, r.b.reason, r, 1])),
+    byClient: agg(rows.map((r) => [r.b.client_id, db.clients.find((c) => c.id === r.b.client_id)?.name ?? '—', r, 1])),
+    byCrew: agg(rows.flatMap((r) => crewOf(r).map((id): [string, string, BackJobRow, number] => [id, emp(id), r, 1]))),
+    byService: agg(rows.flatMap((r) => { const sh = r.link ? serviceShares(db, r.link) : {}; const keys = Object.keys(sh).length ? sh : Object.fromEntries((r.origin?.service_codes ?? []).map((c) => [c, 1 / Math.max(1, r.origin?.service_codes.length ?? 1)])); return Object.entries(keys).map(([c, f]): [string, string, BackJobRow, number] => [c, db.services.find((s) => s.code === c)?.name ?? c, r, f as number]); })),
+    repeated: [...roots.entries()].filter(([, v]) => v.length >= 2).map(([k, v]) => ({ originId: k, origin: db.jobs.find((j) => j.id === k), n: v.length, cost: round2(sum(v, (r) => r.cost)), reasons: [...new Set(v.map((r) => r.b.reason))] })).sort((a, b) => b.n - a.n || b.cost - a.cost),
+    avgResolutionDays: done.length ? round2(sum(done, (r) => r.resolutionDays!) / done.length) : 0, resolved: done.length,
+    avgRating: rated.length ? round2(sum(rated, (r) => r.rating!) / rated.length) : 0, ratedCount: rated.length, avgOriginRating: orated.length ? round2(sum(orated, (r) => r.originRating!) / orated.length) : 0,
+    monthly: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, n]) => ({ month, n })),
   };
 }

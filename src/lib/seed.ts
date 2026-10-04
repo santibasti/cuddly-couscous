@@ -1,7 +1,7 @@
 // Realistic demo data for TopMop Window Cleaning Solutions Corp. Everything is generated relative to today (Manila),
 // so the dashboard always shows current activity. Names, TINs and amounts are fictional sample data.
 import type {
-  Asset, Attendance, Checkout, Client, ClientFeedback, DB, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
+  Asset, Attendance, BackJob, Checkout, Client, ClientFeedback, DB, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
   PayrollAdjustment, PayrollPeriod, PayrollRun, Payment, PerfReview, PettyCashEntry, Quotation, QuoteItem, ServiceDef,
   Settings, Site, StockTx, StorageLocation, UserAccount, Communication, Complaint, Role, ServiceCode, Condition, PayrollType,
 } from './types';
@@ -275,7 +275,7 @@ export function seedDB(): DB {
   const attendance: Attendance[] = [];
   const checkouts: Checkout[] = [];
   const jobs: Job[] = [];
-  const counters: Record<string, number> = { QT: 0, JOB: 0, INV: 0, OR: 0, EMP: employees.length, INC: 0, DR: 0 };
+  const counters: Record<string, number> = { QT: 0, JOB: 0, INV: 0, OR: 0, EMP: employees.length, INC: 0, DR: 0, BJ: 0 };
   const nn = (k: string) => { counters[k] += 1; return `${k}-${yr}-${String(counters[k]).padStart(4, '0')}`; };
 
   const teamAssets = { A: ['VEH-001', 'ROD-001', 'WFP-001', 'WFP-003', 'PWR-001', 'EXC-001', 'SAF-001'], B: ['VEH-002', 'ROD-002', 'WFP-002', 'PWR-002', 'SFC-001', 'EXC-002', 'SAF-002'] };
@@ -736,6 +736,54 @@ export function seedDB(): DB {
     if (open) j.status = 'Work Completed';
   });
 
+  // Back jobs / callbacks: linked follow-up jobs (own number, schedule, workflow); the original jobs are untouched
+  const backJobs: BackJob[] = [];
+  {
+    const origins = recentDone.filter((j) => j.leader_id).sort((a, b) => a.start_at.localeCompare(b.start_at));
+    const mkLink = (origin: Job, dayOffset: number, status: Job['status'], noCharge: boolean, reason: BackJob['reason'], desc: string, extra: Partial<Job> = {}) => {
+      const d0 = addDays(origin.start_at.slice(0, 10), dayOffset);
+      const jid = id('job'); const bjid = id('bj');
+      const link: Job = { ...origin, id: jid, number: nn('JOB'), status, start_at: `${d0}T08:00`, end_at: `${d0}T14:00`, scope: `BACK JOB (${reason}) for ${origin.number}: ${desc}`, quotation_id: undefined, contract_amount: 0, back_job_id: bjid, origin_job_id: origin.id,
+        findings: '', damage_report: '', equipment_condition_notes: '', completed_at: undefined, signoff_name: undefined, signoff_at: undefined, signoff_data: undefined, client_rating: undefined, checklist: origin.checklist.map((c) => ({ ...c, done: false })), ...extra, created_at: stamp(d0), updated_at: stamp(d0) };
+      jobs.push(link);
+      void noCharge;
+      return { link, d0, bjid };
+    };
+    const mkBj = (origin: Job, link: Job, bjid: string, d0: string, reason: BackJob['reason'], desc: string, charge: BackJob['charge_type'], status: BackJob['status'], responsible: string, extra: Partial<BackJob> = {}): BackJob => {
+      const rep = addDays(d0, -1) > origin.start_at.slice(0, 10) ? addDays(d0, -1) : origin.start_at.slice(0, 10);
+      const bj: BackJob = {
+        ...base('bj', rep), id: bjid, number: nn('BJ'), origin_job_id: origin.id, job_id: link.id, client_id: origin.client_id, site_id: origin.site_id, origin_workflow_id: workflows.find((w) => w.job_id === origin.id)?.id,
+        origin_quotation_id: origin.quotation_id, origin_invoice_id: invoices.find((i) => i.job_id === origin.id)?.id, origin_leader_id: origin.leader_id, origin_crew_ids: [...origin.crew_ids],
+        reason, description: desc, reported_on: rep, reported_by: 'Operations Manager', responsible, charge_type: charge, status,
+        ...(status !== 'Reported' ? { reviewed_by: 'u-ops', reviewed_at: stamp(rep, 10) } : {}),
+        ...(['Approved', 'Scheduled', 'In Progress', 'Resolved', 'Closed'].includes(status) ? { approved_by: 'u-ops', approved_at: stamp(rep, 11), approval_note: charge === 'No Charge' ? 'Our miss — redo at no charge.' : 'Client agreed to a paid add-on; quotation sent.' } : {}),
+        ...(['Resolved', 'Closed'].includes(status) ? { resolved_at: stamp(d0, 15) } : {}), ...(status === 'Closed' ? { closed_at: stamp(d0, 17) } : {}), ...extra,
+      };
+      backJobs.push(bj);
+      return bj;
+    };
+    const [o1, o2, o3] = [origins[origins.length - 5], origins[origins.length - 3], origins[origins.length - 1]];
+    if (o1) {
+      const a = mkLink(o1, 3, 'Closed', true, 'Missed Area', 'Two roof-deck panels were missed on the first visit.');
+      const wfl = mkWorkflow(a.link, 'closed');
+      mkBj(o1, a.link, a.bjid, a.d0, 'Missed Area', 'Two roof-deck panels were missed on the first visit.', 'No Charge', 'Closed', 'Field crew');
+      feedback.push({ ...base('fb', a.d0), job_id: a.link.id, workflow_id: wfl.id, client_id: a.link.client_id, leader_id: a.link.leader_id, crew_ids: [...a.link.crew_ids], service_codes: [...a.link.service_codes], service_date: a.d0, rating: 3, aspects: ['Quality of cleaning', 'Communication'], follow_up: 'None', submitted_by: 'u-lead', submitted_at: `${a.d0}T15:00:00.000Z` });
+      const b = mkLink(o1, 8, 'Confirmed', true, 'Quality Issue', 'Streaks returned on the east wall after rain; redo the wash.', { start_at: `${addDays(T, 1)}T08:00`, end_at: `${addDays(T, 1)}T13:00` });
+      mkBj(o1, b.link, b.bjid, addDays(T, 1), 'Quality Issue', 'Streaks returned on the east wall after rain; redo the wash.', 'No Charge', 'Scheduled', 'Team Leader', { reported_on: addDays(T, -2) });
+    }
+    if (o2) {
+      const c = mkLink(o2, 6, 'Pending', false, 'Client Complaint', 'Client wants the carport glass cleaned as well; not in the original scope.', { start_at: `${addDays(T, 3)}T08:00`, end_at: `${addDays(T, 3)}T14:00` });
+      const qd = quotations.find((x) => x.id === o2.quotation_id);
+      const quote: Quotation | undefined = qd ? { ...qd, id: id('qt'), number: nn('QT'), issue_date: addDays(T, -1), valid_until: addDays(T, 29), status: 'Sent', sent_at: stamp(addDays(T, -1)), decided_at: undefined, scope: c.link.scope, items: [{ service_code: o2.service_codes[0], description: 'Additional work after ' + o2.number + ' (Client Complaint): carport glass', qty: 1, unit: 'lot', rate: 6800, discount: 0 }], discount: 0, created_at: stamp(addDays(T, -1)), updated_at: stamp(addDays(T, -1)) } : undefined;
+      if (quote) { quotations.push(quote); c.link.quotation_id = quote.id; c.link.contract_amount = docTotals(quote.items, 0, quote.vat_mode, quote.vat_rate).net; }
+      mkBj(o2, c.link, c.bjid, addDays(T, 3), 'Client Complaint', 'Client wants the carport glass cleaned as well; not in the original scope.', 'Chargeable Additional Work', 'Approved', 'Sales / quotation', { reported_on: addDays(T, -1), quotation_id: quote?.id });
+    }
+    if (o3) {
+      const d = mkLink(o3, 7, 'Pending', true, 'Damage', 'Client reports a scuffed aluminium frame near the entrance.', { start_at: `${addDays(T, 4)}T08:00`, end_at: `${addDays(T, 4)}T12:00` });
+      mkBj(o3, d.link, d.bjid, addDays(T, 4), 'Damage', 'Client reports a scuffed aluminium frame near the entrance.', 'No Charge', 'Reported', 'Field crew', { reported_on: today() });
+    }
+  }
+
   // today's jobs spread across the tracker so every dashboard status has data
   const live1 = jobs.filter((j) => j.status === 'In Progress');
   const liveStage: Stage[] = ['rep', 'start', 'arr', 'disp', 'start', 'start'];
@@ -805,7 +853,7 @@ export function seedDB(): DB {
       { ...base('cor'), employee_id: FIELD[1].id, date: addDays(T, -2), clock_in: `${addDays(T, -2)}T08:00`, clock_out: `${addDays(T, -2)}T17:00`, reason: 'Forgot to clock out; was on site until 5PM per team leader.', status: 'Pending' },
     ], holidays, reviews, adjustments, periods, runs, locations, items, stock, requests: [
       { ...base('mr'), job_id: jobs.find((j) => j.status === 'Confirmed')?.id ?? jobs[0].id, requested_by: E_L1.id, lines: [{ item_id: item('CHM-001').id, qty: 4 }, { item_id: item('PPE-002').id, qty: 2 }], status: 'Pending', note: 'Extra chemical for large glass job.' },
-    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, audit: [], settings: { ...settings, counters }, version: 1,
+    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, audit: [], settings: { ...settings, counters }, version: 1,
   };
 }
 

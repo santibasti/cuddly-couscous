@@ -48,6 +48,8 @@ export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'discount.request', group: 'Discounts', label: 'Submit a Discount Request (cannot apply or edit discounts)' },
   { key: 'discount.approve', group: 'Discounts', label: 'Approve / reject / modify discounts; edit discount fields' },
   { key: 'feedback.acknowledge', group: 'Dispatch', label: 'Acknowledge negative client feedback (releases job closure)' },
+  { key: 'backjobs.create', group: 'Dispatch', label: 'Create Back Job / Callback on a finished job' },
+  { key: 'backjobs.approve', group: 'Dispatch', label: 'Review, approve or reject Back Jobs' },
   { key: 'incidents.manage', group: 'Dispatch', label: 'Investigate & resolve incident reports' },
   { key: 'invoices.view', group: 'Finance', label: 'View invoices & receivables' },
   { key: 'invoices.edit', group: 'Finance', label: 'Create invoices, record payments' },
@@ -77,7 +79,7 @@ export const DEFAULT_ACCESS: Record<Role, string[]> = {
     'employees.view', 'employees.edit', 'performance.view', 'performance.edit',
     'inventory.view', 'inventory.edit', 'inventory.approve', 'inventory.request',
     'assets.view', 'assets.edit', 'assets.request', 'assets.approve', 'reports.ops',
-    'dispatch.view', 'dispatch.run', 'dispatch.approve', 'incidents.manage', 'discount.request',
+    'dispatch.view', 'dispatch.run', 'dispatch.approve', 'incidents.manage', 'discount.request', 'backjobs.create', 'backjobs.approve',
   ],
   finance: [
     'dashboard.view', 'dashboard.finance', 'clients.view', 'clients.tax', 'sales.view',
