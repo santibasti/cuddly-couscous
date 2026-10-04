@@ -6,8 +6,8 @@ import { useDraft } from '@/lib/useDraft';
 import { confirmLeave } from '@/lib/sync';
 import { getGeo } from '@/lib/geo';
 import { ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, currentRequest, discountBlock, jobRequests, categoryLabel, finalQuoteSummary, lineTotals, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
-import { DISCOUNT_NOTICE, DeclineJobModal, DiscountSection } from './DiscountPanel';
-import { approveFinalQuote, billBase, markQuotePresented, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
+import { DISCOUNT_NOTICE, DeclineJobModal } from './DiscountPanel';
+import { approveFinalQuote, billBase, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
 import { conformePdf } from '@/lib/export';
 import { fmtDateTime, fmtStamp, money } from '@/lib/util';
 import type { AdditionalCategory, Job, JobWorkflow, QuoteItem, Variation } from '@/lib/types';
@@ -181,7 +181,6 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
   const [name, setName] = useState(site?.contact_person ?? ''); const [sig, setSig] = useState<string>();
   const [agree, setAgree] = useState(false); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false);
   const dr = useDraft(`d:${wf.id}:conf`, { name, sig }, (d) => { setName(d.name); setSig(d.sig); }, run && !signed);
-  useEffect(() => { if (run && !signed && !wf.quote_presented_at) { try { markQuotePresented(wf.id); } catch { /* not allowed for this user */ } } }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { document.body.classList.add('noscroll'); return () => document.body.classList.remove('noscroll'); }, []);
   const close = () => { if (dr.dirty && !confirmLeave()) return; onClose(); };
   const geo = async () => { const g = await getGeo(); return { lat: g.lat, lng: g.lng, gps_note: g.lat === undefined ? 'Location unavailable on this device' : undefined, device: deviceInfo() }; };
@@ -215,10 +214,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
         <FinalSummary sm={sm} pendingLabel={hasAdds ? 'Additional Work Total (for your approval)' : undefined} />
         <p className="crnotice">{NOTICE}</p>
 
-        <h3 className="crh">4 · Discount</h3>
-        <DiscountSection job={job} wf={wf} run={run} onDecline={() => setDeclining(true)} />
-
-        <h3 className="crh">5 · Client Approval and Signature</h3>
+        <h3 className="crh">4 · Client Approval and Signature</h3>
 
         {signed && wf.conf_mode === 'declined' ? (
           <div className="alert err"><b>The client declined the job</b> — {wf.conf_name}, {fmtDateTime(wf.conf_at)}{wf.conf_notes ? `: ${wf.conf_notes}` : ''}. No work was started and nothing is billed.</div>
@@ -236,7 +232,8 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
               {hasAdds && <button className="btn lg" onClick={() => setMode('decline')}>Decline Additional Work</button>}
               {hasAdds && <button className="btn lg" onClick={() => setMode('revise')}>Request Revision</button>}
             </>}
-            {block && !mode && <div className="alert warn">{block}</div>}
+            {block && !mode && <div className="alert warn">This quotation is being finalized by TopMop management. The client can sign as soon as it is ready.</div>}
+            {currentRejected && !mode && run && <button className="btn danger lg" onClick={() => setDeclining(true)}>Client declines the job</button>}
             {revision && !mode && <div className="small muted">Present the updated additional work again before the client can sign.</div>}
             {mode === 'approve' && (
               <div className="stack card" style={{ padding: 14 }}>

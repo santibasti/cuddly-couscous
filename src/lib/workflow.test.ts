@@ -381,7 +381,7 @@ describe('Close-out: equipment accountability', () => {
 
 describe('Controlled discounts', () => {
   const lead = () => db().users.find((u) => u.email === 'leader@topmop.ph')!.employee_id!;
-  const sub = (jobId: string, f: Parameters<typeof W.submitDiscountRequest>[1]) => { W.markQuotePresented(wfOf(jobId).id); return W.submitDiscountRequest(jobId, f); };
+  const sub = (jobId: string, f: Parameters<typeof W.submitDiscountRequest>[1]) => W.submitDiscountRequest(jobId, f);
   const reqOf = (jobId: string) => db().discount_requests.filter((r) => r.job_id === jobId && !r.deleted_at);
 
   it('nobody but Owner / Admin can type a discount into a quotation, variation or invoice', async () => {
@@ -474,7 +474,6 @@ describe('Controlled discounts', () => {
   it('a field employee not on the job cannot request; the bill changing after approval needs re-approval', async () => {
     await as('owner@topmop.ph');
     const { job, wf } = upToCheckIn('DISC3', lead(), false);
-    W.markQuotePresented(wf.id);
     await as('field@topmop.ph');
     expect(() => W.submitDiscountRequest(job.id, { kind: 'percent', value: 5, reason: 'Promotion' })).toThrow(/assigned Team Leader/);
     await as('leader@topmop.ph');
@@ -532,17 +531,6 @@ describe('Controlled discounts', () => {
     W.completeCloseOut(wf.id, { items: retItems(wfOf(job.id), () => ({})), confirmed: true });
     expect(stat(job.id)).toBe('Closed');
     expect(db().assets.find((a) => a.id === eq.id)!.status).toBe('Available');
-  });
-
-  it('a discount cannot be requested until the quotation has been presented to the client', async () => {
-    await as('owner@topmop.ph');
-    const { job, wf } = upToCheckIn('DISC6', lead(), false);
-    await as('leader@topmop.ph');
-    expect(() => W.submitDiscountRequest(job.id, { kind: 'percent', value: 5, reason: 'Client request' })).toThrow(/Present the quotation/);
-    expect(db().discount_requests.filter((r) => r.job_id === job.id).length).toBe(0);
-    W.markQuotePresented(wf.id);
-    expect(wfOf(job.id).quote_presented_at).toBeTruthy();
-    expect(W.submitDiscountRequest(job.id, { kind: 'percent', value: 5, reason: 'Client request' }).status).toBe('Pending Admin Approval');
   });
 });
 

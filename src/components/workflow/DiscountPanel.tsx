@@ -17,7 +17,7 @@ const kindLabel = (k: DiscountKind, v: number) => (k === 'percent' ? `${v}%` : m
 const canRunHere = (job: Job) => canRunWorkflow(job);
 
 /** Section 4 of the client-facing quotation screen: request a discount (Team Leader), see its status, or decide it (Owner / Admin). */
-export function DiscountSection({ job, wf, run, onDecline }: { job: Job; wf: JobWorkflow; run: boolean; onDecline: () => void }) {
+export function DiscountSection({ job, wf, run, onDecline }: { job: Job; wf: JobWorkflow; run: boolean; onDecline?: () => void }) {
   const { db, can } = useAuth();
   const all = jobRequests(db, job.id);
   const cur = currentRequest(db, job.id);
@@ -44,15 +44,15 @@ export function DiscountSection({ job, wf, run, onDecline }: { job: Job; wf: Job
           </tbody></table>
           <div className="small muted">{shown.reason}{shown.reason_note ? ` — ${shown.reason_note}` : ''}{shown.client_notes ? ` · Notes: ${shown.client_notes}` : ''}</div>
           <div className="small muted">Requested by {userName(db, shown.submitted_by)} · {fmtDateTime(shown.submitted_at)}</div>
-          {shown.status === 'Pending Admin Approval' && <div className="alert warn" style={{ marginTop: 8 }}>Sent to the Owner / Admin for approval. The client cannot sign until they approve or reject it.</div>}
+          {shown.status === 'Pending Admin Approval' && <div className="alert warn" style={{ marginTop: 8 }}>Sent to the Owner / Admin for approval. The client cannot sign the quotation until they approve or reject it.</div>}
           {shown.status === 'Applied' && <div className="small" style={{ color: 'var(--green)', marginTop: 6 }}>{DISCOUNT_NOTICE}</div>}
-          {shown.status === 'Approved' && <div className="alert info" style={{ marginTop: 8 }}>Approved — apply it to the final bill so the client can sign the revised amount.</div>}
-          {shown.status === 'Rejected' && <div className="alert err" style={{ marginTop: 8 }}>Rejected by {userName(db, shown.decided_by)}{shown.decision_note ? ` — “${shown.decision_note}”` : ''}. The original final amount stands. The client may approve the original quotation or decline the job.</div>}
+          {shown.status === 'Approved' && <div className="alert info" style={{ marginTop: 8 }}>Approved — apply it to the final bill, then present the revised quotation to the client.</div>}
+          {shown.status === 'Rejected' && <div className="alert err" style={{ marginTop: 8 }}>Rejected by {userName(db, shown.decided_by)}{shown.decision_note ? ` — “${shown.decision_note}”` : ''}. The original final amount stands: present the quotation again for the client to sign, or record that the client declined the job.</div>}
           <div className="row" style={{ marginTop: 8 }}>
             {admin && shown.status === 'Pending Admin Approval' && <button className="btn primary" onClick={() => setReview(shown)}>Approve / Reject</button>}
             {admin && !signed && shown.id === cur?.id && ['Approved', 'Applied'].includes(shown.status) && <button className="btn sm" onClick={() => setReview(shown)}>Modify / re-approve</button>}
             {shown.status === 'Approved' && (mine || admin) && <button className="btn primary" onClick={() => attempt(() => applyDiscount(shown.id), 'Discount applied — the client can now sign the revised amount')}>Apply to final bill</button>}
-            {shown.status === 'Rejected' && run && !signed && <button className="btn danger" onClick={onDecline}>Client declines the job</button>}
+            {shown.status === 'Rejected' && run && !signed && onDecline && <button className="btn danger" onClick={onDecline}>Client declines the job</button>}
           </div>
         </div>
       )}

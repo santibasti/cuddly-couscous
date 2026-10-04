@@ -4,10 +4,11 @@ import { Badge, Field, attempt } from '@/components/ui';
 import { Toggle } from '@/components/touch';
 import { AdditionalWork, ClientReview, PanelBreakdown, useReview } from './FinalQuote';
 import { VariationStep } from './VariationStep';
+import { DeclineJobModal, DiscountSection } from './DiscountPanel';
 import { DraftBar, Stepper } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { PANEL_AREAS, PANEL_SIDES, confirmScopeNoChanges, savePanels, setScopeChanged } from '@/lib/workflow';
-import { countPanels, currentRequest, docTotals, jobRequests, requestStatusLabel, scopeRoute, panelTotals, quotedPanels, rowPanels } from '@/lib/business';
+import { countPanels, docTotals, scopeRoute, panelTotals, quotedPanels, rowPanels } from '@/lib/business';
 import { fmtDateTime, money, uid } from '@/lib/util';
 import { conformePdf } from '@/lib/export';
 import type { Job, JobWorkflow, PanelRow } from '@/lib/types';
@@ -77,7 +78,7 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
   const recurring = route === 'recurring';
   const glass = job.service_codes.some((c) => c === 'GLASS_EXT' || c === 'GLASS_INT');
   const [view, setView] = useState(false);
-  const cr = currentRequest(db, job.id) ?? jobRequests(db, job.id).filter((r) => r.status === 'Rejected').pop();
+  const [declineJob, setDeclineJob] = useState(false);
   const { history } = useReview(job);
   const prior = db.jobs.filter((j) => j.id !== job.id && j.client_id === job.client_id && j.site_id === job.site_id && ['Closed', 'Completed'].includes(j.status) && j.start_at < job.start_at).sort((a, b) => b.start_at.localeCompare(a.start_at))[0];
   return (
@@ -105,7 +106,12 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
         {q?.terms && <details><summary className="small" style={{ cursor: 'pointer' }}>Terms &amp; exclusions</summary><p className="small" style={{ whiteSpace: 'pre-wrap' }}>{q.terms}</p></details>}
       </div>
 
-      {!signed && cr && <div className={`alert ${cr.status === 'Pending Admin Approval' ? 'warn' : 'info'}`}>Discount {cr.number}: <b>{requestStatusLabel(cr.status)}</b> — {cr.status === 'Pending Admin Approval' ? 'waiting for the Owner / Admin. The client cannot sign yet.' : 'open the final quote to continue.'} <button className="btn sm" onClick={() => setView(true)}>Open quotation</button></div>}
+      {!signed && wf.arr_at && (
+        <div className="card" style={{ padding: 12 }}>
+          <div className="row between"><b>Discount</b><span className="small muted">Internal — the client does not see this. Only an approved discount appears on the quotation.</span></div>
+          <div style={{ marginTop: 8 }}><DiscountSection job={job} wf={wf} run={run} onDecline={() => setDeclineJob(true)} /></div>
+        </div>
+      )}
       {!signed && !recurring && <><PanelTable wf={wf} editable={run && !wf.closed_at} />{wf.panels.length > 0 && <PanelBreakdown wf={wf} job={job} />}</>}
       {signed && wf.panels.length > 0 && <><PanelTable wf={wf} editable={false} /><PanelBreakdown wf={wf} job={job} /></>}
 
@@ -130,6 +136,7 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
       )}
       {signed && wf.start_at && <div><div className="small muted" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', margin: '8px 0' }}>Variation approval — additional work during the job</div><VariationStep wf={wf} job={job} run={run} /></div>}
       {signed && !wf.start_at && <div className="small muted">Additional work found after work starts is added here as a variation and needs the client's signature before it begins.</div>}
+      {declineJob && <DeclineJobModal wf={wf} job={job} onClose={() => setDeclineJob(false)} onDone={() => setDeclineJob(false)} />}
       {view && <ClientReview wf={wf} job={job} run={run} onClose={() => setView(false)} />}
     </div>
   );

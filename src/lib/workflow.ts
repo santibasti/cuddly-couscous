@@ -190,15 +190,6 @@ export function setScopeChanged(id: string, changed: boolean) {
   return store.update('workflows', id, { scope_changed: changed } as never, 'update', `${job.number}: scope marked as ${changed ? 'changed — client approval required' : 'unchanged'}`);
 }
 
-/** The Team Leader opens the quotation for the client. A discount request is possible only from this moment. */
-export function markQuotePresented(id: string) {
-  const wf = getWf(id); const job = jobOf(wf);
-  needRun(job);
-  if (!wf.arr_at) fail('Check in at the site first.');
-  if (wf.conf_at || wf.quote_presented_at) return wf;
-  return store.update('workflows', id, { quote_presented_at: new Date().toISOString() } as never, 'update', `${job.number}: quotation presented to the client`);
-}
-
 /** Existing recurring job, no change: the approved scope is confirmed by the Team Leader — no new client signature. */
 export function confirmScopeNoChanges(id: string) {
   const wf = getWf(id); const job = jobOf(wf);
@@ -611,7 +602,6 @@ export function submitDiscountRequest(jobId: string, f: DiscountRequestForm): Di
   if (['Cancelled', 'Closed'].includes(job.status)) fail(`A ${job.status.toLowerCase()} job cannot take a discount request.`);
   const wf = workflowFor(jobId);
   if (!wf || !wf.arr_at) return fail('A discount can be requested once the crew has checked in at the site.');
-  if (!wf.quote_presented_at) fail('Present the quotation to the client first. A discount can be requested only after the client has seen the itemized total.');
   if (wf.conf_at) fail('The client has already signed the quotation. A discount must be agreed before the client signs.');
   if (jobHasInvoice(jobId)) fail('This job is already invoiced.');
   if (jobRequests(db(), jobId).some((r) => r.status === 'Rejected') && !store.can('discount.approve')) fail('The Admin already rejected a discount for this job. The decision stands: the client can approve the original quotation or decline the job.');
