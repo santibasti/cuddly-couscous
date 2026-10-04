@@ -407,7 +407,7 @@ export function seedDB(): DB {
         const dk = discSeq++;
         if (dk % 6 === 2 || dk % 11 === 5) {
           const bt = docTotals(quote.items, quote.discount, quote.vat_mode, 12).total;
-          const fixed = dk % 12 === 8, pctv = [3, 5, 7.5][dk % 3], reason = ['Repeat / loyal client', 'Volume – large or multi-floor job', 'Competitor price match', 'Client budget limit'][dk % 4];
+          const fixed = dk % 12 === 8, pctv = [3, 5, 7.5][dk % 3], reason = ['Repeat client', 'Volume work', 'Competitor price', 'Client request'][dk % 4];
           const rejected = dk % 6 !== 2;
           const amt = fixed ? Math.round(bt * 0.04 / 100) * 100 : round2(bt * pctv / 100);
           const kind = fixed ? 'fixed' as const : 'percent' as const, val = fixed ? amt : pctv;
@@ -748,7 +748,7 @@ export function seedDB(): DB {
     discountRequests.push({
       ...base('dr', d0), number: nn('DR'), job_id: j.id, client_id: j.client_id, quotation_id: q.id, original_total: bt, additional_total: 0, base_total: bt,
       kind: k === 0 ? 'percent' : 'fixed', value: k === 0 ? 5 : amt, requested_amount: amt, proposed_final: round2(bt - amt),
-      reason: k === 0 ? 'Repeat / loyal client' : 'Client budget limit', client_notes: k === 0 ? 'Client asked if a repeat-client rate is possible before signing.' : 'Facility manager has a fixed budget for this cleaning.',
+      reason: k === 0 ? 'Repeat client' : 'Client request', client_notes: k === 0 ? 'Client asked if a repeat-client rate is possible before signing.' : 'Facility manager has a fixed budget for this cleaning.',
       status: approved ? 'Approved' : 'Pending Admin Approval', submitted_by: 'u-lead', submitted_at: `${d0}T07:50:00.000Z`,
       ...(approved ? { approved_kind: 'fixed' as const, approved_value: amt, approved_amount: amt, approved_final: round2(bt - amt), approved_base: bt, decision_note: 'OK for this job only; quote the standard rate next time.', decided_by: 'u-owner', decided_at: `${d0}T08:05:00.000Z`, net_amount: q.vat_mode === 'exclusive' ? round2(amt / 1.12) : amt } : {}),
     });

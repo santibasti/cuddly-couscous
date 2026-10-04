@@ -329,10 +329,10 @@ export async function conformePdf(db: DB, j: Job) {
   h('3. Final Billing Summary');
   const sm = finalQuoteSummary(db, j, { deposit: wf?.conf_deposit });
   const sumRows: [string, string, boolean?][] = [
-    ['Original Total (incl. VAT)', pm(sm.originalTotal)], ['Approved Additional Work (incl. VAT)', pm(sm.additionalTotal)],
+    ['Original Quote Total (incl. VAT)', pm(sm.originalTotal)], ['Additional Work Total (incl. VAT)', pm(sm.additionalTotal)],
     ...(sm.discount > 0 ? [['Discounts already in the quoted prices', pm(sm.discount)] as [string, string]] : []),
-    ...(sm.granted > 0 ? [[`Discount Granted${sm.request ? ` (${sm.request.number})` : ''}`, '- ' + pm(sm.granted)] as [string, string]] : []),
-    ['VAT (included)', pm(sm.vat)], ['FINAL TOTAL BILL', pm(sm.finalTotal), true],
+    ...(sm.granted > 0 ? [[`Discount (approved)${sm.request ? ` ${sm.request.number}` : ''}`, '- ' + pm(sm.granted)] as [string, string]] : []),
+    ['VAT', pm(sm.vat)], ['FINAL AMOUNT PAYABLE', pm(sm.finalTotal), true],
     ...(sm.deposit > 0 ? [['Less: deposit / prior payment' + (wf?.conf_deposit_note ? ` (${wf.conf_deposit_note})` : ''), '- ' + pm(sm.deposit)] as [string, string], ['BALANCE DUE', pm(sm.balance), true] as [string, string, boolean]] : []),
   ];
   autoTable(doc, { startY: y, body: sumRows.map((r) => [r[0], r[1]]), theme: 'plain', styles: { fontSize: 10, cellPadding: 1.8 }, columnStyles: { 1: { halign: 'right' } }, margin: { left: 80, right: 12 },

@@ -471,7 +471,7 @@ export interface JobWorkflow extends Base {
   arr_crew_present?: string[]; arr_crew_absent?: { id: string; reason: string }[];
   // 4 Scope Approval: 'approval' = quotation / conforme signed by the client, 'confirmed' = recurring job, scope unchanged
   scope_changed?: boolean;
-  conf_mode?: 'approval' | 'confirmed';
+  conf_mode?: 'approval' | 'confirmed' | 'declined';  // declined = the client turned the job down on site
   conf_at?: string; conf_by?: string; conf_quotation_id?: string; conf_original_total?: number; conf_name?: string; conf_signature?: string; conf_notes?: string;
   conf_variation_id?: string; conf_final_total?: number; conf_deposit?: number; conf_deposit_note?: string; conf_lat?: number; conf_lng?: number; conf_gps_note?: string; conf_device?: string;
   // 5 Work in Progress

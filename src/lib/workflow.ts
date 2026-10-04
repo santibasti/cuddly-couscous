@@ -6,7 +6,7 @@ import { store, RuleError } from './store';
 import type {
   ContainerCondition, DB, DiscountKind, DiscountRequest, FuelLevel, IncidentReport, IncidentType, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
 } from './types';
-import { buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
+import { buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
 import { performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { nowLocal, today } from './util';
 
@@ -276,7 +276,7 @@ export function approveFinalQuote(id: string, f: { name: string; signature?: str
   if (wf.conf_at) fail('The scope is already approved.');
   const v = reviewDraft(job.id);
   if (v?.revision_open) fail('The client asked for a revision. Update the additional work and present it again before signing.');
-  if (scopeRoute(db(), job, wf) === 'approval' && hasGlass(job) && !wf.panels.length) fail('Count the glass panels (floor, side, external, internal) before the client signs.');
+  if ((!isRecurringJob(db(), job) || wf.scope_changed) && hasGlass(job) && !wf.panels.length) fail('Count the glass panels (floor, side, external, internal) before the client signs.');
   if (!f.confirmed) fail('Confirm that the quotation and any additional work were reviewed with the client on site.');
   if (!f.name.trim()) fail('Enter the client name.');
   if (!f.signature) fail('Capture the client signature.');
@@ -301,7 +301,9 @@ export function approveFinalQuote(id: string, f: { name: string; signature?: str
 export function startWork(id: string, f: { at?: string; notes?: string } = {}) {
   const wf = getWf(id); const job = jobOf(wf);
   needRun(job);
-  if (!wf.conf_at) fail('Work cannot start until the scope is approved (step 4).');
+  if (!wf.conf_at) fail('Work cannot start until the scope is approved: the client must sign the quotation (step 4).');
+  if (wf.conf_mode === 'declined') fail('The client declined the job — go to Close-Out.');
+  const ob = discountBlock(db(), job, wf, billBase(job).base); if (ob && /waiting|not yet applied/.test(ob)) fail(ob);
   if (wf.start_at) fail('Work has already started.');
   const at = pickTime(f.at, 'work start', wf.arr_at, 'the check-in');
   store.update('workflows', id, { start_at: at, start_by: uidNow(), work_notes: f.notes ?? wf.work_notes } as never, 'update', `${job.number}: work started ${at.slice(11)}`);
@@ -414,8 +416,8 @@ export function closeOutReady(d: DB, job: Job, wf?: JobWorkflow): CloseReady[] {
   return [
     { key: 'conf', label: 'Scope approved', ok: !!wf?.conf_at },
     { key: 'att', label: 'Site attendance confirmed', ok: !!wf?.arr_at && !!wf.arr_crew_present?.length },
-    { key: 'fin', label: 'Work finished', ok: !!wf?.finish_at },
-    { key: 'rep', label: 'Client handover signed', ok: !!wf?.rep_at },
+    { key: 'fin', label: 'Work finished', ok: !!wf?.finish_at || wf?.conf_mode === 'declined' },
+    { key: 'rep', label: 'Client handover signed', ok: !!wf?.rep_at || wf?.conf_mode === 'declined' },
     { key: 'var', label: 'No variation waiting for client approval', ok: openVariations(d, job.id).length === 0 },
   ];
 }
@@ -425,7 +427,7 @@ export function completeCloseOut(id: string, f: { items: CheckItem[]; leave_at?:
   if (wf.closed_at) fail('The job is already closed.');
   const bad = closeOutReady(db(), job, wf).filter((g) => !g.ok);
   if (bad.length) fail(`Finish the earlier steps first: ${bad.map((g) => g.label).join('; ')}.`);
-  const leave = pickTime(f.leave_at, 'leave-site', wf.finish_at, 'the work finish');
+  const leave = pickTime(f.leave_at, 'leave-site', wf.finish_at ?? wf.arr_at, wf.finish_at ? 'the work finish' : 'the check-in');
   const hqa = pickTime(f.hqa_at, 'arrival at HQ', leave, 'leaving the site');
   const issued = (i: CheckItem) => i.loaded_qty ?? 0;
   const items = f.items.map((i) => ({ ...i }));
@@ -572,9 +574,10 @@ export function submitDiscountRequest(jobId: string, f: DiscountRequestForm): Di
   if (!canTouchJob(job)) fail('Only the assigned Team Leader or a manager can request a discount for this job.');
   if (['Cancelled', 'Closed'].includes(job.status)) fail(`A ${job.status.toLowerCase()} job cannot take a discount request.`);
   const wf = workflowFor(jobId);
-  if (wf?.conf_mode === 'approval' && wf.conf_at) fail('The client has already signed the final bill. A discount must be agreed before the client signs.');
-  if (wf?.rep_client_at) fail('The service report is already signed with the client.');
+  if (!wf || !wf.arr_at) return fail('A discount can be requested once the crew has checked in at the site.');
+  if (wf.conf_at) fail('The client has already signed the quotation. A discount must be agreed before the client signs.');
   if (jobHasInvoice(jobId)) fail('This job is already invoiced.');
+  if (jobRequests(db(), jobId).some((r) => r.status === 'Rejected') && !store.can('discount.approve')) fail('The Admin already rejected a discount for this job. The decision stands: the client can approve the original quotation or decline the job.');
   const open = currentRequest(db(), jobId);
   if (open) fail(`${open.number} is already ${open.status === 'Pending Admin Approval' ? 'waiting for Admin approval' : open.status.toLowerCase()} for this job.`);
   if (!f.reason.trim()) fail('Choose the reason for the discount.');
@@ -610,12 +613,15 @@ export function decideDiscount(id: string, f: { approve: boolean; kind?: Discoun
   const amt = checkAmount(kind, value, b.base);
   const im = discountImpact(db(), job, b, amt);
   const modified = Math.abs(amt - r.requested_amount) > 0.004;
-  return store.update('discount_requests', id, {
+  const approved = store.update('discount_requests', id, {
     status: 'Approved', approved_kind: kind, approved_value: value, approved_amount: amt, approved_final: round2d(b.base - amt), approved_base: b.base,
     original_total: b.original, additional_total: b.additional,
     est_cost: im.cost, gp_before: im.gpBefore, gp_after: im.gpAfter, margin_after: im.marginAfter, net_amount: im.net,
     decision_note: f.note.trim(), decided_by: store.user?.id, decided_at: new Date().toISOString(), applied_at: undefined, applied_by: undefined,
-  } as never, 'approve', `${r.number}: discount ${modified ? `approved at a modified ₱${amt} (requested ₱${r.requested_amount})` : `approved ₱${amt}`} — ${f.note.trim()}`);
+  } as never, 'approve', `${r.number}: discount ${modified ? `approved at a modified ₱${amt} (requested ₱${r.requested_amount})` : `approved ₱${amt}`} — ${f.note.trim()}`) as DiscountRequest;
+  // The client is waiting at the quotation screen: the approved discount goes straight onto the final bill so they can sign.
+  if (wf?.arr_at && !wf.conf_at) return store.update('discount_requests', id, { status: 'Applied', applied_at: new Date().toISOString(), applied_by: store.user?.id } as never, 'approve', `${r.number}: approved discount ₱${amt} applied to the final bill of ${job.number}`) as DiscountRequest;
+  return approved;
 }
 
 /** Put the approved discount on the final bill. After this the client may sign. */
@@ -625,9 +631,27 @@ export function applyDiscount(id: string): DiscountRequest {
   if (r.status !== 'Approved') fail(r.status === 'Applied' ? 'This discount is already applied.' : 'Only an approved discount can be applied.');
   if (jobHasInvoice(job.id)) fail('This job is already invoiced.');
   const wf = workflowFor(job.id);
-  if (wf?.conf_mode === 'approval' && wf.conf_at) fail('The client has already signed the final bill.');
+  if (wf?.conf_at) fail('The client has already signed the quotation.');
   const b = billBase(job);
   if (Math.abs((r.approved_base ?? b.base) - b.base) > 0.01) fail('The final bill changed after the discount was approved. Ask the Admin to re-approve it.');
   return store.update('discount_requests', id, { status: 'Applied', applied_at: new Date().toISOString(), applied_by: store.user?.id } as never, 'approve', `${r.number}: approved discount ₱${r.approved_amount} applied to the final bill of ${job.number}`);
 }
 export { jobRequests };
+
+
+/* ================= The client turns the job down on site (e.g. after a rejected discount) ================= */
+/** Records that the client declined the job. No work is done and nothing is billed; the crew goes straight to Close-Out to return equipment. */
+export function declineJob(id: string, f: { client_name: string; reason?: string; lat?: number; lng?: number; gps_note?: string; device?: string }) {
+  const wf = getWf(id); const job = jobOf(wf);
+  needRun(job);
+  if (!wf.arr_at) fail('Check in at the site first.');
+  if (wf.conf_at) fail('The quotation is already signed.');
+  if (!f.client_name.trim()) fail('Enter the client name.');
+  const cr = currentRequest(db(), job.id);
+  if (cr && ['Pending Admin Approval', 'Approved'].includes(cr.status)) fail('Wait for the Admin to decide the discount request first.');
+  const draft = reviewDraft(job.id);
+  if (draft?.items.length) store.update('variations', draft.id, { status: 'Rejected', client_name: f.client_name.trim(), notes: 'Client declined the job', decided_by: uidNow(), decided_at: new Date().toISOString(), revision_open: false } as never, 'update', `${draft.number}: additional work not taken — client declined the job`);
+  store.update('workflows', id, { conf_mode: 'declined', conf_at: nowLocal(), conf_by: uidNow(), conf_name: f.client_name.trim(), conf_notes: f.reason?.trim() || 'Client declined the job on site', conf_lat: f.lat, conf_lng: f.lng, conf_gps_note: f.gps_note, conf_device: f.device } as never, 'update', `${job.number}: client ${f.client_name.trim()} declined the job on site — ${f.reason?.trim() || 'no reason given'}`);
+  setStatus(db().jobs.find((j) => j.id === job.id)!, 'Work Completed', `${job.number}: client declined — no work done, proceed to close-out`);
+  runAutomations();
+}

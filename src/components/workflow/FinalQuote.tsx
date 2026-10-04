@@ -5,8 +5,8 @@ import { DraftBar, PresetChips, Stepper, Toggle } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { confirmLeave } from '@/lib/sync';
 import { getGeo } from '@/lib/geo';
-import { ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, discountBlock, categoryLabel, finalQuoteSummary, lineTotals, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
-import { DISCOUNT_NOTICE } from './DiscountPanel';
+import { ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, currentRequest, discountBlock, jobRequests, categoryLabel, finalQuoteSummary, lineTotals, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
+import { DISCOUNT_NOTICE, DeclineJobModal, DiscountSection } from './DiscountPanel';
 import { approveFinalQuote, billBase, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
 import { conformePdf } from '@/lib/export';
 import { fmtDateTime, fmtStamp, money } from '@/lib/util';
@@ -42,12 +42,12 @@ export function FinalSummary({ sm, pendingLabel }: { sm: ReturnType<typeof final
   return (
     <>
       <table className="tbl finalsum"><tbody>
-        {row('Original Total', money(sm.originalTotal))}
-        {row(pendingLabel ?? 'Approved Additional Work', money(sm.additionalTotal))}
+        {row('Original Quote Total', money(sm.originalTotal))}
+        {row(pendingLabel ?? 'Additional Work Total', money(sm.additionalTotal))}
         {sm.discount > 0 && row('Discounts already in the quoted prices', money(sm.discount), 'sub')}
-        {sm.granted > 0 && row(`Discount Granted${sm.request ? ` (${sm.request.number})` : ''}`, `− ${money(sm.granted)}`, 'disc')}
-        {row('VAT (included)', money(sm.vat), 'sub')}
-        {row('Final Total Bill', money(sm.finalTotal), 'big')}
+        {sm.granted > 0 && row(`Discount (approved)${sm.request ? ` · ${sm.request.number}` : ''}`, `− ${money(sm.granted)}`, 'disc')}
+        {row('VAT', money(sm.vat), 'sub')}
+        {row('Final Amount Payable', money(sm.finalTotal), 'big')}
         {sm.deposit > 0 && row('Less: deposit / prior payment', `− ${money(sm.deposit)}`)}
         {sm.deposit > 0 && row('Balance due', money(sm.balance), 'big')}
       </tbody></table>
@@ -175,7 +175,9 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
   const hasAdds = pendingItems.length > 0;
   const revision = !!draft?.revision_open;
   const block = signed ? undefined : discountBlock(db, job, wf, billBase(job).base);
+  const currentRejected = !currentRequest(db, job.id) && jobRequests(db, job.id).some((r) => r.status === 'Rejected');
   const [mode, setMode] = useState<'approve' | 'decline' | 'revise' | null>(null);
+  const [declining, setDeclining] = useState(false);
   const [name, setName] = useState(site?.contact_person ?? ''); const [sig, setSig] = useState<string>();
   const [agree, setAgree] = useState(false); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false);
   const dr = useDraft(`d:${wf.id}:conf`, { name, sig }, (d) => { setName(d.name); setSig(d.sig); }, run && !signed);
@@ -189,6 +191,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
 
   return (
     <div className="clientreview" role="dialog" aria-modal="true" aria-label="Client Final Quote Review">
+      {declining && <DeclineJobModal wf={wf} job={job} onClose={() => setDeclining(false)} onDone={() => { setDeclining(false); onClose(); }} />}
       <div className="crbar"><b>Client Final Quote Review</b><span className="grow" />{!signed && run && <DraftBar d={dr} />}<button className="btn" onClick={close}>{signed ? 'Close' : '← Back to editing'}</button></div>
       <div className="crpaper">
         <header className="crhead">
@@ -208,10 +211,17 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
         {history.filter((h) => h.status === 'Rejected').map((h) => <div key={h.id} className="alert info" style={{ marginTop: 8 }}>Offered and declined by the client ({h.number}): {h.items.map((i) => i.description).join('; ')} — <b>not included</b> in the final bill.</div>)}
 
         <h3 className="crh">3 · Final Billing Summary</h3>
-        <FinalSummary sm={sm} pendingLabel={hasAdds ? 'Additional work (for your approval)' : undefined} />
+        <FinalSummary sm={sm} pendingLabel={hasAdds ? 'Additional Work Total (for your approval)' : undefined} />
         <p className="crnotice">{NOTICE}</p>
 
-        {signed ? (
+        <h3 className="crh">4 · Discount</h3>
+        <DiscountSection job={job} wf={wf} run={run} onDecline={() => setDeclining(true)} />
+
+        <h3 className="crh">5 · Client Approval and Signature</h3>
+
+        {signed && wf.conf_mode === 'declined' ? (
+          <div className="alert err"><b>The client declined the job</b> — {wf.conf_name}, {fmtDateTime(wf.conf_at)}{wf.conf_notes ? `: ${wf.conf_notes}` : ''}. No work was started and nothing is billed.</div>
+        ) : signed ? (
           <div className="card" style={{ padding: 14 }}>
             <b>Approved and signed</b>
             <dl className="kv" style={{ marginTop: 8 }}><dt>Client</dt><dd>{wf.conf_name}</dd><dt>Date & time</dt><dd>{fmtDateTime(wf.conf_at)}</dd><dt>Location</dt><dd>{wf.conf_lat !== undefined ? `${wf.conf_lat}, ${wf.conf_lng}` : wf.conf_gps_note ?? '—'}</dd><dt>Device</dt><dd>{wf.conf_device || '—'}</dd></dl>
@@ -221,7 +231,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
         ) : run ? (
           <div className="cractions">
             {!mode && <>
-              <button className="btn primary lg" disabled={revision || !!block} onClick={() => setMode('approve')}>Approve Final Quote and Sign</button>
+              <button className="btn primary lg" disabled={revision || !!block} onClick={() => setMode('approve')}>{currentRejected ? 'Approve Original Quotation and Sign' : 'Approve Final Quote and Sign'}</button>
               {hasAdds && <button className="btn lg" onClick={() => setMode('decline')}>Decline Additional Work</button>}
               {hasAdds && <button className="btn lg" onClick={() => setMode('revise')}>Request Revision</button>}
             </>}

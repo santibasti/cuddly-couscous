@@ -331,6 +331,7 @@ export function invoiceFromJob(jobId: string): Invoice {
   const j = db().jobs.find((x) => x.id === jobId)!;
   if (!isDone(j.status)) fail('Only jobs with completed work can be invoiced.');
   if (db().invoices.some((i) => i.job_id === jobId && i.status !== 'Reversed' && !i.deleted_at)) fail('This job already has an invoice.');
+  if (db().workflows.some((w) => w.job_id === jobId && w.conf_mode === 'declined' && !w.deleted_at)) fail('The client declined this job — there is nothing to invoice.');
   const open = currentRequest(db(), jobId);
   if (open && open.status !== 'Applied') fail(`Discount request ${open.number} is ${open.status === 'Approved' ? 'approved but not yet applied to the final bill' : 'waiting for Admin approval'}. Settle it before invoicing.`);
   const client = db().clients.find((c) => c.id === j.client_id)!;

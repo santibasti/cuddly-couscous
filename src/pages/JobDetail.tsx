@@ -7,7 +7,6 @@ import { invoiceFromJob, setJobStatus, updateJobField } from '@/lib/actions';
 import { finalContract, isDone, jobCost, JOB_FLOW, stockSummary } from '@/lib/business';
 import { Tabs } from '@/components/ui';
 import { useMedia } from '@/components/touch';
-import { DiscountPanel } from '@/components/workflow/DiscountPanel';
 import { WorkflowPanel } from '@/components/workflow/WorkflowPanel';
 import { ReportIncidentModal } from '@/components/workflow/Incidents';
 import { overrideJobStatus } from '@/lib/workflow';
@@ -58,7 +57,6 @@ export default function JobDetail() {
 
       {(hasVars || fc.discount > 0) && <div className="alert info" style={{ marginBottom: 12 }}>Contract value: original {money(fc.originalNet)}{hasVars ? ` + approved variations ${money(fc.variationsNet)}` : ''}{fc.discount > 0 ? ` − discount granted ${money(fc.discountNet)}` : ''} = <b>{money(fc.payableNet)}</b> (ex-VAT). The original quotation is unchanged.{fc.discount > 0 && ' Discount approved by TopMop management and reflected in the final agreed amount.'}</div>}
       {!wide && <Tabs tabs={[{ id: 'workflow' as const, label: 'Workflow' }, { id: 'details' as const, label: 'Job details' }]} value={tab} onChange={setTab} />}
-      {(wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><DiscountPanel job={j} wf={db.workflows.find((w) => w.job_id === j.id && !w.deleted_at)} /></div>}
       {(wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><WorkflowPanel job={j} onDetails={() => { setTab('details'); window.scrollTo({ top: 0 }); }} /></div>}
       {(wide || tab === 'details') && <div className="grid g2">
         <div className="stack">

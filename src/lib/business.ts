@@ -34,7 +34,7 @@ export function workflowProgress(wf: JobWorkflow | undefined, variations: Variat
   const w = wf ?? ({} as Partial<JobWorkflow>);
   const stamps = [
     { at: w.hq_at, by: w.hq_by }, { at: w.disp_at, by: w.disp_by }, { at: w.arr_at, by: w.arr_by }, { at: w.conf_at, by: w.conf_by },
-    { at: w.finish_at, by: w.finish_by }, { at: w.rep_at, by: w.rep_by }, { at: w.closed_at, by: w.closed_by },
+    w.conf_mode === 'declined' ? { at: w.conf_at, by: w.conf_by } : { at: w.finish_at, by: w.finish_by }, w.conf_mode === 'declined' ? { at: w.conf_at, by: w.conf_by } : { at: w.rep_at, by: w.rep_by }, { at: w.closed_at, by: w.closed_by },
   ];
   const done = stamps.map((s) => !!s.at);
   const cur = done.findIndex((d) => !d);
@@ -46,7 +46,11 @@ export function isRecurringJob(d: Pick<DB, 'jobs'>, job: Job): boolean {
   return d.jobs.some((j) => j.id !== job.id && !j.deleted_at && j.client_id === job.client_id && j.site_id === job.site_id && ['Closed', 'Completed'].includes(j.status) && j.start_at < job.start_at && j.service_codes.some((c) => job.service_codes.includes(c)));
 }
 /** Scope Approval route: a new client / job or a changed scope needs the client's signature; a recurring job with no change is just confirmed. */
-export const scopeRoute = (d: Pick<DB, 'jobs'>, job: Job, wf?: Pick<JobWorkflow, 'scope_changed'>): 'approval' | 'recurring' => (isRecurringJob(d, job) && !wf?.scope_changed ? 'recurring' : 'approval');
+export const scopeRoute = (d: Pick<DB, 'jobs'> & Partial<Pick<DB, 'discount_requests'>>, job: Job, wf?: Pick<JobWorkflow, 'scope_changed'>): 'approval' | 'recurring' => {
+  // a discounted bill (open, approved or applied request) always needs the client's signature
+  const discounted = !!d.discount_requests?.some((r) => r.job_id === job.id && !r.deleted_at && r.status !== 'Rejected');
+  return isRecurringJob(d, job) && !wf?.scope_changed && !discounted ? 'recurring' : 'approval';
+};
 
 /* ============ Glass panel counting & service pricing ============ */
 export interface GlassRow { w: number; h: number; qty: number; grouped?: boolean }
@@ -316,7 +320,7 @@ export function jobDays(j: Pick<Job, 'start_at' | 'end_at'>) { return Math.max(1
 export function jobRevenue(db: DB, j: Job): { revenue: number; basis: 'billed' | 'expected' | 'none' } {
   const inv = db.invoices.filter((i) => i.job_id === j.id && i.status === 'Approved' && !i.deleted_at);
   if (inv.length) return { revenue: sum(inv, (i) => invoiceTotals(i).net), basis: 'billed' };
-  if (j.status === 'Cancelled') return { revenue: 0, basis: 'none' };
+  if (j.status === 'Cancelled' || db.workflows.some((w) => w.job_id === j.id && w.conf_mode === 'declined' && !w.deleted_at)) return { revenue: 0, basis: 'none' };
   const disc = appliedDiscount(db, j.id);
   return { revenue: round2(j.contract_amount - (disc?.net_amount ?? 0)), basis: j.contract_amount ? 'expected' : 'none' };
 }
@@ -660,7 +664,8 @@ export const openVariations = (d: Pick<DB, 'variations'>, jobId: string) => d.va
 
 
 /* ============ Controlled discounts (Discount Request workflow) ============ */
-export const DISCOUNT_REASONS = ['Repeat / loyal client', 'Volume – large or multi-floor job', 'Competitor price match', 'Client budget limit', 'Goodwill / service concern', 'Promotion', 'Other'] as const;
+export const DISCOUNT_REASONS = ['Client request', 'Repeat client', 'Volume work', 'Competitor price', 'Other'] as const;
+export const requestStatusLabel = (st: DiscountRequest['status']) => (st === 'Pending Admin Approval' ? 'Pending Approval' : st === 'Applied' ? 'Approved' : st);
 /** VAT contained in a VAT-inclusive amount. */
 export const vatPortion = (amount: number, mode: 'exclusive' | 'inclusive' | 'none', rate: number) => (mode === 'none' ? 0 : round2((amount * rate) / (100 + rate)));
 export const discountAmount = (kind: DiscountKind, value: number, base: number) => round2(kind === 'percent' ? (base * value) / 100 : value);

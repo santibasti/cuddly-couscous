@@ -176,7 +176,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .tabs button { background: none; border: 0; padding: 10px 14px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; font-size: 13.5px; }
 .tabs button.on { color: var(--navy); border-bottom-color: var(--teal); }
 .tabs .cnt { background: var(--gray-bg); border-radius: 10px; font-size: 11px; padding: 0 6px; margin-left: 4px; }
-.modal-back { position: fixed; inset: 0; background: rgba(11,37,69,.5); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 4vh 12px; overflow-y: auto; }
+.modal-back { position: fixed; inset: 0; background: rgba(11,37,69,.5); z-index: 120; display: flex; align-items: flex-start; justify-content: center; padding: 4vh 12px; overflow-y: auto; }
 .modal { background: #fff; border-radius: 10px; width: 100%; max-width: 640px; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
 .modal.wide { max-width: 980px; } .modal.xl { max-width: 1180px; }
 .modal-h { padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }

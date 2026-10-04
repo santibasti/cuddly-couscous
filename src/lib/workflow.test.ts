@@ -415,12 +415,10 @@ describe('Controlled discounts', () => {
     await as('owner@topmop.ph');
     expect(() => W.decideDiscount(r.id, { approve: true, note: '  ' })).toThrow(/approval note/);
     const a = W.decideDiscount(r.id, { approve: true, note: 'One-time repeat client rate' });
-    expect(a).toMatchObject({ status: 'Approved', approved_amount: r.requested_amount, approved_base: base, decision_note: 'One-time repeat client rate' });
+    // the client is waiting on site, so the approved discount goes straight onto the bill
+    expect(a).toMatchObject({ status: 'Applied', approved_amount: r.requested_amount, approved_base: base, decision_note: 'One-time repeat client rate' });
     expect(a.est_cost).toBeGreaterThan(0); expect(a.gp_after).toBeLessThan(a.gp_before!);
-    // approved but not applied → still cannot sign
     await as('leader@topmop.ph');
-    expect(() => W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true })).toThrow(/not yet applied/);
-    W.applyDiscount(r.id);
     expect(reqOf(job.id)[0].status).toBe('Applied');
     const sm = B.finalQuoteSummary(db(), db().jobs.find((j) => j.id === job.id)!);
     expect(sm.granted).toBe(r.requested_amount); expect(sm.finalTotal).toBeCloseTo(base - r.requested_amount, 2);
@@ -449,7 +447,7 @@ describe('Controlled discounts', () => {
     for (const view of ['client', 'service', 'leader', 'reason', 'month', 'job'] as const) expect(B.discountAggregate(db(), rows, view).reduce((s, x) => s + x.granted, 0)).toBeCloseTo(r.requested_amount, 1);
   });
 
-  it('admin can modify the amount; a rejection frees the Team Leader to sign (and to request again)', async () => {
+  it('admin can modify the amount; a rejection stands: the Team Leader cannot override it and the client signs the original amount', async () => {
     await as('owner@topmop.ph');
     const { job, wf } = upToCheckIn('DISC2', lead(), false);
     await as('leader@topmop.ph');
@@ -462,10 +460,14 @@ describe('Controlled discounts', () => {
     expect(rej.status).toBe('Rejected');
     await as('leader@topmop.ph');
     expect(B.discountBlock(db(), db().jobs.find((j) => j.id === job.id)!, wfOf(job.id), 1)).toBeUndefined();   // nothing blocks signing now
-    const again = W.submitDiscountRequest(job.id, { kind: 'percent', value: 2, reason: 'Promotion' });
-    expect(again.number).not.toBe(r.number);
-    expect(() => W.applyDiscount(again.id)).toThrow(/approved discount/);
-    void wf;
+    // the Team Leader cannot override the rejection by asking again
+    expect(() => W.submitDiscountRequest(job.id, { kind: 'percent', value: 2, reason: 'Other', reason_note: 'again' })).toThrow(/decision stands/);
+    expect(() => W.decideDiscount(r.id, { approve: true, note: 'x' })).toThrow(/not permitted/);
+    // the original amount stands: the client signs it
+    W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true });
+    expect(B.finalQuoteSummary(db(), db().jobs.find((j) => j.id === job.id)!).granted).toBe(0);
+    W.startWork(wf.id, {});
+    expect(stat(job.id)).toBe('In Progress');
   });
 
   it('a field employee not on the job cannot request; the bill changing after approval needs re-approval', async () => {
@@ -481,12 +483,52 @@ describe('Controlled discounts', () => {
     await as('leader@topmop.ph');
     W.savePanels(wf.id, [{ id: 'p1', area: '1st Floor', side: 'Front', external: 10, internal: 0, additional: true }]);
     W.saveFinalReview(wf.id, { items: [{ service_code: 'GLASS_EXT', category: 'glass', description: '', qty: 0, entered_qty: 0, unit: 'panel', rate: 140, discount: 0, linked_panels: true }] });
-    expect(() => W.applyDiscount(r.id)).toThrow(/changed after the discount was approved/);
+    expect(() => W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true })).toThrow(/changed after discount/);
     await as('owner@topmop.ph');
     W.decideDiscount(r.id, { approve: true, note: 're-approved on the new total' });
     await as('leader@topmop.ph');
-    W.applyDiscount(r.id);
     W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true });
     expect(db().variations.find((v) => v.job_id === job.id && v.status === 'Approved')).toBeTruthy();
+  });
+
+  it('a discount forces the signature route even on a recurring job; work cannot start until the client signs original or discounted amount', async () => {
+    await as('owner@topmop.ph');
+    const { job, wf } = upToCheckIn('DISC4', lead(), true);
+    expect(B.scopeRoute(db(), db().jobs.find((j) => j.id === job.id)!, wfOf(job.id))).toBe('recurring');
+    await as('leader@topmop.ph');
+    const r = W.submitDiscountRequest(job.id, { kind: 'percent', value: 4, reason: 'Repeat client' });
+    expect(B.scopeRoute(db(), db().jobs.find((j) => j.id === job.id)!, wfOf(job.id))).toBe('approval');
+    expect(() => W.confirmScopeNoChanges(wf.id)).toThrow(/new job or the scope changed/);
+    expect(() => W.startWork(wf.id, {})).toThrow(/scope is approved/);
+    await as('owner@topmop.ph');
+    W.decideDiscount(r.id, { approve: true, note: 'ok' });
+    await as('leader@topmop.ph');
+    expect(() => W.startWork(wf.id, {})).toThrow(/scope is approved/);          // approved, but the client has not signed the discounted amount yet
+    W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true });
+    W.startWork(wf.id, {});
+    expect(stat(job.id)).toBe('In Progress');
+  });
+
+  it('after a rejection the client may decline the job: nothing is billed and the crew returns the equipment at close-out', async () => {
+    await as('owner@topmop.ph');
+    const { job, wf, eq } = upToCheckIn('DISC5', lead(), false);
+    await as('leader@topmop.ph');
+    const r = W.submitDiscountRequest(job.id, { kind: 'fixed', value: 3000, reason: 'Competitor price' });
+    expect(() => W.declineJob(wf.id, { client_name: 'Ms. Reyes' })).toThrow(/Wait for the Admin/);
+    await as('owner@topmop.ph');
+    W.decideDiscount(r.id, { approve: false, note: 'Margin too thin' });
+    await as('leader@topmop.ph');
+    W.declineJob(wf.id, { client_name: 'Ms. Reyes', reason: 'Went with a cheaper provider' });
+    expect(wfOf(job.id)).toMatchObject({ conf_mode: 'declined', conf_name: 'Ms. Reyes' });
+    expect(() => W.startWork(wf.id, {})).toThrow(/declined/);
+    expect(stat(job.id)).toBe('Work Completed');
+    expect(B.workflowProgress(wfOf(job.id)).map((p) => p.state)).toEqual(['done', 'done', 'done', 'done', 'done', 'done', 'current']);
+    expect(B.jobCost(db(), db().jobs.find((j) => j.id === job.id)!).revenue).toBe(0);
+    await as('finance@topmop.ph');
+    expect(() => A.invoiceFromJob(job.id)).toThrow(/declined/);
+    await as('leader@topmop.ph');
+    W.completeCloseOut(wf.id, { items: retItems(wfOf(job.id), () => ({})), confirmed: true });
+    expect(stat(job.id)).toBe('Closed');
+    expect(db().assets.find((a) => a.id === eq.id)!.status).toBe('Available');
   });
 });

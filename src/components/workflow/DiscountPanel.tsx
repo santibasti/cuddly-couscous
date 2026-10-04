@@ -4,8 +4,8 @@ import { Badge, Field, Modal, attempt } from '@/components/ui';
 import { DraftBar, PresetChips } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { confirmLeave } from '@/lib/sync';
-import { DISCOUNT_REASONS, currentRequest, discountAmount, discountImpact, discountLocked, jobRequests } from '@/lib/business';
-import { applyDiscount, billBase, decideDiscount, submitDiscountRequest, canRunWorkflow } from '@/lib/workflow';
+import { DISCOUNT_REASONS, currentRequest, discountAmount, discountImpact, jobRequests, requestStatusLabel } from '@/lib/business';
+import { applyDiscount, billBase, canRunWorkflow, declineJob, decideDiscount, submitDiscountRequest } from '@/lib/workflow';
 import { fmtDateTime, money, pct } from '@/lib/util';
 import type { DiscountKind, DiscountRequest, Job, JobWorkflow } from '@/lib/types';
 
@@ -14,65 +14,95 @@ const TONE: Record<DiscountRequest['status'], string> = { 'Pending Admin Approva
 const userName = (db: ReturnType<typeof useAuth>['db'], id?: string) => db.users.find((u) => u.id === id)?.name ?? '—';
 const kindLabel = (k: DiscountKind, v: number) => (k === 'percent' ? `${v}%` : money(v));
 
-/** Discount Request status, history and actions for one job. Team Leaders only ever submit; the Owner / Admin decides. */
-export function DiscountPanel({ job, wf }: { job: Job; wf?: JobWorkflow }) {
+const canRunHere = (job: Job) => canRunWorkflow(job);
+
+/** Section 4 of the client-facing quotation screen: request a discount (Team Leader), see its status, or decide it (Owner / Admin). */
+export function DiscountSection({ job, wf, run, onDecline }: { job: Job; wf: JobWorkflow; run: boolean; onDecline: () => void }) {
   const { db, can } = useAuth();
   const all = jobRequests(db, job.id);
   const cur = currentRequest(db, job.id);
+  const rejected = [...all].reverse().find((r) => r.status === 'Rejected');
   const admin = can('discount.approve');
-  const mine = can('discount.request') && (admin || canRunWorkflow(job));
-  const signedBill = !!wf && ((wf.conf_mode === 'approval' && !!wf.conf_at) || !!wf.rep_client_at);
+  const mine = can('discount.request') && (admin || canRunHere(job));
+  const signed = !!wf.conf_at;
   const invoiced = db.invoices.some((i) => i.job_id === job.id && i.status !== 'Reversed' && !i.deleted_at);
-  const closed = ['Cancelled', 'Closed'].includes(job.status);
-  const canRequest = mine && !cur && !signedBill && !invoiced && !closed && !!wf?.arr_at;
+  const canRequest = mine && !cur && !signed && !invoiced && (!rejected || admin);
   const [form, setForm] = useState(false);
   const [review, setReview] = useState<DiscountRequest | null>(null);
-  const locked = cur ? discountLocked(wf, cur) : false;
-  if (!all.length && !canRequest) return null;
+  const shown = cur ?? rejected;
   return (
-    <div className="card discpanel" style={{ padding: 12 }}>
-      <div className="row between">
-        <div><b>Discount</b><div className="small muted">Discounts are only granted through a request approved by the Owner / Admin. The original quotation and rates never change.</div></div>
-        {canRequest && <button className="btn navy" onClick={() => setForm(true)}>Request discount</button>}
-      </div>
-      {all.length > 0 && (
-        <div className="stack" style={{ marginTop: 10 }}>
-          {[...all].reverse().map((r) => (
-            <div key={r.id} className={`itemcard ${r.status === 'Applied' ? 'ok' : r.status === 'Rejected' ? 'bad' : ''}`}>
-              <div className="row between">
-                <div><b>{r.number}</b> <Badge tone={TONE[r.status]}>{r.status}</Badge></div>
-                <b>{money(r.status === 'Pending Admin Approval' || r.status === 'Rejected' ? r.requested_amount : r.approved_amount ?? r.requested_amount)}</b>
-              </div>
-              <div className="small">
-                Requested {kindLabel(r.kind, r.value)} off {money(r.base_total)} → proposed {money(r.proposed_final)} · {r.reason}{r.reason_note ? ` (${r.reason_note})` : ''}
-              </div>
-              {r.client_notes && <div className="small muted">Client: {r.client_notes}</div>}
-              <div className="small muted">Submitted by {userName(db, r.submitted_by)} · {fmtDateTime(r.submitted_at)}</div>
-              {r.status !== 'Pending Admin Approval' && r.decided_at && (
-                <div className="small muted">
-                  {r.status === 'Rejected' ? 'Rejected' : 'Approved'} by {userName(db, r.decided_by)} · {fmtDateTime(r.decided_at)}
-                  {r.status !== 'Rejected' && r.approved_amount !== undefined && Math.abs(r.approved_amount - r.requested_amount) > 0.004 ? ` — modified to ${money(r.approved_amount)}` : ''} — “{r.decision_note}”
-                </div>
-              )}
-              {r.status === 'Applied' && <div className="small" style={{ color: 'var(--green)' }}>Applied to the final bill → final amount {money(r.approved_final ?? 0)}. {DISCOUNT_NOTICE}</div>}
-              <div className="row" style={{ marginTop: 6 }}>
-                {admin && r.status === 'Pending Admin Approval' && <button className="btn sm primary" onClick={() => setReview(r)}>Review &amp; decide</button>}
-                {admin && (r.status === 'Approved' || (r.status === 'Applied' && !locked)) && r.id === cur?.id && <button className="btn sm" onClick={() => setReview(r)}>Modify / re-approve</button>}
-                {r.status === 'Approved' && (mine || admin) && <button className="btn sm primary" onClick={() => attempt(() => applyDiscount(r.id), 'Discount applied to the final bill — the client can now review and sign')}>Apply to final bill</button>}
-                {r.status === 'Applied' && locked && <span className="small muted">Signed by the client — final.</span>}
-                {r.status === 'Pending Admin Approval' && !admin && <span className="small muted">Waiting for the Owner / Admin. The client cannot sign the final bill until this is decided.</span>}
-              </div>
-            </div>
-          ))}
+    <div className="stack" style={{ gap: 10 }}>
+      {!shown && <p className="muted" style={{ margin: 0 }}>{signed ? 'No discount was requested.' : 'No discount requested.'}</p>}
+      {shown && (
+        <div className={`itemcard ${shown.status === 'Applied' ? 'ok' : shown.status === 'Rejected' ? 'bad' : ''}`}>
+          <div className="row between"><div><b>{shown.number}</b> <Badge tone={TONE[shown.status]}>{requestStatusLabel(shown.status)}</Badge></div></div>
+          <table className="tbl finalsum"><tbody>
+            <tr><td>Original total</td><td className="num">{money(shown.base_total)}</td></tr>
+            <tr><td>Requested discount ({kindLabel(shown.kind, shown.value)})</td><td className="num">− {money(shown.requested_amount)}</td></tr>
+            {shown.status === 'Applied' && shown.approved_amount !== undefined && Math.abs(shown.approved_amount - shown.requested_amount) > 0.004 && <tr><td>Approved discount</td><td className="num">− {money(shown.approved_amount)}</td></tr>}
+            <tr className="big"><td>{shown.status === 'Rejected' ? 'Final amount (original stands)' : shown.status === 'Pending Admin Approval' ? 'Proposed final amount' : 'Revised final amount'}</td><td className="num">{money(shown.status === 'Rejected' ? shown.base_total : shown.status === 'Pending Admin Approval' ? shown.proposed_final : shown.approved_final ?? shown.proposed_final)}</td></tr>
+          </tbody></table>
+          <div className="small muted">{shown.reason}{shown.reason_note ? ` — ${shown.reason_note}` : ''}{shown.client_notes ? ` · Notes: ${shown.client_notes}` : ''}</div>
+          <div className="small muted">Requested by {userName(db, shown.submitted_by)} · {fmtDateTime(shown.submitted_at)}</div>
+          {shown.status === 'Pending Admin Approval' && <div className="alert warn" style={{ marginTop: 8 }}>Sent to the Owner / Admin for approval. The client cannot sign until they approve or reject it.</div>}
+          {shown.status === 'Applied' && <div className="small" style={{ color: 'var(--green)', marginTop: 6 }}>{DISCOUNT_NOTICE}</div>}
+          {shown.status === 'Approved' && <div className="alert info" style={{ marginTop: 8 }}>Approved — apply it to the final bill so the client can sign the revised amount.</div>}
+          {shown.status === 'Rejected' && <div className="alert err" style={{ marginTop: 8 }}>Rejected by {userName(db, shown.decided_by)}{shown.decision_note ? ` — “${shown.decision_note}”` : ''}. The original final amount stands. The client may approve the original quotation or decline the job.</div>}
+          <div className="row" style={{ marginTop: 8 }}>
+            {admin && shown.status === 'Pending Admin Approval' && <button className="btn primary" onClick={() => setReview(shown)}>Approve / Reject</button>}
+            {admin && !signed && shown.id === cur?.id && ['Approved', 'Applied'].includes(shown.status) && <button className="btn sm" onClick={() => setReview(shown)}>Modify / re-approve</button>}
+            {shown.status === 'Approved' && (mine || admin) && <button className="btn primary" onClick={() => attempt(() => applyDiscount(shown.id), 'Discount applied — the client can now sign the revised amount')}>Apply to final bill</button>}
+            {shown.status === 'Rejected' && run && !signed && <button className="btn danger" onClick={onDecline}>Client declines the job</button>}
+          </div>
         </div>
       )}
+      {canRequest && <div><button className="btn navy lg" onClick={() => setForm(true)}>Request Discount</button><div className="small muted" style={{ marginTop: 4 }}>Only the Owner / Admin can approve a discount.</div></div>}
       {form && <RequestModal job={job} onClose={() => setForm(false)} />}
       {review && <ReviewModal job={job} req={review} onClose={() => setReview(null)} />}
     </div>
   );
 }
 
-function RequestModal({ job, onClose }: { job: Job; onClose: () => void }) {
+/** Owner / Admin: pending requests with one-tap approve / reject (dashboard card; works on a phone). */
+export function DiscountInbox() {
+  const { db, can } = useAuth();
+  const [review, setReview] = useState<DiscountRequest | null>(null);
+  if (!can('discount.approve')) return null;
+  const pend = db.discount_requests.filter((r) => r.status === 'Pending Admin Approval' && !r.deleted_at);
+  if (!pend.length) return null;
+  const job = review ? db.jobs.find((j) => j.id === review.job_id) : undefined;
+  return (
+    <div className="card" style={{ padding: 12, marginBottom: 14, borderLeft: '4px solid var(--amber)' }}>
+      <div className="row between"><b>Discount requests waiting for your approval ({pend.length})</b></div>
+      <ul className="list" style={{ marginTop: 6 }}>
+        {pend.map((r) => { const j = db.jobs.find((x) => x.id === r.job_id); return (
+          <li key={r.id}><div><b>{j?.number}</b> · {db.clients.find((c) => c.id === r.client_id)?.name}<div className="small muted">{kindLabel(r.kind, r.value)} = {money(r.requested_amount)} off {money(r.base_total)} · {r.reason} · by {userName(db, r.submitted_by)}</div></div>
+            <div className="row"><button className="btn sm primary" onClick={() => setReview(r)}>Review</button><a className="btn sm" href={`#/jobs/${r.job_id}`}>Open job</a></div></li>
+        ); })}
+      </ul>
+      {review && job && <ReviewModal job={job} req={review} onClose={() => setReview(null)} />}
+    </div>
+  );
+}
+
+/** The client turned the job down (usually after a rejected discount). */
+export function DeclineJobModal({ wf, job, onClose, onDone }: { wf: JobWorkflow; job: Job; onClose: () => void; onDone: () => void }) {
+  const { db } = useAuth();
+  const [name, setName] = useState(db.sites.find((s) => s.id === job.site_id)?.contact_person ?? '');
+  const [reason, setReason] = useState('');
+  const go = () => { if (attempt(() => declineJob(wf.id, { client_name: name, reason }), 'Recorded — the client declined the job. Go to Close-Out to return the equipment.')) onDone(); };
+  return (
+    <Modal title="Client declines the job" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Back</button><button className="btn danger" onClick={go}>Confirm: job declined</button></>}>
+      <div className="stack">
+        <div className="alert warn">No work will start and nothing is billed. The crew goes straight to Close-Out to return the equipment.</div>
+        <Field label="Client name" required><input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label="Reason"><input value={reason} onChange={(e) => setReason(e.target.value)} /><PresetChips replace options={['Price too high', 'Went with another provider', 'Will decide later', 'Budget not approved']} value={reason} onChange={setReason} /></Field>
+      </div>
+    </Modal>
+  );
+}
+
+export function RequestModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const { db, user } = useAuth();
   const client = db.clients.find((c) => c.id === job.client_id);
   const b = billBase(job);
@@ -112,13 +142,13 @@ function RequestModal({ job, onClose }: { job: Job; onClose: () => void }) {
           <div className="row between big"><span>Proposed final amount</span><b>{money(final)}</b></div>
         </div>
         <Field label="Reason for discount" required><PresetChips replace options={DISCOUNT_REASONS} value={reason} onChange={setReason} />{reason === 'Other' && <input style={{ marginTop: 6 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Describe the reason" aria-label="Other reason" />}</Field>
-        <Field label="Client request / negotiation notes"><textarea value={cnotes} onChange={(e) => setCnotes(e.target.value)} placeholder="What the client asked for and what was discussed" /></Field>
+        <Field label="Notes"><textarea value={cnotes} onChange={(e) => setCnotes(e.target.value)} placeholder="What the client asked for and what was discussed" /></Field>
       </div>
     </Modal>
   );
 }
 
-function ReviewModal({ job, req, onClose }: { job: Job; req: DiscountRequest; onClose: () => void }) {
+export function ReviewModal({ job, req, onClose }: { job: Job; req: DiscountRequest; onClose: () => void }) {
   const { db } = useAuth();
   const b = billBase(job);
   const client = db.clients.find((c) => c.id === job.client_id);
@@ -128,7 +158,7 @@ function ReviewModal({ job, req, onClose }: { job: Job; req: DiscountRequest; on
   const amt = value && value > 0 ? discountAmount(kind, value, b.base) : 0;
   const im = discountImpact(db, job, b, amt);
   const modified = Math.abs(amt - req.requested_amount) > 0.004;
-  const run = (approve: boolean) => { if (attempt(() => decideDiscount(req.id, { approve, kind, value, note }), approve ? 'Discount approved — the Team Leader can now apply it to the final bill' : 'Discount rejected')) onClose(); };
+  const run = (approve: boolean) => { if (attempt(() => decideDiscount(req.id, { approve, kind, value, note }), approve ? 'Discount approved — the revised bill is ready for the client to sign' : 'Discount rejected')) onClose(); };
   const row = (k: string, v: string, tone?: string) => <tr><td>{k}</td><td className="num" style={tone ? { color: tone, fontWeight: 700 } : undefined}>{v}</td></tr>;
   return (
     <Modal title={`Discount ${req.number} — ${job.number}`} size="wide" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Close</button><button className="btn danger" onClick={() => run(false)}>Reject</button><button className="btn primary" onClick={() => run(true)}>{modified ? 'Approve modified discount' : 'Approve discount'}</button></>}>

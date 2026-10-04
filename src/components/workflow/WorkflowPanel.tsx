@@ -84,9 +84,9 @@ export function WorkflowPanel({ job }: { job: Job; onDetails?: () => void }) {
       : !wf.hq_at ? <Locked why="Available after job prep is confirmed." /> : <DispatchForm wf={wf} run={run} />,
     wf.arr_at ? <CheckInSummary wf={wf} /> : !wf.disp_at ? <Locked why="Available after the crew is dispatched." /> : <CheckInForm wf={wf} job={job} run={run} />,
     !wf.arr_at ? <Locked why="Available after site check-in." /> : <ScopeStep wf={wf} job={job} run={run} />,
-    !wf.conf_at ? <Locked why="Available once the scope is approved (step 4)." /> : <WorkStep wf={wf} job={job} run={run} onVariation={() => go(3)} />,
-    !wf.finish_at ? <Locked why="Available once the work is finished (step 5)." /> : <HandoverStep wf={wf} job={job} run={run} />,
-    !wf.rep_at ? <Locked why="Available after the client handover is signed." /> : <CloseOutStep wf={wf} job={job} run={run} />,
+    !wf.conf_at ? <Locked why="Available once the client has signed the quotation (step 4)." /> : wf.conf_mode === 'declined' ? <Skipped /> : <WorkStep wf={wf} job={job} run={run} onVariation={() => go(3)} />,
+    wf.conf_mode === 'declined' ? <Skipped /> : !wf.finish_at ? <Locked why="Available once the work is finished (step 5)." /> : <HandoverStep wf={wf} job={job} run={run} />,
+    !wf.rep_at && wf.conf_mode !== 'declined' ? <Locked why="Available after the client handover is signed." /> : <CloseOutStep wf={wf} job={job} run={run} />,
   ];
   const stamps = [{ at: wf.hq_at, by: wf.hq_by }, { at: wf.disp_at, by: wf.disp_by }, { at: wf.arr_at, by: wf.arr_by }, { at: wf.conf_at, by: wf.conf_by }, { at: wf.finish_at, by: wf.finish_by }, { at: wf.rep_at, by: wf.rep_by }, { at: wf.closed_at, by: wf.closed_by }];
   const fixBtn = can('incidents.manage') ? <button className="btn sm" onClick={() => setFix(true)}><Icon name="edit" />Correct record</button> : null;
@@ -264,6 +264,8 @@ function CheckInSummary({ wf }: { wf: JobWorkflow }) {
 }
 
 /* ================= Step 5: Work in Progress ================= */
+const Skipped = () => <div className="alert info">Skipped — the client declined the job on site. Nothing is billed; continue to Close-Out to return the equipment.</div>;
+
 function WorkStep({ wf, job, run, onVariation }: { wf: JobWorkflow; job: Job; run: boolean; onVariation: () => void }) {
   const { db, can } = useAuth();
   const [start, setStart] = useState(nowLocal()); const [fin, setFin] = useState(nowLocal()); const [notes, setNotes] = useState(wf.work_notes ?? '');
