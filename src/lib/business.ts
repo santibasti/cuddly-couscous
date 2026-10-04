@@ -782,31 +782,45 @@ export const RATING_EMOJI: Record<SatisfactionRating, string> = { 1: '😞', 2: 
 /** The 1–5 star value kept on the job for the employee scorecards. */
 export const RATING_STARS: Record<SatisfactionRating, number> = { 1: 1, 2: 4, 3: 5 };
 export const FEEDBACK_ASPECTS = ['Crew professionalism', 'Quality of cleaning', 'On-time arrival', 'Communication', 'Overall service'] as const;
-export const ISSUE_CATEGORIES: IssueCategory[] = ['Quality', 'Damage', 'Delay', 'Communication', 'Scope', 'Other'];
+export const ISSUE_CATEGORIES: IssueCategory[] = ['Quality', 'Delay', 'Communication', 'Damage', 'Scope', 'Other'];
+export const SCALE5 = ['Poor', 'Fair', 'Good', 'Very Good', 'Excellent'] as const;
+export const SAT_QUESTIONS = [
+  { key: 'q_quality', text: 'How would you rate the quality of cleaning?' },
+  { key: 'q_professionalism', text: 'How would you rate the crew’s professionalism?' },
+  { key: 'q_communication', text: 'How would you rate communication and service experience?' },
+] as const;
+/** Not Satisfied, or any question rated 1 or 2, needs an issue category and an Admin follow-up. */
+export const needsFollowUp = (s: { rating?: number; q_quality?: number; q_professionalism?: number; q_communication?: number }) => s.rating === 1 || [s.q_quality, s.q_professionalism, s.q_communication].some((q) => q !== undefined && q <= 2);
+export const RATING_STARS_FROM_QUESTIONS = (s: { q_quality: number; q_professionalism: number; q_communication: number }) => Math.max(1, Math.min(5, Math.round((s.q_quality + s.q_professionalism + s.q_communication) / 3)));
 export const feedbackOf = (d: Pick<DB, 'client_feedback'>, jobId: string) => d.client_feedback.find((f) => f.job_id === jobId && !f.deleted_at);
 /** Negative feedback the Admin has not acknowledged yet: the job cannot be fully closed while this exists. */
 export const openFollowUp = (d: Pick<DB, 'client_feedback'>, jobId: string) => d.client_feedback.find((f) => f.job_id === jobId && !f.deleted_at && f.follow_up === 'Required');
 
-export interface SatAgg { key: string; label: string; n: number; avg: number; notSat: number; sat: number; very: number }
+export interface SatAgg { key: string; label: string; n: number; avg: number; notSat: number; sat: number; very: number; quality: number; professionalism: number; communication: number }
 export interface SatisfactionStats {
-  n: number; avg: number; pctSatisfied: number; dist: Record<SatisfactionRating, number>;
+  n: number; avg: number; pctSatisfied: number; dist: Record<SatisfactionRating, number>; questions: { quality: number; professionalism: number; communication: number };
   byLeader: SatAgg[]; byCrew: SatAgg[]; byService: SatAgg[]; monthly: { month: string; avg: number; n: number }[]; followUps: ClientFeedback[];
 }
+const qmean = (x: (number | undefined)[]) => { const v = x.filter((n): n is number => !!n); return v.length ? round2(sum(v, (n) => n) / v.length) : 0; };
 export function satisfactionStats(db: DB, from: string, to: string): SatisfactionStats {
   const rows = db.client_feedback.filter((f) => !f.deleted_at && f.service_date >= from && f.service_date <= to);
   const agg = (pairs: [string, string, ClientFeedback][]): SatAgg[] => {
-    const m = new Map<string, SatAgg & { t: number }>();
+    const m = new Map<string, SatAgg & { t: number; a: number[]; b: number[]; c: number[] }>();
     for (const [key, label, f] of pairs) {
-      const e = m.get(key) ?? { key, label, n: 0, avg: 0, notSat: 0, sat: 0, very: 0, t: 0 };
-      e.n++; e.t += f.rating; if (f.rating === 1) e.notSat++; else if (f.rating === 2) e.sat++; else e.very++; m.set(key, e);
+      const e = m.get(key) ?? { key, label, n: 0, avg: 0, notSat: 0, sat: 0, very: 0, quality: 0, professionalism: 0, communication: 0, t: 0, a: [], b: [], c: [] };
+      e.n++; e.t += f.rating; if (f.rating === 1) e.notSat++; else if (f.rating === 2) e.sat++; else e.very++;
+      if (f.q_quality) e.a.push(f.q_quality); if (f.q_professionalism) e.b.push(f.q_professionalism); if (f.q_communication) e.c.push(f.q_communication);
+      m.set(key, e);
     }
-    return [...m.values()].map(({ t, ...e }) => ({ ...e, avg: round2(t / e.n) })).sort((a, b) => b.avg - a.avg || b.n - a.n);
+    const mean = (x: number[]) => (x.length ? round2(sum(x, (v) => v) / x.length) : 0);
+    return [...m.values()].map(({ t, a, b, c, ...e }) => ({ ...e, avg: round2(t / e.n), quality: mean(a), professionalism: mean(b), communication: mean(c) })).sort((x, y) => y.avg - x.avg || y.n - x.n);
   };
   const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? 'Unassigned';
   const dist: Record<SatisfactionRating, number> = { 1: 0, 2: 0, 3: 0 }; for (const f of rows) dist[f.rating]++;
   const months = new Map<string, { t: number; n: number }>();
   for (const f of rows) { const k = f.service_date.slice(0, 7); const e = months.get(k) ?? { t: 0, n: 0 }; e.t += f.rating; e.n++; months.set(k, e); }
   return {
+    questions: { quality: qmean(rows.map((f) => f.q_quality)), professionalism: qmean(rows.map((f) => f.q_professionalism)), communication: qmean(rows.map((f) => f.q_communication)) },
     n: rows.length, avg: rows.length ? round2(sum(rows, (f) => f.rating) / rows.length) : 0, pctSatisfied: rows.length ? round2(((dist[2] + dist[3]) / rows.length) * 100) : 0, dist,
     byLeader: agg(rows.map((f) => [f.leader_id ?? '-', emp(f.leader_id), f])),
     byCrew: agg(rows.flatMap((f) => [...new Set([...(f.leader_id ? [f.leader_id] : []), ...f.crew_ids])].map((id): [string, string, ClientFeedback] => [id, emp(id), f]))),
@@ -896,4 +910,44 @@ export function paymentPlanLabel(c?: import('./types').PaymentConfirmation): str
   if (!c) return '';
   if (c.method === 'Terms / To Be Billed') return `Terms${c.terms ? `: ${c.terms}` : ''}${c.due_date ? ` · due ${c.due_date}` : ''}`;
   return `${c.method} · ${c.collection === 'Received' ? 'received on site' : 'to be paid later'}`;
+}
+
+/* ============ Ocular Visits ============ */
+export const OCULAR_STATUSES: import('./types').OcularStatus[] = ['Scheduled', 'Confirmed', 'Completed', 'Cancelled', 'Converted to Quotation'];
+export const ocularEnd = (v: Pick<import('./types').OcularVisit, 'start_at' | 'duration_min'>) => new Date(Date.parse(`${v.start_at}:00Z`) + v.duration_min * 60000).toISOString().slice(0, 16);
+export const isOcularActive = (v: import('./types').OcularVisit) => !v.deleted_at && (v.status === 'Scheduled' || v.status === 'Confirmed');
+/** The estimator cannot be on a job or another ocular visit at the same time. */
+export function ocularConflicts(db: Pick<DB, 'jobs' | 'ocular_visits'>, v: Pick<import('./types').OcularVisit, 'start_at' | 'duration_min' | 'assignee_id'> & { id?: string }): string[] {
+  if (!v.assignee_id) return [];
+  const end = ocularEnd(v); const out: string[] = [];
+  for (const j of db.jobs) {
+    if (j.deleted_at || ['Cancelled', 'Rescheduled'].includes(j.status) || isDone(j.status)) continue;
+    if ((j.leader_id === v.assignee_id || j.crew_ids.includes(v.assignee_id)) && v.start_at < j.end_at && end > j.start_at) out.push(`job ${j.number}`);
+  }
+  for (const o of db.ocular_visits) if (o.id !== v.id && isOcularActive(o) && o.assignee_id === v.assignee_id && v.start_at < ocularEnd(o) && end > o.start_at) out.push(`ocular visit ${o.number}`);
+  return out;
+}
+export interface OcularStats { today: import('./types').OcularVisit[]; upcoming: import('./types').OcularVisit[]; awaiting: import('./types').OcularVisit[]; converted: import('./types').OcularVisit[] }
+export function ocularStats(db: Pick<DB, 'ocular_visits'>, onlyAssignee?: string, t = today()): OcularStats {
+  const all = db.ocular_visits.filter((v) => !v.deleted_at && (!onlyAssignee || v.assignee_id === onlyAssignee));
+  const byStart = (a: import('./types').OcularVisit, b: import('./types').OcularVisit) => a.start_at.localeCompare(b.start_at);
+  return {
+    today: all.filter((v) => isOcularActive(v) && v.start_at.slice(0, 10) === t).sort(byStart),
+    upcoming: all.filter((v) => isOcularActive(v) && v.start_at.slice(0, 10) > t).sort(byStart),
+    awaiting: all.filter((v) => v.status === 'Completed').sort(byStart),
+    converted: all.filter((v) => v.status === 'Converted to Quotation').sort(byStart),
+  };
+}
+/** Quotation lines from what the estimator found: glass lines follow the panel count, other services follow the measurements. */
+export function quotationLinesFromOcular(db: Pick<DB, 'services'>, v: import('./types').OcularVisit): { items: QuoteItem[]; notes: string[] } {
+  const ext = sum(v.panels, (p) => p.external || 0), int = sum(v.panels, (p) => p.internal || 0);
+  const items: QuoteItem[] = []; const notes: string[] = [];
+  for (const code of v.service_codes) {
+    const def = db.services.find((s) => s.code === code); if (!def) continue;
+    const measured = sum(v.measurements.filter((m) => m.service_code === code), (m) => m.qty);
+    let qty = code === 'GLASS_EXT' ? ext || measured : code === 'GLASS_INT' ? int || measured : measured;
+    if (!(qty > 0)) { qty = def.package_qty ? def.package_qty : Math.max(1, def.minimum_qty); notes.push(`${def.name}: no count recorded — quantity set to ${qty} ${def.unit}; confirm before sending.`); }
+    items.push(...priceService(def, qty).lines);
+  }
+  return { items, notes };
 }

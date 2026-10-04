@@ -143,6 +143,8 @@ export interface Quotation extends Base {
   decided_at?: string;
   reject_reason?: string;
   branch_id: string;
+  /** created from a completed ocular visit: what the estimator found is carried forward */
+  ocular_visit_id?: string; ocular_assignee_id?: string; ocular_panels?: PanelRow[]; ocular_measurements?: Measurement[];
 }
 
 /* ---------- Jobs ---------- */
@@ -506,6 +508,27 @@ export interface Variation extends Base {
   decided_at?: string;       // when the client approved / declined
   sign_lat?: number; sign_lng?: number; sign_gps_note?: string; sign_device?: string;
 }
+/* ---------- Ocular Visits (site inspections before a quotation) ---------- */
+export type OcularStatus = 'Scheduled' | 'Confirmed' | 'Completed' | 'Cancelled' | 'Converted to Quotation';
+export interface Measurement { id: string; label: string; service_code?: ServiceCode; qty: number; unit: string; notes?: string }
+export interface OcularVisit extends Base {
+  number: string;                       // OV-2026-0001
+  client_id: string; contact_person: string; contact_mobile?: string;
+  site_id?: string; location: string;   // service location
+  service_codes: ServiceCode[];         // requested service type(s)
+  start_at: string;                     // proposed date and time (YYYY-MM-DDTHH:mm)
+  duration_min: number;                 // expected duration
+  assignee_id?: string;                 // assigned Team Leader / estimator
+  concerns: string;                     // client concerns / requested scope
+  access_notes: string;
+  status: OcularStatus;
+  branch_id: string;
+  // recorded when the visit is completed (no photos, no odometer)
+  panels: PanelRow[]; measurements: Measurement[]; findings: string;
+  completed_at?: string; completed_by?: string; cancel_reason?: string;
+  quotation_id?: string; converted_at?: string;
+}
+
 /* ---------- Back Jobs / Callbacks ---------- */
 export type BackJobReason = 'Missed Area' | 'Quality Issue' | 'Client Complaint' | 'Damage' | 'Warranty/Touch-Up' | 'Other';
 export type BackJobStatus = 'Reported' | 'Under Review' | 'Approved' | 'Scheduled' | 'In Progress' | 'Resolved' | 'Closed' | 'Rejected';
@@ -535,7 +558,9 @@ export interface ClientFeedback extends Base {
   job_id: string; workflow_id?: string; client_id: string;
   leader_id?: string; crew_ids: string[]; service_codes: string[]; service_date: string;
   rating: SatisfactionRating;
-  aspects: string[];                 // optional ticked items: crew professionalism, quality of cleaning, …
+  /** 1 Poor · 2 Fair · 3 Good · 4 Very Good · 5 Excellent (not recorded on feedback saved before these questions existed) */
+  q_quality?: number; q_professionalism?: number; q_communication?: number;
+  aspects: string[];                 // legacy ticked items (no longer asked)
   comment?: string;
   issue_category?: IssueCategory;    // required from the Team Leader when Not Satisfied
   follow_up: 'None' | 'Required' | 'Acknowledged';
@@ -752,7 +777,7 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations' | 'ocular_visits';
 
 export interface DB {
   users: UserAccount[]; branches: Branch[]; clients: Client[]; sites: Site[]; communications: Communication[];
@@ -761,7 +786,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[]; ocular_visits: OcularVisit[];
   audit: AuditLog[];
   settings: Settings;
   version: number;

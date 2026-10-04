@@ -55,6 +55,7 @@ export default function QuoteEditor() {
   const client = db.clients.find((c) => c.id === v.client_id);
   const sites = live(db.sites).filter((s) => s.client_id === v.client_id);
   const t = docTotals(v.items, v.discount, v.vat_mode, v.vat_rate);
+  const ov = v.ocular_visit_id ? db.ocular_visits.find((o) => o.id === v.ocular_visit_id) : undefined;
   const def = db.services.find((s) => s.code === svc)!;
 
   const setItems = (items: QuoteItem[]) => f.set('items', items);
@@ -92,6 +93,7 @@ export default function QuoteEditor() {
       </PageHead>
 
       {locked && <div className="alert info" style={{ marginBottom: 12 }}>This quotation is {existing!.status.toLowerCase()} and read-only. Use Duplicate to prepare a revised quote.</div>}
+      {ov && <div className="alert info" style={{ marginBottom: 12 }}>Created from ocular visit <b>{ov.number}</b> ({v.ocular_assignee_id ? db.employees.find((e) => e.id === v.ocular_assignee_id)?.full_name : '—'}). Carried forward: {ov.panels.length ? `${ov.panels.reduce((n, p) => n + p.external + p.internal, 0)} counted glass panels across ${ov.panels.length} area(s)` : 'no panel count'}{ov.measurements.length ? `, ${ov.measurements.map((m) => `${m.label} ${m.qty} ${m.unit}`).join(', ')}` : ''}. Check the quantities and rates before sending.</div>}
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
         <Card title="Client & scope">
           <div className="form-grid">

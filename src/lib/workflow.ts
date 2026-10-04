@@ -6,7 +6,7 @@ import { store, RuleError } from './store';
 import type {
   ClientFeedback, ConfirmMethod, ContainerCondition, PaymentConfirmation, DB, DiscountKind, DiscountRequest, FuelLevel, IncidentReport, IncidentType, IssueCategory, SatisfactionRating, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
 } from './types';
-import { FEEDBACK_ASPECTS, ISSUE_CATEGORIES, RATING_STARS, openFollowUp, buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
+import { ISSUE_CATEGORIES, RATING_STARS_FROM_QUESTIONS, needsFollowUp, openFollowUp, buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
 import { settleConfirmation, syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { nowLocal, today } from './util';
 
@@ -386,7 +386,7 @@ export interface ReportForm {
   /** Client Satisfaction Check: one tap, optional ticks, optional comment. Not Satisfied needs an issue category from the Team Leader. */
   satisfaction?: SatisfactionInput;
 }
-export interface SatisfactionInput { rating: SatisfactionRating; aspects?: string[]; comment?: string; issue_category?: IssueCategory }
+export interface SatisfactionInput { q_quality: number; q_professionalism: number; q_communication: number; rating: SatisfactionRating; comment?: string; issue_category?: IssueCategory }
 export function signServiceReport(id: string, f: ReportForm) {
   store.require('jobs.complete');
   const wf = getWf(id); const job = jobOf(wf);
@@ -404,20 +404,22 @@ export function signServiceReport(id: string, f: ReportForm) {
   if (!f.tm_name.trim() || !f.tm_sig) fail('The TopMop team leader name and signature are required.');
   const dBlock = discountBlock(db(), job, wf, billBase(job).base); if (dBlock) fail(dBlock);
   const sat = f.satisfaction;
-  if (!sat || ![1, 2, 3].includes(sat.rating)) fail('Ask the client how satisfied they are with today’s service (one tap).');
-  if (sat!.rating === 1 && !ISSUE_CATEGORIES.includes(sat!.issue_category as IssueCategory)) fail('The client is not satisfied: choose the issue category (Quality, Damage, Delay, Communication, Scope or Other).');
-  const aspects = (sat!.aspects ?? []).filter((a) => (FEEDBACK_ASPECTS as readonly string[]).includes(a));
+  const q1to5 = (n: unknown) => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 5;
+  if (!sat || !q1to5(sat.q_quality) || !q1to5(sat.q_professionalism) || !q1to5(sat.q_communication)) fail('Ask the client to rate the three questions from 1 (Poor) to 5 (Excellent).');
+  if (![1, 2, 3].includes(sat!.rating)) fail('Ask the client for the overall satisfaction: Not Satisfied, Satisfied or Very Satisfied.');
+  const low = needsFollowUp(sat!);
+  if (low && !ISSUE_CATEGORIES.includes(sat!.issue_category as IssueCategory)) fail('The client was not satisfied or gave a low rating (1–2): choose the issue category (Quality, Delay, Communication, Damage, Scope or Other).');
   const cur = db().jobs.find((j) => j.id === job.id)!;
   const at = nowLocal();
-  store.update('jobs', job.id, { findings: f.findings, signoff_name: f.client_name.trim(), signoff_data: f.client_sig, signoff_at: at, client_rating: RATING_STARS[sat!.rating], completed_at: at }, 'approve', `Service report signed for ${job.number}`);
+  store.update('jobs', job.id, { findings: f.findings, signoff_name: f.client_name.trim(), signoff_data: f.client_sig, signoff_at: at, client_rating: RATING_STARS_FROM_QUESTIONS(sat!), completed_at: at }, 'approve', `Service report signed for ${job.number}`);
   void cur;
-  store.update('workflows', id, { rep_at: at, rep_by: uidNow(), rep_scope: f.scope, rep_method: f.method, rep_findings: f.findings, rep_limits: f.limits, rep_recs: f.recs, rep_complimentary: f.complimentary, rep_client_name: f.client_name.trim(), rep_client_sig: f.client_sig, rep_client_at: at, rep_tm_name: f.tm_name.trim(), rep_tm_sig: f.tm_sig, rep_rating: RATING_STARS[sat!.rating], rep_notes: f.notes } as never, 'approve', `${job.number}: service accomplishment report signed by ${f.client_name.trim()}`);
+  store.update('workflows', id, { rep_at: at, rep_by: uidNow(), rep_scope: f.scope, rep_method: f.method, rep_findings: f.findings, rep_limits: f.limits, rep_recs: f.recs, rep_complimentary: f.complimentary, rep_client_name: f.client_name.trim(), rep_client_sig: f.client_sig, rep_client_at: at, rep_tm_name: f.tm_name.trim(), rep_tm_sig: f.tm_sig, rep_rating: RATING_STARS_FROM_QUESTIONS(sat!), rep_notes: f.notes } as never, 'approve', `${job.number}: service accomplishment report signed by ${f.client_name.trim()}`);
   setStatus(db().jobs.find((j) => j.id === job.id)!, 'Work Completed');
-  const neg = sat!.rating === 1;
+  const neg = low;
   store.insert('client_feedback', {
     job_id: job.id, workflow_id: id, client_id: job.client_id, leader_id: job.leader_id, crew_ids: [...job.crew_ids], service_codes: [...job.service_codes], service_date: job.start_at.slice(0, 10),
-    rating: sat!.rating, aspects, comment: sat!.comment?.trim() || undefined, issue_category: neg ? sat!.issue_category : undefined, follow_up: neg ? 'Required' : 'None', submitted_by: uidNow(), submitted_at: new Date().toISOString(),
-  } as never, `${job.number}: client satisfaction ${sat!.rating === 1 ? 'Not Satisfied' : sat!.rating === 2 ? 'Satisfied' : 'Very Satisfied'}${neg ? ` (${sat!.issue_category}) — follow-up required` : ''}`);
+    rating: sat!.rating, q_quality: sat!.q_quality, q_professionalism: sat!.q_professionalism, q_communication: sat!.q_communication, aspects: [], comment: sat!.comment?.trim() || undefined, issue_category: neg ? sat!.issue_category : undefined, follow_up: neg ? 'Required' : 'None', submitted_by: uidNow(), submitted_at: new Date().toISOString(),
+  } as never, `${job.number}: client satisfaction ${sat!.rating === 1 ? 'Not Satisfied' : sat!.rating === 2 ? 'Satisfied' : 'Very Satisfied'} (quality ${sat!.q_quality}, crew ${sat!.q_professionalism}, communication ${sat!.q_communication})${neg ? ` — ${sat!.issue_category}: follow-up required` : ''}`);
   runAutomations();
 }
 

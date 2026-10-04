@@ -30,7 +30,7 @@ const load = (items: CheckItem[]): CheckItem[] => items.map((i) => ({ ...i, out_
 const prepForm = (wf: JobWorkflow, over: Record<string, unknown> = {}) => ({ items: load(wf.items), confirmed: true, ...over });
 const checkIn = (present: string[], over = {}) => ({ contact_name: 'Ms. Reyes', present, absent: [], ...over });
 const retItems = (wf: JobWorkflow, f: (i: CheckItem) => Partial<CheckItem>) => db().workflows.find((w) => w.id === wf.id)!.items.map((i) => ({ ...i, ret_condition: 'Good' as const, returned_qty: i.kind === 'material' ? 0 : i.loaded_qty, ...f(i) }));
-const handover = { scope: 'Wall cleaning', findings: 'None', recs: 'None', limits: 'None', client_name: 'Ms. Reyes', client_sig: PNG, tm_name: 'Leader', tm_sig: PNG, satisfaction: { rating: 3 as const } };
+const handover = { scope: 'Wall cleaning', findings: 'None', recs: 'None', limits: 'None', client_name: 'Ms. Reyes', client_sig: PNG, tm_name: 'Leader', tm_sig: PNG, satisfaction: { q_quality: 5, q_professionalism: 5, q_communication: 5, rating: 3 as const } };
 const priorJob = (label: string, jobId: string) => { const j = db().jobs.find((x) => x.id === jobId)!; store.insert('jobs', { ...j, id: undefined, number: `PRIOR-${label}`, status: 'Closed', start_at: '2029-01-02T08:00', end_at: '2029-01-02T17:00' } as never); };
 
 /** Prep → dispatch → check-in (recurring jobs get a prior closed visit so the scope can simply be confirmed). */
@@ -541,13 +541,16 @@ describe('Client Satisfaction Check', () => {
     const { job, wf } = upToWork('SAT1', lead());
     W.finishWork(wf.id, {});
     await as('leader@topmop.ph');
-    expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: undefined })).toThrow(/how satisfied/);
-    W.signServiceReport(wf.id, { ...handover, satisfaction: { rating: 3, aspects: ['Crew professionalism', 'Quality of cleaning', 'Bogus'] } });
+    expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: undefined })).toThrow(/rate the three questions/);
+    expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: { q_quality: 5, q_professionalism: 6, q_communication: 5, rating: 3 } })).toThrow(/1 \(Poor\) to 5/);
+    expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: { q_quality: 5, q_professionalism: 4, q_communication: 4 } as never })).toThrow(/overall satisfaction/);
+    W.signServiceReport(wf.id, { ...handover, satisfaction: { q_quality: 5, q_professionalism: 4, q_communication: 4, rating: 3 } });
     const fb = db().client_feedback.find((x) => x.job_id === job.id)!;
     const j = db().jobs.find((x) => x.id === job.id)!;
     expect(fb).toMatchObject({ rating: 3, follow_up: 'None', client_id: j.client_id, leader_id: j.leader_id, service_codes: j.service_codes, service_date: j.start_at.slice(0, 10) });
-    expect(fb.crew_ids).toEqual(j.crew_ids); expect(fb.aspects).toEqual(['Crew professionalism', 'Quality of cleaning']);
-    expect(j.client_rating).toBe(5);
+    expect(fb).toMatchObject({ q_quality: 5, q_professionalism: 4, q_communication: 4 });
+    expect(fb.crew_ids).toEqual(j.crew_ids);
+    expect(j.client_rating).toBe(4);                                                // average of the three questions feeds the employee scorecards
     expect(B.openFollowUp(db(), job.id)).toBeUndefined();
   });
 
@@ -556,8 +559,8 @@ describe('Client Satisfaction Check', () => {
     const { job, wf } = upToWork('SAT2', lead());
     W.finishWork(wf.id, {});
     await as('leader@topmop.ph');
-    expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: { rating: 1 } })).toThrow(/issue category/);
-    W.signServiceReport(wf.id, { ...handover, satisfaction: { rating: 1, issue_category: 'Delay', comment: 'Late again', aspects: ['On-time arrival'] } });
+    expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: { q_quality: 2, q_professionalism: 3, q_communication: 3, rating: 1 } })).toThrow(/issue category/);
+    W.signServiceReport(wf.id, { ...handover, satisfaction: { q_quality: 2, q_professionalism: 3, q_communication: 3, rating: 1, issue_category: 'Delay', comment: 'Late again' } });
     const fb = db().client_feedback.find((x) => x.job_id === job.id)!;
     expect(fb).toMatchObject({ rating: 1, issue_category: 'Delay', follow_up: 'Required' });
     expect(db().notifications.some((n) => n.key === `fb-follow:${fb.id}` && n.severity === 'critical')).toBe(true);
@@ -576,6 +579,21 @@ describe('Client Satisfaction Check', () => {
     expect(db().notifications.some((n) => n.key === `fb-follow:${fb.id}`)).toBe(false);
   });
 
+  it('a rating of 1–2 on any question needs an issue category and a follow-up even when the client is Satisfied overall', async () => {
+    await as('owner@topmop.ph');
+    const { job, wf } = upToWork('SAT3', lead());
+    W.finishWork(wf.id, {});
+    await as('leader@topmop.ph');
+    expect(B.needsFollowUp({ rating: 3, q_quality: 5, q_professionalism: 5, q_communication: 2 })).toBe(true);
+    expect(B.needsFollowUp({ rating: 2, q_quality: 3, q_professionalism: 4, q_communication: 3 })).toBe(false);
+    expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: { q_quality: 5, q_professionalism: 5, q_communication: 2, rating: 3 } })).toThrow(/issue category/);
+    W.signServiceReport(wf.id, { ...handover, satisfaction: { q_quality: 5, q_professionalism: 5, q_communication: 2, rating: 3, issue_category: 'Communication' } });
+    const fb = db().client_feedback.find((x) => x.job_id === job.id)!;
+    expect(fb).toMatchObject({ rating: 3, q_communication: 2, issue_category: 'Communication', follow_up: 'Required' });
+    expect(db().notifications.some((n) => n.key === `fb-follow:${fb.id}`)).toBe(true);
+    expect(B.ISSUE_CATEGORIES).toEqual(['Quality', 'Delay', 'Communication', 'Damage', 'Scope', 'Other']);
+  });
+
   it('satisfaction statistics: average, by leader / crew / service, monthly trend, follow-ups', async () => {
     await as('owner@topmop.ph');
     const st = B.satisfactionStats(db(), '2000-01-01', '2099-12-31');
@@ -584,6 +602,7 @@ describe('Client Satisfaction Check', () => {
     expect(st.byLeader.reduce((s, a) => s + a.n, 0)).toBe(st.n);
     expect(st.byService.length).toBeGreaterThan(0); expect(st.monthly.length).toBeGreaterThan(0);
     expect(st.followUps.every((f) => f.follow_up === 'Required')).toBe(true);
+    expect(st.questions.quality).toBeGreaterThan(0); expect(st.byLeader[0].quality).toBeGreaterThan(0);
   });
 });
 
@@ -854,5 +873,75 @@ describe('Payment method confirmation', () => {
     expect(changed.id).toBe(later.id); expect(changed).toMatchObject({ method: 'Terms / To Be Billed', collection: 'To Be Paid Later', terms: 'Net 15' });
     await as('finance@topmop.ph');
     expect(A.invoiceFromJob(b.job.id).due_date).toBe('2099-01-01');
+  });
+});
+
+describe('Ocular visits', () => {
+  let O: typeof import('./ocular');
+  beforeAll(async () => { O = await import('./ocular'); });
+  const lead = () => db().users.find((u) => u.email === 'leader@topmop.ph')!.employee_id!;
+  const form = (over = {}) => {
+    const c = db().clients.find((x) => db().sites.some((s) => s.client_id === x.id))!; const s = db().sites.find((x) => x.client_id === c.id)!;
+    return { client_id: c.id, contact_person: s.contact_person, contact_mobile: s.contact_mobile, site_id: s.id, location: s.address, service_codes: ['GLASS_EXT' as const], start_at: `${T()}T00:30`, duration_min: 60, assignee_id: lead(), concerns: 'Price for the whole façade', access_notes: 'Ask for the guard', ...over };
+  };
+
+  it('Admin/Operations schedule it with all the details; Team Leaders cannot; the estimator cannot be double-booked', async () => {
+    await as('leader@topmop.ph');
+    expect(() => O.scheduleOcularVisit(form())).toThrow(/not permitted/);
+    await as('ops@topmop.ph');
+    expect(() => O.scheduleOcularVisit(form({ contact_person: ' ' }))).toThrow(/contact person/);
+    expect(() => O.scheduleOcularVisit(form({ service_codes: [] }))).toThrow(/service type/);
+    expect(() => O.scheduleOcularVisit(form({ assignee_id: undefined }))).toThrow(/estimator/);
+    expect(() => O.scheduleOcularVisit(form({ start_at: '2001-01-01T09:00' }))).toThrow(/past/);
+    expect(() => O.scheduleOcularVisit(form({ duration_min: 5 }))).toThrow(/duration/);
+    const v = O.scheduleOcularVisit(form({ start_at: '2031-03-03T09:00' }));
+    expect(v).toMatchObject({ status: 'Scheduled', number: expect.stringMatching(/^OV-/), duration_min: 60, assignee_id: lead(), access_notes: 'Ask for the guard' });
+    expect(() => O.scheduleOcularVisit(form({ start_at: '2031-03-03T09:30' }))).toThrow(/already booked/);
+    O.scheduleOcularVisit(form({ start_at: '2031-03-03T10:00' }));                      // back-to-back is fine
+    O.confirmOcularVisit(v.id);
+    expect(db().ocular_visits.find((x) => x.id === v.id)!.status).toBe('Confirmed');
+    O.updateOcularVisit(v.id, form({ start_at: '2031-03-04T09:00' }));
+    expect(() => O.cancelOcularVisit(v.id, ' ')).toThrow(/reason/);
+    O.cancelOcularVisit(v.id, 'Client postponed');
+    expect(db().ocular_visits.find((x) => x.id === v.id)).toMatchObject({ status: 'Cancelled', cancel_reason: 'Client postponed' });
+    expect(() => O.updateOcularVisit(v.id, form())).toThrow(/cancelled visit/);
+  });
+
+  it('completing records the panel count / measurements; only the assigned estimator or Admin may; then a quotation carries everything forward', async () => {
+    await as('ops@topmop.ph');
+    const v = O.scheduleOcularVisit(form({ service_codes: ['GLASS_EXT', 'FLOOR'], start_at: `${T()}T00:20`, duration_min: 30 }));
+    const future = O.scheduleOcularVisit(form({ start_at: '2032-05-05T09:00' }));
+    const panels = [{ id: 'p1', area: '1st Floor', side: 'Front', external: 12, internal: 6 }, { id: 'p2', area: '2nd Floor', side: 'Rear', external: 8, internal: 8, notes: 'Hard water' }];
+    const meas = [{ id: 'm1', label: 'Driveway', service_code: 'FLOOR' as const, qty: 140, unit: 'sqm' }];
+    expect(() => O.completeOcularVisit(future.id, { panels, measurements: meas, findings: '' })).toThrow(/not happened yet/);
+    expect(() => O.createQuotationFromOcular(v.id)).toThrow(/Complete the ocular visit first/);
+    await as('field@topmop.ph');
+    expect(() => O.completeOcularVisit(v.id, { panels, measurements: meas, findings: '' })).toThrow(/assigned/);
+    await as('leader@topmop.ph');
+    expect(() => O.completeOcularVisit(v.id, { panels: [], measurements: [], findings: 'x' })).toThrow(/glass panel count/);
+    expect(() => O.completeOcularVisit(v.id, { panels, measurements: [{ id: 'm', label: '', qty: 0, unit: '' }], findings: '' })).toThrow(/label/);
+    O.completeOcularVisit(v.id, { panels, measurements: meas, findings: 'Hard-water stains upstairs' });
+    expect(db().ocular_visits.find((x) => x.id === v.id)).toMatchObject({ status: 'Completed', completed_by: expect.any(String) });
+    expect(B.ocularStats(db()).awaiting.some((x) => x.id === v.id)).toBe(true);
+    expect(db().notifications.some((n) => n.key === `oc-quote:${v.id}`)).toBe(true);
+    const q = O.createQuotationFromOcular(v.id);
+    expect(q).toMatchObject({ status: 'Draft', client_id: v.client_id, ocular_visit_id: v.id, ocular_assignee_id: lead(), site_id: v.site_id });
+    expect(q.scope).toMatch(/20 external, 14 internal/); expect(q.scope).toMatch(/Driveway 140 sqm/); expect(q.scope).toMatch(/Hard-water stains/); expect(q.scope).toMatch(/Ask for the guard/);
+    expect(q.ocular_panels).toEqual(panels); expect(q.ocular_measurements).toEqual(meas);
+    expect(q.items.filter((i) => i.service_code === 'GLASS_EXT').length).toBeGreaterThan(0);
+    expect(q.items.find((i) => i.service_code === 'FLOOR')!.qty).toBe(140);
+    expect(db().ocular_visits.find((x) => x.id === v.id)).toMatchObject({ status: 'Converted to Quotation', quotation_id: q.id });
+    expect(() => O.createQuotationFromOcular(v.id)).toThrow(/already created/);
+    expect(B.ocularStats(db()).converted.some((x) => x.id === v.id)).toBe(true);
+    expect(() => store.remove('ocular_visits', v.id)).toThrow(/cannot be deleted/);
+  });
+
+  it('stats: today / upcoming / awaiting / converted, and no photo or odometer fields exist on a visit', async () => {
+    await as('owner@topmop.ph');
+    const st = B.ocularStats(db());
+    expect(st.upcoming.every((v) => v.start_at.slice(0, 10) > T())).toBe(true);
+    expect(st.awaiting.every((v) => v.status === 'Completed')).toBe(true);
+    const keys = JSON.stringify(Object.keys(db().ocular_visits[0]));
+    expect(keys).not.toMatch(/photo|odo/i);
   });
 });

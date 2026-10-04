@@ -1,7 +1,7 @@
 // Realistic demo data for TopMop Window Cleaning Solutions Corp. Everything is generated relative to today (Manila),
 // so the dashboard always shows current activity. Names, TINs and amounts are fictional sample data.
 import type {
-  Asset, Attendance, BackJob, Checkout, Client, ClientFeedback, DB, PaymentConfirmation, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
+  Asset, Attendance, BackJob, Checkout, OcularVisit, PanelRow, Client, ClientFeedback, DB, PaymentConfirmation, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
   PayrollAdjustment, PayrollPeriod, PayrollRun, Payment, PerfReview, PettyCashEntry, Quotation, QuoteItem, ServiceDef,
   Settings, Site, StockTx, StorageLocation, UserAccount, Communication, Complaint, Role, ServiceCode, Condition, PayrollType,
 } from './types';
@@ -275,7 +275,7 @@ export function seedDB(): DB {
   const attendance: Attendance[] = [];
   const checkouts: Checkout[] = [];
   const jobs: Job[] = [];
-  const counters: Record<string, number> = { QT: 0, JOB: 0, INV: 0, OR: 0, EMP: employees.length, INC: 0, DR: 0, BJ: 0 };
+  const counters: Record<string, number> = { QT: 0, JOB: 0, INV: 0, OR: 0, EMP: employees.length, INC: 0, DR: 0, BJ: 0, OV: 0 };
   const nn = (k: string) => { counters[k] += 1; return `${k}-${yr}-${String(counters[k]).padStart(4, '0')}`; };
 
   const teamAssets = { A: ['VEH-001', 'ROD-001', 'WFP-001', 'WFP-003', 'PWR-001', 'EXC-001', 'SAF-001'], B: ['VEH-002', 'ROD-002', 'WFP-002', 'PWR-002', 'SFC-001', 'EXC-002', 'SAF-002'] };
@@ -722,15 +722,18 @@ export function seedDB(): DB {
   const lastRecentNeg = [...negIdx].reverse().find((i) => recentDone.includes(finished[i]));
   finished.forEach((j, i) => {
     const rating = (negIdx.includes(i) ? 1 : i % 3 === 0 ? 2 : 3) as 1 | 2 | 3;
-    const cat = (['Quality', 'Delay', 'Communication', 'Scope', 'Damage'] as const)[i % 5];
+    // three 1–5 questions: quality of cleaning, crew professionalism, communication
+    const q: [number, number, number] = rating === 3 ? [5, i % 4 === 0 ? 4 : 5, i % 5 === 0 ? 4 : 5] : rating === 2 ? [4, 4, i % 7 === 3 ? 2 : 3] : [2, 3, 1];
+    const low = rating === 1 || q.some((n) => n <= 2);
+    const cat = rating === 1 ? (['Quality', 'Delay', 'Communication', 'Scope', 'Damage'] as const)[i % 5] : 'Communication' as const;
     const open = i === lastRecentNeg;
     const d0 = j.start_at.slice(0, 10);
     feedback.push({
       ...base('fb', d0), job_id: j.id, workflow_id: workflows.find((w) => w.job_id === j.id)?.id, client_id: j.client_id, leader_id: j.leader_id, crew_ids: [...j.crew_ids], service_codes: [...j.service_codes], service_date: d0,
-      rating, aspects: rating === 1 ? [pick(['Quality of cleaning', 'On-time arrival', 'Communication'])] : rating === 3 ? ['Crew professionalism', 'Quality of cleaning'] : [],
-      comment: rating === 1 ? 'Streaks left on a few panels and the crew arrived late.' : undefined, issue_category: rating === 1 ? cat : undefined,
-      follow_up: rating !== 1 ? 'None' : open ? 'Required' : 'Acknowledged',
-      ...(rating === 1 && !open ? { ack_note: 'Called the client, re-cleaned the affected area free of charge.', ack_by: 'u-owner', ack_at: `${addDays(d0, 1)}T09:00:00.000Z` } : {}),
+      rating, q_quality: q[0], q_professionalism: q[1], q_communication: q[2], aspects: [],
+      comment: rating === 1 ? 'Streaks left on a few panels and the crew arrived late.' : low ? 'Nobody told us when the crew would finish.' : undefined, issue_category: low ? cat : undefined,
+      follow_up: !low ? 'None' : open ? 'Required' : 'Acknowledged',
+      ...(low && !open ? { ack_note: 'Called the client, re-cleaned the affected area free of charge.', ack_by: 'u-owner', ack_at: `${addDays(d0, 1)}T09:00:00.000Z` } : {}),
       submitted_by: 'u-lead', submitted_at: `${d0}T16:00:00.000Z`,
     });
     if (open) j.status = 'Work Completed';
@@ -769,7 +772,7 @@ export function seedDB(): DB {
       const a = mkLink(o1, 3, 'Closed', true, 'Missed Area', 'Two roof-deck panels were missed on the first visit.');
       const wfl = mkWorkflow(a.link, 'closed');
       mkBj(o1, a.link, a.bjid, a.d0, 'Missed Area', 'Two roof-deck panels were missed on the first visit.', 'No Charge', 'Closed', 'Field crew');
-      feedback.push({ ...base('fb', a.d0), job_id: a.link.id, workflow_id: wfl.id, client_id: a.link.client_id, leader_id: a.link.leader_id, crew_ids: [...a.link.crew_ids], service_codes: [...a.link.service_codes], service_date: a.d0, rating: 3, aspects: ['Quality of cleaning', 'Communication'], follow_up: 'None', submitted_by: 'u-lead', submitted_at: `${a.d0}T15:00:00.000Z` });
+      feedback.push({ ...base('fb', a.d0), job_id: a.link.id, workflow_id: wfl.id, client_id: a.link.client_id, leader_id: a.link.leader_id, crew_ids: [...a.link.crew_ids], service_codes: [...a.link.service_codes], service_date: a.d0, rating: 3, q_quality: 5, q_professionalism: 5, q_communication: 5, aspects: [], follow_up: 'None', submitted_by: 'u-lead', submitted_at: `${a.d0}T15:00:00.000Z` });
       const b = mkLink(o1, 8, 'Confirmed', true, 'Quality Issue', 'Streaks returned on the east wall after rain; redo the wash.', { start_at: `${addDays(T, 1)}T08:00`, end_at: `${addDays(T, 1)}T13:00` });
       mkBj(o1, b.link, b.bjid, addDays(T, 1), 'Quality Issue', 'Streaks returned on the east wall after rain; redo the wash.', 'No Charge', 'Scheduled', 'Team Leader', { reported_on: addDays(T, -2) });
     }
@@ -784,6 +787,39 @@ export function seedDB(): DB {
       const d = mkLink(o3, 7, 'Pending', true, 'Damage', 'Client reports a scuffed aluminium frame near the entrance.', { start_at: `${addDays(T, 4)}T08:00`, end_at: `${addDays(T, 4)}T12:00` });
       mkBj(o3, d.link, d.bjid, addDays(T, 4), 'Damage', 'Client reports a scuffed aluminium frame near the entrance.', 'No Charge', 'Reported', 'Field crew', { reported_on: today() });
     }
+  }
+
+  // Ocular visits (site inspections) shown in the same calendar as jobs
+  const ocularVisits: OcularVisit[] = [];
+  {
+    const leaders = employees.filter((e) => e.tier === 'Team Leader');
+    const withSite = clients.filter((c) => sites.some((x) => x.client_id === c.id));
+    const mk = (n: number, dayOff: number, hhmm: string, codes: ServiceCode[], status: OcularVisit['status'], concerns: string, extra: Partial<OcularVisit> = {}) => {
+      const c = withSite[(n * 3 + 1) % withSite.length]; const site = sites.find((x) => x.client_id === c.id)!;
+      const d0 = addDays(T, dayOff);
+      const v: OcularVisit = { ...base('ov', addDays(d0, -3)), number: nn('OV'), client_id: c.id, contact_person: site.contact_person, contact_mobile: site.contact_mobile, site_id: site.id, location: site.address, service_codes: codes,
+        start_at: `${d0}T${hhmm}`, duration_min: 60, assignee_id: leaders[n % leaders.length]?.id, concerns, access_notes: site.access_instructions || 'Register at the guard house and ask for the facilities office.', status, branch_id: c.branch_id, panels: [], measurements: [], findings: '', ...extra };
+      ocularVisits.push(v); return { v, c, site };
+    };
+    const panels = (a: number, b: number): PanelRow[] => [
+      { id: id('pnl'), area: '1st Floor', side: 'Front', external: a, internal: Math.round(a / 2), notes: 'Storefront glass' },
+      { id: id('pnl'), area: '2nd Floor', side: 'Front', external: b, internal: b },
+      { id: id('pnl'), area: 'Roof Deck', side: 'Rear', external: Math.round(b / 2), internal: 0 },
+    ];
+    mk(0, 0, '10:00', ['GLASS_EXT'], 'Confirmed', 'Wants a price for quarterly glass cleaning of the whole façade.');
+    mk(1, 1, '14:00', ['ROOF'], 'Scheduled', 'Roof leaks near the skylight; check access and condition before quoting.');
+    mk(2, 3, '09:00', ['GLASS_EXT', 'WALL'], 'Scheduled', 'Glass façade and covered-court wall before school opening.');
+    mk(3, 6, '13:30', ['SOLAR'], 'Confirmed', 'About 60 solar panels on the carport roof.');
+    mk(4, -1, '09:30', ['GLASS_EXT'], 'Completed', 'Two-storey office; wants interior and exterior glass.', { panels: panels(14, 12), measurements: [{ id: id('ms'), label: 'Lobby curtain wall height', qty: 4.5, unit: 'm', service_code: 'GLASS_EXT' }], findings: 'Hard-water stains on the 2nd floor front; lift available on weekdays only.', completed_at: `${addDays(T, -1)}T10:45`, completed_by: 'u-lead' });
+    mk(5, -3, '15:00', ['FLOOR', 'WALL'], 'Completed', 'Hardscape and boundary wall cleaning.', { measurements: [{ id: id('ms'), label: 'Driveway', qty: 320, unit: 'sqm', service_code: 'FLOOR' }, { id: id('ms'), label: 'Boundary wall', qty: 180, unit: 'sqm', service_code: 'WALL' }], findings: 'Moss on the north wall; water source available on site.', completed_at: `${addDays(T, -3)}T16:10`, completed_by: 'u-lead' });
+    for (const [n, off, hh, codes] of [[6, -6, '10:00', ['GLASS_EXT']], [7, -9, '11:00', ['ROOF']]] as const) {
+      const { v, c, site } = mk(n, off, hh, [...codes] as ServiceCode[], 'Converted to Quotation', 'Site check before quoting.', codes[0] === 'GLASS_EXT' ? { panels: panels(10, 8), findings: 'Standard storefront; no special access needed.' } : { measurements: [{ id: id('ms'), label: 'Main roof', qty: 420, unit: 'sqm', service_code: 'ROOF' }], findings: 'Walkable roof; safety rails needed.' });
+      v.completed_at = `${addDays(T, off)}T12:00`; v.completed_by = 'u-lead';
+      const qt = makeQuote(c, site, [...codes] as ServiceCode[], addDays(T, off + 1), off < -7 ? 'Approved' : 'Sent', c.branch_id, [codes[0] === 'GLASS_EXT' ? 18 : 420]);
+      Object.assign(qt, { ocular_visit_id: v.id, ocular_assignee_id: v.assignee_id, ocular_panels: v.panels, ocular_measurements: v.measurements });
+      quotations.push(qt); v.quotation_id = qt.id; v.converted_at = stamp(addDays(T, off + 1));
+    }
+    mk(8, -2, '09:00', ['WALL'], 'Cancelled', 'Client postponed the inspection.', { cancel_reason: 'Client postponed — building maintenance that week.' });
   }
 
   // Payment Method Confirmation recorded by the Team Leader on recent jobs (what the client said they would do)
@@ -864,7 +900,7 @@ export function seedDB(): DB {
       { ...base('cor'), employee_id: FIELD[1].id, date: addDays(T, -2), clock_in: `${addDays(T, -2)}T08:00`, clock_out: `${addDays(T, -2)}T17:00`, reason: 'Forgot to clock out; was on site until 5PM per team leader.', status: 'Pending' },
     ], holidays, reviews, adjustments, periods, runs, locations, items, stock, requests: [
       { ...base('mr'), job_id: jobs.find((j) => j.status === 'Confirmed')?.id ?? jobs[0].id, requested_by: E_L1.id, lines: [{ item_id: item('CHM-001').id, qty: 4 }, { item_id: item('PPE-002').id, qty: 2 }], status: 'Pending', note: 'Extra chemical for large glass job.' },
-    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, payment_confirmations: confirmations, audit: [], settings: { ...settings, counters }, version: 1,
+    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, payment_confirmations: confirmations, ocular_visits: ocularVisits, audit: [], settings: { ...settings, counters }, version: 1,
   };
 }
 

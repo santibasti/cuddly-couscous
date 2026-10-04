@@ -3,37 +3,56 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Modal, attempt } from '@/components/ui';
 import { acknowledgeFeedback, type SatisfactionInput } from '@/lib/workflow';
-import { FEEDBACK_ASPECTS, ISSUE_CATEGORIES, RATING_EMOJI, RATING_LABEL, satisfactionStats } from '@/lib/business';
+import { ISSUE_CATEGORIES, RATING_EMOJI, RATING_LABEL, SAT_QUESTIONS, SCALE5, needsFollowUp, satisfactionStats } from '@/lib/business';
 import { addDays, fmtDate, fmtDateTime } from '@/lib/util';
 import type { ClientFeedback, IssueCategory, SatisfactionRating } from '@/lib/types';
 
 const RATINGS: SatisfactionRating[] = [1, 2, 3];
 const TONE: Record<SatisfactionRating, string> = { 1: 'bad', 2: 'mid', 3: 'good' };
 
-/** Short Client Satisfaction Check: one tap, optional ticks, optional comment. Designed to take the client under 15 seconds. */
+/**
+ * Client Satisfaction Check, built to take under 20 seconds on a tablet:
+ * three 1–5 questions (large buttons), then the overall smiley, then an optional comment.
+ * A Not Satisfied answer or any 1–2 rating needs an issue category from the Team Leader and creates an Admin follow-up.
+ */
 export function SatisfactionCheck({ value, onChange, disabled }: { value: Partial<SatisfactionInput>; onChange: (v: Partial<SatisfactionInput>) => void; disabled?: boolean }) {
   const r = value.rating;
-  const toggle = (a: string) => { const cur = value.aspects ?? []; onChange({ ...value, aspects: cur.includes(a) ? cur.filter((x) => x !== a) : [...cur, a] }); };
+  const answered = SAT_QUESTIONS.every((q) => !!value[q.key]);
+  const low = needsFollowUp(value);
   return (
     <div className="card satcheck" style={{ padding: 14 }}>
-      <div className="satq">How satisfied are you with today’s service?</div>
-      <div className="smileys" role="radiogroup" aria-label="Satisfaction rating">
-        {RATINGS.map((n) => (
-          <button key={n} type="button" role="radio" aria-checked={r === n} disabled={disabled} className={`smiley ${TONE[n]} ${r === n ? 'on' : ''}`} onClick={() => onChange({ ...value, rating: n, ...(n !== 1 ? { issue_category: undefined } : {}) })}>
-            <span className="emo" aria-hidden="true">{RATING_EMOJI[n]}</span><span>{RATING_LABEL[n]}</span>
-          </button>
-        ))}
-      </div>
-      {r && (
-        <div className="stack" style={{ marginTop: 12 }}>
-          <div className="small muted" style={{ fontWeight: 600 }}>Anything you’d like to mention? (optional)</div>
-          <div className="ticks">
-            {FEEDBACK_ASPECTS.map((a) => <label key={a} className={`tick ${value.aspects?.includes(a) ? 'on' : ''}`}><input type="checkbox" disabled={disabled} checked={!!value.aspects?.includes(a)} onChange={() => toggle(a)} />{a}</label>)}
+      <div className="satq">Please rate today’s service</div>
+      <div className="scale-legend small muted" aria-hidden="true">1 Poor · 2 Fair · 3 Good · 4 Very Good · 5 Excellent</div>
+      {SAT_QUESTIONS.map((q) => (
+        <div key={q.key} className="satrow">
+          <div className="satqt">{q.text}</div>
+          <div className="scale5" role="radiogroup" aria-label={q.text}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button key={n} type="button" role="radio" aria-checked={value[q.key] === n} aria-label={`${n} ${SCALE5[n - 1]}`} disabled={disabled} className={`s5 v${n} ${value[q.key] === n ? 'on' : ''}`} onClick={() => onChange({ ...value, [q.key]: n })}>
+                <b>{n}</b><span>{SCALE5[n - 1]}</span>
+              </button>
+            ))}
           </div>
+        </div>
+      ))}
+      {answered && (
+        <>
+          <div className="satq" style={{ marginTop: 16 }}>Overall, how satisfied are you with today’s service?</div>
+          <div className="smileys" role="radiogroup" aria-label="Overall satisfaction">
+            {RATINGS.map((n) => (
+              <button key={n} type="button" role="radio" aria-checked={r === n} disabled={disabled} className={`smiley ${TONE[n]} ${r === n ? 'on' : ''}`} onClick={() => onChange({ ...value, rating: n })}>
+                <span className="emo" aria-hidden="true">{RATING_EMOJI[n]}</span><span>{RATING_LABEL[n]}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {answered && r && (
+        <div className="stack" style={{ marginTop: 12 }}>
           <Field label="Additional comment (optional)"><input disabled={disabled} value={value.comment ?? ''} onChange={(e) => onChange({ ...value, comment: e.target.value })} /></Field>
-          {r === 1 && (
+          {low && (
             <div className="alert err">
-              <b>Team Leader: choose the issue</b> (the Owner / Admin will be notified and a follow-up is created)
+              <b>Team Leader: choose the issue</b> (the client was not satisfied or gave a rating of 1–2 — the Owner / Admin is notified and a follow-up is created)
               <div className="chips" role="group" aria-label="Issue category">{ISSUE_CATEGORIES.map((c) => <button key={c} type="button" disabled={disabled} className={value.issue_category === c ? 'on' : ''} onClick={() => onChange({ ...value, issue_category: c as IssueCategory })}>{c}</button>)}</div>
             </div>
           )}
@@ -42,11 +61,14 @@ export function SatisfactionCheck({ value, onChange, disabled }: { value: Partia
     </div>
   );
 }
+/** Everything the handover needs before the report can be signed. */
+export const satisfactionComplete = (s: Partial<SatisfactionInput>) => SAT_QUESTIONS.every((q) => !!s[q.key]) && !!s.rating && (!needsFollowUp(s) || !!s.issue_category);
 
 export function FeedbackSummary({ fb }: { fb: ClientFeedback }) {
   return (
     <div className="small">
-      <b>{RATING_EMOJI[fb.rating]} {RATING_LABEL[fb.rating]}</b>{fb.issue_category ? ` · ${fb.issue_category}` : ''}{fb.aspects.length ? ` · ${fb.aspects.join(', ')}` : ''}{fb.comment ? ` · “${fb.comment}”` : ''}
+      <b>{RATING_EMOJI[fb.rating]} {RATING_LABEL[fb.rating]}</b>
+      {fb.q_quality ? ` · cleaning ${fb.q_quality}/5 · crew ${fb.q_professionalism}/5 · communication ${fb.q_communication}/5` : ''}{fb.issue_category ? ` · ${fb.issue_category}` : ''}{fb.aspects.length ? ` · ${fb.aspects.join(', ')}` : ''}{fb.comment ? ` · “${fb.comment}”` : ''}
       {fb.follow_up === 'Required' && <> <Badge tone="red">Follow-up required</Badge></>}{fb.follow_up === 'Acknowledged' && <> <Badge tone="green">Acknowledged</Badge></>}
     </div>
   );
@@ -89,9 +111,9 @@ export function SatisfactionDashboard({ from, to }: { from: string; to: string }
   const month = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-PH', { month: 'short', year: '2-digit' });
   const bar = (v: number) => <span className="satbar"><i style={{ width: `${(v / 3) * 100}%`, background: v >= 2.6 ? 'var(--green)' : v >= 2 ? 'var(--amber)' : 'var(--red)' }} /></span>;
   const table = (rows: typeof people, first: string) => (
-    <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>{first}</th><th className="num">Jobs</th><th>Average</th><th className="num">😞</th><th className="num">😐</th><th className="num">😊</th></tr></thead><tbody>
-      {rows.map((a) => <tr key={a.key}><td>{a.label}</td><td className="num">{a.n}</td><td><b>{a.avg.toFixed(2)}</b> {bar(a.avg)}</td><td className="num">{a.notSat || '—'}</td><td className="num">{a.sat || '—'}</td><td className="num">{a.very || '—'}</td></tr>)}
-      {!rows.length && <tr><td colSpan={6} className="muted">No feedback in this period.</td></tr>}
+    <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>{first}</th><th className="num">Jobs</th><th>Average</th><th>Cleaning · Crew · Comm.</th><th className="num">😞</th><th className="num">😐</th><th className="num">😊</th></tr></thead><tbody>
+      {rows.map((a) => <tr key={a.key}><td>{a.label}</td><td className="num">{a.n}</td><td><b>{a.avg.toFixed(2)}</b> {bar(a.avg)}</td><td className="small">{a.quality ? `${a.quality} · ${a.professionalism} · ${a.communication}` : '—'}</td><td className="num">{a.notSat || '—'}</td><td className="num">{a.sat || '—'}</td><td className="num">{a.very || '—'}</td></tr>)}
+      {!rows.length && <tr><td colSpan={7} className="muted">No feedback in this period.</td></tr>}
     </tbody></table></div>
   );
   return (
@@ -100,6 +122,7 @@ export function SatisfactionDashboard({ from, to }: { from: string; to: string }
         <div className="stat navy"><div className="k">Average rating</div><div className="v">{st.n ? st.avg.toFixed(2) : '—'} <span className="small">/ 3</span></div><div className="s">{st.n} response{st.n === 1 ? '' : 's'}</div></div>
         <div className="stat good"><div className="k">😊 Very Satisfied</div><div className="v">{st.dist[3]}</div><div className="s">{st.n ? Math.round((st.dist[3] / st.n) * 100) : 0}%</div></div>
         <div className="stat"><div className="k">😐 Satisfied</div><div className="v">{st.dist[2]}</div><div className="s">{st.n ? Math.round((st.dist[2] / st.n) * 100) : 0}%</div></div>
+        <div className="stat"><div className="k">Question averages (1–5)</div><div className="v small" style={{ fontSize: 15 }}>Cleaning {st.questions.quality || '—'} · Crew {st.questions.professionalism || '—'} · Comm. {st.questions.communication || '—'}</div><div className="s">quality · professionalism · communication</div></div>
         <div className={`stat ${st.dist[1] ? 'bad' : ''}`}><div className="k">😞 Not Satisfied</div><div className="v">{st.dist[1]}</div><div className="s">{st.followUps.length} follow-up{st.followUps.length === 1 ? '' : 's'} open</div></div>
       </div>
       {st.followUps.length > 0 && (

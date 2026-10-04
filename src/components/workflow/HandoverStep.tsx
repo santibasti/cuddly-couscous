@@ -4,7 +4,7 @@ import { Badge, Field, SignaturePad, attempt } from '@/components/ui';
 import { DraftBar, PresetChips } from '@/components/touch';
 import { Confirm } from './shared';
 import { billBase, signServiceReport, type SatisfactionInput } from '@/lib/workflow';
-import { SatisfactionCheck, FeedbackSummary } from './Satisfaction';
+import { SatisfactionCheck, FeedbackSummary, satisfactionComplete } from './Satisfaction';
 import { PaymentMethodConfirm } from './PaymentMethodConfirm';
 import { FinalSummary } from './FinalQuote';
 import { discountBlock, finalQuoteSummary } from '@/lib/business';
@@ -72,7 +72,7 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
       <SatisfactionCheck value={sat} onChange={setSat} disabled={!run} />
       {run && <div className="form-grid"><div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad value={csig} onChange={setCsig} /></div><div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>TopMop team leader signature</div><SignaturePad value={tsig} onChange={setTsig} /></div></div>}
       {run && <Confirm checked={ok} onChange={setOk}>The work and findings above were reviewed with the client.</Confirm>}
-      {run && <button className="btn primary lg" disabled={!ok || !!block || !sat.rating || (sat.rating === 1 && !sat.issue_category)} onClick={() => attempt(() => signServiceReport(wf.id, { ...f, client_sig: csig, tm_sig: tsig, satisfaction: sat as SatisfactionInput }), 'Handover signed — Work Completed')}>Sign &amp; complete handover</button>}
+      {run && <button className="btn primary lg" disabled={!ok || !!block || !satisfactionComplete(sat)} onClick={() => attempt(() => signServiceReport(wf.id, { ...f, client_sig: csig, tm_sig: tsig, satisfaction: sat as SatisfactionInput }), 'Handover signed — Work Completed')}>Sign &amp; complete handover</button>}
     </div>
   );
 }

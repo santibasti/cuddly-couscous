@@ -692,6 +692,17 @@ export function runAutomations() {
   for (const j of d.jobs.filter((x) => !x.deleted_at && x.status === 'Work Completed' && !d.workflows.some((w) => w.job_id === x.id && w.closed_at && !w.deleted_at))) {
     add(`wf-return:${j.id}`, 'job', 'Close-out pending', `${j.number}: client handover signed — complete the close-out (equipment return, leave site, arrival at HQ).`, 'info', `/jobs/${j.id}`, [...ops, 'leader']);
   }
+  // ocular visits: reminders for today / tomorrow, unconfirmed visits, visits not closed out, and completed visits waiting for a quotation
+  for (const v of d.ocular_visits.filter((x) => !x.deleted_at)) {
+    const cl = d.clients.find((c) => c.id === v.client_id)?.name; const day = v.start_at.slice(0, 10); const when = v.start_at.slice(11);
+    if (['Scheduled', 'Confirmed'].includes(v.status)) {
+      if (day === t) add(`oc-today:${v.id}`, 'job', 'Ocular visit today', `${v.number} · ${cl} at ${when} — ${v.location}. ${d.employees.find((e) => e.id === v.assignee_id)?.full_name ?? ''}`, 'info', '/jobs', ['owner', 'ops', 'leader']);
+      else if (day === addDays(t, 1)) add(`oc-tomorrow:${v.id}`, 'job', 'Ocular visit tomorrow', `${v.number} · ${cl} at ${when} — ${v.location}.`, 'info', '/jobs', ['owner', 'ops', 'leader']);
+      if (v.status === 'Scheduled' && day >= t && day <= addDays(t, 2)) add(`oc-confirm:${v.id}`, 'job', 'Ocular visit not yet confirmed', `${v.number} · ${cl} on ${day} at ${when} — confirm with the client.`, 'warn', '/jobs', ['owner', 'ops']);
+      if (day < t) add(`oc-overdue:${v.id}`, 'job', 'Ocular visit not closed out', `${v.number} · ${cl} was due ${day}. Mark it completed or cancelled.`, 'warn', '/jobs', ['owner', 'ops', 'leader']);
+    }
+    if (v.status === 'Completed') add(`oc-quote:${v.id}`, 'job', 'Ocular visit awaiting quotation', `${v.number} · ${cl} is completed. Create the quotation from the visit.`, 'info', '/jobs', ['owner', 'ops', 'leader']);
+  }
   for (const b of d.back_jobs.filter((x) => !x.deleted_at && ['Reported', 'Under Review'].includes(x.status))) {
     add(`bj-new:${b.id}`, 'job', `Back job ${b.status === 'Reported' ? 'reported' : 'under review'}`, `${b.number} · ${d.jobs.find((j) => j.id === b.origin_job_id)?.number}: ${b.reason} — ${b.description}. ${b.charge_type}. Needs approval by Admin / Operations.`, 'warn', `/jobs/${b.job_id}`, ['owner', 'ops']);
   }
