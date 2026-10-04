@@ -16,7 +16,7 @@ export const ALL_PERMS = PERM_GROUPS.flatMap(([, l]) => l.map(([k]) => k));
 export const ROLE_LABEL = { admin: 'Admin / Management', cashier: 'Counter / Cashier', attendant: 'Range Attendant', server: 'Café / Server' };
 export const DEFAULT_ROLES = () => ({
   admin: { label: ROLE_LABEL.admin, perms: [...ALL_PERMS], locked: true },
-  cashier: { label: ROLE_LABEL.cashier, perms: ['bays.view', 'range.view', 'tabs.view', 'tabs.open', 'tabs.addBucket', 'tabs.addFood', 'pos.checkout', 'pay.collect', 'requests.create', 'closeout.own', 'sales.viewOwn', 'members.view', 'fnb.view', 'attendance.self', 'activity.own'] },
+  cashier: { label: ROLE_LABEL.cashier, perms: ['bays.view', 'bays.assign', 'range.view', 'tabs.view', 'tabs.open', 'tabs.addBucket', 'tabs.addFood', 'pos.checkout', 'pay.collect', 'requests.create', 'closeout.own', 'sales.viewOwn', 'members.view', 'fnb.view', 'attendance.self', 'activity.own'] },
   attendant: { label: ROLE_LABEL.attendant, perms: ['bays.view', 'bays.assign', 'range.view', 'tabs.view', 'tabs.addBucket', 'attendance.self', 'activity.own'] },
   server: { label: ROLE_LABEL.server, perms: ['tabs.view', 'tabs.addFood', 'orders.create', 'fnb.view', 'attendance.self', 'activity.own'] },
 });
@@ -24,6 +24,8 @@ export const DEFAULT_ROLES = () => ({
 export const ADMIN_ONLY = ['approvals.manage', 'staff.manage', 'roles.manage', 'settings.manage', 'audit.viewAll', 'products.manage', 'inventory.adjust', 'dash.mgmt', 'reports.view', 'reports.export', 'sales.viewAll', 'closeout.viewAll', 'attendance.manage', 'players.view'];
 
 if (!S.get().roles) { S.get().roles = DEFAULT_ROLES(); S.save(); }
+// Migration v2: counter staff can assign a bay when opening a player's tab (existing installs keep any other edits).
+if ((S.get().rolesVer || 1) < 2) { const c = S.get().roles.cashier; if (c && !c.perms.includes('bays.assign')) c.perms.push('bays.assign'); S.get().rolesVer = 2; S.save(); }
 
 export const SESSION_KEY = 'ccc-session';
 export function deviceId() {

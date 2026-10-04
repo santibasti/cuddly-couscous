@@ -23,7 +23,7 @@ Every person signs in with their **own** account (username + password, or userna
 | Username | Role | Password | PIN |
 |---|---|---|---|
 | admin | Admin / Management | `Admin@2026` | 9090 |
-| cashier1, cashier2 | Counter / Cashier | `Cattle@2026` | 1111, 2222 |
+| cashier1, cashier2 | Counter / Cashier (can also assign bays) | `Cattle@2026` | 1111, 2222 |
 | attendant1, attendant2 | Range Attendant | `Cattle@2026` | 3333, 4444 |
 | server1, server2 | Café / Server | `Cattle@2026` | 5555, 6666 |
 
