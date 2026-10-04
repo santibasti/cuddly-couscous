@@ -25,6 +25,7 @@ const P = {
   search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   member: '<circle cx="12" cy="8" r="4"/><path d="M4.5 21c.8-4 3.6-6 7.5-6s6.7 2 7.5 6"/>',
 };

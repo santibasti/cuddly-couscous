@@ -20,6 +20,9 @@ wordmark is shown. See `assets/brand/README.md`.
 
 - Any name/password signs in. Manager approval PIN is `1234` (voids, drawer variance over $5).
 - Data is stored in the browser (`localStorage`); Settings → Reset demo data restores samples.
+- Range has exactly 15 bays (Bay 1 – Bay 15). Currency is PHP (₱); all times display in Asia/Manila (UTC+8).
+- Every session, item added, payment, discount, void, stock adjustment and closeout is stored with an epoch time and a `+08:00` ISO timestamp, and listed in Reports → Audit Trail.
+- Stored demo data is versioned (`ccc-ops-v2`); upgrading from the first build resets it once.
 - Brand names and the palette live in `js/brand.js` and `css/styles.css` (`:root` tokens).
 - "FieldPilot" does not appear anywhere in the client-facing UI.
 
