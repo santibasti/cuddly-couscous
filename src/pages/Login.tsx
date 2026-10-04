@@ -4,6 +4,7 @@ import { store, useAuth } from '@/lib/store';
 import { ROLE_LABEL, ROUTE_ACCESS } from '@/lib/rbac';
 import { Field, toast, Badge } from '@/components/ui';
 import { Logo } from '@/components/Logo';
+import { CLOUD } from '@/lib/cloud';
 
 const DEMO = [
   ['owner@topmop.ph', 'owner'], ['ops@topmop.ph', 'ops'], ['finance@topmop.ph', 'finance'],
@@ -13,7 +14,7 @@ const DEMO = [
 export default function Login() {
   const { user, any } = useAuth();
   const nav = useNavigate();
-  const [email, setEmail] = useState('owner@topmop.ph');
+  const [email, setEmail] = useState(CLOUD ? '' : 'owner@topmop.ph');
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
   const home = () => (any(ROUTE_ACCESS.dashboard) ? '/dashboard' : any(ROUTE_ACCESS.attendance) ? '/attendance' : '/reports');
@@ -41,13 +42,15 @@ export default function Login() {
           <Field label="Password"><input type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} required /></Field>
           <button className="btn primary lg" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
         </form>
+        {!CLOUD && (
         <div className="alert info" style={{ marginTop: 18 }}>
           <b>Demo mode.</b> Data lives in this browser. All demo accounts use password <code>topmop123</code>.
           <div className="demo-accts">
             {DEMO.map(([em, r]) => <button key={em} type="button" className="btn sm" onClick={() => go(em, 'topmop123')}>{ROLE_LABEL[r]}</button>)}
           </div>
         </div>
-        <p className="small muted" style={{ marginTop: 16 }}>Client? <Link to="/portal">Open the client portal</Link> <Badge tone="teal">demo</Badge></p>
+        )}
+        {!CLOUD && <p className="small muted" style={{ marginTop: 16 }}>Client? <Link to="/portal">Open the client portal</Link> <Badge tone="teal">demo</Badge></p>}
       </section>
     </div>
   );

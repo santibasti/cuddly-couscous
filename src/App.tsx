@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { store, useAuth } from '@/lib/store';
+import { store, useAuth, useBoot } from '@/lib/store';
+import { CLOUD } from '@/lib/cloud';
 import { ROLE_LABEL, ROUTE_ACCESS } from '@/lib/rbac';
 import { runAutomations } from '@/lib/actions';
-import { Icon, Overlays, Badge } from '@/components/ui';
+import { Icon, Overlays, Badge, toast } from '@/components/ui';
 import { SyncBadge } from '@/components/touch';
 import { confirmLeave } from '@/lib/sync';
 import { Logo } from '@/components/Logo';
@@ -152,7 +153,7 @@ function Shell() {
             <Route path="/admin" element={<Guard area="admin"><Admin /></Guard>} />
             <Route path="*" element={<Navigate to={homeFor(any)} replace />} />
           </Routes>
-          <div className="small muted" style={{ marginTop: 24, textAlign: 'center' }}>TopMop Operations • Demo data stored in this browser • Last sync {fmtStamp(new Date().toISOString())} <Badge tone="teal">demo mode</Badge></div>
+          <div className="small muted" style={{ marginTop: 24, textAlign: 'center' }}>TopMop Operations • {CLOUD ? 'Connected to Supabase' : 'Demo data stored in this browser'} • Last sync {fmtStamp(new Date().toISOString())} <Badge tone="teal">{CLOUD ? 'live' : 'demo mode'}</Badge></div>
         </main>
       </div>
       <nav className="bottomnav" aria-label="Quick navigation">
@@ -165,6 +166,13 @@ function Shell() {
 
 export default function App() {
   const { user } = useAuth();
+  const boot = useBoot();
+  useEffect(() => {
+    const h = (e: Event) => toast((e as CustomEvent<string>).detail, 'err');
+    window.addEventListener('topmop:cloud-error', h);
+    return () => window.removeEventListener('topmop:cloud-error', h);
+  }, []);
+  if (boot === 'booting') return <div style={{ display: 'grid', placeItems: 'center', height: '100vh', font: '15px system-ui', color: '#0B2545' }}>Loading TopMop…</div>;
   return (
     <>
       <Routes>

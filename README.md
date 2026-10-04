@@ -125,3 +125,14 @@ overpayment, negative stock and single-release-per-asset all reject correctly.
 8. QR scanning uses the device camera, which browsers only allow on HTTPS or `localhost`; the manual code box also works with USB/Bluetooth scanners. It was tested with typed codes, not a physical camera.
 9. **Offline sync is local-only in the demo.** Changes are written to the tablet immediately, so the “Synced” state means “nothing is waiting to upload”. The upload hook is `syncHub.setFlusher()` in `src/lib/sync.ts` — connect it to Supabase together with item 1. The service worker caches the app shell and built assets; the PDF / Excel export libraries are cached after first use online. The browser Back button is not intercepted by the unsaved-step warning (links, steps and sign-out are).
 10. Photos are intentionally not stored in this app; use TopMop's separate file system.
+
+## Connecting to Supabase (live data)
+
+Without any setup the app runs in **demo mode** (data stays in the browser). To run it on a real Supabase project:
+
+1. Apply `supabase/migrations/0001…0018` (`supabase link`, `supabase db push`). Optionally load the sample data (`npm run db:seed-sql`, then run `supabase/seed.sql`).
+2. Create the first login in Supabase → Authentication → Users, then add its row in `public.profiles` (`id` = the user id, `name`, `email`, `role = 'owner'`).
+3. Copy `.env.example` to `.env.local` and fill in the project URL and the **anon** key (Project Settings → API). On Vercel, add the same two variables under Settings → Environment Variables.
+4. `npm run dev` — the sign-in page now uses Supabase. Every change is saved to the database, which re-checks every business rule; a refused change is undone and the reason is shown. Other people's changes appear within about 45 seconds.
+
+Not yet live in this mode: user/role management screens (use Supabase), client portal, photo and image upload to Storage.

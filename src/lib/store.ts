@@ -4,6 +4,7 @@ import { permsFor } from './rbac';
 import { isoNow, sha256, uid } from './util';
 import { seedDB } from './seed';
 import { syncHub } from './sync';
+import { CLOUD, currentUserId, emptyDB, fetchAll, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
 
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
@@ -25,16 +26,86 @@ class Store {
   private sessionUser: string | null = null;
   private _reason: string | null = null;
   private _discountOK = false;
+  /* cloud mode: the server's copy of the data as last loaded / written, rows changed by automations, reserved document numbers */
+  private baseline: DB;
+  private soft = new Set<string>();
+  private pool: Record<string, number[]> = {};
+  private flushing = false;
+  bootStatus: 'booting' | 'ready' = 'ready';
+  getBoot = () => this.bootStatus;
 
   constructor() {
+    if (CLOUD) {
+      this._db = emptyDB(); this.baseline = this._db; this.bootStatus = 'booting';
+      syncHub.setFlusher(() => this.flushCloud());
+      if (typeof window !== 'undefined') setInterval(() => { void this.refreshCloud(); }, 45000);
+      void this.bootCloud();
+      return;
+    }
     let db: DB | null = null;
     try {
       const raw = localStorage.getItem(KEY);
       if (raw) { db = JSON.parse(raw) as DB; if (!db.discount_requests) db.discount_requests = []; if (!db.client_feedback) db.client_feedback = []; if (!db.back_jobs) db.back_jobs = []; if (!db.payment_confirmations) db.payment_confirmations = []; if (!db.ocular_visits) db.ocular_visits = []; if (!db.quote_images) db.quote_images = []; if (!db.followups) db.followups = []; if (!db.followup_rules) db.followup_rules = []; db.payments = db.payments.map((p) => ((p.method as string) === 'Check' ? { ...p, method: 'Cheque' as const } : (['Credit Card', 'Other'] as string[]).includes(p.method) ? { ...p, method: 'Bank Transfer' as const } : p)); }   // data saved before Discount Requests existed
     } catch { /* ignore corrupted / unavailable storage */ }
     this._db = db ?? seedDB();
+    this.baseline = this._db;
     try { this.sessionUser = localStorage.getItem(SESSION); } catch { /* noop */ }
     if (!db) this.persistNow();
+  }
+
+  /* ---- cloud mode (Supabase) ---- */
+  private async bootCloud() {
+    try { const uid = await currentUserId(); if (uid) await this.afterSignIn(uid); } catch { try { await signOut(); } catch { /* noop */ } }
+    this.bootStatus = 'ready'; this.listeners.forEach((l) => l());
+  }
+  private async afterSignIn(uid: string) {
+    const prof = await fetchProfile(uid);
+    if (!prof) throw new Error('Your login is not set up yet. Ask the administrator to create your profile.');
+    if (!prof.active) throw new Error('This account is disabled. Contact your administrator.');
+    const db = await fetchAll();
+    this._db = { ...db, version: 1 }; this.baseline = this._db; this.sessionUser = uid;
+    for (const k of ['QT', 'JOB', 'INV', 'OR', 'EMP', 'INC', 'DR', 'BJ', 'OV']) void this.refill(k);
+    this.listeners.forEach((l) => l());
+  }
+  private async refill(kind: string) {
+    try { const nums = await reserveNumbers(kind, 10); this.pool[kind] = [...(this.pool[kind] ?? []), ...nums]; } catch { /* retried on next use */ }
+  }
+  private cloudError(msg: string) { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('topmop:cloud-error', { detail: msg })); }
+  /** Write every changed row to Supabase; the database re-checks every rule. A refused change is undone by reloading the server's copy. */
+  private async flushCloud() {
+    if (!CLOUD || !this.sessionUser || this.flushing) return;
+    this.flushing = true;
+    try {
+      while (this._db !== this.baseline) {
+        const next = this._db; const ver = next.version;
+        let res;
+        try { res = await pushChanges(this.baseline, next, this.soft); }
+        catch (e) {
+          if (isRuleError(e)) { this.soft.clear(); this.cloudError((e as Error).message); await this.reloadCloud(); return; }
+          throw e;                                            // network trouble: stay queued ("Offline Draft")
+        }
+        this.soft.clear(); this.baseline = next;
+        // pick up what the database added or changed itself (timestamps, follow-ups scheduled by triggers, …)
+        const tables: SyncTable[] = [...res.touched]; if (res.touched.has('jobs') && !tables.includes('followups')) tables.push('followups');
+        if (tables.length && this._db.version === ver) {
+          try {
+            const fresh = await fetchTables(tables);
+            if (this._db.version === ver) { this._db = { ...this._db, ...fresh } as DB; this.baseline = this._db; this.listeners.forEach((l) => l()); }
+          } catch { /* the next refresh picks it up */ }
+        }
+      }
+    } finally { this.flushing = false; }
+  }
+  private async reloadCloud() {
+    const db = await fetchAll();
+    this._db = { ...db, notifications: this._db.notifications, version: this._db.version + 1 }; this.baseline = this._db;
+    this.listeners.forEach((l) => l());
+  }
+  /** Pull other people's changes every so often, but never while this person has unsent changes. */
+  private async refreshCloud() {
+    if (!CLOUD || !this.sessionUser || this.flushing || syncHub.getSnapshot().pending > 0 || this._db !== this.baseline || (typeof document !== 'undefined' && document.hidden)) return;
+    const ver = this._db.version;
+    try { const db = await fetchAll(); if (this._db.version === ver && this._db === this.baseline && !this.flushing) { this._db = { ...db, notifications: this._db.notifications, version: ver }; this.baseline = this._db; this.listeners.forEach((l) => l()); } } catch { /* offline: try again later */ }
   }
 
   /* ---- subscription ---- */
@@ -43,6 +114,7 @@ class Store {
   private emit() { this.listeners.forEach((l) => l()); this.persist(); syncHub.noteWrite(); }
   private persist() { if (this.timer) clearTimeout(this.timer); this.timer = setTimeout(() => this.persistNow(), 300); }
   private persistNow() {
+    if (CLOUD) return;
     try { localStorage.setItem(KEY, JSON.stringify(this._db)); }
     catch { console.warn('Storage quota reached; demo data will not persist this change.'); }
   }
@@ -58,6 +130,12 @@ class Store {
   require(perm: string) { if (!this.can(perm)) throw new PermissionError(`Your role is not permitted to do this (${perm}).`); }
 
   async login(email: string, password: string): Promise<UserAccount> {
+    if (CLOUD) {
+      const au = await signIn(email, password);
+      try { await this.afterSignIn(au.id); } catch (e) { await signOut(); this.sessionUser = null; throw e; }
+      this.audit('login', 'users', au.id, `${this.user?.name} signed in`);
+      return this.user as UserAccount;
+    }
     const u = this._db.users.find((x) => x.email.toLowerCase() === email.trim().toLowerCase() && !x.deleted_at);
     const h = await sha256(`topmop:${password}`);
     if (!u || u.pass_hash !== h) throw new Error('Invalid email or password.');
@@ -70,6 +148,11 @@ class Store {
   }
   logout() {
     const u = this.user;
+    if (CLOUD) {
+      this.sessionUser = null; this.listeners.forEach((l) => l());
+      void this.flushCloud().catch(() => { /* unsent changes are lost on sign-out while offline */ }).finally(async () => { await signOut(); this._db = emptyDB(); this.baseline = this._db; this.pool = {}; this.listeners.forEach((l) => l()); });
+      return;
+    }
     if (u) this.audit('logout', 'users', u.id, `${u.name} signed out`);
     this.sessionUser = null;
     try { localStorage.removeItem(SESSION); } catch { /* noop */ }
@@ -77,6 +160,7 @@ class Store {
   }
   async setPassword(userId: string, password: string) {
     this.require('admin.users');
+    if (CLOUD) throw new RuleError('Passwords are managed in Supabase (Authentication → Users).');
     const h = await sha256(`topmop:${password}`);
     this.update('users', userId, { pass_hash: h } as never, 'update', 'Password reset');
   }
@@ -90,6 +174,7 @@ class Store {
 
   /* ---- generic CRUD with audit & guards ---- */
   insert<T extends TableName>(table: T, data: NewRow<T>, summary?: string): Rows[T] {
+    if (CLOUD && table === 'users') throw new RuleError('User accounts are managed in Supabase (Authentication → Users, plus the profiles table).');
     this.guardDiscountInsert(table, data as unknown as Record<string, unknown>);
     const now = isoNow();
     const row = { ...data, id: (data as { id?: string }).id ?? uid(), created_at: now, updated_at: now, created_by: this.user?.id ?? 'system' } as unknown as Rows[T];
@@ -99,6 +184,7 @@ class Store {
   }
 
   update<T extends TableName>(table: T, id: string, patch: Partial<Rows[T]>, action: AuditLog['action'] = 'update', summary?: string): Rows[T] {
+    if (CLOUD && table === 'users') throw new RuleError('User accounts are managed in Supabase (Authentication → Users, plus the profiles table).');
     const list = this._db[table] as unknown as (Base & Record<string, unknown>)[];
     const before = list.find((r) => r.id === id);
     if (!before) throw new RuleError(`Record not found in ${table}`);
@@ -195,14 +281,20 @@ class Store {
     this.set((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
   }
   nextNumber(kind: 'QT' | 'JOB' | 'INV' | 'OR' | 'EMP' | 'INC' | 'DR' | 'BJ' | 'OV'): string {
+    if (CLOUD) {
+      const pool = this.pool[kind]; const n = pool?.shift();
+      if (n === undefined) { void this.refill(kind); throw new RuleError('Document numbers are still loading from the server. Try again in a moment.'); }
+      if (pool.length < 4) void this.refill(kind);
+      return kind === 'EMP' ? `TM-${String(n).padStart(3, '0')}` : `${kind}-${new Date().getFullYear()}-${String(n).padStart(4, '0')}`;
+    }
     const n = (this._db.settings.counters[kind] ?? 0) + 1;
     this._db = { ...this._db, settings: { ...this._db.settings, counters: { ...this._db.settings.counters, [kind]: n } } };
     const yr = new Date().getFullYear();
     return kind === 'EMP' ? `TM-${String(n).padStart(3, '0')}` : `${kind}-${yr}-${String(n).padStart(4, '0')}`;
   }
   /* ---- automation helpers (system-attributed, not permission checked) ---- */
-  system<T extends TableName>(table: T, id: string, patch: Partial<Rows[T]>, summary?: string) { return this.update(table, id, patch, 'update', summary); }
-  systemInsert<T extends TableName>(table: T, data: NewRow<T>, summary?: string) { return this.insert(table, data, summary); }
+  system<T extends TableName>(table: T, id: string, patch: Partial<Rows[T]>, summary?: string) { this.soft.add(id); return this.update(table, id, patch, 'update', summary); }
+  systemInsert<T extends TableName>(table: T, data: NewRow<T>, summary?: string) { const r = this.insert(table, data, summary); this.soft.add((r as Base).id); return r; }
   syncNotifications(list: Omit<Rows['notifications'], keyof Base | 'read_by'>[]) {
     const old = new Map(this._db.notifications.map((n) => [n.key, n]));
     const now = isoNow();
@@ -229,6 +321,7 @@ class Store {
   batch(fn: () => void) { fn(); }
 
   reset() {
+    if (CLOUD) throw new RuleError('Resetting is only available in demo mode.');
     this._db = seedDB();
     this.sessionUser = null;
     try { localStorage.removeItem(SESSION); } catch { /* noop */ }
@@ -247,6 +340,7 @@ function pickChanged(o: Record<string, unknown>, patch: Record<string, unknown>)
 }
 
 export const store = new Store();
+export const useBoot = () => useSyncExternalStore(store.subscribe, store.getBoot);
 export const useDB = (): DB => useSyncExternalStore(store.subscribe, store.getDB);
 export function useAuth() {
   const db = useDB();
