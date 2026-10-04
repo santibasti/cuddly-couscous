@@ -508,6 +508,21 @@ export interface Variation extends Base {
   decided_at?: string;       // when the client approved / declined
   sign_lat?: number; sign_lng?: number; sign_gps_note?: string; sign_device?: string;
 }
+/* ---------- Quotation images / attachments (optional; kept apart from job & service photos) ---------- */
+export type QuoteImageCategory = 'Scope Area' | 'Panel Count' | 'Additional Work' | 'Site Condition' | 'Access Limitation' | 'Exclusion' | 'Other';
+export interface QuoteImage extends Base {
+  quotation_id?: string;       // attached to a quotation …
+  variation_id?: string;       // … or to a variation (additional work)
+  job_id?: string;             // the job of a variation (used for the assigned Team Leader check)
+  category: QuoteImageCategory;
+  caption: string;
+  item_index?: number;         // optional link to a quotation / variation line item (position + description kept for the record)
+  item_label?: string;
+  file: string;                // resized image (inline in the demo; a private Storage path in production)
+  name: string; width: number; height: number;
+  share_with_client: boolean;  // only these appear in the client-facing view and in the PDF
+}
+
 /* ---------- Ocular Visits (site inspections before a quotation) ---------- */
 export type OcularStatus = 'Scheduled' | 'Confirmed' | 'Completed' | 'Cancelled' | 'Converted to Quotation';
 export interface Measurement { id: string; label: string; service_code?: ServiceCode; qty: number; unit: string; notes?: string }
@@ -777,7 +792,7 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations' | 'ocular_visits';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations' | 'ocular_visits' | 'quote_images';
 
 export interface DB {
   users: UserAccount[]; branches: Branch[]; clients: Client[]; sites: Site[]; communications: Communication[];
@@ -786,7 +801,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[]; ocular_visits: OcularVisit[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[]; ocular_visits: OcularVisit[]; quote_images: QuoteImage[];
   audit: AuditLog[];
   settings: Settings;
   version: number;

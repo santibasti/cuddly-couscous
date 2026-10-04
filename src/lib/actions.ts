@@ -7,6 +7,7 @@ import type {
 import {
   appliedDiscount, backJobStatusFor, paymentPlanLabel, buildPayrollLines, computeTimes, currentRequest, docTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
+import { copyQuoteImages } from './quoteimages';
 import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
 const db = () => store.getDB();
@@ -148,7 +149,9 @@ export function duplicateQuotation(id: string) {
   store.require('sales.edit');
   const q = db().quotations.find((x) => x.id === id)!;
   const { id: _i, number: _n, created_at: _c, updated_at: _u, created_by: _b, sent_at: _s, decided_at: _d, reject_reason: _r, ...rest } = q; void [_i, _n, _c, _u, _b, _s, _d, _r];
-  return store.insert('quotations', { ...rest, status: 'Draft', issue_date: today(), valid_until: addDays(today(), db().settings.quote_validity_days), number: store.nextNumber('QT') } as never, `Duplicated ${q.number}`);
+  const copy = store.insert('quotations', { ...rest, status: 'Draft', issue_date: today(), valid_until: addDays(today(), db().settings.quote_validity_days), number: store.nextNumber('QT') } as never, `Duplicated ${q.number}`);
+  copyQuoteImages(id, copy.id);        // the original keeps its own images; the revision starts with copies
+  return copy;
 }
 export function moveInquiry(id: string, stage: import('./types').InquiryStage) {
   store.require('sales.edit');

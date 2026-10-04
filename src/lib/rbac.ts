@@ -22,6 +22,7 @@ export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'ocular.view', group: 'Jobs', label: 'View ocular visits (assigned ones for Team Leaders)' },
   { key: 'ocular.schedule', group: 'Jobs', label: 'Schedule, edit and cancel ocular visits' },
   { key: 'ocular.complete', group: 'Jobs', label: 'Complete an ocular visit and create a quotation from it' },
+  { key: 'quoteimg.manage', group: 'Sales', label: 'Upload / delete quotation images (Team Leaders: only on their assigned jobs)' },
   { key: 'jobs.all', group: 'Jobs', label: 'View all jobs & calendar' },
   { key: 'jobs.mine', group: 'Jobs', label: 'View assigned jobs only' },
   { key: 'jobs.edit', group: 'Jobs', label: 'Schedule & edit jobs' },
@@ -78,7 +79,7 @@ export const DEFAULT_ACCESS: Record<Role, string[]> = {
   owner: ALL,
   ops: [
     'dashboard.view', 'clients.view', 'clients.edit', 'sales.view', 'sales.edit', 'sales.approve',
-    'jobs.all', 'jobs.edit', 'jobs.complete', 'ocular.view', 'ocular.schedule', 'ocular.complete', 'attendance.view', 'attendance.approve',
+    'jobs.all', 'jobs.edit', 'jobs.complete', 'ocular.view', 'ocular.schedule', 'ocular.complete', 'quoteimg.manage', 'attendance.view', 'attendance.approve',
     'employees.view', 'employees.edit', 'performance.view', 'performance.edit',
     'inventory.view', 'inventory.edit', 'inventory.approve', 'inventory.request',
     'assets.view', 'assets.edit', 'assets.request', 'assets.approve', 'reports.ops',
@@ -94,7 +95,7 @@ export const DEFAULT_ACCESS: Record<Role, string[]> = {
   leader: [
     'dashboard.view', 'jobs.mine', 'jobs.complete', 'attendance.own', 'attendance.view', 'attendance.approve',
     'inventory.view', 'inventory.request', 'assets.view', 'assets.request', 'clients.view', 'employees.view',
-    'dispatch.view', 'dispatch.run', 'discount.request', 'payments.record_cash', 'ocular.view', 'ocular.complete',
+    'dispatch.view', 'dispatch.run', 'discount.request', 'payments.record_cash', 'ocular.view', 'ocular.complete', 'quoteimg.manage',
   ],
   field: ['jobs.mine', 'jobs.complete', 'attendance.own', 'assets.request', 'dispatch.view', 'discount.request'],
   viewer: ['reports.finance'],

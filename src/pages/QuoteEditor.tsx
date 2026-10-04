@@ -5,6 +5,7 @@ import { Badge, Card, Field, Icon, Modal, PageHead, attempt, ask, useObj } from 
 import { countPanels, docTotals, priceService, type GlassRow } from '@/lib/business';
 import { duplicateQuotation, saveQuotation, setQuoteStatus } from '@/lib/actions';
 import { quotationPdf, shareTextQuote } from '@/lib/export';
+import { IncludeImagesToggle, QuoteImageGallery } from '@/components/QuoteImages';
 import { addDays, fmtStamp, money, today } from '@/lib/util';
 import type { Quotation, QuoteItem, ServiceCode } from '@/lib/types';
 
@@ -44,6 +45,7 @@ export default function QuoteEditor() {
   const locked = !!existing && existing.status !== 'Draft';
   const readOnly = locked || !can('sales.edit');
   const [calc, setCalc] = useState(false);
+  const [pdfImg, setPdfImg] = useState(false);
   const [svc, setSvc] = useState<ServiceCode>('GLASS_EXT');
   const [qty, setQty] = useState(31);
   const [note, setNote] = useState('');
@@ -86,7 +88,8 @@ export default function QuoteEditor() {
     <>
       <PageHead title={existing ? `Quotation ${existing.number}` : 'New quotation'} sub={existing ? <><Badge>{existing.status}</Badge> · created {fmtStamp(existing.created_at)} by {db.users.find((u) => u.id === existing.created_by)?.name}</> : 'Draft — save to assign a quotation number'}>
         <Link to="/sales" className="btn">← Quotations</Link>
-        {existing && <button className="btn" onClick={() => attempt(() => quotationPdf(db, existing))}><Icon name="download" />PDF</button>}
+        {existing && <IncludeImagesToggle target={{ quotation_id: existing.id }} checked={pdfImg} onChange={setPdfImg} />}
+        {existing && <button className="btn" onClick={() => attempt(() => quotationPdf(db, existing, { includeImages: pdfImg }))}><Icon name="download" />PDF</button>}
         {existing && client?.email && <a className="btn" href={`mailto:${client.email}?subject=${encodeURIComponent(`Quotation ${existing.number} – ${db.settings.company.name}`)}&body=${encodeURIComponent(share + '\n\n(Attach the downloaded PDF.)')}`}><Icon name="mail" />Email</a>}
         {existing && <a className="btn" target="_blank" rel="noreferrer" href={`https://wa.me/${wa}?text=${encodeURIComponent(share)}`}><Icon name="share" />WhatsApp</a>}
         {existing && can('sales.edit') && <button className="btn" onClick={() => { const q = attempt(() => duplicateQuotation(existing.id), 'Duplicated as draft') as Quotation | undefined; if (q && (q as Quotation).id) nav(`/sales/quote/${(q as Quotation).id}`); }}>Duplicate</button>}
@@ -151,6 +154,11 @@ export default function QuoteEditor() {
           </div>
         </Card>
 
+        <Card title="Images / attachments (optional)" actions={<span className="small muted">Kept apart from job photos</span>}>
+          {existing
+            ? <QuoteImageGallery target={{ quotation_id: existing.id }} items={existing.items} title="Pictures that explain this quotation" />
+            : <div className="small muted">Save the quotation first, then add pictures if they help explain the scope (site areas, panel-counting areas, access limits, exclusions). They are optional.</div>}
+        </Card>
         <Card title="Terms & conditions"><textarea rows={5} style={{ width: '100%' }} disabled={readOnly} {...f.bind('terms')} /></Card>
 
         <div className="row" style={{ justifyContent: 'flex-end' }}>

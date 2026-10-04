@@ -8,6 +8,7 @@ import { confirmLeave } from '@/lib/sync';
 import { approveVariation, createVariation, rejectVariation, updateVariation, type VariationInput } from '@/lib/workflow';
 import { docTotals, finalContract, rowPanels, variationTotals } from '@/lib/business';
 import { variationPdf } from '@/lib/export';
+import { IncludeImagesToggle, QuoteImageGallery } from '@/components/QuoteImages';
 import { fmtDateTime, money } from '@/lib/util';
 import type { Job, JobWorkflow, QuoteItem, Variation } from '@/lib/types';
 
@@ -17,6 +18,7 @@ export function VariationStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run
   const fc = finalContract(db, job);
   const [edit, setEdit] = useState<Variation | 'new' | null>(null);
   const [sign, setSign] = useState<Variation | null>(null);
+  const [pdfImg, setPdfImg] = useState<Record<string, boolean>>({});
   const canAdd = run && !wf.rep_at;
   return (
     <div className="stack">
@@ -37,9 +39,11 @@ export function VariationStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run
             {v.status === 'Approved' && <div className="small muted">Approved by {v.client_name} · {fmtDateTime(v.signed_at)}</div>}
             {v.status === 'Rejected' && <div className="small muted">Offered and declined: {v.notes}</div>}
             {v.source === 'final_review' && v.status === 'Draft' && <div className="small muted">Waiting for the client's decision in step 4 (Client Final Quote Review).</div>}
+            <div style={{ marginTop: 6 }}><QuoteImageGallery target={{ variation_id: v.id }} items={v.items} compact title="Images (optional)" /></div>
             <div className="row" style={{ marginTop: 6 }}>
               {run && v.status === 'Draft' && v.source !== 'final_review' && <><button className="btn sm" onClick={() => setEdit(v)}>Edit</button><button className="btn sm primary" onClick={() => setSign(v)}>Client approval &amp; signature</button><button className="btn sm danger" onClick={async () => { const n = await ask('Client declined variation', 'Reason'); if (n) attempt(() => rejectVariation(v.id, n), 'Variation declined'); }}>Declined</button></>}
-              <button className="btn sm" onClick={() => attempt(() => variationPdf(db, v))}>PDF</button>
+              <IncludeImagesToggle target={{ variation_id: v.id }} checked={!!pdfImg[v.id]} onChange={(c) => setPdfImg({ ...pdfImg, [v.id]: c })} />
+              <button className="btn sm" onClick={() => attempt(() => variationPdf(db, v, { includeImages: !!pdfImg[v.id] }))}>PDF</button>
             </div>
           </div>
         );

@@ -4,6 +4,7 @@ import { Badge, Field, attempt } from '@/components/ui';
 import { Toggle } from '@/components/touch';
 import { AdditionalWork, ClientReview, PanelBreakdown, useReview } from './FinalQuote';
 import { VariationStep } from './VariationStep';
+import { QuoteImageGallery } from '@/components/QuoteImages';
 import { DeclineJobModal, DiscountSection } from './DiscountPanel';
 import { DraftBar, Stepper } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
@@ -103,6 +104,7 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
             {q.vat_mode !== 'none' && <tr><td colSpan={4} className="num">VAT {q.vat_rate}%{q.vat_mode === 'inclusive' ? ' (included)' : ''}</td><td className="num">{money(t.vat)}</td></tr>}
             <tr><th colSpan={4} className="num">Total</th><th className="num">{money(t.total)}</th></tr></tfoot></table></div>
         ) : <div className="muted">No quotation is linked to this job — agreed contract amount {money(job.contract_amount)}.</div>}
+        {q && <div style={{ marginTop: 8 }}><QuoteImageGallery target={{ quotation_id: q.id }} items={q.items} compact title="Quotation images (optional)" /></div>}
         {q?.terms && <details><summary className="small" style={{ cursor: 'pointer' }}>Terms &amp; exclusions</summary><p className="small" style={{ whiteSpace: 'pre-wrap' }}>{q.terms}</p></details>}
       </div>
 

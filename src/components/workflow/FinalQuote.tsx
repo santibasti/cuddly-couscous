@@ -9,6 +9,7 @@ import { ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, currentRequest, 
 import { DISCOUNT_NOTICE, DeclineJobModal } from './DiscountPanel';
 import { approveFinalQuote, billBase, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
 import { conformePdf } from '@/lib/export';
+import { IncludeImagesToggle, QuoteImageGallery } from '@/components/QuoteImages';
 import { fmtDateTime, fmtStamp, money } from '@/lib/util';
 import type { AdditionalCategory, Job, JobWorkflow, QuoteItem, Variation } from '@/lib/types';
 
@@ -85,6 +86,7 @@ export function AdditionalWork({ wf, job, run, onPresent }: { wf: JobWorkflow; j
       {draft?.revision_open && <div className="alert warn"><b>The client asked for a revision:</b> “{draft.revision_note}”. Update the lines below, then present the final quote again.</div>}
       {resolved.length ? <QuoteLines items={resolved} mode={vat.vat_mode} rate={vat.vat_rate} /> : <div className="muted">No additional work. The original quotation is the final bill.</div>}
       {run && resolved.length > 0 && <div className="row">{items.map((it, k) => <span key={k} className="row" style={{ gap: 6 }}><button className="btn sm" onClick={() => setEdit({ idx: k, line: it })}>Edit line {k + 1}</button><button className="btn sm danger" onClick={() => setItems(items.filter((_, x) => x !== k))}>Remove {k + 1}</button></span>)}</div>}
+      {draft ? <QuoteImageGallery target={{ variation_id: draft.id }} items={draft.items} title="Images for the additional work (optional)" /> : resolved.length === 0 ? null : <div className="small muted">Save the additional work to attach pictures to it (optional).</div>}
       {history.length > 0 && <div className="small muted">Previously offered: {history.map((h) => `${h.number} ${h.status === 'Rejected' ? 'declined' : h.status.toLowerCase()}`).join(' · ')}</div>}
       <div className="form-grid">
         <Field label="Deposit / prior payment (₱), if any" hint="Shown on the client's final bill and noted on the invoice."><input type="number" inputMode="decimal" min="0" disabled={!run} value={deposit ?? ''} onChange={(e) => setDeposit(e.target.value === '' ? undefined : Math.max(0, +e.target.value))} /></Field>
@@ -178,6 +180,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
   const currentRejected = !currentRequest(db, job.id) && jobRequests(db, job.id).some((r) => r.status === 'Rejected');
   const [mode, setMode] = useState<'approve' | 'decline' | 'revise' | null>(null);
   const [declining, setDeclining] = useState(false);
+  const [pdfImg, setPdfImg] = useState(false);
   const [name, setName] = useState(site?.contact_person ?? ''); const [sig, setSig] = useState<string>();
   const [agree, setAgree] = useState(false); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false);
   const dr = useDraft(`d:${wf.id}:conf`, { name, sig }, (d) => { setName(d.name); setSig(d.sig); }, run && !signed);
@@ -203,11 +206,13 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
         <h3 className="crh">1 · Original Scope of Work <Badge tone="gray">approved quotation — unchanged</Badge></h3>
         <p style={{ margin: '4px 0 8px' }}>{q?.scope ?? job.scope}</p>
         {q && <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Description</th><th className="num">Qty</th><th>Unit</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead><tbody>{q.items.map((i, k) => <tr key={k}><td>{i.description}</td><td className="num">{i.qty}</td><td>{i.unit}</td><td className="num">{money(i.rate)}</td><td className="num">{money(i.qty * i.rate - i.discount)}</td></tr>)}</tbody></table></div>}
+        {q && <QuoteImageGallery target={{ quotation_id: q.id }} items={q.items} client />}
         {wf.panels.length > 0 && <div style={{ marginTop: 8 }}><div className="small muted">Glass panels counted on site</div><div className="pbks"><div className="pbk"><span>Original</span><b>{pb.original}</b></div><div className={`pbk ${pb.additional ? 'warn' : ''}`}><span>Additional</span><b>{pb.additional}</b></div><div className="pbk"><span>External</span><b>{pb.external}</b></div><div className="pbk"><span>Internal</span><b>{pb.internal}</b></div><div className="pbk navy"><span>Total</span><b>{pb.total}</b></div></div></div>}
 
         <h3 className="crh">2 · Additional Work Requested / Confirmed at Site</h3>
         {revision && <div className="alert warn">A revision was requested: “{draft?.revision_note}”. The additional work is being updated.</div>}
-        {hasAdds ? <QuoteLines items={pendingItems} mode={vat.vat_mode} rate={vat.vat_rate} /> : adds.length ? adds.map((v) => <div key={v.id}><div className="small muted">{v.number} · approved {fmtDateTime(v.signed_at)}</div><QuoteLines items={v.items} mode={v.vat_mode} rate={v.vat_rate} /></div>) : <p className="muted">No additional work.</p>}
+        {draft && hasAdds && <div style={{ marginBottom: 8 }}><QuoteImageGallery target={{ variation_id: draft.id }} items={draft.items} client /></div>}
+        {hasAdds ? <QuoteLines items={pendingItems} mode={vat.vat_mode} rate={vat.vat_rate} /> : adds.length ? adds.map((v) => <div key={v.id}><div className="small muted">{v.number} · approved {fmtDateTime(v.signed_at)}</div><QuoteImageGallery target={{ variation_id: v.id }} items={v.items} client /><QuoteLines items={v.items} mode={v.vat_mode} rate={v.vat_rate} /></div>) : <p className="muted">No additional work.</p>}
         {history.filter((h) => h.status === 'Rejected').map((h) => <div key={h.id} className="alert info" style={{ marginTop: 8 }}>Offered and declined by the client ({h.number}): {h.items.map((i) => i.description).join('; ')} — <b>not included</b> in the final bill.</div>)}
 
         <h3 className="crh">3 · Final Billing Summary</h3>
@@ -223,7 +228,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
             <b>Approved and signed</b>
             <dl className="kv" style={{ marginTop: 8 }}><dt>Client</dt><dd>{wf.conf_name}</dd><dt>Date & time</dt><dd>{fmtDateTime(wf.conf_at)}</dd><dt>Location</dt><dd>{wf.conf_lat !== undefined ? `${wf.conf_lat}, ${wf.conf_lng}` : wf.conf_gps_note ?? '—'}</dd><dt>Device</dt><dd>{wf.conf_device || '—'}</dd></dl>
             {wf.conf_signature && <img src={wf.conf_signature} alt="Client signature" style={{ maxHeight: 90, border: '1px solid var(--line)', borderRadius: 6 }} />}
-            <div style={{ marginTop: 10 }}><button className="btn" onClick={() => attempt(() => conformePdf(db, job))}>Download scope &amp; final quote (PDF)</button></div>
+            <div className="row" style={{ marginTop: 10 }}><IncludeImagesToggle target={[...(q ? [{ quotation_id: q.id }] : []), ...approved.map((v) => ({ variation_id: v.id }))]} checked={pdfImg} onChange={setPdfImg} /><button className="btn" onClick={() => attempt(() => conformePdf(db, job, { includeImages: pdfImg }))}>Download scope &amp; final quote (PDF)</button></div>
           </div>
         ) : run ? (
           <div className="cractions">

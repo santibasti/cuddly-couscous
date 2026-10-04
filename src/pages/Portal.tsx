@@ -59,7 +59,7 @@ export default function Portal() {
         )}
         {tab === 'quotes' && (
           <Card flush><ul className="list">{quotes.map((q) => <li key={q.id}><div><b>{q.number}</b> <Badge>{q.status}</Badge><div className="small muted">{q.scope}</div><div className="small">Total {money(docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).total)} · valid until {fmtDate(q.valid_until)}</div></div>
-            <span className="row"><button className="btn sm" onClick={() => attempt(() => quotationPdf(db, q))}>PDF</button>{q.status === 'Sent' && <><button className="btn sm primary" onClick={() => decide(q.id, true)}>Approve</button><button className="btn sm danger" onClick={() => decide(q.id, false)}>Decline</button></>}</span></li>)}</ul></Card>
+            <span className="row"><button className="btn sm" onClick={() => attempt(() => quotationPdf(db, q, { includeImages: true }))}>PDF</button>{q.status === 'Sent' && <><button className="btn sm primary" onClick={() => decide(q.id, true)}>Approve</button><button className="btn sm danger" onClick={() => decide(q.id, false)}>Decline</button></>}</span></li>)}</ul></Card>
         )}
         {tab === 'jobs' && (
           <Card flush><ul className="list">{jobs.map((j) => <li key={j.id}><div><b>{j.number}</b> <Badge>{j.status}</Badge><div className="small muted">{fmtDateTime(j.start_at)} · {db.sites.find((s) => s.id === j.site_id)?.name}</div>{j.findings && <div className="small">Findings: {j.findings}</div>}</div>{isDone(j.status) && j.completed_at && <button className="btn sm" onClick={() => attempt(() => serviceReportPdf(db, j))}>Service report (PDF)</button>}</li>)}</ul></Card>

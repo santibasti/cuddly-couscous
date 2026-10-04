@@ -30,7 +30,7 @@ class Store {
     let db: DB | null = null;
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { db = JSON.parse(raw) as DB; if (!db.discount_requests) db.discount_requests = []; if (!db.client_feedback) db.client_feedback = []; if (!db.back_jobs) db.back_jobs = []; if (!db.payment_confirmations) db.payment_confirmations = []; if (!db.ocular_visits) db.ocular_visits = []; db.payments = db.payments.map((p) => ((p.method as string) === 'Check' ? { ...p, method: 'Cheque' as const } : (['Credit Card', 'Other'] as string[]).includes(p.method) ? { ...p, method: 'Bank Transfer' as const } : p)); }   // data saved before Discount Requests existed
+      if (raw) { db = JSON.parse(raw) as DB; if (!db.discount_requests) db.discount_requests = []; if (!db.client_feedback) db.client_feedback = []; if (!db.back_jobs) db.back_jobs = []; if (!db.payment_confirmations) db.payment_confirmations = []; if (!db.ocular_visits) db.ocular_visits = []; if (!db.quote_images) db.quote_images = []; db.payments = db.payments.map((p) => ((p.method as string) === 'Check' ? { ...p, method: 'Cheque' as const } : (['Credit Card', 'Other'] as string[]).includes(p.method) ? { ...p, method: 'Bank Transfer' as const } : p)); }   // data saved before Discount Requests existed
     } catch { /* ignore corrupted / unavailable storage */ }
     this._db = db ?? seedDB();
     try { this.sessionUser = localStorage.getItem(SESSION); } catch { /* noop */ }
@@ -134,6 +134,7 @@ class Store {
     if (table === 'workflows') throw new RuleError('Job workflow records cannot be deleted.');
     if (table === 'variations') throw new RuleError('Variations cannot be deleted; reject them instead.');
     if (table === 'incidents') throw new RuleError('Incident reports cannot be deleted; resolve them instead.');
+    if (table === 'quote_images') this.guardImageParent(r as unknown as { quotation_id?: string; variation_id?: string });
     if (table === 'ocular_visits') throw new RuleError('Ocular visits cannot be deleted; cancel them instead.');
     if (table === 'payment_confirmations') throw new RuleError('Payment confirmations cannot be deleted.');
     if (table === 'back_jobs') throw new RuleError('Back jobs cannot be deleted; close or reject them.');
@@ -157,6 +158,7 @@ class Store {
       if (!Object.keys(patch).every((k) => allowed.includes(k))) throw new RuleError('Approved invoices are locked. Reverse the invoice and issue a new one.');
     }
     if (table === 'payments' && ((r.status as string | undefined) ?? 'Verified') === 'Verified' && !Object.keys(patch).every((k) => ['reversed', 'reversal_reason', 'cheque_status', 'cleared_at', 'notes'].includes(k))) throw new RuleError('A verified payment is locked. Reverse it with a reason and record a new one.');
+    if (table === 'quote_images' && !('deleted_at' in patch)) this.guardImageParent(r as unknown as { quotation_id?: string; variation_id?: string });
     if (table === 'checkouts' && r.status === 'Returned') throw new RuleError('Completed out/in records are locked.');
     if (table === 'workflows' && r.closed_at && !(this._reason && (this.role === 'ops' || this.role === 'owner'))) throw new RuleError('A closed job workflow is locked. An Operations Manager or Admin can correct it with a reason.');
     if (table === 'variations' && r.status === 'Approved' && !this._reason) throw new RuleError('An approved variation is locked. Create a new variation or correct it with a reason.');
@@ -177,6 +179,14 @@ class Store {
   }
   /** Run a rule-checked action that carries an already-approved discount (e.g. invoicing an approved quotation). */
   allowDiscount<T>(fn: () => T): T { this._discountOK = true; try { return fn(); } finally { this._discountOK = false; } }
+
+  /** Images on an approved / rejected / expired quotation or an approved / rejected variation are part of that record and cannot change. */
+  private guardImageParent(r: { quotation_id?: string; variation_id?: string }) {
+    const q = r.quotation_id ? this._db.quotations.find((x) => x.id === r.quotation_id) : undefined;
+    const v = r.variation_id ? this._db.variations.find((x) => x.id === r.variation_id) : undefined;
+    if (q && ['Approved', 'Rejected', 'Expired'].includes(q.status)) throw new RuleError(`Images on an ${q.status.toLowerCase()} quotation are locked with it. Duplicate the quotation to add new ones.`);
+    if (v && ['Approved', 'Rejected'].includes(v.status)) throw new RuleError(`Images on an ${v.status.toLowerCase()} variation are locked with it.`);
+  }
 
   /** Settings & counters */
   patchSettings(patch: Partial<DB['settings']>, summary = 'Updated settings') {

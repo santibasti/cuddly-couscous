@@ -1,4 +1,5 @@
-import type { DB, Invoice, Job, Payment, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
+import type { DB, Invoice, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
+import { quoteImagesOf } from './quoteimages';
 import { paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
 import { fmtDate, fmtDateTime, nowLocal, round2, sum } from './util';
 import { store } from './store';
@@ -143,6 +144,43 @@ function itemsTable(doc: Doc, autoTable: Awaited<ReturnType<typeof newPdf>>['aut
   if (gr > 0) { doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); doc.setTextColor(30, 120, 70); doc.text(clean('Discount approved by TopMop management and reflected in the final agreed amount.'), 12, yy + 1); doc.setTextColor(20, 36, 58); yy += 6; }
   return yy;
 }
+/** jsPDF embeds JPEG / PNG only: anything else (e.g. an SVG) is drawn onto a canvas first. */
+async function pdfReady(imgs: QuoteImage[]): Promise<QuoteImage[]> {
+  return Promise.all(imgs.map(async (im) => {
+    if (/^data:image\/(jpe?g|png)/.test(im.file)) return im;
+    try {
+      const el = new Image(); await new Promise<void>((res, rej) => { el.onload = () => res(); el.onerror = () => rej(new Error('img')); el.src = im.file; });
+      const c = document.createElement('canvas'); c.width = Math.max(1, im.width || el.naturalWidth); c.height = Math.max(1, im.height || el.naturalHeight);
+      const g = c.getContext('2d')!; g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(el, 0, 0, c.width, c.height);
+      return { ...im, file: c.toDataURL('image/png') };
+    } catch { return im; }
+  }));
+}
+/** "Include Images in PDF": the images selected for the client, two per row, each with its category and caption. */
+function imagesBlock(doc: Doc, y: number, imgs: QuoteImage[], title = 'Attachments'): number {
+  if (!imgs.length) return y;
+  const pageH = doc.internal.pageSize.getHeight();
+  const ensure = (need: number) => { if (y + need > pageH - 16) { doc.addPage(); y = 16; } };
+  ensure(14); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NAVY); doc.text(title, 12, y); doc.setTextColor(20, 36, 58); y += 5;
+  const cellW = 90, maxH = 62;
+  for (let k = 0; k < imgs.length; k += 2) {
+    const row = imgs.slice(k, k + 2);
+    const dims = row.map((im) => { const r = Math.min((cellW - 2) / im.width, maxH / im.height); return { w: im.width * r, h: im.height * r }; });
+    const rowH = Math.max(...dims.map((d) => d.h)) + 16;
+    ensure(rowH);
+    row.forEach((im, c) => {
+      const x = 12 + c * (cellW + 6);
+      try { doc.addImage(im.file, im.file.startsWith('data:image/png') ? 'PNG' : 'JPEG', x, y, dims[c].w, dims[c].h); } catch { doc.setFontSize(8); doc.text('[image could not be embedded]', x, y + 6); }
+      doc.setDrawColor(221, 228, 236); doc.rect(x, y, dims[c].w, dims[c].h);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text(clean(im.category), x, y + dims[c].h + 4);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      const cap = [im.caption, im.item_label ? `(line: ${im.item_label})` : ''].filter(Boolean).join(' ');
+      if (cap) doc.text(doc.splitTextToSize(clean(cap), cellW - 2).slice(0, 2) as string[], x, y + dims[c].h + 8);
+    });
+    y += rowH;
+  }
+  return y + 2;
+}
 function wrapText(doc: Doc, text: string, x: number, y: number, maxW: number, lh = 4.2): number {
   const lines = doc.splitTextToSize(clean(text), maxW) as string[];
   const h = doc.internal.pageSize.getHeight();
@@ -154,7 +192,7 @@ const clientLines = (db: DB, id: string, siteId?: string): string[] => {
   return [c.name, `Attn: ${c.contact_person}`, c.billing_address || c.address, c.tin ? `TIN: ${c.tin}` : '', s ? `Site: ${s.name} – ${s.address}` : ''];
 };
 
-export async function quotationPdf(db: DB, q: Quotation) {
+export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?: boolean } = {}) {
   const { doc, autoTable } = await newPdf();
   header(doc, 'Quotation', `${q.number} • ${q.status}`);
   let y = partyBlock(doc, 34, ['Prepared for', clientLines(db, q.client_id, q.site_id)], ['Quotation details', [`Date: ${fmtDate(q.issue_date)}`, `Valid until: ${fmtDate(q.valid_until)}`, `Prepared by: ${db.users.find((u) => u.id === q.created_by)?.name ?? '—'}`]]);
@@ -163,6 +201,7 @@ export async function quotationPdf(db: DB, q: Quotation) {
   y = itemsTable(doc, autoTable, y, q.items, q.vat_mode, q.vat_rate, q.discount) + 4;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Terms & conditions', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
   y = wrapText(doc, q.terms, 12, y + 5, 186, 4) + 8;
+  if (opts.includeImages) y = imagesBlock(doc, y, await pdfReady(quoteImagesOf(db, { quotation_id: q.id }, true)), 'Attachments — site images');
   doc.setFontSize(9); doc.text('Approved / accepted by (signature over printed name):', 12, y + 8); doc.line(12, y + 20, 100, y + 20); doc.text('Date:', 120, y + 20); doc.line(130, y + 20, 190, y + 20);
   footer(doc); doc.save(`${q.number}.pdf`);
   store.audit('export', 'quotations', q.id, `Exported PDF ${q.number}`);
@@ -303,7 +342,7 @@ export async function serviceReportPdf(db: DB, j: Job) {
 }
 
 /* ---------- Final quote & conforme: original quotation + additional work + final bill (job workflow step 4) ---------- */
-export async function conformePdf(db: DB, j: Job) {
+export async function conformePdf(db: DB, j: Job, opts: { includeImages?: boolean } = {}) {
   const { doc, autoTable } = await newPdf();
   const wf = db.workflows.find((w) => w.job_id === j.id && !w.deleted_at);
   const q = db.quotations.find((x) => x.id === (wf?.conf_quotation_id ?? j.quotation_id));
@@ -335,6 +374,12 @@ export async function conformePdf(db: DB, j: Job) {
     y = ymax(doc) + 3;
     if (v.status === 'Approved') { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(`Approved by ${clean(v.client_name ?? '')} on ${fmtDateTime(v.signed_at)}`, 12, y); y += 5; }
     if (v.status === 'Rejected' && v.notes) { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(clean(`Client note: ${v.notes}`), 12, y); y += 5; }
+  }
+
+  if (opts.includeImages) {
+    const qi = q ? quoteImagesOf(db, { quotation_id: q.id }, true) : [];
+    const vi = vars.flatMap((v) => quoteImagesOf(db, { variation_id: v.id }, true));
+    if (qi.length || vi.length) { room(40); y = imagesBlock(doc, y, await pdfReady([...qi, ...vi]), 'Attachments — site images'); }
   }
 
   h('3. Final Billing Summary');
@@ -369,7 +414,7 @@ export async function conformePdf(db: DB, j: Job) {
 }
 
 /* ---------- Variation / revised quotation (job workflow step 6) ---------- */
-export async function variationPdf(db: DB, v: Variation) {
+export async function variationPdf(db: DB, v: Variation, opts: { includeImages?: boolean } = {}) {
   const { doc, autoTable } = await newPdf();
   const j = db.jobs.find((x) => x.id === v.job_id)!;
   const wf = db.workflows.find((w) => w.job_id === j.id && !w.deleted_at);
@@ -378,6 +423,7 @@ export async function variationPdf(db: DB, v: Variation) {
   let y = partyBlock(doc, 34, ['Client / site', clientLines(db, j.client_id, j.site_id)], ['Reference', [`Variation: ${v.number}`, `Job ref: ${j.number}`, `Status: ${v.status}`, `Original quotation: ${db.quotations.find((q) => q.id === j.quotation_id)?.number ?? '—'}`]]);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Reason for variation', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); y = wrapText(doc, v.reason, 12, y + 5, 186) + 3;
   y = itemsTable(doc, autoTable, y, v.items, v.vat_mode, v.vat_rate, v.discount) + 3;
+  if (opts.includeImages) y = imagesBlock(doc, y, await pdfReady(quoteImagesOf(db, { variation_id: v.id }, true)), 'Attachments — additional work');
   const linked = wf?.panels.filter((p) => v.panel_row_ids.includes(p.id)) ?? [];
   if (linked.length) { autoTable(doc, { startY: y, head: [['Additional panels', 'Side', 'External', 'Internal', 'Total']], body: linked.map((p) => [p.area, p.side, p.external, p.internal, rowPanels(p)]), ...tableStyle, margin: { left: 12, right: 100 } }); y = ymax(doc) + 6; }
   autoTable(doc, { startY: y, head: [['Contract value (incl. VAT)', 'Amount']], body: [['Original quotation', pm(fc.originalTotal)], ['Approved variations', pm(fc.variationsTotal)], ...(fc.discount > 0 ? [['Discount granted (approved by TopMop management)', '- ' + pm(fc.discount)]] : []), ['Final contract value', pm(fc.payableTotal)]], ...tableStyle, columnStyles: { 1: { halign: 'right' } }, margin: { left: 12, right: 100 } });

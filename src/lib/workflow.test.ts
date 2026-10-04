@@ -945,3 +945,91 @@ describe('Ocular visits', () => {
     expect(keys).not.toMatch(/photo|odo/i);
   });
 });
+
+describe('Quotation images', () => {
+  let QI: typeof import('./quoteimages');
+  beforeAll(async () => { QI = await import('./quoteimages'); });
+  const lead = () => db().users.find((u) => u.email === 'leader@topmop.ph')!.employee_id!;
+  const IMG = { file: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==', name: 'a.jpg', width: 640, height: 480, category: 'Scope Area' as const };
+  const draftQuote = () => {
+    const base = db().quotations.find((q) => q.status === 'Approved')!;
+    const { id: _i, number: _n, ...rest } = base; void [_i, _n];
+    return store.insert('quotations', { ...rest, number: store.nextNumber('QT'), status: 'Draft', ocular_assignee_id: undefined } as never) as import('./types').Quotation;
+  };
+
+  it('is optional and limited to Admin, Operations and the assigned Team Leader', async () => {
+    await as('owner@topmop.ph');
+    const q = draftQuote();
+    expect(QI.quoteImagesOf(db(), { quotation_id: q.id }).length).toBe(0);                 // nothing is required
+    await as('finance@topmop.ph');
+    expect(() => QI.addQuoteImage({ quotation_id: q.id }, IMG)).toThrow(/Only the Admin, Operations Manager or the assigned Team Leader/);
+    await as('field@topmop.ph');
+    expect(() => QI.addQuoteImage({ quotation_id: q.id }, IMG)).toThrow(/Only the Admin/);
+    await as('leader@topmop.ph');
+    expect(() => QI.addQuoteImage({ quotation_id: q.id }, IMG)).toThrow(/assigned Team Leader/);          // a Team Leader who is not assigned to this quotation
+    await as('owner@topmop.ph');
+    store.update('quotations', q.id, { ocular_assignee_id: lead() } as never);               // now the leader is the assigned estimator
+    await as('leader@topmop.ph');
+    const a = QI.addQuoteImage({ quotation_id: q.id }, { ...IMG, category: 'Panel Count', caption: 'Second floor', item_index: 0, share_with_client: true });
+    expect(a).toMatchObject({ category: 'Panel Count', caption: 'Second floor', item_label: db().quotations.find((x) => x.id === q.id)!.items[0].description, share_with_client: true });
+    await as('ops@topmop.ph');
+    const b = QI.addQuoteImage({ quotation_id: q.id }, { ...IMG, category: 'Exclusion', caption: 'Basement not included' });
+    expect(b.share_with_client).toBe(false);
+    expect(QI.quoteImagesOf(db(), { quotation_id: q.id }).length).toBe(2);
+    expect(QI.quoteImagesOf(db(), { quotation_id: q.id }, true).map((i) => i.id)).toEqual([a.id]);   // the client sees only what was selected for sharing
+  });
+
+  it('validates category, caption, line-item link and file type; deletes are soft and audited', async () => {
+    await as('ops@topmop.ph');
+    const q = draftQuote(); const t = { quotation_id: q.id };
+    expect(() => QI.addQuoteImage(t, { ...IMG, category: 'Selfie' as never })).toThrow(/category/);
+    expect(() => QI.addQuoteImage(t, { ...IMG, caption: 'x'.repeat(200) })).toThrow(/caption short/);
+    expect(() => QI.addQuoteImage(t, { ...IMG, item_index: 99 })).toThrow(/no longer exists/);
+    expect(() => QI.addQuoteImage(t, { ...IMG, file: 'data:application/pdf;base64,AAAA' })).toThrow(/image file/);
+    const i = QI.addQuoteImage(t, IMG);
+    QI.updateQuoteImage(i.id, { caption: 'Updated', category: 'Site Condition', share_with_client: true });
+    expect(db().quote_images.find((x) => x.id === i.id)).toMatchObject({ caption: 'Updated', category: 'Site Condition', share_with_client: true });
+    QI.deleteQuoteImage(i.id);
+    expect(db().quote_images.find((x) => x.id === i.id)!.deleted_at).toBeTruthy();
+    expect(QI.quoteImagesOf(db(), t).length).toBe(0);
+    expect(db().audit.some((a) => a.record_id === i.id && a.action === 'delete')).toBe(true);
+    for (let n = 0; n < QI.MAX_IMAGES_PER_RECORD; n++) QI.addQuoteImage(t, IMG);
+    expect(() => QI.addQuoteImage(t, IMG)).toThrow(/maximum/);
+  });
+
+  it('images stay with an approved quotation / variation; a revision gets copies and the original keeps its own', async () => {
+    await as('ops@topmop.ph');
+    const q = draftQuote(); const img = QI.addQuoteImage({ quotation_id: q.id }, { ...IMG, caption: 'Scope', share_with_client: true });
+    A.setQuoteStatus(q.id, 'Sent'); QI.addQuoteImage({ quotation_id: q.id }, IMG);                 // still allowed while Sent
+    A.setQuoteStatus(q.id, 'Approved');
+    expect(() => QI.addQuoteImage({ quotation_id: q.id }, IMG)).toThrow(/locked/);
+    expect(() => QI.deleteQuoteImage(img.id)).toThrow(/locked/);
+    expect(() => QI.updateQuoteImage(img.id, { caption: 'changed' })).toThrow(/locked/);
+    expect(() => store.update('quote_images', img.id, { caption: 'sneaky' } as never)).toThrow(/locked/);
+    const rev = A.duplicateQuotation(q.id);
+    expect(QI.quoteImagesOf(db(), { quotation_id: q.id }).length).toBe(2);                       // original unchanged
+    const copies = QI.quoteImagesOf(db(), { quotation_id: rev.id });
+    expect(copies.length).toBe(2); expect(copies.map((c) => c.id)).not.toContain(img.id); expect(copies.find((c) => c.caption === 'Scope')!.share_with_client).toBe(true);
+    QI.addQuoteImage({ quotation_id: rev.id }, IMG);                                               // the revision is still editable
+    expect(QI.quoteImagesOf(db(), { quotation_id: q.id }).length).toBe(2);
+    // variations: a draft can take images, an approved one is locked
+    await as('owner@topmop.ph');
+    const { job, wf } = upToCheckIn('QIV', lead(), false);
+    W.savePanels(wf.id, [{ id: 'p1', area: '1st Floor', side: 'Front', external: 6, internal: 0, additional: true }]);
+    W.saveFinalReview(wf.id, { items: [{ service_code: 'GLASS_EXT', category: 'glass', description: '', qty: 0, entered_qty: 0, unit: 'panel', rate: 140, discount: 0, linked_panels: true }] });
+    const v = db().variations.find((x) => x.job_id === job.id && x.status === 'Draft')!;
+    await as('leader@topmop.ph');
+    const vi = QI.addQuoteImage({ variation_id: v.id }, { ...IMG, category: 'Additional Work', caption: 'Extra roof panels', item_index: 0, share_with_client: true });
+    expect(vi).toMatchObject({ variation_id: v.id, job_id: job.id });
+    W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true });
+    expect(() => QI.deleteQuoteImage(vi.id)).toThrow(/locked/);
+    expect(() => QI.addQuoteImage({ variation_id: v.id }, IMG)).toThrow(/locked/);
+    expect(QI.quoteImagesOf(db(), { variation_id: v.id }, true).length).toBe(1);
+  });
+
+  it('keeps quotation images apart from job photos', () => {
+    const img = db().quote_images[0];
+    expect(Object.keys(img).join()).not.toMatch(/job_photo|odo/i);
+    expect(db().jobs.every((j) => !('photos' in j))).toBe(true);
+  });
+});

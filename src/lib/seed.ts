@@ -1,7 +1,7 @@
 // Realistic demo data for TopMop Window Cleaning Solutions Corp. Everything is generated relative to today (Manila),
 // so the dashboard always shows current activity. Names, TINs and amounts are fictional sample data.
 import type {
-  Asset, Attendance, BackJob, Checkout, OcularVisit, PanelRow, Client, ClientFeedback, DB, PaymentConfirmation, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
+  Asset, Attendance, BackJob, Checkout, OcularVisit, QuoteImage, PanelRow, Client, ClientFeedback, DB, PaymentConfirmation, DiscountRequest, IncidentReport, JobWorkflow, Variation, Employee, Expense, Holiday, Inquiry, InventoryItem, Invoice, Job, MaintenanceTicket,
   PayrollAdjustment, PayrollPeriod, PayrollRun, Payment, PerfReview, PettyCashEntry, Quotation, QuoteItem, ServiceDef,
   Settings, Site, StockTx, StorageLocation, UserAccount, Communication, Complaint, Role, ServiceCode, Condition, PayrollType,
 } from './types';
@@ -822,6 +822,22 @@ export function seedDB(): DB {
     mk(8, -2, '09:00', ['WALL'], 'Cancelled', 'Client postponed the inspection.', { cancel_reason: 'Client postponed — building maintenance that week.' });
   }
 
+  // A few optional quotation images (kept apart from job photos): one Draft/Sent quotation with a mix of shared and internal images, and one approved variation
+  const quoteImages: QuoteImage[] = [];
+  {
+    const mkImg = (target: { quotation_id?: string; variation_id?: string; job_id?: string }, category: QuoteImage['category'], caption: string, tone: string, share: boolean, item?: number, items?: QuoteItem[], at = T): QuoteImage => ({
+      ...base('qi', at), ...target, category, caption, item_index: item, item_label: item !== undefined ? items?.[item]?.description : undefined, file: svgPhoto(category, tone), name: `${category.toLowerCase().replace(/\W+/g, '-')}.svg`, width: 640, height: 480, share_with_client: share,
+    });
+    const open = quotations.filter((x) => ['Sent', 'Draft'].includes(x.status) && x.items.length).sort((a, b) => b.issue_date.localeCompare(a.issue_date))[0];
+    if (open) {
+      quoteImages.push(mkImg({ quotation_id: open.id }, 'Scope Area', 'Front façade — all glass included', '#12a1a7', true, 0, open.items, open.issue_date));
+      quoteImages.push(mkImg({ quotation_id: open.id }, 'Panel Count', 'Second-floor panels counted from this side', '#0B2545', true, 0, open.items, open.issue_date));
+      quoteImages.push(mkImg({ quotation_id: open.id }, 'Access Limitation', 'Narrow service lane — ladder only, no lift', '#c9a227', false, undefined, undefined, open.issue_date));
+    }
+    const av = variations.find((x) => x.status === 'Approved');
+    if (av) quoteImages.push(mkImg({ variation_id: av.id, job_id: av.job_id }, 'Additional Work', 'Roof-deck panels found on site', '#e0782b', true, 0, av.items, av.created_at.slice(0, 10)));
+  }
+
   // Payment Method Confirmation recorded by the Team Leader on recent jobs (what the client said they would do)
   const confirmations: PaymentConfirmation[] = [];
   for (const j of recentDone.slice(0, 9)) {
@@ -900,7 +916,7 @@ export function seedDB(): DB {
       { ...base('cor'), employee_id: FIELD[1].id, date: addDays(T, -2), clock_in: `${addDays(T, -2)}T08:00`, clock_out: `${addDays(T, -2)}T17:00`, reason: 'Forgot to clock out; was on site until 5PM per team leader.', status: 'Pending' },
     ], holidays, reviews, adjustments, periods, runs, locations, items, stock, requests: [
       { ...base('mr'), job_id: jobs.find((j) => j.status === 'Confirmed')?.id ?? jobs[0].id, requested_by: E_L1.id, lines: [{ item_id: item('CHM-001').id, qty: 4 }, { item_id: item('PPE-002').id, qty: 2 }], status: 'Pending', note: 'Extra chemical for large glass job.' },
-    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, payment_confirmations: confirmations, ocular_visits: ocularVisits, audit: [], settings: { ...settings, counters }, version: 1,
+    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, payment_confirmations: confirmations, ocular_visits: ocularVisits, quote_images: quoteImages, audit: [], settings: { ...settings, counters }, version: 1,
   };
 }
 
