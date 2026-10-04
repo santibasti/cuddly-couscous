@@ -6,7 +6,7 @@ import type {
   Settings, Site, StockTx, StorageLocation, UserAccount, Communication, Complaint, Role, ServiceCode, Condition, PayrollType,
 } from './types';
 import { DEFAULT_ACCESS } from './rbac';
-import { buildChecklistItems, buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
+import { findConflicts, buildChecklistItems, buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
 import { addDays, clone, diffDays, dow, eachDay, monthEnd, monthStart, round2, sum, today } from './util';
 
 /* Precomputed sha256("topmop:topmop123") – demo password for all seeded accounts. */
@@ -745,6 +745,8 @@ export function seedDB(): DB {
       const jid = id('job'); const bjid = id('bj');
       const link: Job = { ...origin, id: jid, number: nn('JOB'), status, start_at: `${d0}T08:00`, end_at: `${d0}T14:00`, scope: `BACK JOB (${reason}) for ${origin.number}: ${desc}`, quotation_id: undefined, contract_amount: 0, back_job_id: bjid, origin_job_id: origin.id,
         findings: '', damage_report: '', equipment_condition_notes: '', completed_at: undefined, signoff_name: undefined, signoff_at: undefined, signoff_data: undefined, client_rating: undefined, checklist: origin.checklist.map((c) => ({ ...c, done: false })), ...extra, created_at: stamp(d0), updated_at: stamp(d0) };
+      // open follow-ups start with no vehicle / equipment (assigned when scheduled) so they never double-book the original crew's gear
+      if (status !== 'Closed') { link.vehicle_id = undefined; link.equipment_ids = []; link.materials = []; if (status !== 'Confirmed') { link.leader_id = undefined; link.crew_ids = []; } }
       jobs.push(link);
       void noCharge;
       return { link, d0, bjid };
@@ -848,6 +850,13 @@ export function seedDB(): DB {
     const wf = mkWorkflow(next, 'draft');
     wf.items = wf.items.map((i, k) => (k < 3 ? { ...i, out_ok: true, loaded_qty: i.qty, out_condition: i.kind === 'material' ? undefined : ('Good' as const), out_container: i.kind === 'material' ? ('Good' as const) : undefined } : { ...i, out_ok: false, out_by: undefined, loaded_qty: undefined, out_condition: undefined, out_container: undefined }));
     next.status = 'Dispatch Checklist Pending';
+  }
+
+  // a scheduled follow-up goes on the first day its team is free (checked once every other booking is final)
+  for (const bj of backJobs) {
+    const link = jobs.find((j) => j.id === bj.job_id);
+    if (!link || link.status !== 'Confirmed') continue;
+    for (let k = 0; k < 30 && findConflicts({ jobs: jobs.filter((x) => x.id !== link.id) }, link).length; k++) { const nd = addDays(link.start_at.slice(0, 10), 1); link.start_at = `${nd}T08:00`; link.end_at = `${nd}T13:00`; }
   }
 
   return {
