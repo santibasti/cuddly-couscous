@@ -164,11 +164,11 @@ describe('7-step workflow: normal recurring job', () => {
     W.completeHqChecklist(wf.id, prepForm(wf) as never);
     expect(() => W.dispatchJob(wf.id, { at: '2999-01-01T08:00', confirmed: true })).toThrow(/future/);
     expect(() => W.dispatchJob(wf.id, { at: 'garbage', confirmed: true })).toThrow(/valid/);
-    W.dispatchJob(wf.id, { at: `${T()}T06:30`, confirmed: true });
-    expect(wfOf(sc.job.id).disp_at).toBe(`${T()}T06:30`);
-    expect(() => W.arriveAtSite(wf.id, checkIn([lead], { at: `${T()}T06:00` }))).toThrow(/before the departure/);
-    W.arriveAtSite(wf.id, checkIn([lead], { at: `${T()}T06:45` }));
-    expect(wfOf(sc.job.id).arr_at).toBe(`${T()}T06:45`);
+    W.dispatchJob(wf.id, { at: `${T()}T00:05`, confirmed: true });   // early in the day so the test also passes just after midnight
+    expect(wfOf(sc.job.id).disp_at).toBe(`${T()}T00:05`);
+    expect(() => W.arriveAtSite(wf.id, checkIn([lead], { at: `${T()}T00:00` }))).toThrow(/before the departure/);
+    W.arriveAtSite(wf.id, checkIn([lead], { at: `${T()}T00:10` }));
+    expect(wfOf(sc.job.id).arr_at).toBe(`${T()}T00:10`);
   });
 
   it('job prep: shortages need a reason and raise incidents; damaged tools get a ticket', async () => {
