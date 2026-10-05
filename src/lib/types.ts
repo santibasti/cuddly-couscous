@@ -32,7 +32,7 @@ export type ClientType =
   | 'Auto Dealership' | 'Hospitality' | 'Church' | 'Industrial' | 'School / Institution';
 export type ClientStatus = 'Active' | 'Prospect' | 'Inactive';
 
-export interface Client extends Base {
+export interface Client extends Base, GeoFields {
   name: string;
   contact_person: string;
   mobile: string;
@@ -50,15 +50,19 @@ export interface Client extends Base {
   branch_id: string;
 }
 
-export interface Site extends Base {
+/** Saved map position of an address. `approximate` = the city / area centre; `mapped` = a street-level position; `unmapped` = needs Admin correction (never blocks a booking). */
+export interface GeoFields {
+  lat?: number; lng?: number; city?: string; province?: string;
+  geo_status?: 'mapped' | 'approximate' | 'unmapped'; geo_source?: 'address-match' | 'geocoder' | 'manual';
+  geo_precision?: 'precise' | 'area' | 'city' | 'province'; geo_address?: string; geo_at?: string; geo_tries?: number;
+}
+export interface Site extends Base, GeoFields {
   client_id: string;
   name: string;
   address: string;
   contact_person: string;
   contact_mobile: string;
   access_instructions: string;
-  lat?: number;
-  lng?: number;
 }
 
 export interface Communication extends Base {
@@ -526,7 +530,7 @@ export interface QuoteImage extends Base {
 /* ---------- Ocular Visits (site inspections before a quotation) ---------- */
 export type OcularStatus = 'Scheduled' | 'Confirmed' | 'Completed' | 'Cancelled' | 'Converted to Quotation';
 export interface Measurement { id: string; label: string; service_code?: ServiceCode; qty: number; unit: string; notes?: string }
-export interface OcularVisit extends Base {
+export interface OcularVisit extends Base, GeoFields {
   number: string;                       // OV-2026-0001
   client_id: string; contact_person: string; contact_mobile?: string;
   site_id?: string; location: string;   // service location

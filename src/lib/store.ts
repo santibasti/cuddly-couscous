@@ -3,6 +3,7 @@ import type { AuditLog, Base, DB, Invoice, Payment, PayrollPeriod, Role, TableNa
 import { permsFor } from './rbac';
 import { isoNow, sha256, uid } from './util';
 import { seedDB } from './seed';
+import { geoHooks, geoPatch } from './geo-ph';
 import { syncHub } from './sync';
 import { kvDel, kvGet, kvSet } from './outbox';
 import { CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, fetchAll, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
@@ -14,6 +15,8 @@ const KEY = 'topmop-ops-db-v4';
 const SESSION = 'topmop-ops-session-v1';
 
 export class PermissionError extends Error {}
+const GEO_ADDRESS: Partial<Record<TableName, string>> = { sites: 'address', clients: 'address', ocular_visits: 'location' };
+
 export class RuleError extends Error {}
 
 const TABLE_LABEL: Partial<Record<TableName, string>> = {
@@ -234,6 +237,8 @@ class Store {
     this.guardDiscountInsert(table, data as unknown as Record<string, unknown>);
     const now = isoNow();
     const row = { ...data, id: (data as { id?: string }).id ?? uid(), created_at: now, updated_at: now, created_by: this.user?.id ?? 'system' } as unknown as Rows[T];
+    const ga = GEO_ADDRESS[table];
+    if (ga) { const g = geoPatch(String((row as unknown as Record<string, unknown>)[ga] ?? ''), row as never); if (Object.keys(g).length) { Object.assign(row as object, g); queueMicrotask(() => geoHooks.onChange?.()); } }
     this.audit('create', table, (row as Base).id, summary ?? `Created ${table.replace(/s$/, '')} ${describe(row)}`, undefined, row);
     this.set((d) => ({ ...d, [table]: [...(d[table] as unknown[]), row] }) as DB);
     this.note(table, 'insert', row);
@@ -247,7 +252,12 @@ class Store {
     if (!before) throw new RuleError(`Record not found in ${table}`);
     this.guardUpdate(table, before, patch as Record<string, unknown>);
     this.guardDiscountUpdate(table, before, patch as Record<string, unknown>);
-    const after = { ...before, ...patch, updated_at: isoNow(), updated_by: this.user?.id ?? 'system' };
+    const after = { ...before, ...patch, updated_at: isoNow(), updated_by: this.user?.id ?? 'system' } as Record<string, unknown>;
+    const ga = GEO_ADDRESS[table];
+    // a changed address is geocoded again; coordinates set on purpose in the same patch (Admin fix) are kept
+    if (ga && ('lat' in patch ? false : (ga in patch && patch[ga as never] !== before[ga]) || !before.geo_status)) {
+      const g = geoPatch(String(after[ga] ?? ''), after as never); if (Object.keys(g).length) { Object.assign(after, g); queueMicrotask(() => geoHooks.onChange?.()); }
+    }
     this.audit(action, table, id, summary ?? `Updated ${table.replace(/s$/, '')} ${describe(after)}`, pickChanged(before, patch as Record<string, unknown>), pickChanged(after, patch as Record<string, unknown>));
     this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? after : r)) }) as DB);
     this.note(table, 'update', after, before);

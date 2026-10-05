@@ -2,6 +2,7 @@
 insert into public.role_permissions (role, permission) values
 ('owner', 'dashboard.view'),
 ('owner', 'dashboard.finance'),
+('owner', 'dashboard.executive'),
 ('owner', 'clients.view'),
 ('owner', 'clients.edit'),
 ('owner', 'clients.tax'),

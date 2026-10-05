@@ -6,6 +6,7 @@ import type {
   Settings, Site, StockTx, StorageLocation, UserAccount, Communication, Complaint, Role, ServiceCode, Condition, PayrollType,
 } from './types';
 import { DEFAULT_ACCESS } from './rbac';
+import { geoPatch } from './geo-ph';
 import { findConflicts, buildChecklistItems, buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
 import { addDays, clone, diffDays, dow, eachDay, monthEnd, monthStart, round2, sum, today } from './util';
 import { planFollowUps } from './followup-core';
@@ -925,6 +926,9 @@ export function seedDB(): DB {
   if (gf) Object.assign(gf, { status: 'Contacted', note: 'Spoke with the plant manager; will confirm a schedule.', actioned_by: 'u-owner', actioned_at: stamp(addDays(T, -1)), history: [{ at: stamp(addDays(T, -1)), by: 'Owner / Admin', status: 'Contacted', note: 'Spoke with the plant manager; will confirm a schedule.' }] });
   const dc = fuOf('Dela Cruz'); const booking = dc && jobs.find((j) => j.client_id === dc.client_id && ['Confirmed', 'Pending'].includes(j.status) && j.start_at.slice(0, 10) > T);
   if (dc && booking) Object.assign(dc, { status: 'Booked', booked_job_id: booking.id, note: 'Booked after our call.', actioned_by: 'u-owner', actioned_at: stamp(addDays(T, -4)), history: [{ at: stamp(addDays(T, -4)), by: 'Owner / Admin', status: 'Booked', note: 'Booked after our call.' }] });
+
+  for (const row of [...clients, ...sites] as { address: string }[]) Object.assign(row, geoPatch(row.address));
+  for (const row of ocularVisits) Object.assign(row, geoPatch(row.location));
 
   return {
     users, branches, clients, sites, communications, complaints, services, inquiries, quotations, jobs, employees, attendance, corrections: [

@@ -13,6 +13,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'dashboard.view', group: 'Dashboard', label: 'View operational dashboard' },
   { key: 'dashboard.finance', group: 'Dashboard', label: 'View financial dashboard widgets' },
+  { key: 'dashboard.executive', group: 'Dashboard', label: 'Executive dashboard: revenue, collections and exact client locations (Admin / CEO)' },
   { key: 'clients.view', group: 'Clients', label: 'View clients' },
   { key: 'clients.edit', group: 'Clients', label: 'Create / edit clients' },
   { key: 'clients.tax', group: 'Clients', label: 'View client tax info' },

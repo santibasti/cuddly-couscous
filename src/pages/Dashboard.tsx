@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Bar as RBar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts';
 import { useAuth } from '@/lib/store';
@@ -11,6 +11,8 @@ import { DiscountInbox } from '@/components/workflow/DiscountPanel';
 import { addDays, eachDay, fmtDate, fmtTime, inRange, monthEnd, monthStart, money, moneyShort, nowLocal, pct, round2, sum, today, weekStart } from '@/lib/util';
 import { paymentCounts, AWAY_JOB, FIELD_JOB, variationTotals, docTotals, invoiceBalance, invoiceTotals, isDone, isOpen, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
 import { isOverdue } from '@/lib/actions';
+import GeoInsights from '@/components/GeoInsights';
+import { STAGES, areaOptions, attention, growth, kpis, operationsToday, scopeOf, trend, type InsightFilters, type TrendRange } from '@/lib/insights';
 import type { DB, Invoice, ServiceCode } from '@/lib/types';
 
 const C = { navy: '#0B2545', teal: '#0E9AA7', green: '#2C9A45', cyan: '#22C1C3', gray: '#9db0c5', amber: '#B7791F' };
@@ -51,24 +53,46 @@ export default function Dashboard() {
   const T = today();
   const myEmp = user?.employee_id;
 
+  const [segment, setSegment] = useState<InsightFilters['segment']>('');
+  const [stage, setStage] = useState<InsightFilters['stage']>('');
+  const [repeat, setRepeat] = useState<InsightFilters['repeat']>('');
+  const [province, setProvince] = useState('');
+  const [city, setCity] = useState('');
+  const [trendRange, setTrendRange] = useState<TrendRange>('months6');
+  const exec = can('dashboard.executive') && !mine;
+  const opts = useMemo(() => areaOptions(db), [db]);
+  const filters = useMemo<InsightFilters>(() => ({ from, to, branch, service, client, segment, stage, repeat, province, city }), [from, to, branch, service, client, segment, stage, repeat, province, city]);
+  const scope = useMemo(() => scopeOf(db, filters, exec, T), [db, filters, exec, T]);
+  const k = useMemo(() => kpis(db, scope), [db, scope]);
+  const tr = useMemo(() => trend(db, scope, trendRange), [db, scope, trendRange]);
+  const ops = useMemo(() => operationsToday(db, scope), [db, scope]);
+  const att = useMemo(() => attention(db, scope, money), [db, scope]);
+  const gr = useMemo(() => growth(db, scope), [db, scope]);
+  const anyFilter = !!(branch || service || client || segment || stage || repeat || province || city);
+  const clear = () => { setBranch(''); setService(''); setClient(''); setSegment(''); setStage(''); setRepeat(''); setProvince(''); setCity(''); };
+
   const d = useMemo(() => compute(db, from, to, { branch, service, client }, mine ? myEmp : undefined), [db, from, to, branch, service, client, mine, myEmp]);
 
-  return (
-    <>
-      <PageHead title="Executive dashboard" sub={`${fmtDate(from)} – ${fmtDate(to)} • live from operations data`} />
-      <DiscountInbox />
-      <OcularWidget />
-      <FollowUpWidget />
-      <div className="filterbar no-print">
-        <Field label="Period"><select value={preset} onChange={(e) => { setPreset(e.target.value); if (e.target.value !== 'custom') setRange(presetRange(e.target.value)); }}>{PRESETS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}<option value="custom">Custom…</option></select></Field>
-        <Field label="From"><input type="date" value={from} onChange={(e) => { setPreset('custom'); setRange([e.target.value, to]); }} /></Field>
-        <Field label="To"><input type="date" value={to} onChange={(e) => { setPreset('custom'); setRange([from, e.target.value]); }} /></Field>
-        <Field label="Branch"><select value={branch} onChange={(e) => setBranch(e.target.value)}><option value="">All branches</option>{db.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
-        <Field label="Service"><select value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{db.services.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></Field>
-        <Field label="Client"><select value={client} onChange={(e) => setClient(e.target.value)}><option value="">All clients</option>{db.clients.filter((c) => !c.deleted_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
-        {(branch || service || client) && <button className="btn" onClick={() => { setBranch(''); setService(''); setClient(''); }}>Clear</button>}
-      </div>
-
+  const inbox = <><DiscountInbox /><OcularWidget /><FollowUpWidget /></>;
+  const filterBar = (
+    <div className="filterbar no-print">
+      <Field label="Period"><select value={preset} onChange={(e) => { setPreset(e.target.value); if (e.target.value !== 'custom') setRange(presetRange(e.target.value)); }}>{PRESETS.map(([k2, l]) => <option key={k2} value={k2}>{l}</option>)}<option value="custom">Custom…</option></select></Field>
+      <Field label="From"><input type="date" value={from} onChange={(e) => { setPreset('custom'); setRange([e.target.value, to]); }} /></Field>
+      <Field label="To"><input type="date" value={to} onChange={(e) => { setPreset('custom'); setRange([from, e.target.value]); }} /></Field>
+      <Field label="Branch"><select value={branch} onChange={(e) => setBranch(e.target.value)}><option value="">All branches</option>{db.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
+      <Field label="Service"><select value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{db.services.map((sv) => <option key={sv.code} value={sv.code}>{sv.name}</option>)}</select></Field>
+      <Field label="Client"><select value={client} onChange={(e) => setClient(e.target.value)}><option value="">All clients</option>{db.clients.filter((c) => !c.deleted_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+      {!mine && <>
+        <Field label="Client type"><select value={segment} onChange={(e) => setSegment(e.target.value as InsightFilters['segment'])}><option value="">Residential + Commercial</option><option>Residential</option><option>Commercial</option></select></Field>
+        <Field label="Status"><select value={stage} onChange={(e) => setStage(e.target.value as InsightFilters['stage'])}><option value="">All statuses</option>{STAGES.map((x) => <option key={x}>{x}</option>)}</select></Field>
+        <Field label="New / Repeat"><select value={repeat} onChange={(e) => setRepeat(e.target.value as InsightFilters['repeat'])}><option value="">New + Repeat</option><option>New</option><option>Repeat</option></select></Field>
+        <Field label="Province"><select value={province} onChange={(e) => { setProvince(e.target.value); setCity(''); }}><option value="">All provinces</option>{opts.provinces.map((x) => <option key={x}>{x}</option>)}</select></Field>
+        <Field label="City / area"><select value={city} onChange={(e) => setCity(e.target.value)}><option value="">All cities</option>{opts.cities.filter((c) => !province || c.province === province).map((c) => <option key={c.city}>{c.city}</option>)}</select></Field>
+      </>}
+      {anyFilter && <button className="btn" onClick={clear}>Clear</button>}
+    </div>
+  );
+  const legacy = <>
       <div className="grid g4 keep2" style={{ marginBottom: 14 }}>
         <Stat k="Today's jobs" v={d.todayJobs.length} s={`${d.todayJobs.filter((j) => FIELD_JOB.includes(j.status)).length} in the field`} to="/jobs" />
         <Stat k="Crew clocked in" v={`${d.clockedIn} / ${d.crewTotal}`} s={`${d.clockedOut} clocked out • ${d.notIn} not in`} tone={d.notIn > 3 ? 'warn' : undefined} to="/attendance" />
@@ -216,6 +240,76 @@ export default function Dashboard() {
         </>
       )}
       <p className="small muted" style={{ marginTop: 10 }}>Reference: {nowLocal().replace('T', ' ')} Manila. Revenue is billed (invoiced) net of VAT; “Expected” counts approved quotations not yet invoiced.</p>
+    </>;
+  if (mine) return (<><PageHead title="Dashboard" sub={`${fmtDate(from)} – ${fmtDate(to)} • live from operations data`} />{inbox}{filterBar}{legacy}</>);
+
+  const cards: { k: string; v: ReactNode; s?: ReactNode; to?: string; cls?: string; pending?: boolean }[] = [
+    ...(exec ? [
+      { k: 'Revenue this month', v: moneyShort(k.revenue ?? 0), s: 'Approved invoices, ex-VAT', to: '/finance', cls: 'hero' },
+      { k: 'Verified collections this month', v: moneyShort(k.collections ?? 0), s: 'Finance-verified payments only', to: '/finance?tab=payments', cls: 'hero' },
+      { k: 'Outstanding receivables', v: moneyShort(k.receivables ?? 0), s: `${moneyShort(k.overdue ?? 0)} overdue`, to: '/finance?tab=receivables', cls: (k.overdue ?? 0) > 0 ? 'bad' : undefined },
+      k.gross === 'pending' || !k.gross ? { k: 'Gross profit / margin', v: 'Pending Cost Data', s: k.pendingJobs ? `${k.pendingJobs} completed job(s) still on estimated costs` : 'No completed jobs this month yet', to: '/finance?tab=profit', pending: true }
+        : { k: 'Gross profit / margin', v: moneyShort(k.gross.value), s: `Margin ${pct(k.gross.margin)}`, to: '/finance?tab=profit', cls: k.gross.value >= 0 ? 'good' : 'bad' },
+    ] : []),
+    { k: 'Confirmed jobs this week', v: k.confirmedWeek, s: 'Scheduled Mon–Sun', to: '/jobs' },
+    { k: 'Jobs in progress today', v: k.inProgress, s: 'On site or working now', to: '/jobs?status=In%20Progress' },
+    { k: 'Jobs completed this month', v: k.completedMonth, to: '/jobs' },
+    { k: 'New clients this month', v: k.newClients, to: '/clients' },
+    { k: 'Repeat client rate', v: `${k.repeatRate}%`, s: `of ${k.repeatOf} served clients`, to: '/clients' },
+    { k: 'Follow-ups due this week', v: k.followUpsWeek, s: '6-month / 1-year', to: '/clients' },
+  ];
+  const tone = (x: string) => (x === 'bad' ? 'bad' : x === 'warn' ? 'warn' : '');
+  return (
+    <>
+      <PageHead title="Executive dashboard" sub={`${fmtDate(from)} – ${fmtDate(to)} • live from operations data`} />
+      {filterBar}
+      <div className="exec-grid">
+        {cards.map((c) => <Link key={c.k} to={c.to ?? '/dashboard'} className={`kpi ${c.cls ?? ''}`}><div className="k">{c.k}</div><div className={`v ${c.pending ? 'pending' : ''}`}>{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
+      </div>
+      <p className="small muted" style={{ marginTop: -6 }}>Cards show the current month / week. Client type, status, New/Repeat, service, branch and area filters apply to every number below; the period drives the map and area tables.</p>
+
+      <div className="grid g2" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', marginBottom: 14 }}>
+        <Card title="Revenue & collection trend" actions={<select value={trendRange} onChange={(e) => setTrendRange(e.target.value as TrendRange)} aria-label="Trend range"><option value="days">Last 14 days</option><option value="weeks">Last 12 weeks</option><option value="months6">Last 6 months</option><option value="months12">Last 12 months</option></select>}>
+          {exec ? (
+            <div style={{ height: 250 }}><ResponsiveContainer><BarChart data={tr} margin={{ left: -6, right: 8 }}>
+              <CartesianGrid stroke="#eaeff4" vertical={false} /><XAxis dataKey="label" fontSize={11} tickLine={false} /><YAxis fontSize={11} tickFormatter={(v) => moneyShort(v)} tickLine={false} axisLine={false} />
+              <Tooltip formatter={(v) => money(Number(v))} /><Legend iconType="square" wrapperStyle={{ fontSize: 12 }} />
+              <RBar dataKey="revenue" name="Revenue billed (ex-VAT)" fill={C.navy} radius={[3, 3, 0, 0]} /><RBar dataKey="collections" name="Verified collections" fill={C.teal} radius={[3, 3, 0, 0]} />
+            </BarChart></ResponsiveContainer></div>
+          ) : <Empty>Revenue and collections are visible to the Admin / CEO.</Empty>}
+        </Card>
+        <Card title={`Operations today — ${fmtDate(T)}`} flush>
+          <ul className="list">
+            <li><span>Jobs scheduled</span><b>{ops.jobs.length}</b></li>
+            <li><span>Crew assigned / clocked in</span><b>{ops.crewAssigned} / {ops.crewIn}</b></li>
+            <li><span>Ocular visits</span><b>{ops.ocular.length}</b></li>
+            <li><span>Pending quotations</span><b>{ops.pendingQuotes.length}</b></li>
+            <li><span>Awaiting client handover</span><b>{ops.awaitingHandover.length}</b></li>
+            <li><span>Open back jobs</span><b>{ops.backJobs.length}</b></li>
+          </ul>
+        </Card>
+      </div>
+
+      <div className="exec-section"><GeoInsights db={db} scope={scope} /></div>
+
+      <div className="exec-section">
+        <h3>Business attention needed</h3>
+        <div className="attn">{att.map((a) => <Link key={a.key} to={a.to}><span className={`n ${a.count ? tone(a.tone) : 'zero'}`}>{a.count}</span><span><b>{a.label}</b><div className="small muted">{a.detail}</div></span></Link>)}</div>
+      </div>
+
+      <div className="exec-section">
+        <h3>Client growth & retention</h3>
+        <div className="exec-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+          <div className="kpi"><div className="k">New clients (month)</div><div className="v">{gr.newClients}</div></div>
+          <div className="kpi"><div className="k">Repeat clients</div><div className="v">{gr.repeatClients}</div><div className="s">of {gr.activeClients} served</div></div>
+          <div className="kpi"><div className="k">6-month follow-ups due</div><div className="v">{gr.due6}</div><div className="s">this month</div></div>
+          <div className="kpi"><div className="k">1-year follow-ups due</div><div className="v">{gr.due12}</div><div className="s">this month</div></div>
+          <div className="kpi"><div className="k">Follow-up → booking</div><div className="v">{gr.conversion}%</div><div className="s">{gr.booked} of {gr.acted} actioned</div></div>
+        </div>
+      </div>
+
+      {inbox}
+      <details className="exec-details"><summary>Detailed operations & finance analytics</summary>{legacy}</details>
     </>
   );
 }
