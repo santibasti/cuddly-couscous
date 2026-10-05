@@ -70,7 +70,7 @@ class Store {
   private async refill(kind: string) {
     try { const nums = await reserveNumbers(kind, 10); this.pool[kind] = [...(this.pool[kind] ?? []), ...nums]; } catch { /* retried on next use */ }
   }
-  private cloudError(msg: string) { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('topmop:cloud-error', { detail: msg })); }
+  private cloudError(msg: string) { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('topmop:cloud-error', { detail: `NOT SAVED — the database refused the change and it was undone. ${msg}` })); }
   /** Write every changed row to Supabase; the database re-checks every rule. A refused change is undone by reloading the server's copy. */
   private async flushCloud() {
     if (!CLOUD || !this.sessionUser || this.flushing) return;
