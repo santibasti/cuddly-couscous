@@ -931,7 +931,7 @@ export function seedDB(): DB {
       { ...base('cor'), employee_id: FIELD[1].id, date: addDays(T, -2), clock_in: `${addDays(T, -2)}T08:00`, clock_out: `${addDays(T, -2)}T17:00`, reason: 'Forgot to clock out; was on site until 5PM per team leader.', status: 'Pending' },
     ], holidays, reviews, adjustments, periods, runs, locations, items, stock, requests: [
       { ...base('mr'), job_id: jobs.find((j) => j.status === 'Confirmed')?.id ?? jobs[0].id, requested_by: E_L1.id, lines: [{ item_id: item('CHM-001').id, qty: 4 }, { item_id: item('PPE-002').id, qty: 2 }], status: 'Pending', note: 'Extra chemical for large glass job.' },
-    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, payment_confirmations: confirmations, ocular_visits: ocularVisits, quote_images: quoteImages, followups, followup_rules: followupRules, audit: [], settings: { ...settings, counters }, version: 1,
+    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, payment_confirmations: confirmations, ocular_visits: ocularVisits, quote_images: quoteImages, followups, followup_rules: followupRules, job_orders: [], audit: [], settings: { ...settings, counters }, version: 1,
   };
 }
 

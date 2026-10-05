@@ -1201,3 +1201,108 @@ describe('Stale equipment holds', () => {
     expect(() => W.completeHqChecklist(wfC.id, prepForm(wfC) as never)).toThrow(/checked out to JOB-STALE-B/);
   });
 });
+
+describe('Job Order Confirmation', () => {
+  let JO: typeof import('./joborders'); let JC: typeof import('./joborder-core');
+  beforeAll(async () => { JO = await import('./joborders'); JC = await import('./joborder-core'); });
+  let day = 0;
+  const booked = (label: string, quoted = true, withLeader = true) => {
+    const lead = db().employees[3].id;
+    const sc = scenario(label, lead);
+    store.update('jobs', sc.job.id, { start_at: `2032-03-${String(++day + 1).padStart(2, '0')}T08:00`, end_at: `2032-03-${String(day + 1).padStart(2, '0')}T17:00`, leader_id: withLeader ? lead : undefined, crew_ids: [] } as never);
+    const q = db().quotations.find((x) => x.status === 'Approved')!;
+    if (quoted) store.update('jobs', sc.job.id, { quotation_id: q.id, client_id: q.client_id, site_id: q.site_id ?? db().sites.find((s) => s.client_id === q.client_id)!.id } as never);
+    JO.syncJobOrders(sc.job.id);
+    return { ...sc, q, lead };
+  };
+  const orders = (jobId: string) => JC.ordersOf(db(), jobId);
+
+  it('creates a Draft with its own number when the booking is confirmed, linked to booking, quotation and client', async () => {
+    await as('ops@topmop.ph');
+    const a = booked('JO-A'); const b = booked('JO-B');
+    const oa = orders(a.job.id); expect(oa.length).toBe(1);
+    expect(oa[0]).toMatchObject({ status: 'Draft', version: 1, job_id: a.job.id, quotation_id: a.q.id, client_id: a.q.client_id });
+    expect(oa[0].number).toMatch(/^JO-\d{4}-\d{4}$/); expect(oa[0].number).not.toBe(orders(b.job.id)[0].number);
+    JO.syncJobOrders(a.job.id); JO.syncJobOrders(); expect(orders(a.job.id).length).toBe(1);                  // never duplicated
+    // a booking that is only Pending has none
+    const p = scenario('JO-P', a.lead); store.update('jobs', p.job.id, { status: 'Pending', start_at: '2032-04-20T08:00', end_at: '2032-04-20T17:00' } as never); JO.syncJobOrders();
+    expect(orders(p.job.id).length).toBe(0);
+  });
+
+  it('shows only client-facing content, priced from the approved quotation and variations, never internal figures', async () => {
+    await as('ops@topmop.ph');
+    const a = booked('JO-C');
+    const c = orders(a.job.id)[0].content;
+    expect(c.total).toBe(B.finalQuoteSummary(db(), db().jobs.find((j) => j.id === a.job.id)!).finalTotal);
+    expect(c.items.map((i) => [i.description, i.qty, i.rate])).toEqual(a.q.items.map((i) => [i.description, i.qty, i.rate]));
+    expect(c.scope).toBe(a.q.scope);
+    expect(Object.keys(c).sort()).toEqual(['access_notes', 'additions', 'arrival_from', 'arrival_to', 'blocker', 'booking_date', 'client', 'company', 'discounts', 'duration_hours', 'items', 'location', 'payment_status', 'payment_terms', 'scope', 'service_date', 'service_types', 'subtotal', 'team', 'total', 'vat', 'vat_label'].filter((k) => k in c).sort());
+    const text = JSON.stringify(c);
+    for (const secret of ['estimated_cost', 'contract_amount', 'hourly', 'payroll', 'margin', 'profit', 'checklist', 'equipment_condition_notes', 'damage_report', 'findings']) expect(text).not.toContain(secret);
+    expect(c.team.leader).toBeTruthy();
+    // no team yet → "Team assignment to follow"
+    const n = booked('JO-D', true, false);
+    expect(orders(n.job.id)[0].content.team).toEqual({ leader: undefined, crew: [] });
+    // an approved addition is listed and counted in the final total
+    const before = orders(a.job.id)[0].content.total;
+    store.insert('variations', { job_id: a.job.id, number: `${db().jobs.find((j) => j.id === a.job.id)!.number}-V1`, reason: 'extra panels', items: [{ service_code: 'WALL', description: 'Extra wall', qty: 10, unit: 'sqm', rate: 100, discount: 0 }], discount: 0, vat_mode: 'exclusive', vat_rate: 12, panel_row_ids: [], status: 'Approved' } as never);
+    JO.syncJobOrders(a.job.id);
+    const o = orders(a.job.id)[0].content; expect(o.additions.length).toBe(1); expect(o.total).toBeCloseTo(before + 1120, 2);
+  });
+
+  it('the draft follows the booking until it is sent; only Admin / Operations review and send; no approved quotation blocks sending', async () => {
+    await as('ops@topmop.ph');
+    const a = booked('JO-E');
+    store.update('jobs', a.job.id, { start_at: '2032-05-10T09:00', end_at: '2032-05-10T15:00' } as never); JO.syncJobOrders(a.job.id);
+    expect(orders(a.job.id).length).toBe(1); expect(orders(a.job.id)[0].content.service_date).toBe('2032-05-10');           // refreshed in place
+    await as('leader@topmop.ph');
+    expect(() => JO.markJobOrderSent(orders(a.job.id)[0].id, 'Email')).toThrow(/not permitted/);
+    await as('ops@topmop.ph');
+    const noq = booked('JO-F', false); expect(orders(noq.job.id)[0].content.blocker).toMatch(/approved quotation/);
+    expect(() => JO.markJobOrderSent(orders(noq.job.id)[0].id, 'Email')).toThrow(/approved quotation/);
+    const sent = JO.markJobOrderSent(orders(a.job.id)[0].id, 'Email', 'to Ms. Reyes');
+    expect(sent).toMatchObject({ status: 'Sent to Client', sent_via: 'Email', sent_count: 1 }); expect(sent.sent_at).toBeTruthy();
+    expect(() => JO.markJobOrderSent(sent.id, 'Email')).toThrow(/already been sent/);
+  });
+
+  it('a sent Job Order is never overwritten: schedule, scope, price or team changes supersede it with a revised version', async () => {
+    await as('ops@topmop.ph');
+    const a = booked('JO-G');
+    const v1 = JO.markJobOrderSent(orders(a.job.id)[0].id, 'Share link');
+    const snapshot = JSON.stringify(db().job_orders.find((o) => o.id === v1.id)!.content);
+    // payment status moving on its own does not revise it
+    JO.syncJobOrders(a.job.id); expect(orders(a.job.id).length).toBe(1);
+    // schedule
+    store.update('jobs', a.job.id, { start_at: '2032-06-01T10:00', end_at: '2032-06-01T16:00' } as never); JO.syncJobOrders(a.job.id);
+    let list = orders(a.job.id); expect(list.length).toBe(2);
+    expect(list[0]).toMatchObject({ version: 2, status: 'Revised', number: v1.number, supersedes_id: v1.id }); expect(list[0].revision_reason).toMatch(/schedule/);
+    expect(list[1]).toMatchObject({ id: v1.id, status: 'Superseded', superseded_by_id: list[0].id });
+    expect(JSON.stringify(list[1].content)).toBe(snapshot);                                   // the sent record is untouched
+    expect(list[1].sent_at).toBe(v1.sent_at);
+    // team
+    const v2 = JO.markJobOrderSent(list[0].id, 'Email');
+    store.update('jobs', a.job.id, { crew_ids: [db().employees[4].id] } as never); JO.syncJobOrders(a.job.id);
+    list = orders(a.job.id); expect(list.map((o) => [o.version, o.status])).toEqual([[3, 'Revised'], [2, 'Superseded'], [1, 'Superseded']]); expect(list[0].revision_reason).toMatch(/team/);
+    expect(v2.id).toBe(list[1].id);
+    // price (an approved discount) and only the latest version can be sent
+    expect(() => JO.markJobOrderSent(list[2].id, 'Email')).toThrow(/latest version|already been sent|Only/);
+    const v3 = JO.markJobOrderSent(list[0].id, 'Email');
+    store.insert('variations', { job_id: a.job.id, number: `${db().jobs.find((j) => j.id === a.job.id)!.number}-V9`, reason: 'extra', items: [{ service_code: 'WALL', description: 'Extra', qty: 5, unit: 'sqm', rate: 100, discount: 0 }], discount: 0, vat_mode: 'exclusive', vat_rate: 12, panel_row_ids: [], status: 'Approved' } as never);
+    JO.syncJobOrders(a.job.id);
+    list = orders(a.job.id); expect(list[0]).toMatchObject({ version: 4, status: 'Revised', supersedes_id: v3.id }); expect(list[0].revision_reason).toMatch(/approved scope|final price/);
+  });
+
+  it('a sent version cannot be edited or deleted; resending keeps the date and time of every send', async () => {
+    await as('ops@topmop.ph');
+    const a = booked('JO-H');
+    const o = JO.markJobOrderSent(orders(a.job.id)[0].id, 'Email');
+    expect(() => store.update('job_orders', o.id, { content: { ...o.content, total: 1 } } as never)).toThrow(/cannot be edited/);
+    expect(() => store.update('job_orders', o.id, { number: 'JO-HACK' } as never)).toThrow(/cannot be edited/);
+    expect(() => store.remove('job_orders', o.id)).toThrow(/cannot be deleted/);
+    const r = JO.resendJobOrder(o.id, 'WhatsApp / Viber', 'client asked again');
+    expect(r.sent_count).toBe(2); expect(r.sent_at).toBe(o.sent_at);
+    expect(r.history.map((h) => h.action)).toEqual(expect.arrayContaining([expect.stringMatching(/Marked as sent/), expect.stringMatching(/Resent .* WhatsApp/)]));
+    JO.logJobOrderEvent(o.id, 'PDF downloaded');
+    expect(db().job_orders.find((x) => x.id === o.id)!.history.at(-1)!.action).toBe('PDF downloaded');
+  });
+});

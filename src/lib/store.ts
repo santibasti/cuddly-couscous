@@ -64,7 +64,7 @@ class Store {
     let db: DB | null = null;
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { db = JSON.parse(raw) as DB; if (!db.discount_requests) db.discount_requests = []; if (!db.client_feedback) db.client_feedback = []; if (!db.back_jobs) db.back_jobs = []; if (!db.payment_confirmations) db.payment_confirmations = []; if (!db.ocular_visits) db.ocular_visits = []; if (!db.quote_images) db.quote_images = []; if (!db.followups) db.followups = []; if (!db.followup_rules) db.followup_rules = []; db.payments = db.payments.map((p) => ((p.method as string) === 'Check' ? { ...p, method: 'Cheque' as const } : (['Credit Card', 'Other'] as string[]).includes(p.method) ? { ...p, method: 'Bank Transfer' as const } : p)); }   // data saved before Discount Requests existed
+      if (raw) { db = JSON.parse(raw) as DB; if (!db.discount_requests) db.discount_requests = []; if (!db.client_feedback) db.client_feedback = []; if (!db.back_jobs) db.back_jobs = []; if (!db.payment_confirmations) db.payment_confirmations = []; if (!db.ocular_visits) db.ocular_visits = []; if (!db.quote_images) db.quote_images = []; if (!db.followups) db.followups = []; if (!db.followup_rules) db.followup_rules = []; if (!db.job_orders) db.job_orders = []; db.payments = db.payments.map((p) => ((p.method as string) === 'Check' ? { ...p, method: 'Cheque' as const } : (['Credit Card', 'Other'] as string[]).includes(p.method) ? { ...p, method: 'Bank Transfer' as const } : p)); }   // data saved before Discount Requests existed
     } catch { /* ignore corrupted / unavailable storage */ }
     this._db = db ?? seedDB();
     this.baseline = this._db;
@@ -115,7 +115,7 @@ class Store {
     this._db = { ...db, version: 1 }; this.baseline = this._db; this.sessionUser = uid;
     try { localStorage.setItem('topmop-last-user', uid); } catch { /* noop */ }
     await this.restoreLocal(uid);
-    for (const k of ['QT', 'JOB', 'INV', 'OR', 'EMP', 'INC', 'DR', 'BJ', 'OV']) void this.refill(k);
+    for (const k of ['QT', 'JOB', 'INV', 'OR', 'EMP', 'INC', 'DR', 'BJ', 'OV', 'JO']) void this.refill(k);
     this.saveSnapshot();
     this.listeners.forEach((l) => l());
   }
@@ -283,6 +283,7 @@ class Store {
     if (table === 'variations') throw new RuleError('Variations cannot be deleted; reject them instead.');
     if (table === 'incidents') throw new RuleError('Incident reports cannot be deleted; resolve them instead.');
     if (table === 'quote_images') this.guardImageParent(r as unknown as { quotation_id?: string; variation_id?: string });
+    if (table === 'job_orders') throw new RuleError('A Job Order Confirmation cannot be deleted; a changed booking creates a revised version and the earlier one is marked Superseded.');
     if (table === 'followups') throw new RuleError('Follow-ups cannot be deleted; mark them Not Interested or Snoozed instead.');
     if (table === 'ocular_visits') throw new RuleError('Ocular visits cannot be deleted; cancel them instead.');
     if (table === 'payment_confirmations') throw new RuleError('Payment confirmations cannot be deleted.');
@@ -308,6 +309,12 @@ class Store {
     }
     if (table === 'payments' && ((r.status as string | undefined) ?? 'Verified') === 'Verified' && !Object.keys(patch).every((k) => ['reversed', 'reversal_reason', 'cheque_status', 'cleared_at', 'notes'].includes(k))) throw new RuleError('A verified payment is locked. Reverse it with a reason and record a new one.');
     if (table === 'quote_images' && !('deleted_at' in patch)) this.guardImageParent(r as unknown as { quotation_id?: string; variation_id?: string });
+    if (table === 'job_orders' && ['Sent to Client', 'Superseded'].includes(String(r.status))) {
+      // a sent Job Order is a record of what the client was told: only its status line, resend log and Superseded link may change
+      const free = ['status', 'superseded_by_id', 'history', 'last_sent_at', 'sent_count', 'updated_at', 'updated_by'];
+      if (!Object.keys(patch).every((k) => free.includes(k))) throw new RuleError('A Job Order that was sent to the client cannot be edited. A revised version is created when the booking changes.');
+      if (r.status === 'Superseded' && patch.status && patch.status !== 'Superseded') throw new RuleError('A superseded Job Order cannot be reopened.');
+    }
     if (table === 'assets' && patch.status === 'Available' && r.status !== 'Available') {
       const out = this._db.checkouts.find((c) => c.asset_id === r.id && c.status === 'Released' && !c.deleted_at);
       if (out) throw new RuleError(`${String(r.name)} is checked out to ${this._db.jobs.find((j) => j.id === out.job_id)?.number ?? 'a job'}. Return it on the Equipment Out/In page (or finish that job's close-out) before marking it Available.`);
@@ -346,7 +353,7 @@ class Store {
     this.audit('update', 'settings', 'settings', summary, undefined, patch);
     this.set((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
   }
-  nextNumber(kind: 'QT' | 'JOB' | 'INV' | 'OR' | 'EMP' | 'INC' | 'DR' | 'BJ' | 'OV'): string {
+  nextNumber(kind: 'QT' | 'JOB' | 'INV' | 'OR' | 'EMP' | 'INC' | 'DR' | 'BJ' | 'OV' | 'JO'): string {
     if (CLOUD) {
       const pool = this.pool[kind]; const n = pool?.shift();
       if (n === undefined) { void this.refill(kind); throw new RuleError('Document numbers are still loading from the server. Try again in a moment.'); }

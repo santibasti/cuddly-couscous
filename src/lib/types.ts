@@ -777,6 +777,39 @@ export interface FollowUpRule extends Base {
   note?: string;
 }
 
+/* ---------- Job Order Confirmation (client-facing confirmation of a scheduled service; not an invoice, receipt or quotation) ---------- */
+export type JobOrderStatus = 'Draft' | 'Sent to Client' | 'Revised' | 'Superseded';
+/** Everything the client sees. Built only from the approved quotation, approved variations and the booking — never from internal costs or notes. */
+export interface JobOrderContent {
+  company: { name: string; tagline: string; address: string; phone: string; email: string; tin: string };
+  client: { name: string; contact_person: string; email?: string };
+  location: { name: string; address: string; contact_person: string; contact_mobile: string };
+  booking_date: string; service_date: string; arrival_from: string; arrival_to: string; duration_hours: number;
+  service_types: string[];
+  scope: string;
+  items: { description: string; qty: number; unit: string; rate: number; amount: number }[];
+  additions: { number: string; reason: string; items: { description: string; qty: number; unit: string; rate: number; amount: number }[]; total: number }[];
+  discounts: { label: string; amount: number }[];
+  subtotal: number; vat_label: string; vat: number; total: number;
+  payment_terms: string; payment_status: string;
+  team: { leader?: string; crew: string[] };
+  access_notes: string[];
+  /** set when the order cannot be sent yet (e.g. no approved quotation is linked) */
+  blocker?: string;
+}
+export interface JobOrder extends Base {
+  number: string;                 // JO-2026-0001 (the same number for every version of one order)
+  version: number;                // 1, 2, … a revised version is a new record; a sent one is never overwritten
+  job_id: string; quotation_id?: string; client_id: string;
+  status: JobOrderStatus;
+  issued_on: string;
+  content: JobOrderContent; content_key: string;
+  sent_at?: string; sent_by?: string; sent_via?: string; last_sent_at?: string; sent_count: number;
+  supersedes_id?: string; superseded_by_id?: string; revision_reason?: string;
+  share_token: string;
+  history: { at: string; by: string; action: string; note?: string }[];
+}
+
 export interface AuditLog {
   id: string;
   at: string;
@@ -821,7 +854,7 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations' | 'ocular_visits' | 'quote_images' | 'followups' | 'followup_rules';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations' | 'ocular_visits' | 'quote_images' | 'followups' | 'followup_rules' | 'job_orders';
 
 export interface DB {
   users: UserAccount[]; branches: Branch[]; clients: Client[]; sites: Site[]; communications: Communication[];
@@ -830,7 +863,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[]; ocular_visits: OcularVisit[]; quote_images: QuoteImage[]; followups: FollowUp[]; followup_rules: FollowUpRule[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[]; ocular_visits: OcularVisit[]; quote_images: QuoteImage[]; followups: FollowUp[]; followup_rules: FollowUpRule[]; job_orders: JobOrder[];
   audit: AuditLog[];
   settings: Settings;
   version: number;

@@ -12,6 +12,7 @@ import { canCreateBackJob } from '@/lib/backjobs';
 import { RecordPaymentModal, canRecordPayment } from '@/components/RecordPayment';
 import { FollowUpBanner } from '@/components/workflow/Satisfaction';
 import { WorkflowPanel } from '@/components/workflow/WorkflowPanel';
+import { JobOrderPanel } from '@/components/JobOrderPanel';
 import { ReportIncidentModal } from '@/components/workflow/Incidents';
 import { overrideJobStatus } from '@/lib/workflow';
 import { serviceReportPdf } from '@/lib/export';
@@ -68,6 +69,7 @@ export default function JobDetail() {
       <BackJobSection job={j} />
       <FollowUpBanner jobId={j.id} />
       {(hasVars || fc.discount > 0) && <div className="alert info" style={{ marginBottom: 12 }}>Contract value: original {money(fc.originalNet)}{hasVars ? ` + approved variations ${money(fc.variationsNet)}` : ''}{fc.discount > 0 ? ` − discount granted ${money(fc.discountNet)}` : ''} = <b>{money(fc.payableNet)}</b> (ex-VAT). The original quotation is unchanged.{fc.discount > 0 && ' Discount approved by TopMop management and reflected in the final agreed amount.'}</div>}
+      <div style={{ marginBottom: 14 }}><JobOrderPanel job={j} /></div>
       {!wide && <Tabs tabs={[{ id: 'workflow' as const, label: 'Workflow' }, { id: 'details' as const, label: 'Job details' }]} value={tab} onChange={setTab} />}
       {(wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><WorkflowPanel job={j} onDetails={() => { setTab('details'); window.scrollTo({ top: 0 }); }} /></div>}
       {(wide || tab === 'details') && <div className="grid g2">

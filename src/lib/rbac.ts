@@ -23,6 +23,7 @@ export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'ocular.schedule', group: 'Jobs', label: 'Schedule, edit and cancel ocular visits' },
   { key: 'ocular.complete', group: 'Jobs', label: 'Complete an ocular visit and create a quotation from it' },
   { key: 'followups.manage', group: 'Clients', label: 'Client follow-ups: update status, set custom intervals, export the client list (Admin)' },
+  { key: 'joborders.manage', group: 'Jobs', label: 'Review, send and resend the client Job Order Confirmation' },
   { key: 'quoteimg.manage', group: 'Sales', label: 'Upload / delete quotation images (Team Leaders: only on their assigned jobs)' },
   { key: 'jobs.all', group: 'Jobs', label: 'View all jobs & calendar' },
   { key: 'jobs.mine', group: 'Jobs', label: 'View assigned jobs only' },
@@ -80,7 +81,7 @@ export const DEFAULT_ACCESS: Record<Role, string[]> = {
   owner: ALL,
   ops: [
     'dashboard.view', 'clients.view', 'clients.edit', 'sales.view', 'sales.edit', 'sales.approve',
-    'jobs.all', 'jobs.edit', 'jobs.complete', 'ocular.view', 'ocular.schedule', 'ocular.complete', 'quoteimg.manage', 'attendance.view', 'attendance.approve',
+    'jobs.all', 'jobs.edit', 'jobs.complete', 'ocular.view', 'ocular.schedule', 'ocular.complete', 'quoteimg.manage', 'joborders.manage', 'attendance.view', 'attendance.approve',
     'employees.view', 'employees.edit', 'performance.view', 'performance.edit',
     'inventory.view', 'inventory.edit', 'inventory.approve', 'inventory.request',
     'assets.view', 'assets.edit', 'assets.request', 'assets.approve', 'reports.ops',

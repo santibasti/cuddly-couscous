@@ -9,6 +9,7 @@ import {
 } from './business';
 import { copyQuoteImages } from './quoteimages';
 import { syncFollowUps } from './followups';
+import { syncJobOrders } from './joborders';
 import { followUpAlerts } from './followup-core';
 import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
@@ -100,8 +101,10 @@ export const jobSavedHooks: ((jobId: string) => void)[] = [];
 export function saveJob(j: JobInput): Job {
   store.require('jobs.edit');
   checkJob({ ...j, id: j.id ?? '' });
-  if (j.id) { const r = store.update('jobs', j.id, j as never, 'update', `Updated job ${j.number}`); for (const h of jobSavedHooks) h(j.id); return r; }
-  return store.insert('jobs', { ...j, number: store.nextNumber('JOB') } as never);
+  if (j.id) { const r = store.update('jobs', j.id, j as never, 'update', `Updated job ${j.number}`); for (const h of jobSavedHooks) h(j.id); syncJobOrders(j.id); return r; }
+  const created = store.insert('jobs', { ...j, number: store.nextNumber('JOB') } as never) as Job;
+  syncJobOrders(created.id);
+  return created;
 }
 export function moveJob(id: string, startAt: string) {
   store.require('jobs.edit');
@@ -110,7 +113,9 @@ export function moveJob(id: string, startAt: string) {
   const len = Math.round((Date.parse(j.end_at + ':00Z') - Date.parse(j.start_at + ':00Z')) / 60000);
   const end = new Date(Date.parse(startAt + ':00Z') + len * 60000).toISOString().slice(0, 16);
   checkJob({ ...j, start_at: startAt, end_at: end });
-  return store.update('jobs', id, { start_at: startAt, end_at: end, rescheduled_from: j.start_at, reminder_sent: false }, 'update', `Rescheduled ${j.number}: ${j.start_at} → ${startAt}`);
+  const moved = store.update('jobs', id, { start_at: startAt, end_at: end, rescheduled_from: j.start_at, reminder_sent: false }, 'update', `Rescheduled ${j.number}: ${j.start_at} → ${startAt}`);
+  syncJobOrders(id);
+  return moved;
 }
 export function setJobStatus(id: string, status: JobStatus, note?: string) {
   const j = db().jobs.find((x) => x.id === id)!;
@@ -120,6 +125,7 @@ export function setJobStatus(id: string, status: JobStatus, note?: string) {
   if (j.back_job_id && status === 'Confirmed') { const bj = db().back_jobs.find((b) => b.id === j.back_job_id); if (bj && ['Reported', 'Under Review', 'Rejected'].includes(bj.status)) fail(`Back job ${bj.number} must be approved by Admin / Operations before it can be scheduled.`); }
   const r = status === 'Cancelled' && note ? store.update('jobs', id, { status, damage_report: note }, 'update', `Cancelled ${j.number}: ${note}`) : store.update('jobs', id, { status }, 'update', `${j.number} → ${status}`);
   syncBackJobs();
+  syncJobOrders(id);
   return r;
 }
 export function updateJobField(id: string, patch: Partial<Job>) {
@@ -656,6 +662,7 @@ export function syncBackJobs() {
 export function runAutomations() {
   syncBackJobs();
   syncFollowUps();
+  syncJobOrders();
   const d = db(); const s = d.settings; const now = nowLocal(); const t = today();
   const list: Omit<Notification, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'read_by'>[] = [];
   const add = (key: string, type: string, title: string, body: string, severity: Notification['severity'], link: string, roles: Notification['for_roles'], external = false) => {
