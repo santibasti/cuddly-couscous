@@ -40,6 +40,14 @@ describe('business rules enforced by the store', () => {
     expect(() => m.A.releaseCheckout(co.id, { condition: 'Good' })).toThrow(/still checked out/);
   });
 
+  it('an asset that is checked out cannot be marked Available by hand; returning it does', async () => {
+    await as('owner@topmop.ph');
+    const active = db().checkouts.find((c) => c.status === 'Released' && db().jobs.find((j) => j.id === c.job_id)?.status === 'In Progress')!;
+    expect(() => m.store.update('assets', active.asset_id, { status: 'Available' } as never)).toThrow(/checked out to JOB-.*Return it/);
+    m.A.returnCheckout(active.id, { condition: 'Good', damage_notes: '', missing: '' });
+    expect(db().assets.find((a) => a.id === active.asset_id)!.status).toBe('Available');
+  });
+
   it('opens a repair ticket and takes the asset out of service when damage is reported on return', async () => {
     await as('owner@topmop.ph');
     const active = db().checkouts.find((c) => c.status === 'Released' && db().assets.find((a) => a.id === c.asset_id)!.category !== 'Vehicle')!;

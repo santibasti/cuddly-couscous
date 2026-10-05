@@ -255,6 +255,10 @@ class Store {
     }
     if (table === 'payments' && ((r.status as string | undefined) ?? 'Verified') === 'Verified' && !Object.keys(patch).every((k) => ['reversed', 'reversal_reason', 'cheque_status', 'cleared_at', 'notes'].includes(k))) throw new RuleError('A verified payment is locked. Reverse it with a reason and record a new one.');
     if (table === 'quote_images' && !('deleted_at' in patch)) this.guardImageParent(r as unknown as { quotation_id?: string; variation_id?: string });
+    if (table === 'assets' && patch.status === 'Available' && r.status !== 'Available') {
+      const out = this._db.checkouts.find((c) => c.asset_id === r.id && c.status === 'Released' && !c.deleted_at);
+      if (out) throw new RuleError(`${String(r.name)} is checked out to ${this._db.jobs.find((j) => j.id === out.job_id)?.number ?? 'a job'}. Return it on the Equipment Out/In page (or finish that job's close-out) before marking it Available.`);
+    }
     if (table === 'checkouts' && r.status === 'Returned') throw new RuleError('Completed out/in records are locked.');
     if (table === 'workflows' && r.closed_at && !(this._reason && (this.role === 'ops' || this.role === 'owner'))) throw new RuleError('A closed job workflow is locked. An Operations Manager or Admin can correct it with a reason.');
     if (table === 'variations' && r.status === 'Approved' && !this._reason) throw new RuleError('An approved variation is locked. Create a new variation or correct it with a reason.');
