@@ -130,7 +130,7 @@ overpayment, negative stock and single-release-per-asset all reject correctly.
 
 Without any setup the app runs in **demo mode** (data stays in the browser). To run it on a real Supabase project:
 
-1. Apply `supabase/migrations/0001…0018` (`supabase link`, `supabase db push`). Optionally load the sample data (`npm run db:seed-sql`, then run `supabase/seed.sql`).
+1. Apply `supabase/migrations/0001…0019` (`supabase link`, `supabase db push`). Optionally load the sample data (`npm run db:seed-sql`, then run `supabase/seed.sql`).
 2. Create the first login in Supabase → Authentication → Users, then add its row in `public.profiles` (`id` = the user id, `name`, `email`, `role = 'owner'`).
 3. Copy `.env.example` to `.env.local` and fill in the project URL and the **anon** key (Project Settings → API). On Vercel, add the same two variables under Settings → Environment Variables.
 4. `npm run dev` — the sign-in page now uses Supabase. Every change is saved to the database, which re-checks every business rule; a refused change is undone and the reason is shown. Other people's changes appear within about 45 seconds.
