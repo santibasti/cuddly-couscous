@@ -6,6 +6,7 @@ import { countPanels, docTotals, priceService, type GlassRow } from '@/lib/busin
 import { duplicateQuotation, saveQuotation, setQuoteStatus } from '@/lib/actions';
 import { quotationPdf, shareTextQuote } from '@/lib/export';
 import { IncludeImagesToggle, QuoteImageGallery } from '@/components/QuoteImages';
+import { SiteForm } from './ClientDetail';
 import { addDays, fmtStamp, money, today } from '@/lib/util';
 import type { Quotation, QuoteItem, ServiceCode } from '@/lib/types';
 
@@ -47,6 +48,7 @@ export default function QuoteEditor() {
   const [calc, setCalc] = useState(false);
   const [pdfImg, setPdfImg] = useState(false);
   const [svc, setSvc] = useState<ServiceCode>('GLASS_EXT');
+  const [newSite, setNewSite] = useState(false);
   const [qty, setQty] = useState(31);
   const [note, setNote] = useState('');
   const f = useObj<Form>(() => existing ? { ...existing } : {
@@ -101,7 +103,7 @@ export default function QuoteEditor() {
         <Card title="Client & scope">
           <div className="form-grid">
             <Field label="Client" required><select value={v.client_id} disabled={readOnly} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', undefined); const c = db.clients.find((x) => x.id === e.target.value); if (c) f.set('vat_mode', c.vat_status === 'VAT-registered' ? 'exclusive' : 'none'); }}>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
-            <Field label="Service location"><select value={v.site_id ?? ''} disabled={readOnly} onChange={(e) => f.set('site_id', e.target.value || undefined)}><option value="">— select site —</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
+            <Field label="Service location" hint={v.client_id && !sites.length ? 'This client has no service site yet.' : undefined}><div className="row" style={{ gap: 6 }}><select style={{ flex: 1 }} value={v.site_id ?? ''} disabled={readOnly} onChange={(e) => f.set('site_id', e.target.value || undefined)}><option value="">— select site —</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{v.client_id && !readOnly && can('clients.edit') && <button type="button" className="btn sm" onClick={() => setNewSite(true)}>+ Site</button>}</div></Field>
             <Field label="Issue date"><input type="date" disabled={readOnly} {...f.bind('issue_date')} /></Field>
             <Field label="Valid until"><input type="date" disabled={readOnly} {...f.bind('valid_until')} /></Field>
             <Field label="Scope of work" className="full"><textarea disabled={readOnly} {...f.bind('scope')} placeholder="Describe the work, areas, exclusions and access requirements…" /></Field>
@@ -169,6 +171,7 @@ export default function QuoteEditor() {
           {job && <Link to={`/jobs/${job.id}`} className="btn lg">View job {job.number}</Link>}
         </div>
       </div>
+      {newSite && <SiteForm clientId={v.client_id} onClose={() => setNewSite(false)} onSaved={(st) => f.set('site_id', st.id)} />}
       {calc && <PanelCalc onClose={() => setCalc(false)} onAdd={(p) => { setQty(p); addPriced('GLASS_EXT', p); setCalc(false); }} />}
     </>
   );

@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth, live } from '@/lib/store';
 import { Field, Icon, Modal, attempt, useObj } from '@/components/ui';
 import { docTotals, findConflicts } from '@/lib/business';
 import { saveJob } from '@/lib/actions';
 import { addDays, today } from '@/lib/util';
+import { SiteForm } from '@/pages/ClientDetail';
 import type { Job, ServiceCode } from '@/lib/types';
 
 export const PPE_OPTIONS = ['Hard hat', 'Safety boots', 'Gloves', 'Safety goggles', 'Full-body harness & lanyard', 'High-visibility vest', 'Respirator / mask', 'Rain gear', 'Sun protection'];
@@ -15,7 +16,8 @@ export function defaultChecklist(db: { services: { code: ServiceCode; name: stri
 type Form = Omit<Job, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'number'>;
 
 export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }: { initial?: Job; fromQuoteId?: string; defaultStart?: string; onClose: () => void; onSaved?: (j: Job) => void }) {
-  const { db } = useAuth();
+  const { db, can } = useAuth();
+  const [newSite, setNewSite] = useState(false);
   const q = fromQuoteId ? db.quotations.find((x) => x.id === fromQuoteId) : undefined;
   const day = defaultStart ?? addDays(today(), 1);
   const f = useObj<Form>(() => initial ? { ...initial } : {
@@ -52,11 +54,12 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
   };
 
   return (
+    <>
     <Modal size="xl" title={initial ? `Edit ${initial.number}` : 'Book a job'} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save}>{initial ? 'Save changes' : 'Book job'}</button></>}>
       {conflicts.length > 0 && <div className="alert err" style={{ marginBottom: 12 }}><b>Double-booking detected.</b> Highlighted resources are already assigned in this time window; saving is blocked until resolved.</div>}
       <div className="form-grid">
         <Field label="Client" required><select value={v.client_id} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', ''); }}>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
-        <Field label="Job site" required><select {...f.bind('site_id')}><option value="">— select —</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
+        <Field label="Job site" required hint={v.client_id && !sites.length ? 'This client has no service site yet.' : undefined}><div className="row" style={{ gap: 6 }}><select style={{ flex: 1 }} {...f.bind('site_id')}><option value="">— select —</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{v.client_id && can('clients.edit') && <button type="button" className="btn sm" onClick={() => setNewSite(true)}>+ Site</button>}</div></Field>
         <Field label="Start"><input type="datetime-local" step={900} {...f.bind('start_at')} /></Field>
         <Field label="End"><input type="datetime-local" step={900} {...f.bind('end_at')} /></Field>
         <div className="full"><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Services</div><div className="row">{db.services.map((s) => <label key={s.code} className="check"><input type="checkbox" checked={v.service_codes.includes(s.code)} onChange={() => toggle('service_codes', s.code)} />{s.name}</label>)}</div></div>
@@ -96,5 +99,7 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
         </div>
       </div>
     </Modal>
+      {newSite && <SiteForm clientId={v.client_id} onClose={() => setNewSite(false)} onSaved={(st) => f.set('site_id', st.id)} />}
+    </>
   );
 }

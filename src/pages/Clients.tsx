@@ -20,10 +20,19 @@ export function ClientForm({ initial, onClose }: { initial?: Client; onClose: ()
     tin: '', vat_status: 'VAT-registered', withholding_rate: 0, withholding_notes: '', branch_id: db.branches[0].id,
   });
   const tax = can('clients.tax') || !initial;
+  const [mkSite, setMkSite] = useState(true);
+  const site = useObj({ name: 'Main site', address: '', contact_person: '', contact_mobile: '', access_instructions: '' });
   const save = () => {
     if (!f.v.name.trim() || !f.v.contact_person.trim()) return attempt(() => { throw new Error('Client name and contact person are required.'); });
     if (f.v.email && !/^\S+@\S+\.\S+$/.test(f.v.email)) return attempt(() => { throw new Error('Enter a valid email address.'); });
-    const r = attempt(() => (initial ? store.update('clients', initial.id, f.v, 'update', `Updated client ${f.v.name}`) : store.insert('clients', f.v)), 'Client saved');
+    const siteAddr = (site.v.address || f.v.address).trim();
+    if (!initial && mkSite && !siteAddr) return attempt(() => { throw new Error('Enter the client address or the service site address (or untick “Add a service site now”).'); });
+    const r = attempt(() => {
+      if (initial) return store.update('clients', initial.id, f.v, 'update', `Updated client ${f.v.name}`);
+      const c = store.insert('clients', f.v) as Client;
+      if (mkSite) store.insert('sites', { client_id: c.id, name: site.v.name.trim() || 'Main site', address: siteAddr, contact_person: site.v.contact_person.trim() || f.v.contact_person, contact_mobile: site.v.contact_mobile.trim() || f.v.mobile, access_instructions: site.v.access_instructions.trim() || f.v.access_instructions } as never);
+      return c;
+    }, 'Client saved');
     if (r) { onClose(); if (!initial) nav(`/clients/${(r as Client).id}`); }
   };
   return (
@@ -40,6 +49,19 @@ export function ClientForm({ initial, onClose }: { initial?: Client; onClose: ()
         <Field label="Billing address" className="full"><input {...f.bind('billing_address')} placeholder="Same as address if blank" /></Field>
         <Field label="Access instructions"><textarea {...f.bind('access_instructions')} /></Field>
         <Field label="Notes"><textarea {...f.bind('notes')} /></Field>
+        {!initial && (
+          <div className="full" style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 12 }}>
+            <label className="row" style={{ gap: 8, fontWeight: 700 }}><input type="checkbox" checked={mkSite} onChange={(e) => setMkSite(e.target.checked)} />Add a service site now <span className="small muted" style={{ fontWeight: 400 }}>(jobs and quotations need a site; you can add more later on the client page)</span></label>
+            {mkSite && (
+              <div className="form-grid" style={{ marginTop: 10 }}>
+                <Field label="Site name"><input {...site.bind('name')} /></Field>
+                <Field label="Site address" hint="Leave blank to use the client address above."><input {...site.bind('address')} placeholder={f.v.address || 'Street, barangay, city'} /></Field>
+                <Field label="Site contact" hint="Blank = the contact person above."><input {...site.bind('contact_person')} /></Field>
+                <Field label="Site contact mobile"><input {...site.bind('contact_mobile')} /></Field>
+              </div>
+            )}
+          </div>
+        )}
         {tax && <>
           <Field label="TIN"><input {...f.bind('tin')} placeholder="000-000-000-000" /></Field>
           <Field label="VAT status"><select {...f.bind('vat_status')}><option>VAT-registered</option><option>Non-VAT</option><option>VAT-exempt</option></select></Field>

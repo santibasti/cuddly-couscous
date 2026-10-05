@@ -13,11 +13,11 @@ import type { Communication, Complaint, Site } from '@/lib/types';
 
 type Tab = 'overview' | 'sites' | 'quotes' | 'jobs' | 'billing' | 'reports' | 'complaints' | 'comms';
 
-function SiteForm({ clientId, initial, onClose }: { clientId: string; initial?: Site; onClose: () => void }) {
+export function SiteForm({ clientId, initial, onClose, onSaved }: { clientId: string; initial?: Site; onClose: () => void; onSaved?: (s: Site) => void }) {
   const f = useObj(() => initial ?? { client_id: clientId, name: '', address: '', contact_person: '', contact_mobile: '', access_instructions: '' } as Omit<Site, 'id' | 'created_at' | 'updated_at' | 'created_by'>);
   const save = () => {
     if (!f.v.name.trim() || !f.v.address.trim()) return attempt(() => { throw new Error('Site name and address are required.'); });
-    attempt(() => (initial ? store.update('sites', initial.id, f.v) : store.insert('sites', f.v)), 'Site saved'); onClose();
+    const r = attempt(() => (initial ? store.update('sites', initial.id, f.v) : store.insert('sites', f.v)), 'Site saved'); if (r) { onSaved?.(r as Site); onClose(); }
   };
   return (
     <Modal title={initial ? 'Edit service site' : 'Add service site'} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save}>Save site</button></>}>
