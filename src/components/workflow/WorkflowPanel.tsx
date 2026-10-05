@@ -132,7 +132,9 @@ function PrepForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean })
   const [confirmed, setConfirmed] = useState(false);
   const [scan, setScan] = useState<{ key?: string } | null>(null);
   const [adding, setAdding] = useState(false);
-  const dr = useDraft(`d:${wf.id}:hq`, { items, fuel, reason, notes }, (d) => { setItems(d.items); setFuel(d.fuel); setReason(d.reason); setNotes(d.notes); }, run && !wf.hq_at);
+  const dr = useDraft(`d:${wf.id}:hq`, { items, fuel, reason, notes }, (d) => { setItems(mergePrep(wf.items, d.items)); setFuel(d.fuel); setReason(d.reason); setNotes(d.notes); }, run && !wf.hq_at);
+  // the booking can change while prep is open: follow the saved list (items added / removed), keep what was confirmed here
+  useEffect(() => { if (!wf.hq_at) setItems((cur) => mergePrep(wf.items, cur)); }, [wf.items, wf.hq_at]);
   const draft = () => ({ items, hq_fuel: fuel, hq_notes: notes, hq_shortage_reason: reason });
   const gaps = useMemo(() => hqGaps(draft() as never), [items, reason]); // eslint-disable-line react-hooks/exhaustive-deps
   const setItem = (key: string, patch: Partial<CheckItem>) => setItems((a) => a.map((i) => (i.key === key ? { ...i, ...patch } : i)));
@@ -222,6 +224,13 @@ function DispatchForm({ wf, run }: { wf: JobWorkflow; run: boolean }) {
       {run && <button className="btn primary lg" disabled={!ok} onClick={() => attempt(() => dispatchJob(wf.id, { at, confirmed: ok }), 'Crew dispatched')}>Dispatch crew</button>}
     </div>
   );
+}
+
+/** Items from the saved prep list, carrying over any progress made on this screen; drafts never bring back an item removed from the booking. */
+function mergePrep(saved: CheckItem[], local: CheckItem[]): CheckItem[] {
+  const mine = new Map(local.map((i) => [i.key, i]));
+  const merged = [...saved.map((s) => (mine.has(s.key) ? { ...s, ...mine.get(s.key)!, label: s.label, code: s.code, qty: s.qty } : s)), ...local.filter((i) => i.extra && !saved.some((s) => s.key === i.key))];
+  return JSON.stringify(merged) === JSON.stringify(local) ? local : merged;
 }
 
 /* ================= Step 3: Site Check-In (arrival + attendance) ================= */

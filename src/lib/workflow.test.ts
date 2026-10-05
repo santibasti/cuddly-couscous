@@ -1152,3 +1152,30 @@ describe('Client lifetime value & maintenance follow-up', () => {
     expect(st.overdue.every((o) => o.f.client_id !== c.id)).toBe(true);
   });
 });
+
+describe('Job prep follows the booking', () => {
+  it('removing equipment from the booking removes it from the open prep list; confirmed and added items stay', async () => {
+    await as('owner@topmop.ph');
+    const lead = db().employees[3].id;
+    const sc = scenario('PREPSYNC', lead);
+    store.update('jobs', sc.job.id, { start_at: '2031-07-01T08:00', end_at: '2031-07-01T17:00' } as never);
+    const wf = W.openWorkflow(sc.job.id);
+    expect(wf.items.some((i) => i.asset_id === sc.tool.id)).toBe(true);
+    // the Team Leader confirms the pressure washer on the prep list, then Operations takes the ladder off the booking
+    store.update('workflows', wf.id, { items: wf.items.map((i) => (i.asset_id === sc.eq.id ? { ...i, out_ok: true, out_by: 'manual' as const } : i)) } as never);
+    const job = db().jobs.find((j) => j.id === sc.job.id)!;
+    A.saveJob({ ...job, equipment_ids: [sc.eq.id], id: job.id } as never);
+    const items = db().workflows.find((w) => w.id === wf.id)!.items;
+    expect(items.some((i) => i.asset_id === sc.tool.id)).toBe(false);                       // gone from the prep list
+    expect(items.find((i) => i.asset_id === sc.eq.id)).toMatchObject({ out_ok: true });     // progress kept
+    // a new piece of equipment on the booking appears; prep can then be completed without the removed one
+    A.saveJob({ ...db().jobs.find((j) => j.id === sc.job.id)!, equipment_ids: [sc.eq.id, sc.tool.id], id: sc.job.id } as never);
+    expect(db().workflows.find((w) => w.id === wf.id)!.items.some((i) => i.asset_id === sc.tool.id)).toBe(true);
+    // once prep is done the list is locked: later edits do not rewrite it
+    A.saveJob({ ...db().jobs.find((j) => j.id === sc.job.id)!, equipment_ids: [sc.eq.id], id: sc.job.id } as never);
+    W.completeHqChecklist(wf.id, prepForm(db().workflows.find((w) => w.id === wf.id)!) as never);
+    const before = JSON.stringify(db().workflows.find((w) => w.id === wf.id)!.items);
+    A.saveJob({ ...db().jobs.find((j) => j.id === sc.job.id)!, equipment_ids: [sc.eq.id, sc.tool.id], id: sc.job.id } as never);
+    expect(JSON.stringify(db().workflows.find((w) => w.id === wf.id)!.items)).toBe(before);
+  });
+});

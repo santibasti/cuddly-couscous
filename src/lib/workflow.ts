@@ -8,7 +8,7 @@ import type {
 } from './types';
 import { isDone, ISSUE_CATEGORIES, RATING_STARS_FROM_QUESTIONS, needsFollowUp, openFollowUp, buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
 import { syncFollowUps } from './followups';
-import { settleConfirmation, syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
+import { jobSavedHooks, settleConfirmation, syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { nowLocal, today } from './util';
 
 const db = (): DB => store.getDB();
@@ -71,6 +71,21 @@ export function openWorkflow(jobId: string): JobWorkflow {
   if (job.status === 'Confirmed') setStatus(job, 'Dispatch Checklist Pending');
   return wf;
 }
+
+/**
+ * Keeps the HQ prep list in step with the booking until prep is done: equipment, PPE or materials removed (or swapped) when the job was edited drop off
+ * the list, new ones are added, and anything already confirmed or added by the Team Leader is kept.
+ */
+export function reconcilePrep(jobId: string) {
+  const wf = workflowFor(jobId); const job = db().jobs.find((j) => j.id === jobId);
+  if (!wf || !job || wf.hq_at || wf.deleted_at) return;
+  const fresh = buildChecklistItems(db(), job);
+  const old = new Map(wf.items.map((i) => [i.key, i]));
+  const next = [...fresh.map((f) => { const o = old.get(f.key); return o ? { ...o, label: f.label, code: f.code, qty: f.qty, responsible_id: f.responsible_id } : f; }), ...wf.items.filter((i) => i.extra)];
+  if (JSON.stringify(next) === JSON.stringify(wf.items)) return;
+  store.update('workflows', wf.id, { items: next } as never, 'update', `Job prep list updated after ${job.number} was edited`);
+}
+jobSavedHooks.push(reconcilePrep);
 
 export type HqDraft = Partial<Pick<JobWorkflow, 'items' | 'hq_fuel' | 'hq_notes' | 'hq_shortage_reason'>>;
 export function saveHqDraft(id: string, patch: HqDraft) {

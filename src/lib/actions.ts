@@ -95,10 +95,12 @@ function checkJob(j: Pick<Job, 'id' | 'start_at' | 'end_at' | 'leader_id' | 'cre
     if (a && ['Retired', 'Damaged', 'Under Maintenance', 'Missing'].includes(a.status)) fail(`${a.name} is ${a.status.toLowerCase()} and cannot be assigned.`);
   }
 }
+/** Called after a job is saved (the workflow module registers here to refresh the HQ prep list). */
+export const jobSavedHooks: ((jobId: string) => void)[] = [];
 export function saveJob(j: JobInput): Job {
   store.require('jobs.edit');
   checkJob({ ...j, id: j.id ?? '' });
-  if (j.id) return store.update('jobs', j.id, j as never, 'update', `Updated job ${j.number}`);
+  if (j.id) { const r = store.update('jobs', j.id, j as never, 'update', `Updated job ${j.number}`); for (const h of jobSavedHooks) h(j.id); return r; }
   return store.insert('jobs', { ...j, number: store.nextNumber('JOB') } as never);
 }
 export function moveJob(id: string, startAt: string) {
