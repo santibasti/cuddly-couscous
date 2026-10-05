@@ -1,1 +1,139 @@
-# cuddly-couscous
+# TopMop Operations
+
+Field-service operating system for **TopMop Window Cleaning Solutions Corp.** — CRM, quotations, booking, job cards, attendance,
+payroll, inventory, equipment out/in, expenses, receivables, job costing, reports and automations, in PHP (₱) and Asia/Manila time.
+
+> **Status:** Phases 1–3 are implemented as a working, demo-ready web app. The app currently runs on an in-browser demo
+> data store; the PostgreSQL/Supabase schema, business-rule triggers and RLS policies are complete and tested, but the UI is
+> **not yet wired to Supabase** — see [What is and isn't done](#what-is-and-isnt-done).
+
+## Run it
+
+```bash
+npm install
+npm run dev          # http://localhost:5173
+npm test             # 100 tests: pricing rules, payroll maths, store rules, seed integrity, 7-step job workflow, drafts & sync status
+npm run build        # type-check + production build
+```
+
+Sign in with any demo account (password **`topmop123`**), or use the role buttons on the login screen:
+
+| Role | Login | Lands on |
+| --- | --- | --- |
+| Owner / Admin | `owner@topmop.ph` | Dashboard |
+| Operations Manager | `ops@topmop.ph` | Dashboard |
+| Finance / Admin Staff | `finance@topmop.ph` | Dashboard |
+| Team Leader | `leader@topmop.ph` | Dashboard (own jobs) |
+| Field Employee | `field@topmop.ph` | Clock in/out (mobile-first) |
+| Viewer / Accountant | `accountant@topmop.ph` | Reports |
+| Client portal | `/#/portal` – any client contact email, password `topmop123` | Quotes / services / invoices |
+
+Sample data is generated relative to *today* (~110 jobs, 16 employees, 13 clients, 24 stock items, 21 assets, 84 invoices,
+payroll periods in every status, alerts of every kind), so every module is populated immediately. **Admin → Data & security → Reset** restores it.
+
+## Tablet-first / installable (PWA)
+
+The field screens (Job Card workflow, Equipment checklists, Site Arrival, Attendance, Conforme, Panel counting, Variation, Service Report, signatures, Return check) are laid out for 10–13" Android tablets and iPads, portrait and landscape. Desktop keeps the dense reporting, finance and table screens.
+
+* **Layout:** phones < 768 px use the bottom bar; tablets 768–1199 px use a slim icon rail; wider screens the full sidebar. Touch devices get 48 px+ buttons and fields, large segmented toggles, switches, quantity steppers (− / +) and tap-to-fill phrase chips.
+* **Job workflow:** the 7-step tracker stays visible (sticky step strip in portrait, full progress rail in landscape) and **one step is shown at a time** with Back / Next. Job details (checklist, costing) are on a second tab.
+* **GPS, QR, signature:** GPS is captured automatically with the client signature and on attendance; there is **no photo storage and no odometer** in this app (TopMop keeps before/after, site, equipment and service photos in its own separate file system); QR **and barcode** scanning through the camera (native `BarcodeDetector` where the browser has it, QR fallback elsewhere, typed code always works); touch / stylus signature pads that keep the signature when the tablet is rotated.
+* **Drafts & sync status:** every step auto-saves what you type to the tablet and restores it after a reload, crash or lost connection. A status chip shows **Saved · Saving… · Offline Draft · Synced** (top bar and on each step). Leaving a step or the app with unsubmitted entries asks first.
+* **Install:** open the site over HTTPS in Chrome (Android) or Safari (iPad → Share → Add to Home Screen). The service worker caches the app so it opens with no signal.
+
+## Client Final Quote Review (workflow step 4)
+
+Before the client signs on site, the Team Leader (or Admin) can add optional **additional work** — Additional Glass Panels, Solar Panel Cleaning, Floor / Hardscape, Wall, Roof or any custom service — and present one clean, tablet-friendly page to the client: **1 Original Scope of Work · 2 Additional Work Requested / Confirmed at Site · 3 Final Billing Summary** (original total, additional work, discount, VAT, final total bill, deposit, balance due) with the required notice.
+
+* **Rates:** TopMop price-list defaults (glass ₱140/panel, solar ₱245/panel min 20, floor & wall ₱125/sqm min 50, roof ₱145/sqm min 100 — editable in Admin → Pricing). Minimums are applied automatically. Only an Operations Manager / Admin can change a rate or give a discount. Glass lines are linked to the panel-counting table (original, additional, external, internal, total panels).
+* **Client decision:** *Approve Final Quote and Sign* (name, touch signature, date/time, device and GPS), *Decline Additional Work* (removed from the bill but kept as “offered and declined”), or *Request Revision* (the quote stays open until it is re-presented). Work cannot start until the client has signed.
+* **Records:** the original quotation is read-only; approved additions are saved as a linked **variation / change order** and raise the job's contract value; everything is audited. One PDF contains the original quote, the additions and the final bill. Approved amounts flow into the invoice (with the deposit noted), receivables, revenue, expected-billing and job profitability.
+
+## Modules
+
+| Phase | Module | Highlights |
+| --- | --- | --- |
+| 1 | **Login & roles** | Six roles; permission matrix editable by the Owner (Admin → Permissions); disabled users; route + action level enforcement |
+| 1 | **Dashboard** | Today's jobs, crew clocked in/out, machines out, low stock, pending quotes, receivables, revenue/expenses/gross & net profit, payroll payable, upcoming bookings, completed vs scheduled, revenue by service, top clients, balances; filter by date range / branch / service / client; expected → billed → collected → paid strip |
+| 1 | **Clients** | Types, status, tax/VAT/withholding, multiple sites, notes & access instructions, quotation/job/invoice/payment/service-report history, complaints, communication log with follow-ups |
+| 1 | **Jobs & calendar** | Month / week / day / list; **drag-and-drop rescheduling**; crew, leader, vehicle, equipment, PPE, materials, checklist, findings, damage report, signature sign-off, service-report PDF; **double-booking blocked** for crew, vehicles and machines |
+| 1 | **Attendance** | GPS + timestamp + optional selfie, late/undertime/OT/holiday/rest-day/field-work flags, approvals, correction requests with trail, daily view by job site |
+| 1 | **Employees** | Full profile, government IDs, bank, documents & expiry, trainings, monthly scorecard & tier |
+| 4 | **Job workflow** (inside every Job Card) | One streamlined 7-step tracker inside every Job Card: **1 Job Prep at HQ** (one combined checklist: team & crew, tools Good/Damaged/Missing, PPE, materials issued; equipment → In Use, stock reserved) **→ 2 Dispatch** (departure time + leader confirmation) **→ 3 Site Check-In** (arrival time, site contact, crew attendance synced to Attendance / Payroll without duplicates) **→ 4 Scope Approval** (new client / job / changed scope: quotation review, panel-counting table and client signature; unchanged recurring job: read-only approved scope + *Scope Confirmed – No Changes*; extra work: Variation Approval with original amount, additional amount, VAT, final bill and client signature before the work starts; the original quotation is never overwritten) **→ 5 Work in Progress** (start / finish time, notes, optional safety incident) **→ 6 Client Handover** (Service Accomplishment Report generated from job, scope, variation, crew and equipment data; client and team leader signatures) **→ 7 Close-Out** (return quantity / condition, materials used & returned, leave-site and HQ-arrival times; missing / damaged equipment auto-creates an Equipment Incident Report and sets the asset to Available / Under Maintenance / Damaged / Missing). Every step is audited; Ops / Owner can correct records and override status only with a reason. Incident reports live under Equipment → Incidents; QR labels under Equipment → Print QR labels |
+| 4a | **Controlled discounts** (internal to the Team Leader, never on the client-facing quote) | The client-facing Final Quote Review shows only: 1 original scope & amount → 2 additional work → 3 final-bill summary (Original Quote Total, Additional Work Total, Discount if approved, VAT, Final Amount Payable) → 4 client approval & signature. There is **no discount button** there. When the client asks for a discount, the Team Leader goes **Back to editing** and taps **Request Discount** in the internal *Discount* box on the Scope Approval step (% or ₱, reason: Client request / Repeat client / Volume work / Competitor price / Other, notes) and sees original total, requested discount, proposed final amount and *Pending Approval*. The request goes straight to the Owner/Admin (notification + dashboard card with Review / Approve / Reject, usable on a phone; approval needs a note). Team Leaders and Field staff can never apply or edit a discount. **Approved** → the quotation shows the discount and revised Final Amount Payable and the client signs it. **Rejected** → the original amount stands (the Team Leader cannot ask again) and the client signs the original quotation or declines the job (no work, nothing billed, equipment returned at Close-Out). While a request is pending the client screen only says the quotation is being finalized; the client cannot sign and Start Work stays locked. The original quotation and rates never change; the discount flows to the invoice, revenue and job profitability, and Finance → Discounts / Reports group it by client, service, Team Leader, reason, month and job |
+| 4b | **Client Satisfaction Check** | At the end of Client Handover (before the client signs) the client answers three short questions on a large 1–5 scale (1 Poor · 2 Fair · 3 Good · 4 Very Good · 5 Excellent): quality of cleaning, the crew’s professionalism, communication and service experience. Then the overall choice appears: 😞 Not Satisfied / 😐 Satisfied / 😊 Very Satisfied, with an optional comment — about four taps, under 20 seconds. Saved against the client, job, team leader, crew, service type and date. **Not Satisfied or any 1–2 rating** → the Team Leader picks an issue category (Quality, Delay, Communication, Damage, Scope, Other), the Owner/Admin is notified and a *Follow-Up Required* item is created; the crew can still do Close-Out but the job stays open until the Admin acknowledges it. The Dashboard section shows the average, per-question averages, by team leader / crew / service type, follow-ups and a 6-month trend. No photos or odometer |
+| 4f | **Ocular visits** | A booking type in the same calendar as jobs (purple 👁 chips). Admin/Operations schedule a visit with client and contact person, service location, requested service type, proposed date and time, assigned Team Leader/estimator (double-booking blocked), expected duration, client concerns and access notes; status Scheduled → Confirmed → Completed (or Cancelled) → Converted to Quotation. On the day, the Team Leader/Admin completes it by recording the glass panel count (floor, side, external, internal), measurements and notes — no photos, no odometer — and can then **create a quotation from the visit**, which carries forward the client, location, requested services, panel count, measurements, notes and the assigned person. Reminders (today, tomorrow, not yet confirmed, not closed out, awaiting quotation) and a dashboard widget: Ocular Visits Today / Upcoming / Awaiting Quotation / Converted to Quotation |
+| 4g | **Quotation images** | Optional images/attachments inside the Quotation editor and each Variation Approval — never required. Admin, Operations Manager and the assigned Team Leader can upload/delete (Finance/Viewer cannot). Each image has a caption, a category (Scope Area, Panel Count, Additional Work, Site Condition, Access Limitation, Exclusion, Other) and an optional link to a quotation line item / variation item. Thumbnail gallery; "Include images in PDF" adds selected images + captions to the generated PDF; the client portal / client-facing view show only images flagged "Show to client". Stored separately from job/service photos (own table and bucket); the original quotation and each approved variation keep their images (locked once approved, copied — not overwritten — on revision). Migration `0016_quotation_images.sql` |
+| 4h | **Client lifetime value & maintenance follow-up** | Every client profile opens with a summary: Lifetime Billed (finalized invoices), Lifetime Collected (verified payments), Outstanding Receivables, Total Completed Services (completed/closed jobs only), Last Completed Service Date and Type, Next Recommended Follow-Up Date and Follow-Up Status (Not Due, Due Soon, Due Today, Overdue, Contacted, Booked, Not Interested). Follow-ups are counted from the newest completed service: **6 months** and **1 year** by default, or an Admin custom interval per client / service type (client wins). A new completed job resets the older open follow-ups (kept as history) and recalculates both dates; one follow-up per client + interval + service, and no 1-year reminder after a newer service. Client list filters: due 6 months / 1 year, due in 30 days, overdue, last service type and date, billed, collected, completed services, outstanding, client type and location, with an Admin Excel export of the filtered list. Admin is notified 14 days before and on each follow-up date (client, contact + mobile, location, last service, lifetime billed, completed services, outstanding, suggested action) and marks Contacted / Follow-Up Scheduled / Quotation Sent / Booked / Not Interested / Snoozed (Notifications → Client follow-up tasks). Dashboard widget: Due This Week, Due This Month, Overdue, Converted to Bookings, Revenue from Follow-Up Bookings. Read-only over billing — no financial calculation changed. Migration `0017_client_followups.sql` |
+| 4i | **Installable app (PWA)** | Installs from the browser on Android (one-tap Install button) and on iPhone / iPad (a short Share → Add to Home Screen guide), opens full screen with the TopMop icon, and the app shell opens with no connection. Offline: forms keep drafts on the device; in live mode every change made offline is queued on the device (survives closing the app), sent in order when the connection returns (retried every 30 s, plus on reconnect), and the last data and unused document numbers are kept so the app opens and jobs / quotations can still be created without signal. A refused change is undone with the database's message. A "new version ready — Reload" banner appears after an update. Needs HTTPS (Vercel) to install on a phone |
+| 4c | **Payment recording & verification** | **Record Payment** on the completed job, invoice, client account and receivables screens. Methods: Cash (amount, received by), Bank Transfer (bank, account/reference no., transfer date), Cheque (bank, cheque no., cheque date, clearing status), GCash (reference no., sender name/mobile). Every payment stores client, job, invoice, date & time, amount, method, reference, received by, notes and a status: **Pending Verification → Verified / Rejected**. Partial payments are allowed; *Final bill − verified payments = outstanding balance*. Only **Verified** money (and, for cheques, only **Cleared**) updates the invoice, statement of account, receivables aging, revenue/collections dashboard and job profitability. Team Leaders can record **cash as Pending Verification only**; only Admin/Finance verify, reject, edit (while pending), reverse or delete (pending/rejected only) payments. Verified payments are locked — never overwritten. A payment receipt PDF (payment no., client, job/invoice, amount, method, date, received by) is generated; Finance → Payments shows status, cheque clearing and all actions |
+| 4d | **Back Job / Callback** | On any completed or closed job, Admin/Operations tap **Create Back Job / Callback**. The original job, service report, quotation, invoice and payments are never reopened or changed; a **linked follow-up job** is created (own job number, schedule, attendance, equipment checklist, service report and closure — it runs through the same 7-step workflow). Required: reason (Missed Area, Quality Issue, Client Complaint, Damage, Warranty/Touch-Up, Other), description, date reported, reported by, responsible department/person, charge type, and approval by Admin or an Operations Manager. Status: **Reported → Under Review → Approved → Scheduled → In Progress → Resolved → Closed** (or Rejected), driven by the follow-up job. **No Charge**: no bill; its labor/materials/equipment cost is added to the original job’s profitability as *Back Job Cost*. **Chargeable**: a new quotation the client must approve (signature) before work starts; the new invoice and payments link to the back job. Dashboard section + Reports: open back jobs, by reason, cost by client/crew/service, repeated callbacks, resolution time, satisfaction after the fix |
+| 4e | **Payment Method Confirmation** | At the top of **Client Handover** (just before the report signature and the Client Satisfaction Check) the Team Leader asks the client how they will pay: Cash, GCash, Bank Transfer, Cheque or Terms / To Be Billed. The final approved bill (original + approved additional work − approved discount, VAT included) is shown, and the Team Leader records received / to be paid later, the amount expected today, the balance to bill or collect later, a client note and confirms it. Cash needs the amount received; GCash the reference number; Bank Transfer the bank and transfer reference; Cheque the bank, cheque number and cheque date; Terms the agreed terms or due date (which becomes the invoice due date). Money received creates a payment entry that is always **Pending Verification** — only Finance/Admin can verify it, the Team Leader never can. It is kept apart from the service record and **never blocks** the handover or service report signature; the answer shows on the invoice notes, the receivables list and the Record Payment form, and in Reports → Payment method confirmations |
+| 1 | **Equipment out/in** | Register, request → approve/release → return with condition; **never checked out to two jobs**; overdue flags; damage auto-creates a repair ticket; utilization & downtime |
+| 1 | **Inventory** | Beginning/in/out/reserved/available, valuation (weighted-average cost), expiry & batch, receiving, issue/return to job, waste, adjustments with approval, transfers, physical counts, reversal entries, material requests |
+| 2 | **Quotations** | Pipeline (inquiry → ocular → quotation → approval → booked), TopMop pricing rules (glass ₱4,799/31 panels + ₱140 excess, roof ₱145/sqm min 100, wall/floor ₱125/sqm min 50, solar ₱245/panel min 20 — editable in Admin), glass **panel counter** (2×1 m rule, grouped small panels), VAT/discount, PDF, email & WhatsApp share |
+| 2 | **Invoices & receivables** | Invoice from job, approval lock, reversal, partial payments, withholding-tax credit, receipts (PDF), statement of account, aging (Current / 1–30 / 31–60 / 61–90 / 90+), reminders |
+| 2 | **Expenses** | Categories, VAT/WHT, receipt upload, approval, recurring auto-generation, petty cash ledger |
+| 2 | **Payroll** | Pulls approved attendance; regular, OT, holiday, rest-day, leave, allowances, incentives, reimbursements, cash advances, loans; SSS/PhilHealth/Pag-IBIG/withholding tax from **configurable** rates; Draft → For Approval → Approved → Finalized (locked); payslip PDF; register Excel; approved payroll posts to Expenses |
+| 2 | **Job costing** | Labor (from attendance), materials (from stock issues), transport, equipment allocation, subcontractors, other; **estimated vs actual** flags; unprofitable-job alerts |
+| 3 | **Reports** | 19 reports with PDF, Excel and CSV export (attendance, payroll, scorecards, stock movement/valuation, low-stock/expiry, machine out/in, maintenance, booking calendar, job completion, service report, quotes sent/won/lost, revenue, expenses, aging, statement, P&L, job / client / service-type profitability) |
+| 3 | **Automations** | In-app alerts for late/missing attendance, unapproved corrections, upcoming jobs, booking confirmations, low stock, expiring chemicals/PPE, overdue returns, maintenance due, invoices due/overdue, payroll awaiting approval, document/certification expiry, overdue follow-ups; external channels queued per Admin settings |
+| 3 | **Client portal** | Clients approve/decline quotations, see bookings, download service reports, invoices and statements |
+| — | **Admin** | Users, permissions, service pricing, statutory rates & pay rules, company profile, audit log, recycle bin |
+
+## Rules the system enforces
+
+* No double-booking of crew, vehicles or machines; an asset can't be released to two jobs at once.
+* Stock transactions are immutable and can't go negative — fix with reversal/adjustment entries; adjustments need a second approver.
+* Approved invoices are locked (reverse instead); payments can't exceed the balance and are reversed, not deleted.
+* Finalized payroll periods are locked; completed equipment out/in records can't be edited or deleted.
+* Soft delete everywhere; every record carries created/updated date and user; every create / update / approve / reverse / lock / export is in the audit log.
+
+## Architecture
+
+```
+src/lib/types.ts       domain model (mirrors the SQL schema)
+src/lib/business.ts    pure business logic: pricing, panel counting, VAT, aging, payroll, job costing, P&L, scorecards, conflicts
+src/lib/store.ts       audited data store (demo: localStorage) + auth + immutability guards
+src/lib/actions.ts     permission-checked domain operations + automation engine
+src/lib/workflow.ts    the 7-step job workflow (prep, dispatch, check-in, scope approval / variations, work, handover, close-out, incidents)
+src/lib/seed.ts        TopMop sample dataset
+src/lib/export.ts      PDF (jsPDF) and Excel (ExcelJS) generators
+src/pages/*            one file per module
+src/components/workflow/  Job Card workflow panel (tracker + one component per step)
+supabase/              PostgreSQL schema, triggers, RLS, views, storage (see supabase/README.md)
+```
+
+Stack: React 19 · TypeScript · Vite · React Router · Recharts · jsPDF · ExcelJS. Navy / teal / white with TopMop-green action buttons; no gradients or cartoon imagery; responsive with a mobile bottom-nav and stacked tables.
+
+## What is and isn't done
+
+**Verified:** type-check clean; 100 automated tests; every screen loaded under all six roles without console errors; browser-tested flows
+(GPS clock-in, quotation pricing, drag-and-drop rescheduling, equipment release, payment + receipt PDF, payroll approve, Excel / PDF downloads);
+the SQL migrations, seed and every guard were executed against a real PostgreSQL engine (PGlite) — RLS, immutability, double-booking,
+overpayment, negative stock and single-release-per-asset all reject correctly.
+
+**Not done — read before relying on it:**
+
+1. **The UI is not connected to Supabase.** Data lives in `localStorage` in the demo. The schema, RLS and rules are ready in `supabase/`; the remaining
+   work is a Supabase-backed implementation of `src/lib/store.ts` / `actions.ts` (async reads, RPC or table writes, Supabase Auth in place of the demo login, file uploads to Storage).
+2. **Demo authentication is not secure** (accounts and password hashes ship in the browser bundle). Production must use Supabase Auth; UI permission checks are convenience, RLS is the security boundary.
+3. **Statutory rates are placeholders.** SSS / PhilHealth / Pag-IBIG / withholding tax are configurable fields (per period, percent or fixed, with min/cap) filled with sample values; set them to current government schedules. Holidays are a sample list. Pay rules (OT 1.25×, regular holiday 2.0×, special 1.3×, rest day 1.3×) are editable defaults, not legal advice.
+4. **Prices for non-standard services** (interior glass, ACP, ceiling, gutter, other) are "custom quote" — TopMop supplied no defaults. Sample client names, TINs and amounts are fictional.
+5. **Notifications are queued, not delivered.** Email/SMS/WhatsApp are marked per notification (plus `mailto:` and `wa.me` share links); no provider is connected.
+6. PDFs print amounts as `PHP 1,234.00` because jsPDF's built-in fonts have no ₱ glyph (Excel and the UI use ₱). Embed a TTF font to change this.
+7. Client-portal login is a demo; the real portal needs Supabase Auth users with `profiles.client_id`.
+8. QR scanning uses the device camera, which browsers only allow on HTTPS or `localhost`; the manual code box also works with USB/Bluetooth scanners. It was tested with typed codes, not a physical camera.
+9. **Offline sync is local-only in the demo.** Changes are written to the tablet immediately, so the “Synced” state means “nothing is waiting to upload”. The upload hook is `syncHub.setFlusher()` in `src/lib/sync.ts` — connect it to Supabase together with item 1. The service worker caches the app shell and built assets; the PDF / Excel export libraries are cached after first use online. The browser Back button is not intercepted by the unsaved-step warning (links, steps and sign-out are).
+10. Photos are intentionally not stored in this app; use TopMop's separate file system.
+
+## Connecting to Supabase (live data)
+
+Without any setup the app runs in **demo mode** (data stays in the browser). To run it on a real Supabase project:
+
+1. Apply `supabase/migrations/0001…0020` (`supabase link`, `supabase db push`). Optionally load the sample data (`npm run db:seed-sql`, then run `supabase/seed.sql`).
+2. Create the first login in Supabase → Authentication → Users, then add its row in `public.profiles` (`id` = the user id, `name`, `email`, `role = 'owner'`).
+3. Copy `.env.example` to `.env.local` and fill in the project URL and the **anon** key (Project Settings → API). On Vercel, add the same two variables under Settings → Environment Variables.
+4. `npm run dev` — the sign-in page now uses Supabase. Every change is saved to the database, which re-checks every business rule; a refused change is undone and the reason is shown. Other people's changes appear within about 45 seconds.
+
+Not yet live in this mode: user/role management screens (use Supabase), client portal, photo and image upload to Storage.
