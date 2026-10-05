@@ -233,14 +233,16 @@ function CheckInForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean
   const [at, setAt] = useState(nowLocal());
   const [present, setPresent] = useState<string[]>(crew);
   const [absent, setAbsent] = useState<Record<string, string>>({});
-  const [contact, setContact] = useState({ name: site?.contact_person ?? '', mobile: site?.contact_mobile ?? '' });
+  const client = db.clients.find((c) => c.id === job.client_id);
+  // the contact comes from the booking: the site's contact, else the client's contact person (nothing to retype)
+  const [contact, setContact] = useState({ name: site?.contact_person || client?.contact_person || '', mobile: site?.contact_mobile || client?.mobile || '' });
   const [notes, setNotes] = useState('');
   const dr = useDraft(`d:${wf.id}:arr`, { at, present, absent, contact, notes }, (d) => { setAt(d.at); setPresent(d.present); setAbsent(d.absent); setContact(d.contact); setNotes(d.notes); }, run && !wf.arr_at);
   return (
     <div className="stack">
       {run && <DraftBar d={dr} />}
       <TimeField label="Actual arrival time" value={at} onChange={setAt} disabled={!run} hint="Defaults to now." />
-      <div className="form-grid"><Field label="Site contact person" required><input disabled={!run} value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} /></Field><Field label="Contact mobile (optional)"><input disabled={!run} value={contact.mobile} onChange={(e) => setContact({ ...contact, mobile: e.target.value })} /></Field></div>
+      <div className="form-grid"><Field label="Site contact person" required hint="From the booking — change it only if someone else is meeting the crew."><input disabled={!run} value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} /></Field><Field label="Contact mobile (optional)"><input disabled={!run} value={contact.mobile} onChange={(e) => setContact({ ...contact, mobile: e.target.value })} /></Field></div>
       <div>
         <div className="row between" style={{ marginBottom: 6 }}><b>Crew attendance (synced to Attendance &amp; Payroll)</b>{run && <button className="btn sm" onClick={() => setPresent(crew)}>All present</button>}</div>
         <ul className="list" style={{ border: '1px solid var(--line-2)', borderRadius: 6 }}>
