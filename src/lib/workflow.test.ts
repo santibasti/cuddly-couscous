@@ -1188,6 +1188,7 @@ describe('Stale equipment holds', () => {
     store.update('jobs', a.job.id, { start_at: '2031-09-01T08:00', end_at: '2031-09-01T17:00' } as never);
     store.update('jobs', b.job.id, { start_at: '2031-09-02T08:00', end_at: '2031-09-02T17:00', equipment_ids: [a.eq.id] } as never);
     // job A's prep started and left a Released record behind, but its HQ checklist was never completed
+    W.openWorkflow(a.job.id);
     store.insert('checkouts', { asset_id: a.eq.id, job_id: a.job.id, requested_by: lead, responsible_id: lead, status: 'Released', expected_return: '2031-09-01T17:00', out_at: '2031-09-01T07:00' } as never);
     const wfB = W.openWorkflow(b.job.id);
     W.completeHqChecklist(wfB.id, prepForm(wfB) as never);                              // no "checked out to another job" error

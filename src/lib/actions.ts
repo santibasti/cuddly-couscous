@@ -266,7 +266,7 @@ function clearStaleHolds(assetId: string, jobId: string) {
   const d = db();
   for (const c of d.checkouts.filter((x) => x.asset_id === assetId && x.job_id !== jobId && x.status === 'Released' && !x.deleted_at)) {
     const j = d.jobs.find((x) => x.id === c.job_id); const wf = j ? d.workflows.find((w) => w.job_id === j.id && !w.deleted_at) : undefined;
-    if (!j || j.deleted_at || ['Cancelled', 'Rescheduled'].includes(j.status) || isDone(j.status) || (wf && !wf.hq_at)) performReturn(c.id, { condition: 'Good', damage_notes: '', missing: '' });
+    if (!j || j.deleted_at || ['Cancelled', 'Rescheduled', 'Closed', 'Completed'].includes(j.status) || (wf && !wf.hq_at)) performReturn(c.id, { condition: 'Good', damage_notes: '', missing: '' });
   }
 }
 const heldBy = (assetId: string, jobId: string) => {
