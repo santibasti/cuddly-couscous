@@ -102,6 +102,13 @@ export async function fetchProfile(uid: string): Promise<UserAccount | null> {
   return data ? toUser(data) : null;
 }
 
+export async function fetchProfiles(): Promise<UserAccount[]> { return (await readAll('profiles')).map(toUser); }
+/** Admin: set a login's name, role, linked employee or on / off switch. Row-level security only lets people with admin.users do this. */
+export async function updateProfile(id: string, patch: { name?: string; role?: string; employee_id?: string | null; active?: boolean }) {
+  const { error } = await supabase().from('profiles').update(patch).eq('id', id);
+  if (error) throw new CloudError(error.message, error.code);
+}
+
 /* ---------- writing ---------- */
 export interface Diff { inserts: [SyncTable, Record<string, unknown>][]; updates: [SyncTable, Record<string, unknown>, Record<string, unknown>][] }
 /** Rows added or replaced since `prev`. Row objects are replaced (never edited) by the store, so a changed reference means a change. */

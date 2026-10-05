@@ -9,13 +9,18 @@ import type { AuditLog, Role, ServiceDef, Settings, StatutoryRate, TableName, Us
 
 const ROLES = Object.keys(ROLE_LABEL) as Role[];
 
+/** Cloud: save a login's role / employee / on-off; shows the reason if it is refused. */
+async function saveLogin(id: string, patch: Parameters<typeof store.saveProfile>[1], ok: string): Promise<boolean> {
+  try { await store.saveProfile(id, patch); toast(ok, 'ok'); return true; } catch (e) { toast((e as Error).message || 'Could not save the login.', 'err'); return false; }
+}
 function UserModal({ initial, onClose }: { initial?: UserAccount; onClose: () => void }) {
   const { db } = useAuth();
-  const f = useObj({ name: initial?.name ?? '', email: initial?.email ?? '', role: (initial?.role ?? 'field') as Role, employee_id: initial?.employee_id ?? '', password: '' });
+  const f = useObj({ name: initial?.name ?? '', email: initial?.email ?? '', role: (initial?.role ?? 'field') as Role, employee_id: initial?.employee_id ?? '', password: '', active: initial?.active ?? true });
   const save = async () => {
-    if (!f.v.name.trim() || !/^\S+@\S+\.\S+$/.test(f.v.email)) return attempt(() => { throw new Error('Enter a name and a valid email.'); });
+    if (CLOUD && initial) { /* email belongs to the Supabase login */ } else if (!f.v.name.trim() || !/^\S+@\S+\.\S+$/.test(f.v.email)) return attempt(() => { throw new Error('Enter a name and a valid email.'); });
     if (!initial && f.v.password.length < 8) return attempt(() => { throw new Error('Password must be at least 8 characters.'); });
     if (db.users.some((u) => u.email.toLowerCase() === f.v.email.toLowerCase() && u.id !== initial?.id && !u.deleted_at)) return attempt(() => { throw new Error('Email already in use.'); });
+    if (CLOUD && initial) { if (await saveLogin(initial.id, { name: f.v.name.trim(), role: f.v.role, employee_id: f.v.employee_id || null, active: f.v.active }, 'Login saved')) onClose(); return; }
     if (initial) attempt(() => { store.require('admin.users'); if (initial.id === store.user?.id && f.v.role !== 'owner') throw new Error('You cannot remove your own Owner role.'); store.update('users', initial.id, { name: f.v.name, email: f.v.email, role: f.v.role, employee_id: f.v.employee_id || null }, 'update', `Updated user ${f.v.name} (${ROLE_LABEL[f.v.role]})`); }, 'User updated');
     else attempt(async () => { store.require('admin.users'); store.insert('users', { name: f.v.name, email: f.v.email, role: f.v.role, employee_id: f.v.employee_id || null, pass_hash: await sha256(`topmop:${f.v.password}`), active: true }); }, 'User created');
     onClose();
@@ -23,9 +28,10 @@ function UserModal({ initial, onClose }: { initial?: UserAccount; onClose: () =>
   return (
     <Modal title={initial ? `Edit ${initial.name}` : 'New user'} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save}>Save user</button></>}>
       <div className="form-grid">
-        <Field label="Full name" required><input {...f.bind('name')} /></Field><Field label="Email" required><input type="email" {...f.bind('email')} /></Field>
+        <Field label="Full name" required><input {...f.bind('name')} /></Field><Field label="Email" required hint={CLOUD ? 'Set in Supabase (Authentication → Users).' : undefined}><input type="email" {...f.bind('email')} disabled={CLOUD && !!initial} /></Field>
         <Field label="Role"><select {...f.bind('role')}>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></Field>
         <Field label="Linked employee"><select value={f.v.employee_id} onChange={(e) => f.set('employee_id', e.target.value)}><option value="">— none —</option>{db.employees.filter((e) => !e.deleted_at).map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}</select></Field>
+        {CLOUD && initial && <Field label="Login switched on" hint="Off = this person cannot use the app."><select value={f.v.active ? 'yes' : 'no'} onChange={(e) => f.set('active', e.target.value === 'yes')}><option value="yes">On</option><option value="no">Off</option></select></Field>}
         {!initial && <Field label="Temporary password" required hint="Minimum 8 characters."><input type="password" {...f.bind('password')} /></Field>}
       </div>
     </Modal>
@@ -115,14 +121,14 @@ export default function Admin() {
 
       {tab === 'users' && can('admin.users') && CLOUD && (() => {
         const linked = new Set(db.users.filter((u) => !u.deleted_at).map((u) => u.employee_id)); const missing = db.employees.filter((e) => !e.deleted_at && e.status !== 'inactive' && !linked.has(e.id));
-        return <Card title={`Employees without a login (${missing.length})`}><p className="small muted" style={{ marginTop: 0 }}>Logins are created in Supabase and linked to the employee, which is what lets a Team Leader or crew member clock in and see their own jobs. From your computer run <code>node scripts/create-staff.mjs --list</code>, then <code>node scripts/create-staff.mjs staff.json</code> (see <code>supabase/README.md</code>, “Staff logins”).</p>{missing.length ? <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>{missing.map((e) => <Badge key={e.id}>{e.code} · {e.full_name}</Badge>)}</div> : <span className="muted">Everyone has a login.</span>}</Card>;
+        return <Card title={`Employees without a login (${missing.length})`}><p className="small muted" style={{ marginTop: 0 }}>To give someone a login: in Supabase go to <b>Authentication → Users → Add user</b> (email + password, tick “Auto confirm”). It then appears in the list below as <b>Waiting for Admin</b> — click <b>Edit</b>, choose the role (Team Leader / Field Employee …), link the employee and switch it on. The employee link is what lets a Team Leader or crew member clock in and see their own jobs.</p>{missing.length ? <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>{missing.map((e) => <Badge key={e.id}>{e.code} · {e.full_name}</Badge>)}</div> : <span className="muted">Everyone has a login.</span>}</Card>;
       })()}
       {tab === 'users' && can('admin.users') && (
-        <Card flush><DataTable<UserAccount> rows={db.users.filter((u) => !u.deleted_at)} rowKey={(u) => u.id} exportTitle="Users" actions={<button className="btn sm primary" onClick={() => setUm('new')}><Icon name="plus" />New user</button>} cols={[
+        <Card flush><DataTable<UserAccount> rows={db.users.filter((u) => !u.deleted_at)} rowKey={(u) => u.id} exportTitle="Users" actions={CLOUD ? <span className="small muted">Add a login in Supabase → Authentication → Users → Add user, then set it up here</span> : <button className="btn sm primary" onClick={() => setUm('new')}><Icon name="plus" />New user</button>} cols={[
           { key: 'n', header: 'Name', value: (u) => u.name, render: (u) => <b>{u.name}</b> }, { key: 'e', header: 'Email', value: (u) => u.email }, { key: 'r', header: 'Role', value: (u) => ROLE_LABEL[u.role], render: (u) => <Badge tone="blue">{ROLE_LABEL[u.role]}</Badge> },
-          { key: 'emp', header: 'Employee', value: (u) => db.employees.find((e) => e.id === u.employee_id)?.full_name ?? '—' }, { key: 'st', header: 'Status', value: (u) => (u.active ? 'Active' : 'Disabled'), render: (u) => <Badge>{u.active ? 'Active' : 'Inactive'}</Badge> },
+          { key: 'emp', header: 'Employee', value: (u) => db.employees.find((e) => e.id === u.employee_id)?.full_name ?? '—' }, { key: 'st', header: 'Status', value: (u) => (u.active ? 'Active' : 'Disabled'), render: (u) => <Badge tone={!u.active && !u.employee_id ? 'amber' : undefined}>{u.active ? 'Active' : !u.employee_id && CLOUD ? 'Waiting for Admin' : 'Inactive'}</Badge> },
           { key: 'c', header: 'Created', value: (u) => u.created_at, render: (u) => fmtStamp(u.created_at) },
-          { key: 'actions', header: '', noExport: true, sortable: false, render: (u) => <span className="row"><button className="btn sm" onClick={() => setUm(u)}>Edit</button><button className="btn sm" onClick={() => attempt(() => { store.require('admin.users'); if (u.id === store.user?.id) throw new Error('You cannot disable your own account.'); store.update('users', u.id, { active: !u.active }, 'update', `${u.active ? 'Disabled' : 'Enabled'} user ${u.name}`); })}>{u.active ? 'Disable' : 'Enable'}</button><button className="btn sm" onClick={async () => { const pw = await ask('Reset password', 'New password (min 8 characters)'); if (pw) { if (pw.length < 8) return toast('Password must be at least 8 characters.', 'err'); attempt(async () => store.setPassword(u.id, pw), 'Password reset'); } }}>Reset password</button></span> },
+          { key: 'actions', header: '', noExport: true, sortable: false, render: (u) => CLOUD ? <span className="row"><button className="btn sm" onClick={() => setUm(u)}>Edit</button><button className="btn sm" onClick={() => void saveLogin(u.id, { active: !u.active }, u.active ? 'Login switched off' : 'Login switched on')}>{u.active ? 'Disable' : 'Enable'}</button></span> : <span className="row"><button className="btn sm" onClick={() => setUm(u)}>Edit</button><button className="btn sm" onClick={() => attempt(() => { store.require('admin.users'); if (u.id === store.user?.id) throw new Error('You cannot disable your own account.'); store.update('users', u.id, { active: !u.active }, 'update', `${u.active ? 'Disabled' : 'Enabled'} user ${u.name}`); })}>{u.active ? 'Disable' : 'Enable'}</button><button className="btn sm" onClick={async () => { const pw = await ask('Reset password', 'New password (min 8 characters)'); if (pw) { if (pw.length < 8) return toast('Password must be at least 8 characters.', 'err'); attempt(async () => store.setPassword(u.id, pw), 'Password reset'); } }}>Reset password</button></span> },
         ]} /></Card>
       )}
       {tab === 'perms' && can('admin.users') && <Permissions access={db.settings.access} />}

@@ -25,6 +25,7 @@ records are enforced **in the database** (triggers + row-level security), so the
 | `migrations/0021_job_orders.sql` | Job Order Confirmation: `job_orders` (one number, many versions; Draft → Sent to Client; Revised / Superseded; a sent version is immutable except its status line and resend log), Admin / Operations only (`joborders.manage`), share-link function `get_job_order_public` (no sign-in, sent versions only), document number type `JO`. |
 | `migrations/0022_geo_insights.sql` | Geographic client insights: map position columns (`lat`, `lng`, `city`, `province`, `geo_*`) on `sites`, `clients`, `ocular_visits`; `dashboard.executive` permission for the Owner / Admin. |
 | `migrations/0023_delete_clients_items.sql` | Delete clients and inventory items (soft delete → Recycle bin, restorable): Owner / Admin only (`clients.delete`, `inventory.delete`); refused for a client with billing, payments or started / completed service, and for an item with stock movements. |
+| `migrations/0024_profile_on_signup.sql` | A login created in Supabase (Authentication → Users → Add user) gets its app profile automatically, switched off with the lowest role ("Waiting for Admin"); the Owner / Admin sets role + employee and switches it on in Admin → Users. Also backfills logins that already exist without a profile. |
 | `migrations/0005_final_quote_review.sql` | Client Final Quote Review: additional-work variations (source, revision, decided time, sign GPS / device), deposit and final total on the conforme; the conforme waits for open additions; approved / declined variations are locked. |
 | `migrations/0004_job_workflow_and_incidents.sql` | Per-job 11-step workflow, variations and incident tables; step-order / evidence guards, job status flow, variation locking and contract value, `In Use` / `Missing` asset statuses, edit-with-reason, RLS. |
 | `migrations/0003_role_permissions.sql` | Default role → permission matrix (generated from `src/lib/rbac.ts`). The Owner edits it afterwards. |
@@ -66,6 +67,8 @@ Create users in **Authentication → Users**, then add a matching row in `public
 * Statutory rates in `settings.data.statutory` are placeholders — set them to the current SSS / PhilHealth / Pag-IBIG / withholding-tax schedules.
 
 ## Staff logins (Team Leaders, crew, office)
+
+**Easiest way:** Supabase → Authentication → Users → Add user (email + password, tick *Auto confirm*). The login shows up in the app under Admin → Users as *Waiting for Admin*; click Edit, pick the role, link the employee and switch it on (needs migration 0024). The script below does the same for many people at once.
 
 A login is a Supabase user plus a row in `profiles` that sets the role and links the person to their employee record
 (`profiles.employee_id`). The link is what makes attendance, "my jobs" and the role's permissions work.

@@ -6,7 +6,7 @@ import { seedDB } from './seed';
 import { geoHooks, geoPatch } from './geo-ph';
 import { syncHub } from './sync';
 import { kvDel, kvGet, kvSet } from './outbox';
-import { CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, fetchAll, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
+import { fetchProfiles, updateProfile, CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, fetchAll, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
 
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
@@ -150,6 +150,17 @@ class Store {
         }
       }
     } finally { this.flushing = false; }
+  }
+  /** Cloud: Admin edits a login (role, linked employee, on / off). The login itself is created in Supabase. */
+  async saveProfile(id: string, patch: { name?: string; role?: Role; employee_id?: string | null; active?: boolean }) {
+    this.require('admin.users');
+    const u = this._db.users.find((x) => x.id === id) ?? (() => { throw new RuleError('User not found.'); })();
+    if (id === this.user?.id && ((patch.role && patch.role !== 'owner') || patch.active === false)) throw new RuleError('You cannot remove your own Owner role or switch off your own login.');
+    if (patch.employee_id && this._db.users.some((x) => x.id !== id && x.active && x.employee_id === patch.employee_id)) throw new RuleError('That employee is already linked to another login.');
+    if ((patch.active ?? u.active) && (patch.role ?? u.role) !== 'viewer' && !(patch.employee_id ?? u.employee_id) && !['owner', 'ops', 'finance'].includes(patch.role ?? u.role)) throw new RuleError('Link a Team Leader or crew login to their employee record, so attendance and "my jobs" work.');
+    await updateProfile(id, patch);
+    this._db = { ...this._db, users: await fetchProfiles(), version: this._db.version + 1 }; this.baseline = this._db; this.saveSnapshot(); this.listeners.forEach((l) => l());
+    this.audit('update', 'users', id, `Login ${u.email}: ${Object.entries(patch).map(([k, v]) => `${k} → ${v ?? 'none'}`).join(', ')}`);
   }
   private async reloadCloud() {
     const db = await fetchAll();
