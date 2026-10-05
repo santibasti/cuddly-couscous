@@ -1179,3 +1179,24 @@ describe('Job prep follows the booking', () => {
     expect(JSON.stringify(db().workflows.find((w) => w.id === wf.id)!.items)).toBe(before);
   });
 });
+
+describe('Stale equipment holds', () => {
+  it('a checkout left behind by a prep that never completed does not block the next booking; a live one still does', async () => {
+    await as('owner@topmop.ph');
+    const lead = db().employees[3].id;
+    const a = scenario('STALE-A', lead); const b = scenario('STALE-B', lead);
+    store.update('jobs', a.job.id, { start_at: '2031-09-01T08:00', end_at: '2031-09-01T17:00' } as never);
+    store.update('jobs', b.job.id, { start_at: '2031-09-02T08:00', end_at: '2031-09-02T17:00', equipment_ids: [a.eq.id] } as never);
+    // job A's prep started and left a Released record behind, but its HQ checklist was never completed
+    store.insert('checkouts', { asset_id: a.eq.id, job_id: a.job.id, requested_by: lead, responsible_id: lead, status: 'Released', expected_return: '2031-09-01T17:00', out_at: '2031-09-01T07:00' } as never);
+    const wfB = W.openWorkflow(b.job.id);
+    W.completeHqChecklist(wfB.id, prepForm(wfB) as never);                              // no "checked out to another job" error
+    expect(db().checkouts.find((c) => c.asset_id === a.eq.id && c.job_id === a.job.id)!.status).toBe('Returned');
+    expect(db().checkouts.find((c) => c.asset_id === a.eq.id && c.job_id === b.job.id)!.status).toBe('Released');
+    // a genuinely active hold (job A's prep completed) still blocks, and names the job
+    const c3 = scenario('STALE-C', lead);
+    store.update('jobs', c3.job.id, { start_at: '2031-09-03T08:00', end_at: '2031-09-03T17:00', equipment_ids: [a.eq.id] } as never);
+    const wfC = W.openWorkflow(c3.job.id);
+    expect(() => W.completeHqChecklist(wfC.id, prepForm(wfC) as never)).toThrow(/checked out to JOB-STALE-B/);
+  });
+});

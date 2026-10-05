@@ -258,12 +258,28 @@ export function decideRequest(id: string, approve: boolean) {
 
 /* ================= Assets ================= */
 const asset = (id: string) => db().assets.find((a) => a.id === id)!;
+/**
+ * A "checked out" record that no longer matches reality is closed so it cannot block the next booking: the other job was cancelled, rescheduled,
+ * finished or removed, or its HQ prep was opened but never completed (so nothing was actually handed out — e.g. a prep that failed part-way).
+ */
+function clearStaleHolds(assetId: string, jobId: string) {
+  const d = db();
+  for (const c of d.checkouts.filter((x) => x.asset_id === assetId && x.job_id !== jobId && x.status === 'Released' && !x.deleted_at)) {
+    const j = d.jobs.find((x) => x.id === c.job_id); const wf = j ? d.workflows.find((w) => w.job_id === j.id && !w.deleted_at) : undefined;
+    if (!j || j.deleted_at || ['Cancelled', 'Rescheduled'].includes(j.status) || isDone(j.status) || (wf && !wf.hq_at)) performReturn(c.id, { condition: 'Good', damage_notes: '', missing: '' });
+  }
+}
+const heldBy = (assetId: string, jobId: string) => {
+  const c = db().checkouts.find((x) => x.asset_id === assetId && x.job_id !== jobId && x.status === 'Released' && !x.deleted_at);
+  return c ? db().jobs.find((j) => j.id === c.job_id)?.number ?? 'another job' : undefined;
+};
 export function requestCheckout(p: { asset_id: string; job_id: string; responsible_id: string; expected_return: string; note?: string }) {
   store.require('assets.request');
   const a = asset(p.asset_id); const job = db().jobs.find((j) => j.id === p.job_id)!;
   if (['Retired', 'Damaged', 'Under Maintenance', 'Missing'].includes(a.status)) fail(`${a.name} is ${a.status.toLowerCase()} and cannot be requested.`);
-  const clash = db().checkouts.find((c) => c.asset_id === p.asset_id && c.job_id !== p.job_id && ['Released', 'Requested'].includes(c.status) && c.status === 'Released');
-  if (clash) fail(`${a.name} is currently checked out to another job.`);
+  clearStaleHolds(p.asset_id, p.job_id);
+  const holder = heldBy(p.asset_id, p.job_id);
+  if (holder) fail(`${a.name} is currently checked out to ${holder}. Return it on the Equipment Out/In page first, or take it off this booking.`);
   const other = db().jobs.find((j) => j.id !== job.id && !j.deleted_at && isOpen(j.status) && (j.equipment_ids.includes(a.id) || j.vehicle_id === a.id) && overlaps(j.start_at, j.end_at, job.start_at, job.end_at));
   if (other) fail(`${a.name} is already assigned to ${other.number} at that time.`);
   if (db().checkouts.some((c) => c.asset_id === p.asset_id && c.job_id === p.job_id && ['Requested', 'Released'].includes(c.status))) fail('This asset is already requested or checked out for that job.');
@@ -278,8 +294,9 @@ export function performRelease(id: string, p: { condition: Condition; meter?: nu
   const c = db().checkouts.find((x) => x.id === id)!; const a = asset(c.asset_id);
   if (c.status !== 'Requested') fail('Only requested items can be released.');
   if (['Retired', 'Damaged', 'Under Maintenance', 'Missing'].includes(a.status)) fail(`${a.name} is ${a.status.toLowerCase()}.`);
-  const active = db().checkouts.find((x) => x.asset_id === c.asset_id && x.status === 'Released');
-  if (active) fail(`${a.name} is still checked out to ${db().jobs.find((j) => j.id === active.job_id)?.number ?? 'another job'}. Return it first – equipment can never be on two jobs at once.`);
+  clearStaleHolds(c.asset_id, c.job_id);
+  const holder = heldBy(c.asset_id, c.job_id);
+  if (holder) fail(`${a.name} is still checked out to ${holder}. Return it first – equipment can never be on two jobs at once.`);
   store.update('checkouts', id, { status: 'Released', approved_by: me()!.id, out_at: nowLocal(), out_condition: p.condition, out_meter: p.meter }, 'approve', `Released ${a.name}`);
   store.update('assets', a.id, { status: 'In Use', custodian_id: c.responsible_id, location: 'On site', condition: p.condition, ...(p.meter ? { meter_reading: p.meter } : {}) });
 }
