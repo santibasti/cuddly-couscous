@@ -1,5 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import { diffDB, emptyDB, fromDb, isRuleError, settingsChanged, toDb } from './cloud';
+import { describe, expect, it, vi } from 'vitest';
+import { diffDB, emptyDB, fromDb, isRuleError, pushChanges, settingsChanged, toDb } from './cloud';
+
+const sent: Record<string, unknown>[] = [];
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    from: () => ({
+      insert: async (row: Record<string, unknown>) => {
+        sent.push(row);
+        return 'photos' in row ? { error: { message: "Could not find the 'photos' column of 'jobs' in the schema cache", code: 'PGRST204' } } : { error: null };
+      },
+    }),
+  }),
+}));
 
 describe('Supabase mapping', () => {
   it('turns database values into the shapes the app uses', () => {
@@ -22,5 +34,12 @@ describe('Supabase mapping', () => {
     expect(settingsChanged(a, b)).toBe(false);
     expect(settingsChanged(a, { ...a, settings: { ...a.settings, vat_rate: 10 } as never })).toBe(true);
     expect(isRuleError({ code: '23514' })).toBe(true); expect(isRuleError(new TypeError('Failed to fetch'))).toBe(false);
+  });
+  it('leaves out a column the database no longer has instead of refusing the save', async () => {
+    const a = emptyDB(); const b = { ...a, jobs: [{ id: 'j1', number: 'JOB-1', photos: [] }] as never };
+    await pushChanges(a, b, new Set());
+    expect(sent.map((r) => 'photos' in r)).toEqual([true, false]);       // refused once, then sent without it
+    await pushChanges(a, b, new Set());
+    expect('photos' in sent[sent.length - 1]).toBe(false);                // remembered for next time
   });
 });

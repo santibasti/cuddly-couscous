@@ -124,6 +124,20 @@ export const settingsChanged = (prev: DB, next: DB) => prev.settings !== next.se
 /** True for database rule / permission failures (the change is refused); false for network trouble (the change stays queued). */
 export const isRuleError = (e: unknown) => typeof (e as { code?: unknown })?.code === 'string' && (e as { code: string }).code !== '' && !/^(FETCH|ECONN|PGRST30)/i.test((e as { code: string }).code);
 
+/** Columns the app still carries on a row but the database no longer has (e.g. photos): left out of the save instead of failing it. */
+const missingCols: Record<string, Set<string>> = {};
+const stripMissing = (t: string, row: Record<string, unknown>) => { for (const c of missingCols[t] ?? []) delete row[c]; return row; };
+/** Runs a save; if the database says a column does not exist, remembers it, drops it and tries again. */
+async function tolerant(t: string, row: Record<string, unknown>, go: (r: Record<string, unknown>) => PromiseLike<{ error: { message: string; code?: string } | null; data?: unknown }>) {
+  for (let i = 0; i < 8; i++) {
+    const res = await go(stripMissing(t, { ...row }));
+    const col = res.error?.code === 'PGRST204' ? /'([^']+)' column/.exec(res.error.message)?.[1] : undefined;
+    if (!res.error || !col) return res;
+    (missingCols[t] ??= new Set()).add(col);
+  }
+  return { error: { message: 'Too many unknown columns.', code: 'PGRST204' } as { message: string; code?: string }, data: null };
+}
+
 export async function pushChanges(prev: DB, next: DB, soft: Set<string>): Promise<{ touched: Set<SyncTable>; softFailed: number }> {
   const diff = diffDB(prev, next); const touched = new Set<SyncTable>(); let softFailed = 0;
   const run = async (id: string, fn: () => Promise<void>) => {
@@ -131,14 +145,14 @@ export async function pushChanges(prev: DB, next: DB, soft: Set<string>): Promis
   };
   for (const [t, r] of diff.inserts) {
     const row = toDb(r, undefined, RENAME[t]); touched.add(t);
-    await run(String(r.id), async () => { const { error } = await supabase().from(t).insert(row); if (error) throw new CloudError(error.message, error.code); });
+    await run(String(r.id), async () => { const { error } = await tolerant(t, row, (x) => supabase().from(t).insert(x)); if (error) throw new CloudError(error.message, error.code); });
   }
   for (const [t, r, o] of diff.updates) {
     const row = toDb(r, o, RENAME[t]); for (const k of SKIP_PUSH) delete row[k]; touched.add(t);
     await run(String(r.id), async () => {
-      const { data, error } = await supabase().from(t).update(row).eq('id', r.id as string).select('id');
+      const { data, error } = await tolerant(t, row, (x) => supabase().from(t).update(x).eq('id', r.id as string).select('id'));
       if (error) throw new CloudError(error.message, error.code);
-      if (!data?.length) throw new CloudError('You do not have permission to change this record.', '42501');
+      if (!(data as unknown[] | null | undefined)?.length) throw new CloudError('You do not have permission to change this record.', '42501');
     });
   }
   if (settingsChanged(prev, next)) {

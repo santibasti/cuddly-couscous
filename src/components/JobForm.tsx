@@ -23,7 +23,7 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
   const f = useObj<Form>(() => initial ? { ...initial } : {
     client_id: q?.client_id ?? live(db.clients).find((c) => c.status === 'Active')?.id ?? '', site_id: q?.site_id ?? '', quotation_id: q?.id, branch_id: db.branches[0].id,
     service_codes: q ? [...new Set(q.items.map((i) => i.service_code))] : ['GLASS_EXT'], scope: q?.scope ?? '', start_at: `${day}T08:00`, end_at: `${day}T17:00`, status: 'Pending',
-    leader_id: undefined, crew_ids: [], vehicle_id: undefined, equipment_ids: [], materials: [], ppe: ['Hard hat', 'Safety boots', 'Gloves', 'Safety goggles'], checklist: [], photos: [], findings: '', damage_report: '', equipment_condition_notes: '',
+    leader_id: undefined, crew_ids: [], vehicle_id: undefined, equipment_ids: [], materials: [], ppe: ['Hard hat', 'Safety boots', 'Gloves', 'Safety goggles'], checklist: [], findings: '', damage_report: '', equipment_condition_notes: '',
     contract_amount: q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).net : 0, estimated_cost: 0,
   });
   const v = f.v;
