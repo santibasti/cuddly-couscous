@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { diffDB, emptyDB, fromDb, isRuleError, pushChanges, settingsChanged, toDb } from './cloud';
 
-const sent: Record<string, unknown>[] = [];
+const sent: Record<string, unknown>[] = []; const updates: Record<string, unknown>[] = [];
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from: () => ({
+      update: (row: Record<string, unknown>) => { updates.push(row); return { eq: () => ({ select: async () => ({ data: [{ id: 'x' }], error: null }) }) }; },
       insert: async (row: Record<string, unknown>) => {
         sent.push(row);
         return 'photos' in row ? { error: { message: "Could not find the 'photos' column of 'jobs' in the schema cache", code: 'PGRST204' } } : { error: null };
@@ -41,5 +42,16 @@ describe('Supabase mapping', () => {
     expect(sent.map((r) => 'photos' in r)).toEqual([true, false]);       // refused once, then sent without it
     await pushChanges(a, b, new Set());
     expect('photos' in sent[sent.length - 1]).toBe(false);                // remembered for next time
+  });
+  it('replays every step in order and sends only the columns that changed', async () => {
+    updates.length = 0;
+    const a = emptyDB(); a.discount_requests = [{ id: 'd1', status: 'Pending Admin Approval', note: 'n', verified_at: 'local' }] as never;
+    const b = { ...a, discount_requests: [{ id: 'd1', status: 'Applied', note: 'n', verified_at: 'local' }] as never };
+    const j = [
+      { t: 'discount_requests', id: 'd1', kind: 'update' as const, before: a.discount_requests[0] as never, row: { id: 'd1', status: 'Approved', note: 'n', verified_at: 'local' } },
+      { t: 'discount_requests', id: 'd1', kind: 'update' as const, before: { id: 'd1', status: 'Approved', note: 'n', verified_at: 'local' }, row: b.discount_requests[0] as never },
+    ];
+    await pushChanges(a, b, new Set(), j);
+    expect(updates).toEqual([{ status: 'Approved' }, { status: 'Applied' }]);       // each transition is sent, nothing else is touched
   });
 });

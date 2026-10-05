@@ -138,22 +138,44 @@ async function tolerant(t: string, row: Record<string, unknown>, go: (r: Record<
   return { error: { message: 'Too many unknown columns.', code: 'PGRST204' } as { message: string; code?: string }, data: null };
 }
 
-export async function pushChanges(prev: DB, next: DB, soft: Set<string>): Promise<{ touched: Set<SyncTable>; softFailed: number }> {
-  const diff = diffDB(prev, next); const touched = new Set<SyncTable>(); let softFailed = 0;
+export interface JournalEntry { t: string; id: string; kind: 'insert' | 'update'; row: Record<string, unknown>; before?: Record<string, unknown> }
+/**
+ * Replays the changes in the exact order the app made them. The database checks every step (e.g. a discount goes Pending → Approved → Applied,
+ * a job is Closed only after its workflow is), so what matters is not just the final state of each row but the order it got there.
+ */
+export async function pushChanges(prev: DB, next: DB, soft: Set<string>, journal: JournalEntry[] = []): Promise<{ touched: Set<SyncTable>; softFailed: number }> {
+  const touched = new Set<SyncTable>(); let softFailed = 0;
   const run = async (id: string, fn: () => Promise<void>) => {
     try { await fn(); } catch (e) { if (soft.has(id) && isRuleError(e)) softFailed++; else throw e; }   // automatic housekeeping may be refused for this role; never block the person's own work
   };
-  for (const [t, r] of diff.inserts) {
-    const row = toDb(r, undefined, RENAME[t]); touched.add(t);
-    await run(String(r.id), async () => { const { error } = await tolerant(t, row, (x) => supabase().from(t).insert(x)); if (error) throw new CloudError(error.message, error.code); });
+  const known = new Set<string>(SYNC_TABLES);
+  const ops: JournalEntry[] = [];
+  for (const e of journal) {
+    if (!known.has(e.t)) continue;
+    ops.push(e);                                                                      // every step is sent (never merged): the database validates each transition
   }
-  for (const [t, r, o] of diff.updates) {
-    const row = toDb(r, o, RENAME[t]); for (const k of SKIP_PUSH) delete row[k]; touched.add(t);
-    await run(String(r.id), async () => {
-      const { data, error } = await tolerant(t, row, (x) => supabase().from(t).update(x).eq('id', r.id as string).select('id'));
-      if (error) throw new CloudError(error.message, error.code);
-      if (!(data as unknown[] | null | undefined)?.length) throw new CloudError('You do not have permission to change this record.', '42501');
-    });
+  // anything changed without being journaled (should not happen) still gets saved, after the rest
+  const seen = new Set(ops.map((o) => `${o.t}:${o.id}`));
+  const diff = diffDB(prev, next);
+  for (const [t, r] of diff.inserts) if (!seen.has(`${t}:${r.id}`)) ops.push({ t, id: r.id as string, kind: 'insert', row: r });
+  for (const [t, r, o] of diff.updates) if (!seen.has(`${t}:${r.id}`)) ops.push({ t, id: r.id as string, kind: 'update', row: r, before: o });
+  for (const op of ops) {
+    const t = op.t as SyncTable; const r = op.row; touched.add(t);
+    if (op.kind === 'insert') {
+      const row = toDb(r, undefined, RENAME[t]);
+      await run(op.id, async () => { const { error } = await tolerant(t, row, (x) => supabase().from(t).insert(x)); if (error) throw new CloudError(error.message, error.code); });
+    } else {
+      // send only what this step changed (columns the database manages itself, like verified_at, must not be overwritten with the app's copy)
+      const changed: Record<string, unknown> = {}; const bef = op.before ?? {};
+      for (const k of new Set([...Object.keys(r), ...Object.keys(bef)])) if (JSON.stringify(r[k]) !== JSON.stringify(bef[k])) changed[k] = r[k] === undefined ? null : r[k];
+      const row = toDb(changed, undefined, RENAME[t]); for (const k of SKIP_PUSH) delete row[k]; delete row.updated_at; delete row.updated_by;
+      if (!Object.keys(row).length) continue;
+      await run(op.id, async () => {
+        const { data, error } = await tolerant(t, row, (x) => supabase().from(t).update(x).eq('id', op.id).select('id'));
+        if (error) throw new CloudError(error.message, error.code);
+        if (!(data as unknown[] | null | undefined)?.length) throw new CloudError(`You do not have permission to change this record (${t.replace(/_/g, ' ')}).`, '42501');
+      });
+    }
   }
   if (settingsChanged(prev, next)) {
     const { error } = await supabase().rpc('save_settings', { p_data: next.settings });

@@ -4,7 +4,7 @@ import { permsFor } from './rbac';
 import { isoNow, sha256, uid } from './util';
 import { seedDB } from './seed';
 import { syncHub } from './sync';
-import { CLOUD, currentUserId, emptyDB, fetchAll, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
+import { CLOUD, type JournalEntry, currentUserId, emptyDB, fetchAll, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
 
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
@@ -30,6 +30,9 @@ class Store {
   private baseline: DB;
   private soft = new Set<string>();
   private pool: Record<string, number[]> = {};
+  /** order in which rows were changed, so they are written to the database in the same order (parents first, workflow before job status …) */
+  private journal: JournalEntry[] = [];
+  private note(table: string, kind: 'insert' | 'update', row: unknown, before?: unknown) { if (CLOUD) this.journal.push({ t: table, id: (row as Base).id, kind, row: row as Record<string, unknown>, before: before as Record<string, unknown> | undefined }); }
   private flushing = false;
   bootStatus: 'booting' | 'ready' = 'ready';
   getBoot = () => this.bootStatus;
@@ -77,14 +80,14 @@ class Store {
     this.flushing = true;
     try {
       while (this._db !== this.baseline) {
-        const next = this._db; const ver = next.version;
+        const next = this._db; const ver = next.version; const jn = this.journal.length;
         let res;
-        try { res = await pushChanges(this.baseline, next, this.soft); }
+        try { res = await pushChanges(this.baseline, next, this.soft, this.journal.slice(0, jn)); }
         catch (e) {
-          if (isRuleError(e)) { this.soft.clear(); this.cloudError((e as Error).message); await this.reloadCloud(); return; }
+          if (isRuleError(e)) { this.soft.clear(); this.journal = []; this.cloudError((e as Error).message); await this.reloadCloud(); return; }
           throw e;                                            // network trouble: stay queued ("Offline Draft")
         }
-        this.soft.clear(); this.baseline = next;
+        this.soft.clear(); this.journal.splice(0, jn); this.baseline = next;
         // pick up what the database added or changed itself (timestamps, follow-ups scheduled by triggers, …)
         const tables: SyncTable[] = [...res.touched]; if (res.touched.has('jobs') && !tables.includes('followups')) tables.push('followups');
         if (tables.length && this._db.version === ver) {
@@ -180,6 +183,7 @@ class Store {
     const row = { ...data, id: (data as { id?: string }).id ?? uid(), created_at: now, updated_at: now, created_by: this.user?.id ?? 'system' } as unknown as Rows[T];
     this.audit('create', table, (row as Base).id, summary ?? `Created ${table.replace(/s$/, '')} ${describe(row)}`, undefined, row);
     this.set((d) => ({ ...d, [table]: [...(d[table] as unknown[]), row] }) as DB);
+    this.note(table, 'insert', row);
     return row;
   }
 
@@ -193,6 +197,7 @@ class Store {
     const after = { ...before, ...patch, updated_at: isoNow(), updated_by: this.user?.id ?? 'system' };
     this.audit(action, table, id, summary ?? `Updated ${table.replace(/s$/, '')} ${describe(after)}`, pickChanged(before, patch as Record<string, unknown>), pickChanged(after, patch as Record<string, unknown>));
     this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? after : r)) }) as DB);
+    this.note(table, 'update', after, before);
     return after as unknown as Rows[T];
   }
 
@@ -202,12 +207,16 @@ class Store {
     if (!before) return;
     this.guardDelete(table, before);
     this.audit('delete', table, id, `Soft-deleted ${table.replace(/s$/, '')} ${describe(before)}`, before);
-    this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? { ...r, deleted_at: isoNow(), deleted_by: this.user?.id ?? 'system' } : r)) }) as DB);
+    const gone = { ...before, deleted_at: isoNow(), deleted_by: this.user?.id ?? 'system' };
+    this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? (gone as unknown as Base) : r)) }) as DB);
+    this.note(table, 'update', gone, before);
   }
   restore(table: TableName, id: string) {
     this.require('admin.users');
     this.audit('restore', table, id, `Restored ${table} record`);
-    this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? { ...r, deleted_at: null, deleted_by: null } : r)) }) as DB);
+    const was = (this._db[table] as unknown as Base[]).find((r) => r.id === id); const back = { ...was, deleted_at: null, deleted_by: null };
+    this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? (back as unknown as Base) : r)) }) as DB);
+    if (was) this.note(table, 'update', back, was);
   }
 
   /** Immutable-record rules: finalized payroll, approved invoices, stock transactions, completed asset checkouts. */
