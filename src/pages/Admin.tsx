@@ -1,3 +1,4 @@
+import { CLOUD } from '@/lib/cloud';
 import { useState } from 'react';
 import { store, useAuth } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Tabs, attempt, ask, useObj, toast } from '@/components/ui';
@@ -112,6 +113,10 @@ export default function Admin() {
       <PageHead title="Administration" sub="Users, permissions, pricing, statutory rates, audit trail and recycle bin." />
       <Tabs tabs={[...(can('admin.users') ? [{ id: 'users' as const, label: 'Users', count: db.users.filter((u) => !u.deleted_at).length }, { id: 'perms' as const, label: 'Permissions' }] : []), ...(can('admin.settings') ? [{ id: 'pricing' as const, label: 'Service pricing' }, { id: 'rates' as const, label: 'Rates & settings' }] : []), ...(can('admin.audit') ? [{ id: 'audit' as const, label: 'Audit log' }] : []), ...(can('admin.users') ? [{ id: 'bin' as const, label: 'Recycle bin', count: bin.length }, { id: 'data' as const, label: 'Data & security' }] : [])]} value={tab} onChange={setTab} />
 
+      {tab === 'users' && can('admin.users') && CLOUD && (() => {
+        const linked = new Set(db.users.filter((u) => !u.deleted_at).map((u) => u.employee_id)); const missing = db.employees.filter((e) => !e.deleted_at && e.status !== 'inactive' && !linked.has(e.id));
+        return <Card title={`Employees without a login (${missing.length})`}><p className="small muted" style={{ marginTop: 0 }}>Logins are created in Supabase and linked to the employee, which is what lets a Team Leader or crew member clock in and see their own jobs. From your computer run <code>node scripts/create-staff.mjs --list</code>, then <code>node scripts/create-staff.mjs staff.json</code> (see <code>supabase/README.md</code>, “Staff logins”).</p>{missing.length ? <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>{missing.map((e) => <Badge key={e.id}>{e.code} · {e.full_name}</Badge>)}</div> : <span className="muted">Everyone has a login.</span>}</Card>;
+      })()}
       {tab === 'users' && can('admin.users') && (
         <Card flush><DataTable<UserAccount> rows={db.users.filter((u) => !u.deleted_at)} rowKey={(u) => u.id} exportTitle="Users" actions={<button className="btn sm primary" onClick={() => setUm('new')}><Icon name="plus" />New user</button>} cols={[
           { key: 'n', header: 'Name', value: (u) => u.name, render: (u) => <b>{u.name}</b> }, { key: 'e', header: 'Email', value: (u) => u.email }, { key: 'r', header: 'Role', value: (u) => ROLE_LABEL[u.role], render: (u) => <Badge tone="blue">{ROLE_LABEL[u.role]}</Badge> },

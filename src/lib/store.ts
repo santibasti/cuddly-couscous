@@ -264,11 +264,11 @@ class Store {
     return after as unknown as Rows[T];
   }
 
-  remove(table: TableName, id: string) {
+  remove(table: TableName, id: string, opts: { cascade?: boolean } = {}) {
     const list = this._db[table] as unknown as (Base & Record<string, unknown>)[];
     const before = list.find((r) => r.id === id);
     if (!before) return;
-    this.guardDelete(table, before);
+    if (!opts.cascade) this.guardDelete(table, before);
     this.audit('delete', table, id, `Soft-deleted ${table.replace(/s$/, '')} ${describe(before)}`, before);
     const gone = { ...before, deleted_at: isoNow(), deleted_by: this.user?.id ?? 'system' };
     this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? (gone as unknown as Base) : r)) }) as DB);

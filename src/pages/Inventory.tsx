@@ -1,3 +1,4 @@
+import { deleteItem, planItemDelete } from '@/lib/deletion';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
@@ -141,7 +142,7 @@ export default function Inventory() {
             { key: 'sup', header: 'Supplier', value: (r) => r.i.supplier }, { key: 'loc', header: 'Location', value: (r) => loc(r.i.location_id) },
             { key: 'exp', header: 'Expiry / batch', value: (r) => (r.i.expiry_date ? `${r.i.expiry_date} ${r.i.batch_no ?? ''}` : ''), render: (r) => r.i.track_expiry && r.i.expiry_date ? <span>{fmtDate(r.i.expiry_date)}{r.i.batch_no && <span className="muted small"> · {r.i.batch_no}</span>} {diffDays(r.i.expiry_date, T) <= 30 && <Badge tone={diffDays(r.i.expiry_date, T) < 0 ? 'red' : 'amber'}>{diffDays(r.i.expiry_date, T) < 0 ? 'expired' : `${diffDays(r.i.expiry_date, T)}d`}</Badge>}</span> : '—' },
             { key: 'st', header: 'Status', value: (r) => (r.s.available <= r.i.reorder_level ? 'Low' : 'OK'), render: (r) => (r.s.available <= r.i.reorder_level ? <Badge tone="red">Low stock</Badge> : <Badge tone="green">OK</Badge>) },
-            { key: 'actions', header: '', noExport: true, sortable: false, render: (r) => edit ? <span className="row"><button className="btn sm" onClick={() => setModal({ kind: 'receive', itemId: r.i.id })}>Receive</button><button className="btn sm" onClick={() => setModal(r.i)}>Edit</button></span> : null },
+            { key: 'actions', header: '', noExport: true, sortable: false, render: (r) => edit ? <span className="row"><button className="btn sm" onClick={() => setModal({ kind: 'receive', itemId: r.i.id })}>Receive</button><button className="btn sm" onClick={() => setModal(r.i)}>Edit</button>{can('inventory.delete') && <button className="btn sm danger" onClick={async () => { if (planItemDelete(db, r.i.id).blockers.length) { attempt(() => deleteItem(r.i.id, 'check')); return; } const why = await ask(`Delete ${r.i.name}? It can be restored from Admin → Recycle bin.`, 'Reason for deleting', { okLabel: 'Delete item' }); if (why) attempt(() => deleteItem(r.i.id, why), `${r.i.name} deleted`); }}>Delete</button>}</span> : null },
           ]} /></Card>
       )}
 

@@ -1,0 +1,5 @@
+[
+  { "email": "leader1@yourcompany.ph", "role": "leader", "employee": "TM-004" },
+  { "email": "crew1@yourcompany.ph", "role": "field", "employee": "TM-006" },
+  { "email": "crew2@yourcompany.ph", "role": "field", "employee": "TM-007", "password": "Choose-A-Password-1" }
+]

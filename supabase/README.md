@@ -24,6 +24,7 @@ records are enforced **in the database** (triggers + row-level security), so the
 | `migrations/0020_workflow_access.sql` | Lets the people who run the job workflow (Team Leaders, Operations) do what its steps write: release / return equipment (checkouts, assets, repair tickets, stock) and read the quotation behind their assigned job; drops the circular back-job foreign key. Found by replaying the whole job flow under row-level security for each role. |
 | `migrations/0021_job_orders.sql` | Job Order Confirmation: `job_orders` (one number, many versions; Draft → Sent to Client; Revised / Superseded; a sent version is immutable except its status line and resend log), Admin / Operations only (`joborders.manage`), share-link function `get_job_order_public` (no sign-in, sent versions only), document number type `JO`. |
 | `migrations/0022_geo_insights.sql` | Geographic client insights: map position columns (`lat`, `lng`, `city`, `province`, `geo_*`) on `sites`, `clients`, `ocular_visits`; `dashboard.executive` permission for the Owner / Admin. |
+| `migrations/0023_delete_clients_items.sql` | Delete clients and inventory items (soft delete → Recycle bin, restorable): Owner / Admin only (`clients.delete`, `inventory.delete`); refused for a client with billing, payments or started / completed service, and for an item with stock movements. |
 | `migrations/0005_final_quote_review.sql` | Client Final Quote Review: additional-work variations (source, revision, decided time, sign GPS / device), deposit and final total on the conforme; the conforme waits for open additions; approved / declined variations are locked. |
 | `migrations/0004_job_workflow_and_incidents.sql` | Per-job 11-step workflow, variations and incident tables; step-order / evidence guards, job status flow, variation locking and contract value, `In Use` / `Missing` asset statuses, edit-with-reason, RLS. |
 | `migrations/0003_role_permissions.sql` | Default role → permission matrix (generated from `src/lib/rbac.ts`). The Owner edits it afterwards. |
@@ -63,3 +64,24 @@ Create users in **Authentication → Users**, then add a matching row in `public
 * Column-level privacy (employee pay / bank / government IDs, client TINs) is UI-gated in the app; add views or column privileges if the API is exposed to roles that must not read them.
 * Notification delivery (email / SMS / WhatsApp) is queued per notification (`channels_queued`); connect a provider from an Edge Function on a schedule.
 * Statutory rates in `settings.data.statutory` are placeholders — set them to the current SSS / PhilHealth / Pag-IBIG / withholding-tax schedules.
+
+## Staff logins (Team Leaders, crew, office)
+
+A login is a Supabase user plus a row in `profiles` that sets the role and links the person to their employee record
+(`profiles.employee_id`). The link is what makes attendance, "my jobs" and the role's permissions work.
+`scripts/create-staff.mjs` does both steps. Run it on your own computer:
+
+```bash
+# Supabase → Project Settings → API → copy the project URL and the service_role key (secret: never commit it, never put it in Vercel)
+set SUPABASE_URL=https://xxxx.supabase.co                   # Windows cmd   (macOS / Linux: export ...)
+set SUPABASE_SERVICE_ROLE_KEY=eyJ...
+node scripts/create-staff.mjs --list                         # employees, and who already has a login
+copy scripts\staff.example.json staff.json                   # edit: email, role (leader / field / ops / finance / viewer), employee code
+node scripts/create-staff.mjs staff.json --dry-run           # check first
+node scripts/create-staff.mjs staff.json                     # creates the logins and prints each password once
+```
+
+Give each person their email and password privately. A crew member opens the app, signs in and lands on Attendance; a Team Leader also
+sees their jobs, the job workflow and attendance approval for the crew. Replayed under row-level security: a crew member can clock in / out and file a
+correction for themselves only, cannot clock in for someone else or approve attendance, and sees no payroll; a Team Leader can approve crew
+attendance but not their own.

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
+import { deleteClient, planClientDelete } from '@/lib/deletion';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj, ask } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { ClientForm } from './Clients';
@@ -68,6 +69,12 @@ export default function ClientDetail() {
       <PageHead title={c.name} sub={<><Badge tone="blue">{c.type}</Badge> <Badge>{c.status}</Badge> · {c.contact_person} · {c.mobile}</>}>
         <Link to="/clients" className="btn">← Clients</Link>
         {can('clients.edit') && <button className="btn" onClick={() => setEdit(true)}><Icon name="edit" />Edit</button>}
+        {can('clients.delete') && <button className="btn danger" onClick={async () => {
+          const plan = planClientDelete(db, c.id);
+          if (plan.blockers.length) { attempt(() => deleteClient(c.id, 'check')); return; }
+          const r = await ask(`Delete ${c.name}?${plan.counts.length ? ` This also removes: ${plan.counts.join(', ')}.` : ''} It can be restored from Admin → Recycle bin.`, 'Reason for deleting', { okLabel: 'Delete client' });
+          if (r && attempt(() => deleteClient(c.id, r), `${c.name} deleted`)) nav('/clients');
+        }}>Delete</button>}
         {canRecordPayment(can) && payableInvoices(db, { clientId: c.id }).length > 0 && <button className="btn primary" onClick={() => setPayOpen(true)}>Record Payment</button>}
         {can('sales.edit') && <button className="btn primary" onClick={() => nav(`/sales/quote/new?client=${c.id}`)}><Icon name="plus" />New quotation</button>}
       </PageHead>
