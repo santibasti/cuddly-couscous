@@ -25,6 +25,8 @@ export const syncHub = {
   subscribe: (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; },
   getSnapshot: () => snap,
   setFlusher(f: (() => Promise<void>) | null) { flusher = f; },
+  /** Changes found waiting on this device after the app was reopened. */
+  setPending(n: number) { set({ pending: n, state: n === 0 ? snap.state : snap.online ? 'saving' : 'offline' }); if (n > 0 && snap.online) { clearTimeout(t2); t2 = setTimeout(() => { void flush(); }, 300); } },
   /** Called after every change is written to local storage. */
   noteWrite() {
     if (!snap.online) { set({ state: 'offline', pending: snap.pending + 1 }); return; }
@@ -39,6 +41,8 @@ export const syncHub = {
     if (snap.pending > 0) void flush(); else set({ state: 'synced' });
   },
 };
+// keep trying while changes are waiting (flaky signal on site)
+if (hasWin) setInterval(() => { if (snap.pending > 0 && snap.online && flusher && snap.state !== 'saving') void flush(); }, 30000);
 if (hasWin) { window.addEventListener('online', () => syncHub.setOnline(true)); window.addEventListener('offline', () => syncHub.setOnline(false)); }
 export const useSync = (): SyncSnap => useSyncExternalStore(syncHub.subscribe, syncHub.getSnapshot);
 export const SYNC_LABEL: Record<SyncState, string> = { saved: 'Saved', saving: 'Saving…', offline: 'Offline Draft', synced: 'Synced' };

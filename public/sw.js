@@ -1,6 +1,6 @@
 /* TopMop Operations – offline shell. Caches the app so it opens with a weak or lost connection. */
-const CACHE = 'topmop-shell-v1';
-const SHELL = ['./', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'topmop-shell-v2';
+const SHELL = ['./', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 
 // precache the shell plus the built JS / CSS the page references, so the very first offline reload works
 async function precache() {

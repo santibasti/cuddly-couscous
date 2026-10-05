@@ -6,6 +6,7 @@ import { ROLE_LABEL, ROUTE_ACCESS } from '@/lib/rbac';
 import { runAutomations } from '@/lib/actions';
 import { Icon, Overlays, Badge, toast } from '@/components/ui';
 import { SyncBadge } from '@/components/touch';
+import { InstallPrompt, UpdateBanner } from '@/components/InstallPrompt';
 import { confirmLeave } from '@/lib/sync';
 import { Logo } from '@/components/Logo';
 import { fmtStamp } from '@/lib/util';
@@ -180,6 +181,8 @@ export default function App() {
         <Route path="/portal/*" element={<Portal />} />
         <Route path="/*" element={user ? <Shell /> : <Navigate to="/login" replace />} />
       </Routes>
+      {user && <InstallPrompt />}
+      <UpdateBanner />
       <Overlays />
     </>
   );

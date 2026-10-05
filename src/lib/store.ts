@@ -4,7 +4,8 @@ import { permsFor } from './rbac';
 import { isoNow, sha256, uid } from './util';
 import { seedDB } from './seed';
 import { syncHub } from './sync';
-import { CLOUD, type JournalEntry, currentUserId, emptyDB, fetchAll, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
+import { kvDel, kvGet, kvSet } from './outbox';
+import { CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, fetchAll, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
 
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
@@ -32,8 +33,23 @@ class Store {
   private pool: Record<string, number[]> = {};
   /** order in which rows were changed, so they are written to the database in the same order (parents first, workflow before job status …) */
   private journal: JournalEntry[] = [];
-  private note(table: string, kind: 'insert' | 'update', row: unknown, before?: unknown) { if (CLOUD) this.journal.push({ t: table, id: (row as Base).id, kind, row: row as Record<string, unknown>, before: before as Record<string, unknown> | undefined }); }
+  private note(table: string, kind: 'insert' | 'update', row: unknown, before?: unknown) { if (CLOUD) { this.journal.push({ t: table, id: (row as Base).id, kind, row: row as Record<string, unknown>, before: before as Record<string, unknown> | undefined }); this.saveOutbox(); } }
+  /** What must survive closing the app while offline: unsent changes and unused document numbers (saved on this device). */
+  private outTimer: ReturnType<typeof setTimeout> | null = null;
+  private snapTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveOutbox() {
+    if (!CLOUD || !this.sessionUser) return;
+    if (this.outTimer) clearTimeout(this.outTimer);
+    this.outTimer = setTimeout(() => { const u = this.sessionUser; if (!u) return; void (this.journal.length ? kvSet(`outbox:${u}`, this.journal) : kvDel(`outbox:${u}`)); void kvSet(`pool:${u}`, this.pool); }, 250);
+  }
+  /** A copy of the server's data, so the app can open with no connection. */
+  private saveSnapshot() {
+    if (!CLOUD || !this.sessionUser) return;
+    if (this.snapTimer) clearTimeout(this.snapTimer);
+    this.snapTimer = setTimeout(() => { const u = this.sessionUser; if (!u) return; const b = this.baseline; void kvSet(`snap:${u}`, { at: isoNow(), db: { ...b, audit: b.audit.slice(0, 100), notifications: [] } }); }, 4000);
+  }
   private flushing = false;
+  private lastUid: string | null = null;
   bootStatus: 'booting' | 'ready' = 'ready';
   getBoot = () => this.bootStatus;
 
@@ -58,8 +74,38 @@ class Store {
 
   /* ---- cloud mode (Supabase) ---- */
   private async bootCloud() {
-    try { const uid = await currentUserId(); if (uid) await this.afterSignIn(uid); } catch { try { await signOut(); } catch { /* noop */ } }
+    let uid: string | null = null;
+    try { uid = await currentUserId(); } catch { /* offline: fall back to the last signed-in person below */ }
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (!uid && offline) { try { uid = localStorage.getItem('topmop-last-user'); } catch { /* noop */ } }
+    if (uid) {
+      try { await this.afterSignIn(uid); }
+      catch (e) {
+        if (isNetworkError(e) && !(await this.openOffline(uid))) { /* nothing saved on this device yet: show the sign-in page */ }
+        else if (!isNetworkError(e)) { try { await signOut(); } catch { /* noop */ } }
+      }
+    }
     this.bootStatus = 'ready'; this.listeners.forEach((l) => l());
+  }
+  /** No connection: open from the copy saved on this device, then send the queued changes when the connection returns. */
+  private async openOffline(uid: string): Promise<boolean> {
+    const snap = await kvGet<{ at: string; db: DB }>(`snap:${uid}`);
+    if (!snap?.db) return false;
+    this._db = { ...snap.db, version: 1 }; this.baseline = this._db; this.sessionUser = uid;
+    await this.restoreLocal(uid);
+    this.listeners.forEach((l) => l());
+    return true;
+  }
+  /** Put back what this device still has to send (rebased on the current data) and the document numbers it reserved. */
+  private async restoreLocal(uid: string) {
+    const pool = await kvGet<Record<string, number[]>>(`pool:${uid}`); if (pool) for (const [k, v] of Object.entries(pool)) this.pool[k] = [...new Set([...(this.pool[k] ?? []), ...v])];
+    const pending = await kvGet<JournalEntry[]>(`outbox:${uid}`);
+    if (pending?.length) {
+      const r = applyOutbox(this.baseline, pending);
+      this._db = { ...r.db, version: this._db.version + 1 }; this.journal = r.entries;
+      syncHub.setPending(r.entries.length);
+      void this.flushCloud().catch(() => { /* still offline: retried when the connection returns */ });
+    }
   }
   private async afterSignIn(uid: string) {
     const prof = await fetchProfile(uid);
@@ -67,11 +113,14 @@ class Store {
     if (!prof.active) throw new Error('This account is disabled. Contact your administrator.');
     const db = await fetchAll();
     this._db = { ...db, version: 1 }; this.baseline = this._db; this.sessionUser = uid;
+    try { localStorage.setItem('topmop-last-user', uid); } catch { /* noop */ }
+    await this.restoreLocal(uid);
     for (const k of ['QT', 'JOB', 'INV', 'OR', 'EMP', 'INC', 'DR', 'BJ', 'OV']) void this.refill(k);
+    this.saveSnapshot();
     this.listeners.forEach((l) => l());
   }
   private async refill(kind: string) {
-    try { const nums = await reserveNumbers(kind, 10); this.pool[kind] = [...(this.pool[kind] ?? []), ...nums]; } catch { /* retried on next use */ }
+    try { const nums = await reserveNumbers(kind, 20); this.pool[kind] = [...(this.pool[kind] ?? []), ...nums]; this.saveOutbox(); } catch { /* retried on next use */ }
   }
   private cloudError(msg: string) { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('topmop:cloud-error', { detail: `NOT SAVED — the database refused the change and it was undone. ${msg}` })); }
   /** Write every changed row to Supabase; the database re-checks every rule. A refused change is undone by reloading the server's copy. */
@@ -84,16 +133,16 @@ class Store {
         let res;
         try { res = await pushChanges(this.baseline, next, this.soft, this.journal.slice(0, jn)); }
         catch (e) {
-          if (isRuleError(e)) { this.soft.clear(); this.journal = []; this.cloudError((e as Error).message); await this.reloadCloud(); return; }
+          if (isRuleError(e)) { this.soft.clear(); this.journal = []; this.saveOutbox(); this.cloudError((e as Error).message); await this.reloadCloud(); return; }
           throw e;                                            // network trouble: stay queued ("Offline Draft")
         }
-        this.soft.clear(); this.journal.splice(0, jn); this.baseline = next;
+        this.soft.clear(); this.journal.splice(0, jn); this.baseline = next; this.saveOutbox(); this.saveSnapshot();
         // pick up what the database added or changed itself (timestamps, follow-ups scheduled by triggers, …)
         const tables: SyncTable[] = [...res.touched]; if (res.touched.has('jobs') && !tables.includes('followups')) tables.push('followups');
         if (tables.length && this._db.version === ver) {
           try {
             const fresh = await fetchTables(tables);
-            if (this._db.version === ver) { this._db = { ...this._db, ...fresh } as DB; this.baseline = this._db; this.listeners.forEach((l) => l()); }
+            if (this._db.version === ver) { this._db = { ...this._db, ...fresh } as DB; this.baseline = this._db; this.saveSnapshot(); this.listeners.forEach((l) => l()); }
           } catch { /* the next refresh picks it up */ }
         }
       }
@@ -101,14 +150,14 @@ class Store {
   }
   private async reloadCloud() {
     const db = await fetchAll();
-    this._db = { ...db, notifications: this._db.notifications, version: this._db.version + 1 }; this.baseline = this._db;
+    this._db = { ...db, notifications: this._db.notifications, version: this._db.version + 1 }; this.baseline = this._db; this.saveSnapshot();
     this.listeners.forEach((l) => l());
   }
   /** Pull other people's changes every so often, but never while this person has unsent changes. */
   private async refreshCloud() {
     if (!CLOUD || !this.sessionUser || this.flushing || syncHub.getSnapshot().pending > 0 || this._db !== this.baseline || (typeof document !== 'undefined' && document.hidden)) return;
     const ver = this._db.version;
-    try { const db = await fetchAll(); if (this._db.version === ver && this._db === this.baseline && !this.flushing) { this._db = { ...db, notifications: this._db.notifications, version: ver }; this.baseline = this._db; this.listeners.forEach((l) => l()); } } catch { /* offline: try again later */ }
+    try { const db = await fetchAll(); if (this._db.version === ver && this._db === this.baseline && !this.flushing) { this._db = { ...db, notifications: this._db.notifications, version: ver }; this.baseline = this._db; this.saveSnapshot(); this.listeners.forEach((l) => l()); } } catch { /* offline: try again later */ }
   }
 
   /* ---- subscription ---- */
@@ -152,8 +201,12 @@ class Store {
   logout() {
     const u = this.user;
     if (CLOUD) {
-      this.sessionUser = null; this.listeners.forEach((l) => l());
-      void this.flushCloud().catch(() => { /* unsent changes are lost on sign-out while offline */ }).finally(async () => { await signOut(); this._db = emptyDB(); this.baseline = this._db; this.pool = {}; this.listeners.forEach((l) => l()); });
+      this.lastUid = this.sessionUser; this.sessionUser = null; this.listeners.forEach((l) => l());
+      void this.flushCloud().catch(() => { /* unsent changes are lost on sign-out while offline */ }).finally(async () => {
+        const uid = this.lastUid; this.journal.length === 0 && uid && (await kvDel(`outbox:${uid}`), await kvDel(`snap:${uid}`), await kvDel(`pool:${uid}`));   // keep unsent offline changes for the next sign-in; otherwise leave nothing behind on a shared device
+        try { localStorage.removeItem('topmop-last-user'); } catch { /* noop */ }
+        await signOut(); this._db = emptyDB(); this.baseline = this._db; this.pool = {}; this.journal = []; this.listeners.forEach((l) => l());
+      });
       return;
     }
     if (u) this.audit('logout', 'users', u.id, `${u.name} signed out`);
@@ -297,7 +350,8 @@ class Store {
     if (CLOUD) {
       const pool = this.pool[kind]; const n = pool?.shift();
       if (n === undefined) { void this.refill(kind); throw new RuleError('Document numbers are still loading from the server. Try again in a moment.'); }
-      if (pool.length < 4) void this.refill(kind);
+      if (pool.length < 8) void this.refill(kind);
+      this.saveOutbox();
       return kind === 'EMP' ? `TM-${String(n).padStart(3, '0')}` : `${kind}-${new Date().getFullYear()}-${String(n).padStart(4, '0')}`;
     }
     const n = (this._db.settings.counters[kind] ?? 0) + 1;

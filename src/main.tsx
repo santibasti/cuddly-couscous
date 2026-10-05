@@ -7,7 +7,13 @@ import './styles.css';
 
 // offline-capable app shell (production builds only, so dev hot-reload is not cached)
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => { navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => { /* not available (e.g. insecure origin) */ }); });
+  window.addEventListener('load', () => {
+    const had = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).then((reg) => { setInterval(() => { reg.update().catch(() => undefined); }, 3600000); }).catch(() => { /* not available (e.g. insecure origin) */ });
+    // a new version took over after this page was already open: offer a reload (never reload by surprise — someone may be mid-form)
+    let seen = had;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (seen) window.dispatchEvent(new Event('topmop:update-ready')); seen = true; });
+  });
 }
 
 /** Shows the error on screen (instead of a blank page) if something throws while drawing. */

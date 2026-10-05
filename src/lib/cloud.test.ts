@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { diffDB, emptyDB, fromDb, isRuleError, pushChanges, settingsChanged, toDb } from './cloud';
+import { applyOutbox, diffDB, emptyDB, fromDb, isRuleError, pushChanges, settingsChanged, toDb } from './cloud';
 
 const sent: Record<string, unknown>[] = []; const updates: Record<string, unknown>[] = [];
 vi.mock('@supabase/supabase-js', () => ({
@@ -53,5 +53,25 @@ describe('Supabase mapping', () => {
     ];
     await pushChanges(a, b, new Set(), j);
     expect(updates).toEqual([{ status: 'Approved' }, { status: 'Applied' }]);       // each transition is sent, nothing else is touched
+  });
+  it('puts changes made offline back on top of fresh server data without losing or repeating anything', () => {
+    const server = emptyDB();
+    server.clients = [{ id: 'c1', name: 'A', status: 'Active', notes: 'old' }, { id: 'c2', name: 'B', status: 'Active' }, { id: 'c9', name: 'saved already' }] as never;
+    server.jobs = [{ id: 'j1', status: 'Confirmed', scope: 'x' }] as never;
+    const entries = [
+      { t: 'clients', id: 'c3', kind: 'insert' as const, row: { id: 'c3', name: 'New client' } },                                           // made offline, not sent
+      { t: 'clients', id: 'c9', kind: 'insert' as const, row: { id: 'c9', name: 'saved already' } },                                         // was sent just before the app closed
+      { t: 'clients', id: 'c1', kind: 'update' as const, before: { id: 'c1', name: 'A', status: 'Active', notes: 'old' }, row: { id: 'c1', name: 'A', status: 'Active', notes: 'called' } },
+      { t: 'clients', id: 'c2', kind: 'update' as const, before: { id: 'c2', name: 'B', status: 'Active' }, row: { id: 'c2', name: 'B2' } },       // renamed, status cleared
+      { t: 'jobs', id: 'j1', kind: 'update' as const, before: { id: 'j1', status: 'Confirmed', scope: 'x' }, row: { id: 'j1', status: 'Dispatched', scope: 'x' } },
+      { t: 'clients', id: 'gone', kind: 'update' as const, before: { id: 'gone' }, row: { id: 'gone', name: 'z' } },                          // deleted on the server meanwhile
+    ];
+    const r = applyOutbox(server, entries);
+    expect(r.db.clients.map((c) => c.id)).toEqual(['c1', 'c2', 'c9', 'c3']);
+    expect(r.db.clients.find((c) => c.id === 'c1')).toEqual({ id: 'c1', name: 'A', status: 'Active', notes: 'called' });
+    expect(r.db.clients.find((c) => c.id === 'c2')).toEqual({ id: 'c2', name: 'B2' });
+    expect(r.db.jobs[0].status).toBe('Dispatched');
+    expect(r.entries.map((e) => `${e.kind}:${e.id}`)).toEqual(['insert:c3', 'update:c1', 'update:c2', 'update:j1']);   // c9 already saved, "gone" dropped
+    expect(server.clients.length).toBe(3);                                                                                // the server copy itself is untouched
   });
 });

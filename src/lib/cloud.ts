@@ -138,6 +138,25 @@ async function tolerant(t: string, row: Record<string, unknown>, go: (r: Record<
   return { error: { message: 'Too many unknown columns.', code: 'PGRST204' } as { message: string; code?: string }, data: null };
 }
 
+/** Re-applies changes that were made offline (and never sent) on top of a fresh copy from the server, so nothing typed offline is lost. */
+export function applyOutbox(db: DB, entries: JournalEntry[]): { db: DB; entries: JournalEntry[] } {
+  const next = { ...db } as unknown as Record<string, unknown[]>; const out: JournalEntry[] = [];
+  const known = new Set<string>(SYNC_TABLES);
+  for (const e of entries) {
+    if (!known.has(e.t)) continue;
+    const list = (next[e.t] as { id: string }[]).slice();
+    const at = list.findIndex((r) => r.id === e.id);
+    if (e.kind === 'insert') { if (at >= 0) continue; list.push(e.row as never); next[e.t] = list; out.push(e); continue; }       // already on the server → nothing to send
+    if (at < 0) continue;                                                                                                       // the record is gone on the server
+    const cur = list[at] as unknown as Record<string, unknown>; const was = e.before ?? {};
+    const merged: Record<string, unknown> = { ...cur };
+    for (const k of new Set([...Object.keys(e.row), ...Object.keys(was)])) if (JSON.stringify(e.row[k]) !== JSON.stringify(was[k])) { if (e.row[k] === undefined || e.row[k] === null) delete merged[k]; else merged[k] = e.row[k]; }
+    list[at] = merged as never; next[e.t] = list;
+    out.push({ ...e, row: merged, before: cur });
+  }
+  return { db: next as unknown as DB, entries: out };
+}
+
 export interface JournalEntry { t: string; id: string; kind: 'insert' | 'update'; row: Record<string, unknown>; before?: Record<string, unknown> }
 /**
  * Replays the changes in the exact order the app made them. The database checks every step (e.g. a discount goes Pending → Approved → Applied,
@@ -163,7 +182,7 @@ export async function pushChanges(prev: DB, next: DB, soft: Set<string>, journal
     const t = op.t as SyncTable; const r = op.row; touched.add(t);
     if (op.kind === 'insert') {
       const row = toDb(r, undefined, RENAME[t]);
-      await run(op.id, async () => { const { error } = await tolerant(t, row, (x) => supabase().from(t).insert(x)); if (error) throw new CloudError(error.message, error.code); });
+      await run(op.id, async () => { const { error } = await tolerant(t, row, (x) => supabase().from(t).insert(x)); if (error && !(error.code === '23505' && /pkey|\(id\)/i.test(error.message))) throw new CloudError(error.message, error.code); });   // already saved before the app closed → fine
     } else {
       // send only what this step changed (columns the database manages itself, like verified_at, must not be overwritten with the app's copy)
       const changed: Record<string, unknown> = {}; const bef = op.before ?? {};
@@ -198,4 +217,6 @@ export async function signIn(email: string, password: string) {
   return data.user;
 }
 export const signOut = () => supabase().auth.signOut();
+/** True when the failure is the connection (offline, server unreachable) rather than a database rule. */
+export const isNetworkError = (e: unknown) => !isRuleError(e) || /failed to fetch|network|load failed|fetch/i.test(String((e as Error)?.message ?? ''));
 export async function currentUserId(): Promise<string | null> { return (await supabase().auth.getSession()).data.session?.user.id ?? null; }
