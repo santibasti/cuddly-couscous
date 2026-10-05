@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { Badge, Field, Modal, attempt } from '@/components/ui';
-import { CHEQUE_STATUSES, PAY_METHODS, editPayment, recordPayment, type PaymentInput } from '@/lib/actions';
-import { invoiceLedger, invoiceTotals, invoiceState, paymentPlanLabel } from '@/lib/business';
+import { CHEQUE_STATUSES, PAY_METHODS, editPayment, recordPayment, verifyPayment, type PaymentInput } from '@/lib/actions';
+import { invoiceLedger, invoiceTotals, invoiceState, paymentPending, paymentPlanLabel } from '@/lib/business';
 import { receiptPdf } from '@/lib/export';
 import { fmtDateTime, money, nowLocal, round2 } from '@/lib/util';
 import type { Invoice, Payment, PayMethod } from '@/lib/types';
@@ -24,6 +24,9 @@ export function RecordPaymentModal({ invoice, clientId, jobId, edit, onClose }: 
   const lg = inv ? invoiceLedger(db, inv) : undefined;
   const room = lg ? round2(lg.available + (edit && edit.status !== 'Rejected' ? edit.amount + edit.wht_amount : 0)) : 0;
   const t = inv ? invoiceTotals(inv) : undefined;
+  // everything still owed is already recorded and only waiting for Finance to verify it (e.g. cash the Team Leader collected on site)
+  const pending = inv ? db.payments.filter((p) => p.invoice_id === inv.id && paymentPending(p)) : [];
+  const nothingLeft = !edit && !!lg && room <= 0.005 && pending.length > 0;
   const pc = inv ? db.payment_confirmations.find((c) => c.job_id === inv.job_id && !c.deleted_at) : undefined;
   const [method, setMethod] = useState<PayMethod>(edit?.method ?? (pc && pc.method !== 'Terms / To Be Billed' ? (pc.method as PayMethod) : 'Cash'));
   const [amount, setAmount] = useState<number | undefined>(edit?.amount ?? (room > 0 ? room : undefined));
@@ -52,9 +55,17 @@ export function RecordPaymentModal({ invoice, clientId, jobId, edit, onClose }: 
     return <Modal title="Record payment" onClose={onClose} footer={<button className="btn" onClick={onClose}>Close</button>}><div className="alert info">There is no approved invoice with an unpaid balance{jobId ? ' for this job. Create and approve the invoice first (Finance)' : ''}.</div></Modal>;
   }
   return (
-    <Modal title={edit ? `Edit payment ${edit.receipt_no}` : 'Record payment'} size="wide" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary lg" onClick={save}>{edit ? 'Save changes' : 'Save payment & receipt'}</button></>}>
+    <Modal title={edit ? `Edit payment ${edit.receipt_no}` : 'Record payment'} size="wide" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary lg" onClick={save} disabled={nothingLeft}>{edit ? 'Save changes' : 'Save payment & receipt'}</button></>}>
       <div className="stack">
         {options.length > 1 && <Field label="Invoice" required><select value={invId} onChange={(e) => { setInvId(e.target.value); setAmount(undefined); }}>{options.map((i) => <option key={i.id} value={i.id}>{i.number} · {db.clients.find((c) => c.id === i.client_id)?.name} · balance {money(invoiceLedger(db, i).balance)} · {invoiceState(db, i)}</option>)}</select></Field>}
+        {nothingLeft && (
+          <div className="alert warn">
+            <b>Nothing left to record.</b> The whole balance is already recorded and waiting for verification, so it does not count yet:
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{pending.map((p) => (
+              <li key={p.id}>{p.receipt_no} · {p.method} · {money(p.amount)} · received by {p.received_by}{' '}
+                {verifier ? <button type="button" className="btn sm primary" onClick={() => { if (attempt(() => verifyPayment(p.id), 'Payment verified')) onClose(); }}>Verify it now</button> : <span className="muted">(Finance / Admin verifies it)</span>}</li>))}</ul>
+          </div>
+        )}
         {inv && lg && t && (
           <div className="card" style={{ padding: 12 }}>
             <dl className="kv">
