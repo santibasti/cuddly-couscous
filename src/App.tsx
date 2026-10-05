@@ -8,6 +8,7 @@ import { Icon, Overlays, Badge, toast } from '@/components/ui';
 import { SyncBadge } from '@/components/touch';
 import { InstallPrompt, UpdateBanner } from '@/components/InstallPrompt';
 import { confirmLeave } from '@/lib/sync';
+import { getTheme, setTheme } from '@/lib/theme';
 import { Logo } from '@/components/Logo';
 import { fmtStamp } from '@/lib/util';
 import Login from '@/pages/Login';
@@ -65,6 +66,7 @@ function Shell() {
   const nav = useNavigate();
   const loc = useLocation();
   const [open, setOpen] = useState(false);
+  const [, setTick] = useState(0);
   const [bell, setBell] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
   useEffect(() => setOpen(false), [loc.pathname]);
@@ -111,6 +113,7 @@ function Shell() {
         <header className="topbar">
           <button className="icon-btn burger" onClick={() => setOpen(true)} aria-label="Open menu"><Icon name="menu" /></button>
           <div className="title grow">{items.find((n) => loc.pathname.startsWith(n.to))?.label ?? 'TopMop'}</div>
+          <button className="icon-btn" onClick={() => { setTheme(getTheme() === 'dark' ? 'light' : 'dark'); setTick((x) => x + 1); }} aria-label="Switch dark / light appearance" title={getTheme() === 'dark' ? 'Switch to light' : 'Switch to dark'}>{getTheme() === 'dark' ? '☀' : '☾'}</button>
           <SyncBadge />
           <span className="muted small hide-sm">Asia/Manila</span>
           <div className="rel" ref={bellRef}>

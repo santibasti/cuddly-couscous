@@ -155,7 +155,7 @@ export default function Reports() {
       <PageHead title="Reports" sub="Every report downloads as PDF or Excel. Financial reports follow your role's controlled access." />
       <div className="reports-grid">
         <div className="card report-list">
-          {groups.map((g) => <div key={g}><div className="small muted" style={{ padding: '10px 14px 4px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{g}</div>{list.filter((d) => d.group === g).map((d) => <button key={d.id} onClick={() => setId(d.id)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', border: 0, background: d.id === id ? 'var(--teal-bg)' : 'none', borderLeft: d.id === id ? '3px solid var(--teal)' : '3px solid transparent', cursor: 'pointer', color: 'var(--navy)', fontWeight: d.id === id ? 650 : 500 }}>{d.title}</button>)}</div>)}
+          {groups.map((g) => <div key={g}><div className="small muted" style={{ padding: '10px 14px 4px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{g}</div>{list.filter((d) => d.group === g).map((d) => <button key={d.id} onClick={() => setId(d.id)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', border: 0, background: d.id === id ? 'var(--teal-bg)' : 'none', borderLeft: d.id === id ? '3px solid var(--teal)' : '3px solid transparent', cursor: 'pointer', color: 'var(--head)', fontWeight: d.id === id ? 650 : 500 }}>{d.title}</button>)}</div>)}
         </div>
         <div className="stack">
           {def && table && (
