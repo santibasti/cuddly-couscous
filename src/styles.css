@@ -482,3 +482,10 @@ table.finalsum { max-width: 460px; margin-left: auto; }
 .installbar > div { flex: 1 1 200px; font-size: 14px; }
 .installbar > .btn { flex: 0 0 auto; }
 @media (max-width: 520px) { .installbar { padding: 10px; } .installbar > div { flex-basis: calc(100% - 60px); } .installbar > .btn { flex: 1 1 40%; } }
+
+/* iOS Safari: a full-screen dialog could paint without its white background (text floating over the dimmed page). Paint every part of it explicitly. */
+.modal { background-color: #fff; isolation: isolate; -webkit-transform: translateZ(0); transform: translateZ(0); }
+.modal-h, .modal-b { background-color: #fff; }
+.modal-h { border-radius: 10px 10px 0 0; position: relative; z-index: 1; }
+.modal-b { position: relative; }
+@media (max-width: 767px) { .modal { min-height: 100vh; min-height: 100dvh; } .modal-h { border-radius: 0; position: sticky; top: 0; z-index: 3; } }
