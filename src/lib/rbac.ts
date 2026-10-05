@@ -104,8 +104,18 @@ export const DEFAULT_ACCESS: Record<Role, string[]> = {
   viewer: ['reports.finance'],
 };
 
+/**
+ * Permissions of a role. The saved matrix (Admin → Permissions, stored with the company settings) wins, except that:
+ *  - the Owner always has everything (the Owner can never be locked out), and
+ *  - a permission that is newer than the saved matrix (listed under no role in it at all) falls back to its built-in default,
+ *    so features added later work without anyone having to re-save the matrix.
+ */
 export function permsFor(role: Role, overrides?: Record<Role, string[]>): Set<string> {
-  return new Set(overrides?.[role] ?? DEFAULT_ACCESS[role]);
+  if (role === 'owner' || !overrides?.[role]) return new Set(role === 'owner' ? ALL : DEFAULT_ACCESS[role]);
+  const out = new Set(overrides[role]);
+  const known = new Set(Object.values(overrides).flat());
+  for (const p of DEFAULT_ACCESS[role]) if (!known.has(p)) out.add(p);
+  return out;
 }
 
 /** Routes → the permission (any of) that unlocks them. */

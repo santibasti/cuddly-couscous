@@ -53,3 +53,17 @@ describe('executive insights', () => {
     void monthStart(T); void monthEnd(T);
   });
 });
+
+import { permsFor, DEFAULT_ACCESS } from './rbac';
+describe('permissions saved before a feature existed', () => {
+  const old = { ...DEFAULT_ACCESS, owner: ['dashboard.view'], ops: DEFAULT_ACCESS.ops.filter((p) => p !== 'joborders.manage') } as typeof DEFAULT_ACCESS;
+  it('owner always has everything; new permissions use their defaults', () => {
+    expect(permsFor('owner', old).has('dashboard.executive')).toBe(true);
+    expect(permsFor('ops', old).has('joborders.manage')).toBe(true);
+    expect(permsFor('ops', old).has('dashboard.executive')).toBe(false);
+  });
+  it('a permission an Admin removed from one role stays removed', () => {
+    const o = { ...DEFAULT_ACCESS, ops: DEFAULT_ACCESS.ops.filter((p) => p !== 'jobs.edit') } as typeof DEFAULT_ACCESS;
+    expect(permsFor('ops', o).has('jobs.edit')).toBe(false);
+  });
+});
