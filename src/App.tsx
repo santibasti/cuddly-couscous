@@ -88,7 +88,7 @@ function Shell() {
   return (
     <div className="app">
       <aside className={open ? 'sidebar open' : 'sidebar'} aria-label="Main navigation">
-        <div className="brand"><div className="logo"><Logo size={26} /></div><div className="lbl"><b>TOPMOP</b><span>Operations System</span></div></div>
+        <div className="brand"><div className="logo"><Logo size={34} /></div><div className="lbl"><b>TOPMOP</b><span>Operations System</span></div></div>
         <nav className="nav">
           {items.map((n) => {
             const g = n.group && n.group !== lastGroup ? n.group : null; if (g) lastGroup = g;

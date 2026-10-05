@@ -49,7 +49,7 @@ button { font-family: inherit; }
 .app { display: grid; grid-template-columns: var(--sidebar) 1fr; min-height: 100%; }
 .sidebar { background: var(--navy); color: #cfe0f3; position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; z-index: 40; }
 .brand { padding: 18px 18px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
-.brand .logo { width: 34px; height: 34px; border-radius: 7px; background: #fff; display: grid; place-items: center; flex: none; }
+.brand .logo { width: 34px; height: 34px; border-radius: 50%; background: transparent; display: grid; place-items: center; flex: none; }
 .brand b { color: #fff; font-size: 15px; letter-spacing: 0.02em; display: block; line-height: 1.1; }
 .brand span { font-size: 11px; color: #8fb0d3; }
 .nav { padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; flex: 1; }

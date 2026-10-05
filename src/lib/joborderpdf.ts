@@ -1,4 +1,5 @@
 // Client-facing Job Order Confirmation PDF (A4, large readable type for tablets). Built only from the saved Job Order content.
+import { logoDataUrl } from './logo';
 import type { JobOrder } from './types';
 import { CHANGE_NOTE, PREPARE, WEATHER_NOTE, orderLabel } from './joborder-core';
 import { fmtDate } from './util';
@@ -22,13 +23,11 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
   };
   // ---- header: logo, company, document title ----
   doc.setFillColor(...NAVY); doc.rect(0, 0, W, 34, 'F'); doc.setFillColor(...CYAN); doc.rect(0, 34, W, 1.4, 'F');
-  doc.setFillColor(255, 255, 255); doc.roundedRect(M, 7, 17, 17, 3.5, 3.5, 'F');                                   // logo: navy tile with three teal bars (as in the app icon)
-  doc.setFillColor(...NAVY); doc.roundedRect(M + 1.4, 8.4, 14.2, 14.2, 2.6, 2.6, 'F');
-  doc.setFillColor(...CYAN); doc.roundedRect(M + 3.6, 11.6, 9.8, 1.9, 0.95, 0.95, 'F'); doc.roundedRect(M + 4.9, 15.2, 7.2, 1.9, 0.95, 0.95, 'F'); doc.roundedRect(M + 6.2, 18.8, 4.6, 1.9, 0.95, 0.95, 'F');
-  txt(c.company.name, M + 21, 13, { size: 14, bold: true, color: [255, 255, 255] });
-  txt(c.company.tagline, M + 21, 18.2, { size: 8.5, color: [170, 200, 230] });
-  txt(c.company.address, M + 21, 22.6, { size: 8.5, color: [170, 200, 230], max: 100 });
-  txt(`${c.company.phone}  |  ${c.company.email}${c.company.tin ? `  |  TIN ${c.company.tin}` : ''}`, M + 21, 27, { size: 8.5, color: [170, 200, 230], max: 110 });
+  const logo = await logoDataUrl(); if (logo) { try { doc.addImage(logo, 'PNG', M - 1, 5, 22, 22); } catch { /* without the logo */ } }
+  txt(c.company.name, M + 24, 13, { size: 14, bold: true, color: [255, 255, 255] });
+  txt(c.company.tagline, M + 24, 18.2, { size: 8.5, color: [170, 200, 230] });
+  txt(c.company.address, M + 24, 22.6, { size: 8.5, color: [170, 200, 230], max: 100 });
+  txt(`${c.company.phone}  |  ${c.company.email}${c.company.tin ? `  |  TIN ${c.company.tin}` : ''}`, M + 24, 27, { size: 8.5, color: [170, 200, 230], max: 110 });
   txt('JOB ORDER', W - M, 12, { size: 17, bold: true, color: [255, 255, 255], align: 'right' });
   txt('CONFIRMATION', W - M, 18.5, { size: 11, bold: true, color: CYAN, align: 'right' });
   txt(orderLabel(o), W - M, 25, { size: 10.5, bold: true, color: [255, 255, 255], align: 'right' });

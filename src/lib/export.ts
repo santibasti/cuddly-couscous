@@ -1,3 +1,4 @@
+import { logoDataUrl } from './logo';
 import type { DB, Invoice, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
 import { quoteImagesOf } from './quoteimages';
 import { paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
@@ -32,12 +33,14 @@ export function exportCsv(t: ExportTable) {
 
 export async function exportXlsx(tables: ExportTable | ExportTable[], filename?: string) {
   const list = Array.isArray(tables) ? tables : [tables];
-  const ExcelJS = (await import('exceljs')).default;
+  const [ExcelJS, logo] = await Promise.all([import('exceljs').then((m) => m.default), logoDataUrl()]);
   const wb = new ExcelJS.Workbook();
+  const logoId = logo ? wb.addImage({ base64: logo, extension: 'png' }) : undefined;
   wb.creator = 'TopMop Operations'; wb.created = new Date();
   for (const t of list) {
     const ws = wb.addWorksheet(t.title.slice(0, 31).replace(/[\\/?*[\]:]/g, '-'));
-    ws.addRow([store.getDB().settings.company.name]).font = { bold: true, size: 13, color: { argb: 'FF0B2545' } };
+    const co = ws.addRow([store.getDB().settings.company.name]); co.font = { bold: true, size: 13, color: { argb: 'FF0B2545' } };
+    if (logoId !== undefined) { co.height = 44; co.alignment = { vertical: 'middle', indent: 6 }; ws.addImage(logoId, { tl: { col: 0.08, row: 0.08 }, ext: { width: 52, height: 52 } }); }
     ws.addRow([t.title + (t.subtitle ? ` — ${t.subtitle}` : '')]).font = { bold: true };
     ws.addRow([`Generated ${fmtDateTime(nowLocal())} (Asia/Manila)`]).font = { italic: true, color: { argb: 'FF5B6B80' } };
     ws.addRow([]);
@@ -63,8 +66,10 @@ export async function exportXlsx(tables: ExportTable | ExportTable[], filename?:
   store.audit('export', 'reports', list[0].title, `Exported Excel: ${list.map((x) => x.title).join(', ')}`);
 }
 
+let LOGO: string | null = null;
 async function newPdf(orientation: 'p' | 'l' = 'p') {
-  const [{ jsPDF }, at] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+  const [{ jsPDF }, at, logo] = await Promise.all([import('jspdf'), import('jspdf-autotable'), logoDataUrl()]);
+  LOGO = logo;
   const doc = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
   return { doc, autoTable: at.default };
 }
@@ -74,9 +79,11 @@ function header(doc: Doc, title: string, rightLine?: string) {
   const c = store.getDB().settings.company; const w = doc.internal.pageSize.getWidth();
   doc.setFillColor(...NAVY); doc.rect(0, 0, w, 24, 'F');
   doc.setFillColor(...CYAN); doc.rect(0, 24, w, 1.2, 'F');
-  doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(c.name, 12, 11);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(170, 200, 230); doc.text(`${c.tagline} • ${c.address}`, 12, 17);
-  doc.text(`${c.phone} • ${c.email}${c.tin ? ` • TIN ${c.tin}` : ''}`, 12, 21);
+  let x0 = 12;
+  if (LOGO) { try { doc.addImage(LOGO, 'PNG', 10, 2.5, 19, 19); x0 = 32; } catch { /* header without the logo */ } }
+  doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(c.name, x0, 11);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(170, 200, 230); doc.text(`${c.tagline} • ${c.address}`, x0, 17);
+  doc.text(`${c.phone} • ${c.email}${c.tin ? ` • TIN ${c.tin}` : ''}`, x0, 21);
   doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.text(title.toUpperCase(), w - 12, 11, { align: 'right' });
   if (rightLine) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.text(rightLine, w - 12, 17, { align: 'right' }); }
   doc.setTextColor(20, 36, 58);

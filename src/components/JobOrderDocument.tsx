@@ -1,4 +1,5 @@
 // On-screen version of the client Job Order Confirmation (preview for Admin / Operations, and the page the client opens from the share link).
+import { LOGO_SMALL_URL } from '@/lib/logo';
 import type { JobOrder, JobOrderContent } from '@/lib/types';
 import { CHANGE_NOTE, PREPARE, WEATHER_NOTE, orderLabel } from '@/lib/joborder-core';
 import { fmtDate, money } from '@/lib/util';
@@ -15,7 +16,7 @@ export function JobOrderDocument({ order }: { order: View }) {
   return (
     <div className="joc">
       <div className="joc-head">
-        <div><b className="joc-co">{c.company.name}</b><div className="small">{c.company.tagline}</div><div className="small">{c.company.address}</div><div className="small">{c.company.phone} · {c.company.email}{c.company.tin ? ` · TIN ${c.company.tin}` : ''}</div></div>
+        <div className="row" style={{ gap: 12, alignItems: 'center' }}><img src={LOGO_SMALL_URL} alt="TopMop" width={54} height={54} /><div><b className="joc-co">{c.company.name}</b><div className="small">{c.company.tagline}</div><div className="small">{c.company.address}</div><div className="small">{c.company.phone} · {c.company.email}{c.company.tin ? ` · TIN ${c.company.tin}` : ''}</div></div></div>
         <div className="joc-title"><b>JOB ORDER<br />CONFIRMATION</b><div>{orderLabel(order)}</div><div className="small">Issued {fmtDate(order.issued_on)}</div></div>
       </div>
       {order.status === 'Superseded' && <div className="alert warn"><b>Superseded.</b> A newer version of this Job Order has been issued. Please use the latest version.</div>}
