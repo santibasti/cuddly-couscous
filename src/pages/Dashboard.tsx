@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bar as RBar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts';
+import { Area, AreaChart, Bar as RBar, BarChart, Pie, PieChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, PageHead, Stat, Bar, Empty } from '@/components/ui';
 import { BackJobDashboard } from '@/components/BackJobs';
@@ -12,9 +12,10 @@ import { addDays, eachDay, fmtDate, fmtTime, inRange, monthEnd, monthStart, mone
 import { paymentCounts, AWAY_JOB, FIELD_JOB, variationTotals, docTotals, invoiceBalance, invoiceTotals, isDone, isOpen, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
 import { isOverdue } from '@/lib/actions';
 import GeoInsights from '@/components/GeoInsights';
-import { STAGES, areaOptions, attention, growth, kpis, operationsToday, scopeOf, trend, type InsightFilters, type TrendRange } from '@/lib/insights';
+import { STAGES, areaOptions, attention, growth, kpis, operationsToday, serviceRevenue, scopeOf, trend, type InsightFilters, type TrendRange } from '@/lib/insights';
 import type { DB, Invoice, ServiceCode } from '@/lib/types';
 
+const DK = { grid: 'rgba(255,255,255,.08)', axis: '#9db0c5', tip: { background: '#0b2545', border: '1px solid #1d4373', borderRadius: 8, color: '#fff' } };
 const C = { navy: '#0B2545', teal: '#0E9AA7', green: '#2C9A45', cyan: '#22C1C3', gray: '#9db0c5', amber: '#B7791F' };
 
 /** Net (ex-VAT) revenue of an invoice attributed to each service line. */
@@ -245,11 +246,11 @@ export default function Dashboard() {
 
   const cards: { k: string; v: ReactNode; s?: ReactNode; to?: string; cls?: string; pending?: boolean }[] = [
     ...(exec ? [
-      { k: 'Revenue this month', v: moneyShort(k.revenue ?? 0), s: 'Approved invoices, ex-VAT', to: '/finance', cls: 'hero' },
-      { k: 'Verified collections this month', v: moneyShort(k.collections ?? 0), s: 'Finance-verified payments only', to: '/finance?tab=payments', cls: 'hero' },
-      { k: 'Outstanding receivables', v: moneyShort(k.receivables ?? 0), s: `${moneyShort(k.overdue ?? 0)} overdue`, to: '/finance?tab=receivables', cls: (k.overdue ?? 0) > 0 ? 'bad' : undefined },
-      k.gross === 'pending' || !k.gross ? { k: 'Gross profit / margin', v: 'Pending Cost Data', s: k.pendingJobs ? `${k.pendingJobs} completed job(s) still on estimated costs` : 'No completed jobs this month yet', to: '/finance?tab=profit', pending: true }
-        : { k: 'Gross profit / margin', v: moneyShort(k.gross.value), s: `Margin ${pct(k.gross.margin)}`, to: '/finance?tab=profit', cls: k.gross.value >= 0 ? 'good' : 'bad' },
+      { k: 'Revenue this month', v: moneyShort(k.revenue ?? 0), s: 'Approved invoices, ex-VAT', to: '/finance', cls: 'g-teal' },
+      { k: 'Verified collections this month', v: moneyShort(k.collections ?? 0), s: 'Finance-verified payments only', to: '/finance?tab=payments', cls: 'g-green' },
+      { k: 'Outstanding receivables', v: moneyShort(k.receivables ?? 0), s: `${moneyShort(k.overdue ?? 0)} overdue`, to: '/finance?tab=receivables', cls: (k.overdue ?? 0) > 0 ? 'g-red' : 'g-blue' },
+      k.gross === 'pending' || !k.gross ? { k: 'Gross profit / margin', v: 'Pending Cost Data', s: k.pendingJobs ? `${k.pendingJobs} completed job(s) still on estimated costs` : 'No completed jobs this month yet', to: '/finance?tab=profit', pending: true, cls: 'g-navy' }
+        : { k: 'Gross profit / margin', v: moneyShort(k.gross.value), s: `Margin ${pct(k.gross.margin)}`, to: '/finance?tab=profit', cls: k.gross.value >= 0 ? 'g-navy' : 'g-red' },
     ] : []),
     { k: 'Confirmed jobs this week', v: k.confirmedWeek, s: 'Scheduled Mon–Sun', to: '/jobs' },
     { k: 'Jobs in progress today', v: k.inProgress, s: 'On site or working now', to: '/jobs?status=In%20Progress' },
@@ -258,24 +259,34 @@ export default function Dashboard() {
     { k: 'Repeat client rate', v: `${k.repeatRate}%`, s: `of ${k.repeatOf} served clients`, to: '/clients' },
     { k: 'Follow-ups due this week', v: k.followUpsWeek, s: '6-month / 1-year', to: '/clients' },
   ];
+  const svcRev = useMemo(() => serviceRevenue(db, scope), [db, scope]);
+  const stockBars = useMemo(() => { let low = 0, out = 0, ok = 0; for (const i of db.items.filter((x) => !x.deleted_at)) { const a = stockSummary(db, i.id).available; if (a <= 0) out++; else if (a <= i.reorder_level) low++; else ok++; } return [{ name: 'In stock', n: ok, color: '#4ade80' }, { name: 'Low stock', n: low, color: '#f5b83d' }, { name: 'Out', n: out, color: '#f26d6d' }]; }, [db]);
   const tone = (x: string) => (x === 'bad' ? 'bad' : x === 'warn' ? 'warn' : '');
   return (
     <>
       <PageHead title="Executive dashboard" sub={`${fmtDate(from)} – ${fmtDate(to)} • live from operations data`} />
+      <div className="dash-dark">
       {filterBar}
+      {exec && (
+        <div className="hero-row">
+          {cards.filter((c) => c.cls?.startsWith('g-')).map((c) => <Link key={c.k} to={c.to ?? '/dashboard'} className={`kpi ${c.cls}`}><div className="k">{c.k}</div><div className={`v ${c.pending ? 'pending' : ''}`}>{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
+          <div className="kpi glass ring-tile"><Ring pct={k.gross && k.gross !== 'pending' ? k.gross.margin : 0} color={C.cyan} /><div><div className="k">Gross margin</div><div className="s">{k.gross && k.gross !== 'pending' ? 'Actual costs, this month' : 'Pending Cost Data'}</div></div></div>
+        </div>
+      )}
       <div className="exec-grid">
-        {cards.map((c) => <Link key={c.k} to={c.to ?? '/dashboard'} className={`kpi ${c.cls ?? ''}`}><div className="k">{c.k}</div><div className={`v ${c.pending ? 'pending' : ''}`}>{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
+        {cards.filter((c) => !c.cls?.startsWith('g-')).map((c) => <Link key={c.k} to={c.to ?? '/dashboard'} className="kpi glass"><div className="k">{c.k}</div><div className="v">{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
       </div>
       <p className="small muted" style={{ marginTop: -6 }}>Cards show the current month / week. Client type, status, New/Repeat, service, branch and area filters apply to every number below; the period drives the map and area tables.</p>
 
       <div className="grid g2" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', marginBottom: 14 }}>
         <Card title="Revenue & collection trend" actions={<select value={trendRange} onChange={(e) => setTrendRange(e.target.value as TrendRange)} aria-label="Trend range"><option value="days">Last 14 days</option><option value="weeks">Last 12 weeks</option><option value="months6">Last 6 months</option><option value="months12">Last 12 months</option></select>}>
           {exec ? (
-            <div style={{ height: 250 }}><ResponsiveContainer><BarChart data={tr} margin={{ left: -6, right: 8 }}>
-              <CartesianGrid stroke="#eaeff4" vertical={false} /><XAxis dataKey="label" fontSize={11} tickLine={false} /><YAxis fontSize={11} tickFormatter={(v) => moneyShort(v)} tickLine={false} axisLine={false} />
-              <Tooltip formatter={(v) => money(Number(v))} /><Legend iconType="square" wrapperStyle={{ fontSize: 12 }} />
-              <RBar dataKey="revenue" name="Revenue billed (ex-VAT)" fill={C.navy} radius={[3, 3, 0, 0]} /><RBar dataKey="collections" name="Verified collections" fill={C.teal} radius={[3, 3, 0, 0]} />
-            </BarChart></ResponsiveContainer></div>
+            <div style={{ height: 250 }}><ResponsiveContainer><AreaChart data={tr} margin={{ left: -6, right: 8, top: 6 }}>
+              <defs><linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4cc0ff" stopOpacity={0.55} /><stop offset="100%" stopColor="#4cc0ff" stopOpacity={0.02} /></linearGradient><linearGradient id="gCol" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4ade80" stopOpacity={0.55} /><stop offset="100%" stopColor="#4ade80" stopOpacity={0.02} /></linearGradient></defs>
+              <CartesianGrid stroke={DK.grid} vertical={false} /><XAxis dataKey="label" fontSize={11} tickLine={false} stroke={DK.axis} /><YAxis fontSize={11} tickFormatter={(v) => moneyShort(v)} tickLine={false} axisLine={false} stroke={DK.axis} />
+              <Tooltip formatter={(v) => money(Number(v))} contentStyle={DK.tip} labelStyle={{ color: '#fff' }} /><Legend iconType="circle" wrapperStyle={{ fontSize: 12, color: DK.axis }} />
+              <Area type="monotone" dataKey="revenue" name="Revenue billed (ex-VAT)" stroke="#4cc0ff" strokeWidth={2} fill="url(#gRev)" /><Area type="monotone" dataKey="collections" name="Verified collections" stroke="#4ade80" strokeWidth={2} fill="url(#gCol)" />
+            </AreaChart></ResponsiveContainer></div>
           ) : <Empty>Revenue and collections are visible to the Admin / CEO.</Empty>}
         </Card>
         <Card title={`Operations today — ${fmtDate(T)}`} flush>
@@ -287,6 +298,23 @@ export default function Dashboard() {
             <li><span>Awaiting client handover</span><b>{ops.awaitingHandover.length}</b></li>
             <li><span>Open back jobs</span><b>{ops.backJobs.length}</b></li>
           </ul>
+        </Card>
+      </div>
+
+      <div className="grid g3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', marginBottom: 14 }}>
+        {exec && (
+          <Card title="Top services by revenue">
+            {svcRev.length ? <div className="hbars">{svcRev.slice(0, 5).map((r, i) => <div key={r.name}><div className="row between small"><span>{r.name}</span><b className="mono">{moneyShort(r.value)}</b></div><div className="hbar"><i style={{ width: `${(r.value / svcRev[0].value) * 100}%`, background: i === 0 ? 'linear-gradient(90deg,#0e9aa7,#4ade80)' : 'linear-gradient(90deg,#1d4373,#4cc0ff)' }} /></div></div>)}</div> : <Empty>No billed revenue in this period.</Empty>}
+          </Card>
+        )}
+        <Card title="Jobs completed this month">
+          <div className="ring-tile"><Ring pct={k.scheduledMonth ? Math.round((k.completedMonth / k.scheduledMonth) * 100) : 0} color="#4ade80" /><div><div className="v" style={{ fontSize: 22, fontWeight: 750 }}>{k.completedMonth} <span className="muted" style={{ fontSize: 14 }}>of {k.scheduledMonth}</span></div><div className="small muted">scheduled jobs done</div></div></div>
+        </Card>
+        <Card title="Inventory status" actions={<Link to="/inventory" className="btn sm">Open</Link>}>
+          <div style={{ height: 150 }}><ResponsiveContainer><BarChart data={stockBars} margin={{ left: -24, right: 6 }}>
+            <CartesianGrid stroke={DK.grid} vertical={false} /><XAxis dataKey="name" fontSize={11} tickLine={false} stroke={DK.axis} /><YAxis fontSize={11} allowDecimals={false} tickLine={false} axisLine={false} stroke={DK.axis} />
+            <Tooltip contentStyle={DK.tip} cursor={{ fill: 'rgba(255,255,255,.06)' }} /><RBar dataKey="n" name="Items" radius={[4, 4, 0, 0]}>{stockBars.map((x) => <Cell key={x.name} fill={x.color} />)}</RBar>
+          </BarChart></ResponsiveContainer></div>
         </Card>
       </div>
 
@@ -307,11 +335,17 @@ export default function Dashboard() {
           <div className="kpi"><div className="k">Follow-up → booking</div><div className="v">{gr.conversion}%</div><div className="s">{gr.booked} of {gr.acted} actioned</div></div>
         </div>
       </div>
+      </div>
 
       {inbox}
       <details className="exec-details"><summary>Detailed operations & finance analytics</summary>{legacy}</details>
     </>
   );
+}
+
+function Ring({ pct: p, color }: { pct: number; color: string }) {
+  const v = Math.max(0, Math.min(100, p)); const r = 34, c = 2 * Math.PI * r;
+  return <svg width="86" height="86" viewBox="0 0 86 86" aria-label={`${Math.round(v)} percent`}><circle cx="43" cy="43" r={r} fill="none" stroke="rgba(255,255,255,.12)" strokeWidth="9" /><circle cx="43" cy="43" r={r} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round" strokeDasharray={`${(v / 100) * c} ${c}`} transform="rotate(-90 43 43)" /><text x="43" y="48" textAnchor="middle" fontSize="16" fontWeight="700" fill="#fff">{Math.round(v)}%</text></svg>;
 }
 
 function Flow({ k, v, s, c }: { k: string; v: number; s: string; c: string }) {

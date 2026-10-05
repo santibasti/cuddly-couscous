@@ -3,7 +3,7 @@
 // Privacy: when `exec` is false the money fields are left out here (not just hidden in the page) and client names / exact points are never returned.
 import type { Client, DB, FollowUp, Job, ServiceCode } from './types';
 import { clientFollow, clientValue, completedJobs, followUpStats, serviceDate } from './followup-core';
-import { invoiceBalance, invoiceTotals, isDone, isOpenBackJob, jobCost, paymentCounts, profitAndLoss } from './business';
+import { docTotals, invoiceBalance, invoiceTotals, isDone, isOpenBackJob, jobCost, paymentCounts, profitAndLoss } from './business';
 import { locate, PH_CENTER } from './geo-ph';
 import { addDays, inRange, monthEnd, monthStart, round2, sum, weekStart } from './util';
 
@@ -209,13 +209,14 @@ export function areaHighlights(rows: AreaRow[], exec: boolean) {
 export interface Kpis {
   revenue?: number; collections?: number; receivables?: number; overdue?: number;
   gross?: { value: number; margin: number } | 'pending'; pendingJobs: number;
-  confirmedWeek: number; inProgress: number; completedMonth: number; newClients: number; repeatRate: number; repeatOf: number; followUpsWeek: number;
+  scheduledMonth: number; confirmedWeek: number; inProgress: number; completedMonth: number; newClients: number; repeatRate: number; repeatOf: number; followUpsWeek: number;
 }
 export function kpis(db: DB, s: Scope): Kpis {
   const T = s.T; const mS = monthStart(T), mE = monthEnd(T), wS = weekStart(T), wE = addDays(wS, 6);
   const jobs = live(db.jobs).filter((j) => s.jobOk(j));
   const k: Kpis = {
     pendingJobs: 0,
+    scheduledMonth: jobs.filter((j) => inRange(j.start_at.slice(0, 10), mS, mE) && !SKIP.includes(j.status)).length,
     confirmedWeek: jobs.filter((j) => inRange(j.start_at.slice(0, 10), wS, wE) && !SKIP.includes(j.status) && j.status !== 'Pending').length,
     inProgress: jobs.filter((j) => ['On Site', 'In Progress'].includes(j.status)).length,
     completedMonth: jobs.filter((j) => isDone(j.status) && inRange(serviceDate(j), mS, mE)).length,
@@ -310,4 +311,15 @@ export function areaOptions(db: DB): { provinces: string[]; cities: { city: stri
   const prov = new Set<string>(); const cities = new Map<string, string>();
   for (const c of live(db.clients)) for (const p of placesOf(db, c)) { if (!p.geo.mapped) continue; if (p.geo.province) prov.add(p.geo.province); if (p.geo.city) cities.set(p.geo.city, p.geo.province ?? ''); }
   return { provinces: [...prov].sort(), cities: [...cities.entries()].map(([city, province]) => ({ city, province })).sort((a, b) => a.city.localeCompare(b.city)) };
+}
+
+/** Net revenue per service line for the period (approved invoices in scope), largest first. Admin / CEO only. */
+export function serviceRevenue(db: DB, s: Scope): { name: string; value: number }[] {
+  if (!s.exec) return [];
+  const out: Record<string, number> = {};
+  for (const i of live(db.invoices).filter((x) => invOk(db, s, x) && inRange(x.issue_date, s.f.from, s.f.to))) {
+    const t = docTotals(i.items, i.discount, i.vat_mode, i.vat_rate); const lines = sum(i.items, (x) => x.qty * x.rate - x.discount) || 1;
+    for (const it of i.items) out[it.service_code] = (out[it.service_code] ?? 0) + ((it.qty * it.rate - it.discount) / lines) * t.net;
+  }
+  return Object.entries(out).map(([code, v]) => ({ name: db.services.find((x) => x.code === code)?.name.replace(/ \/ .*/, '') ?? code, value: round2(v) })).sort((a, b) => b.value - a.value);
 }
