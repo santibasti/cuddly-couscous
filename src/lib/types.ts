@@ -140,7 +140,9 @@ export interface Quotation extends Base {
   items: QuoteItem[];
   vat_mode: 'exclusive' | 'inclusive' | 'none';
   vat_rate: number;
-  discount: number; // overall peso discount
+  discount: number; // overall peso discount (worked out from the percentage when discount_type is 'percent')
+  /** how the overall discount was entered: a peso amount (default) or a percentage of the subtotal after line discounts */
+  discount_type?: 'amount' | 'percent'; discount_percent?: number;
   terms: string;
   /** manpower, duration and disclaimer shown on the quotation (absent on quotations made before they existed) */
   crew_size?: string; safety_officer?: boolean; work_days?: number; disclaimer?: string; intro?: string; methodology?: string;

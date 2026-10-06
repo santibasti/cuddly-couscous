@@ -59,7 +59,10 @@ export default function QuoteEditor() {
   const v = f.v;
   const client = db.clients.find((c) => c.id === v.client_id);
   const sites = live(db.sites).filter((s) => s.client_id === v.client_id);
-  const t = docTotals(v.items, v.discount, v.vat_mode, v.vat_rate);
+  const pct = v.discount_type === 'percent';
+  const baseAfterLines = Math.max(0, docTotals(v.items, 0, v.vat_mode, v.vat_rate).gross - docTotals(v.items, 0, v.vat_mode, v.vat_rate).lineDiscount);
+  const discountPesos = pct ? Math.round(baseAfterLines * Math.min(100, Math.max(0, v.discount_percent ?? 0))) / 100 : v.discount;
+  const t = docTotals(v.items, discountPesos, v.vat_mode, v.vat_rate);
   const ov = v.ocular_visit_id ? db.ocular_visits.find((o) => o.id === v.ocular_visit_id) : undefined;
   const def = db.services.find((s) => s.code === svc)!;
 
@@ -74,7 +77,7 @@ export default function QuoteEditor() {
   const save = () => {
     if (!v.client_id) return attempt(() => { throw new Error('Choose a client.'); });
     if (v.valid_until < v.issue_date) return attempt(() => { throw new Error('Validity date is before the issue date.'); });
-    const r = attempt(() => saveQuotation({ ...v, id: existing?.id, number: existing?.number, branch_id: client?.branch_id ?? v.branch_id }), 'Quotation saved') as Quotation | undefined;
+    const r = attempt(() => saveQuotation({ ...v, discount: discountPesos, id: existing?.id, number: existing?.number, branch_id: client?.branch_id ?? v.branch_id }), 'Quotation saved') as Quotation | undefined;
     if (r && !existing) nav(`/sales/quote/${r.id}`, { replace: true });
     return r;
   };
@@ -145,7 +148,12 @@ export default function QuoteEditor() {
             <div className="form-grid">
               <Field label="VAT treatment"><select disabled={readOnly} value={v.vat_mode} onChange={(e) => f.set('vat_mode', e.target.value as Form['vat_mode'])}><option value="exclusive">VAT exclusive (add VAT)</option><option value="inclusive">VAT inclusive</option><option value="none">No VAT (Non-VAT / exempt)</option></select></Field>
               <Field label="VAT rate (%)"><input type="number" disabled={readOnly || v.vat_mode === 'none'} {...f.bind('vat_rate')} /></Field>
-              <Field label="Additional discount (₱)" hint={can('discount.approve') ? undefined : 'Owner / Admin only. Others submit a Discount Request on the job.'}><input type="number" min="0" disabled={readOnly || !can('discount.approve')} {...f.bind('discount')} /></Field>
+              <Field label="Additional discount" hint={can('discount.approve') ? (pct ? `= ${money(discountPesos)} off the subtotal` : undefined) : 'Owner / Admin only. Others submit a Discount Request on the job.'}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <select style={{ width: 'auto' }} disabled={readOnly || !can('discount.approve')} value={pct ? 'percent' : 'amount'} aria-label="Discount type" onChange={(e) => { if (e.target.value === 'percent') f.set('discount_type', 'percent'); else { f.set('discount_type', 'amount'); f.set('discount', discountPesos); } }}><option value="amount">₱ Peso</option><option value="percent">% Percent</option></select>
+                  {pct ? <input type="number" min="0" max="100" step="0.01" disabled={readOnly || !can('discount.approve')} value={v.discount_percent ?? 0} onChange={(e) => f.set('discount_percent', +e.target.value)} aria-label="Discount percent" /> : <input type="number" min="0" disabled={readOnly || !can('discount.approve')} {...f.bind('discount')} />}
+                </div>
+              </Field>
             </div>
             <table className="tbl"><tbody>
               <tr><td>Subtotal</td><td className="num">{money(t.gross)}</td></tr>
