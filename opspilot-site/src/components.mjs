@@ -67,7 +67,7 @@ export const ticker = () => `
   <p class="ticker-label">Built around everyday operations</p>
   <div class="ticker-viewport">
     <ul class="ticker-track">${tickerItems.map((t) => `<li>${t}</li>`).join('')}</ul>
-    <ul class="ticker-track" aria-hidden="true">${tickerItems.map((t) => `<li>${t}</li>`).join('')}</ul>
+    ${[1, 2, 3].map(() => `<ul class="ticker-track" aria-hidden="true">${tickerItems.map((t) => `<li>${t}</li>`).join('')}</ul>`).join('\n    ')}
   </div>
 </section>`;
 
