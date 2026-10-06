@@ -23,9 +23,10 @@ export default function QuotePublic() {
   useEffect(() => { document.body.classList.remove('dark'); }, []);   // the client's page is always the light, printable look
   const [b, setB] = useState<Bundle | null | undefined>(undefined);
   const [name, setName] = useState(''); const [sig, setSig] = useState<string | undefined>(); const [agree, setAgree] = useState(false);
+  const [setup, setSetup] = useState('');
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const load = () => {
-    if (CLOUD) return supabase().rpc('get_quotation_public', { p_token: token }).then(({ data }) => setB((data as Bundle | null) ?? null));
+    if (CLOUD) return supabase().rpc('get_quotation_public', { p_token: token }).then(({ data, error }) => { if (error) setSetup(error.message); setB((data as Bundle | null) ?? null); });
     const q = db.quotations.find((x) => x.share_token === token && ['Sent', 'Approved'].includes(x.status) && !x.deleted_at); const c = q && db.clients.find((x) => x.id === q.client_id);
     const site = q?.site_id ? db.sites.find((x) => x.id === q.site_id) : undefined;
     setB(q && c ? { quotation: q, client: { name: c.name, contact_person: c.contact_person, address: c.address || c.billing_address }, site: site ? { name: site.name, address: site.address } : null, company: db.settings.company } : null);
@@ -33,7 +34,7 @@ export default function QuotePublic() {
   };
   useEffect(() => { void load(); }, [token, db.quotations]); // eslint-disable-line react-hooks/exhaustive-deps
   if (b === undefined) return <div style={{ padding: 24 }} className="muted">Loading…</div>;
-  if (b === null) return <div style={{ maxWidth: 640, margin: '0 auto', padding: 16 }}><div className="alert warn"><b>This link is not available.</b> It may have expired, or the quotation was not sent yet. Please contact us for a new link.</div></div>;
+  if (b === null) return <div style={{ maxWidth: 640, margin: '0 auto', padding: 16 }}><div className="alert warn"><b>This link is not available.</b> It may have expired, or the quotation was not sent yet. Please contact us for a new link.{setup && <div className="small" style={{ marginTop: 6 }}>Technical detail for the TopMop administrator: the online quotation link is not set up on the server yet ({setup}). Run the latest database update (supabase db push, migration 0033).</div>}</div></div>;
   const q = b.quotation; const t = docTotals(q.items, q.discount, q.vat_mode, q.vat_rate); const signed = !!q.client_sig;
   const expired = q.valid_until < new Date().toISOString().slice(0, 10);
   const download = async () => {
