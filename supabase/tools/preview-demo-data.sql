@@ -20,8 +20,11 @@ select tbl as "table", demo as "sample rows to remove", yours as "your rows that
 
 -- logins linked to a SAMPLE employee (they would lose the link; re-link them in Admin → Users)
 select p.email, p.employee_id as sample_employee_id from public.profiles p where p.employee_id ~ '^[a-z]+-[0-9]{4}$';
--- your own records that point at a sample record (these would be left dangling; tell Claude if any show up)
+-- your own records that point at a sample record: the cleanup removes these too (they were test entries against sample data)
 select 'job → sample client/site' as what, count(*) from public.jobs j where j.id !~ '^[a-z]+-[0-9]{4}$' and (j.client_id ~ '^[a-z]+-[0-9]{4}$' or j.site_id ~ '^[a-z]+-[0-9]{4}$')
 union all select 'quotation → sample client', count(*) from public.quotations q where q.id !~ '^[a-z]+-[0-9]{4}$' and q.client_id ~ '^[a-z]+-[0-9]{4}$'
 union all select 'invoice → sample client/job', count(*) from public.invoices i where i.id !~ '^[a-z]+-[0-9]{4}$' and (i.client_id ~ '^[a-z]+-[0-9]{4}$' or i.job_id ~ '^[a-z]+-[0-9]{4}$')
-union all select 'payment → sample invoice', count(*) from public.payments p where p.id !~ '^[a-z]+-[0-9]{4}$' and p.invoice_id ~ '^[a-z]+-[0-9]{4}$';
+union all select 'payment → sample invoice', count(*) from public.payments p where p.id !~ '^[a-z]+-[0-9]{4}$' and p.invoice_id ~ '^[a-z]+-[0-9]{4}$'
+union all select 'stock / checkout / request → sample job', (select count(*) from public.stock where id !~ '^[a-z]+-[0-9]{4}$' and job_id ~ '^[a-z]+-[0-9]{4}$') + (select count(*) from public.checkouts where id !~ '^[a-z]+-[0-9]{4}$' and job_id ~ '^[a-z]+-[0-9]{4}$') + (select count(*) from public.requests where id !~ '^[a-z]+-[0-9]{4}$' and job_id ~ '^[a-z]+-[0-9]{4}$')
+union all select 'workflow / feedback / variation → sample job', (select count(*) from public.workflows where id !~ '^[a-z]+-[0-9]{4}$' and job_id ~ '^[a-z]+-[0-9]{4}$') + (select count(*) from public.client_feedback where id !~ '^[a-z]+-[0-9]{4}$' and (job_id ~ '^[a-z]+-[0-9]{4}$' or client_id ~ '^[a-z]+-[0-9]{4}$')) + (select count(*) from public.variations where id !~ '^[a-z]+-[0-9]{4}$' and job_id ~ '^[a-z]+-[0-9]{4}$')
+union all select 'expense → sample job', (select count(*) from public.expenses where id !~ '^[a-z]+-[0-9]{4}$' and job_id ~ '^[a-z]+-[0-9]{4}$');

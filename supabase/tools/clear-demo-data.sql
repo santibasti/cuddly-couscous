@@ -9,6 +9,25 @@
 begin;
 set local session_replication_role = replica;   -- allows the delete (normally blocked by the no-hard-delete rule); nothing else is bypassed
 
+-- 0. records YOU entered against sample data (test payments on sample invoices, stock issued to a sample job, ...) go too: without their sample parent they would point at nothing
+delete from public.payments             where invoice_id ~ '^[a-z]+-[0-9]{4}$' or client_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.payment_confirmations where job_id ~ '^[a-z]+-[0-9]{4}$' or client_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.client_feedback      where job_id ~ '^[a-z]+-[0-9]{4}$' or client_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.back_jobs            where job_id ~ '^[a-z]+-[0-9]{4}$' or origin_job_id ~ '^[a-z]+-[0-9]{4}$' or client_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.discount_requests    where job_id ~ '^[a-z]+-[0-9]{4}$' or client_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.variations           where job_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.incidents            where job_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.workflows            where job_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.checkouts            where job_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.requests             where job_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.stock                where job_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.quote_images         where job_id ~ '^[a-z]+-[0-9]{4}$' or quotation_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.job_orders           where job_id ~ '^[a-z]+-[0-9]{4}$' or client_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.followups            where client_id ~ '^[a-z]+-[0-9]{4}$';
+delete from public.expenses             where job_id ~ '^[a-z]+-[0-9]{4}$';
+update public.attendance set job_id = null where job_id ~ '^[a-z]+-[0-9]{4}$' and id !~ '^[a-z]+-[0-9]{4}$';
+
+-- 1. the sample rows themselves
 delete from public.maint_records   where id ~ '^[a-z]+-[0-9]{4}$';
 delete from public.maint_plans     where id ~ '^[a-z]+-[0-9]{4}$';
 delete from public.maint_profiles  where id ~ '^[a-z]+-[0-9]{4}$';
