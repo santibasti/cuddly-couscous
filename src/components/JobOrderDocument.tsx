@@ -3,16 +3,14 @@ import { LOGO_SMALL_URL } from '@/lib/logo';
 import type { JobOrder, JobOrderContent } from '@/lib/types';
 import { CHANGE_NOTE, PREPARE, WEATHER_NOTE, orderLabel } from '@/lib/joborder-core';
 import { fmtDate, money } from '@/lib/util';
+import { LineItems, TermsList } from './LineItems';
 
 const t12 = (hm: string) => { const h = +hm.slice(0, 2); return `${((h + 11) % 12) + 1}:${hm.slice(3, 5)} ${h >= 12 ? 'PM' : 'AM'}`; };
 type View = Pick<JobOrder, 'number' | 'version' | 'status' | 'issued_on'> & { content: JobOrderContent };
 
 export function JobOrderDocument({ order }: { order: View }) {
   const c = order.content;
-  const lines = (rows: JobOrderContent['items']) => (
-    <table className="tbl"><thead><tr><th>Description</th><th className="num">Qty / unit</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>
-      <tbody>{rows.map((r, i) => <tr key={i}><td>{r.description}</td><td className="num">{r.qty.toLocaleString('en-PH')} {r.unit}</td><td className="num">{money(r.rate)}</td><td className="num">{money(r.amount)}</td></tr>)}</tbody></table>
-  );
+  const lines = (rows: JobOrderContent['items']) => <LineItems rows={rows} />;
   return (
     <div className="joc">
       <div className="joc-head">
@@ -42,7 +40,7 @@ export function JobOrderDocument({ order }: { order: View }) {
         <tr><td>{c.vat_label}</td><td className="num">{money(c.vat)}</td></tr>
         <tr className="joc-final"><td>Final approved total</td><td className="num">{money(c.total)}</td></tr>
       </tbody></table>
-      <div className="joc-k">Payment terms and payment status</div><p style={{ marginTop: 2 }}>{c.payment_terms}<br /><b>Payment status:</b> {c.payment_status}</p>
+      <div className="joc-k">Payment terms and payment status</div><TermsList text={c.payment_terms} /><p style={{ marginTop: 6 }}><b>Payment status:</b> {c.payment_status}</p>
       <div className="joc-k">Your team</div><p style={{ marginTop: 2 }}>{c.team.leader ? <>Team Leader: <b>{c.team.leader}</b>{c.team.crew.length ? <><br />Crew: {c.team.crew.join(', ')}</> : null}</> : 'Team assignment to follow.'}</p>
       {c.access_notes.length > 0 && <><div className="joc-k">Safety and access notes / your requirements</div><ul style={{ marginTop: 2 }}>{c.access_notes.map((n, i) => <li key={i}>{n}</li>)}</ul></>}
       <div className="joc-k">What to prepare</div><ul style={{ marginTop: 2 }}>{PREPARE.map((n) => <li key={n}>{n}</li>)}</ul>
