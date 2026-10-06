@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { store, useAuth } from '@/lib/store';
 import { ROLE_LABEL, ROUTE_ACCESS } from '@/lib/rbac';
 import { Field, toast, Badge } from '@/components/ui';
-import { Logo } from '@/components/Logo';
+import { LOGO_URL } from '@/lib/logo';
 import { CLOUD } from '@/lib/cloud';
 
 const DEMO = [
@@ -25,21 +25,15 @@ export default function Login() {
   };
   return (
     <div className="login">
-      <section className="hero">
-        <div className="row"><Logo size={40} /><div><b style={{ letterSpacing: '.04em' }}>TOPMOP</b><div className="small" style={{ color: '#8fb0d3' }}>Window Cleaning Solutions Corp.</div></div></div>
-        <div>
-          <h1>Field-service operations, from inquiry to collection.</h1>
-          <p>Scheduling, crews, equipment out/in, materials, payroll and profitability — one system for exterior cleaning and property-care work.</p>
-          <ul><li>Conflict-free booking of crews, vehicles and machines</li><li>GPS attendance linked to payroll</li><li>Job costing with estimated vs actual</li><li>Audit trail on every financial, stock and asset record</li></ul>
-        </div>
-        <div className="small" style={{ color: '#6f8fb3' }}>PHP (₱) • Asia/Manila</div>
-      </section>
-      <section className="form">
-        <h1>Sign in</h1>
-        <p className="muted">Use your TopMop account.</p>
+      <div className="login-glow" aria-hidden />
+      <main className="login-card">
+        <img className="login-logo" src={LOGO_URL} alt="TopMop" width={112} height={112} />
+        <h1>TOPMOP</h1>
+        <div className="login-sub">Window Cleaning Solutions Corp.</div>
+        <div className="login-rule" />
         <form className="stack" onSubmit={(e) => { e.preventDefault(); go(email, pw); }}>
-          <Field label="Email"><input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
-          <Field label="Password"><input type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} required /></Field>
+          <Field label="Email"><input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.ph" required /></Field>
+          <Field label="Password"><input type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="••••••••" required /></Field>
           <button className="btn primary lg" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
         </form>
         {!CLOUD && (
@@ -51,7 +45,8 @@ export default function Login() {
         </div>
         )}
         {!CLOUD && <p className="small muted" style={{ marginTop: 16 }}>Client? <Link to="/portal">Open the client portal</Link> <Badge tone="teal">demo</Badge></p>}
-      </section>
+      </main>
+      <footer className="login-foot">Operations System · Asia/Manila</footer>
     </div>
   );
 }
