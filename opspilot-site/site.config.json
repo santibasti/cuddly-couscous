@@ -1,5 +1,9 @@
 {
   "contactPerson": "Jig Narciso",
+  "email": "info@opspilot.ph",
+  "mobile": "09193185860",
+  "address": "BGC, Taguig",
+  "officeHours": "",
   "formEndpoint": "",
-  "_notes": "formEndpoint: set to a form-submission URL (e.g. a Formspree/Basin/Getform endpoint or your own API). It is a public URL, not a secret. Leave empty until configured; the form then says it is not connected and never reports success."
+  "_notes": "formEndpoint: set to a form-submission URL (e.g. a Formspree/Basin/Getform endpoint or your own API). It is a public URL, not a secret. Leave empty until configured; the form then says it is not connected and never reports success. officeHours: leave empty to hide; set e.g. \"Mon–Fri, 9:00 AM–6:00 PM\" when confirmed."
 }

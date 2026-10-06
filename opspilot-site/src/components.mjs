@@ -318,6 +318,16 @@ export const faq = () => `
   </div>
 </section>`;
 
+const telHref = (m) => 'tel:+63' + m.replace(/\D/g, '').replace(/^0/, '');
+const prettyMobile = (m) => m.replace(/\D/g, '').replace(/^(\d{4})(\d{3})(\d{4})$/, '$1 $2 $3');
+const contactDetails = (config) => `
+      <ul class="contact-list">
+        ${config.email ? `<li>${icon('mail', 20)}<div><span>Email</span><a href="mailto:${config.email}">${config.email}</a></div></li>` : ''}
+        ${config.mobile ? `<li>${icon('phone', 20)}<div><span>Mobile</span><a href="${telHref(config.mobile)}">${prettyMobile(config.mobile)}</a></div></li>` : ''}
+        ${config.address ? `<li>${icon('pin', 20)}<div><span>Office</span><address>${config.address}</address></div></li>` : ''}
+        ${config.officeHours ? `<li>${icon('clock', 20)}<div><span>Office hours</span><p>${config.officeHours}</p></div></li>` : ''}
+      </ul>`;
+
 export const contact = (config) => `
 <section class="section section-navy" id="contact" aria-labelledby="contact-title">
   <div class="container contact-grid">
@@ -326,9 +336,10 @@ export const contact = (config) => `
       <h2 id="contact-title">Let’s simplify your daily operations.</h2>
       <p class="lead lead-dark">Tell us which workflow is giving you the most trouble. We will follow up to arrange a demo or workflow consultation.</p>
       <p class="contact-person"><span>Contact person</span><strong>${config.contactPerson}</strong></p>
+      ${contactDetails(config)}
     </div>
     <form class="form reveal" id="contact-form" novalidate data-endpoint="${config.formEndpoint || ''}" ${config.formEndpoint ? 'action="' + config.formEndpoint + '" ' : ''}method="post">
-      ${config.formEndpoint ? '' : `<p class="form-notice" role="note">${icon('alert', 18)}<span><strong>This form is not connected yet.</strong> Submitting will not send your details anywhere until a submission service is configured.</span></p>`}
+      ${config.formEndpoint ? '' : `<p class="form-notice" role="note">${icon('alert', 18)}<span><strong>This form is not connected yet.</strong> Submitting will not send your details anywhere. Please email <a href="mailto:${config.email}">${config.email}</a> or call ${prettyMobile(config.mobile)} instead.</span></p>`}
       <div class="field"><label for="f-name">Name</label><input id="f-name" name="name" type="text" autocomplete="name" required></div>
       <div class="field"><label for="f-company">Company</label><input id="f-company" name="company" type="text" autocomplete="organization" required></div>
       <div class="field"><label for="f-type">Business type</label>
@@ -345,11 +356,12 @@ export const contact = (config) => `
   </div>
 </section>`;
 
-export const footer = () => `
+export const footer = (config) => `
 <footer class="site-footer">
   <div class="container footer-inner">
     ${logo(true)}
     <p class="footer-tag">Your business. One clear system.</p>
+    <p class="footer-contact"><a href="mailto:${config.email}">${config.email}</a><span aria-hidden="true">·</span><a href="${telHref(config.mobile)}">${prettyMobile(config.mobile)}</a><span aria-hidden="true">·</span><span>${config.address}</span></p>
     <p class="footer-small">© <span id="year">${new Date().getFullYear()}</span> OpsPilot. Dashboards and previews on this site are illustrative and use sample data.</p>
   </div>
 </footer>`;

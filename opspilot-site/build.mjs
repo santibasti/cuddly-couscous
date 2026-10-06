@@ -44,7 +44,7 @@ ${ui.scopeBuilder()}
 ${ui.faq()}
 ${ui.contact(config)}
 </main>
-${ui.footer()}
+${ui.footer(config)}
 <script src="main.js" defer></script>
 </body>
 </html>

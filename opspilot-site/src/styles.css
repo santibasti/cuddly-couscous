@@ -442,3 +442,16 @@ html { color-scheme: light; }
 .is-done .pv-box::after { content: ""; position: absolute; left: 3.5px; top: 1px; width: 4px; height: 7px; border: solid var(--navy); border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .pv-sign svg { width: 100%; height: 40px; }
 .work-concept .pvx { padding: 12px; font-size: .74rem; }
+
+/* Contact details */
+.contact-list { display: grid; gap: 16px; margin-top: 28px; }
+.contact-list li { display: flex; gap: 14px; align-items: flex-start; }
+.contact-list .icon { color: var(--lime); margin-top: 3px; }
+.contact-list span { display: block; font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: #8fa3cc; font-weight: 700; }
+.contact-list a, .contact-list address, .contact-list p { color: #fff; font-size: 1.08rem; font-style: normal; font-weight: 600; text-decoration: none; }
+.contact-list a:hover { text-decoration: underline; }
+.form-notice a { color: inherit; font-weight: 700; }
+.footer-contact { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .9rem; }
+.footer-contact a { color: #fff; text-decoration: none; }
+.footer-contact a:hover { text-decoration: underline; }
+@media (min-width: 800px) { .footer-contact { grid-column: 1 / -1; } }
