@@ -73,20 +73,44 @@ export const industries = [
   },
 ];
 
+// `group`: 'project' = our own project; 'concept' = prototype built with sample data (never presented as a client deployment).
+// To add a real client project later (with the client's written approval), add an entry with group: 'project'
+// and a status such as 'Live deployment', then add a matching pill class in styles.css if needed.
 export const projects = [
   {
-    kind: 'topmop',
+    kind: 'topmop', group: 'project',
     name: 'TopMop service operations',
     status: 'Internal system in development',
     text: 'An operations system for a service business: attendance, crews, equipment, jobs, quotations and collections in one place. It is being developed as an internal system and is not presented as a client deployment.',
     tags: ['Attendance', 'Equipment', 'Jobs', 'Collections'],
   },
   {
-    kind: 'range',
+    kind: 'range', group: 'project',
     name: 'Driving range and café operations',
     status: 'Working demo',
     text: 'A working demonstration covering bay availability, player tabs, buckets, food and beverage orders and checkout. It shows how the approach adapts to a recreation facility; it is a demo, not a proven external client deployment.',
     tags: ['Bays', 'Player tabs', 'Café orders', 'Checkout'],
+  },
+  {
+    kind: 'carwash', group: 'concept',
+    name: 'Car wash operations',
+    status: 'Concept prototype',
+    text: 'How a job queue by bay, per-vehicle service records, supplies used and daily sales could fit together for a car wash. Built with sample data.',
+    tags: ['Job queue', 'Service records', 'Supplies', 'Sales'],
+  },
+  {
+    kind: 'maintenance', group: 'concept',
+    name: 'Maintenance visits and sign-off',
+    status: 'Concept prototype',
+    text: 'Scheduled service visits, a completion checklist on a phone or tablet, client acknowledgement and billing for a maintenance contractor. Built with sample data.',
+    tags: ['Scheduled visits', 'Service reports', 'Client sign-off', 'Billing'],
+  },
+  {
+    kind: 'booking', group: 'concept',
+    name: 'Appointment-based business',
+    status: 'Concept prototype',
+    text: 'Staff schedules, bookings, payments recorded per customer and a daily summary for a small appointment-based business. Built with sample data.',
+    tags: ['Bookings', 'Staff schedule', 'Payments', 'Daily summary'],
   },
 ];
 

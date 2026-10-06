@@ -134,25 +134,39 @@ export const industries = () => `
   </div>
 </section>`;
 
-const projectPreview = (kind) => kind === 'topmop'
-  ? `<svg viewBox="0 0 320 170" role="img" aria-label="Illustrative preview: a service operations screen with crew list, equipment and job status"><rect width="320" height="170" rx="10" class="pv-bg"/><rect x="14" y="14" width="92" height="142" rx="6" class="pv-card"/><rect x="24" y="26" width="52" height="7" rx="3" class="pv-line"/><g class="pv-rows">${[0, 1, 2, 3, 4].map((i) => `<circle cx="32" cy="${54 + i * 22}" r="6"/><rect x="44" y="${50 + i * 22}" width="${48 - (i % 3) * 8}" height="7" rx="3"/>`).join('')}</g><rect x="118" y="14" width="188" height="40" rx="6" class="pv-card"/><rect x="130" y="26" width="40" height="7" rx="3" class="pv-line"/><rect x="130" y="38" width="64" height="8" rx="3" class="pv-accent"/><rect x="118" y="64" width="188" height="92" rx="6" class="pv-card"/><g class="pv-bars">${[34, 52, 40, 66, 48, 72].map((h, i) => `<rect x="${134 + i * 28}" y="${142 - h}" width="16" height="${h}" rx="2"/>`).join('')}</g></svg>`
-  : `<svg viewBox="0 0 320 170" role="img" aria-label="Illustrative preview: driving range bays with availability and a player tab"><rect width="320" height="170" rx="10" class="pv-bg"/><g>${Array.from({ length: 8 }, (_, i) => `<rect x="${14 + (i % 4) * 46}" y="${14 + Math.floor(i / 4) * 54}" width="40" height="46" rx="6" class="${[0, 3, 4, 6].includes(i) ? 'pv-busy' : 'pv-card'}"/><rect x="${22 + (i % 4) * 46}" y="${24 + Math.floor(i / 4) * 54}" width="24" height="6" rx="3" class="pv-line"/>`).join('')}</g><rect x="204" y="14" width="102" height="142" rx="6" class="pv-card"/><rect x="214" y="26" width="52" height="7" rx="3" class="pv-line"/><g class="pv-rows">${[0, 1, 2, 3].map((i) => `<rect x="214" y="${46 + i * 20}" width="${60 - i * 6}" height="7" rx="3"/><rect x="278" y="${46 + i * 20}" width="18" height="7" rx="3"/>`).join('')}</g><rect x="214" y="132" width="82" height="16" rx="5" class="pv-accent"/></svg>`;
+const win = (inner, label) => `<svg viewBox="0 0 320 170" role="img" aria-label="${label}"><rect width="320" height="170" rx="10" class="pv-bg"/>${inner}</svg>`;
+const projectPreview = (kind) => {
+  if (kind === 'topmop') return win(`<rect x="14" y="14" width="92" height="142" rx="6" class="pv-card"/><rect x="24" y="26" width="52" height="7" rx="3" class="pv-line"/><g class="pv-rows">${[0, 1, 2, 3, 4].map((i) => `<circle cx="32" cy="${54 + i * 22}" r="6"/><rect x="44" y="${50 + i * 22}" width="${48 - (i % 3) * 8}" height="7" rx="3"/>`).join('')}</g><rect x="118" y="14" width="188" height="40" rx="6" class="pv-card"/><rect x="130" y="26" width="40" height="7" rx="3" class="pv-line"/><rect x="130" y="38" width="64" height="8" rx="3" class="pv-accent"/><rect x="118" y="64" width="188" height="92" rx="6" class="pv-card"/><g class="pv-bars">${[34, 52, 40, 66, 48, 72].map((h, i) => `<rect x="${134 + i * 28}" y="${142 - h}" width="16" height="${h}" rx="2"/>`).join('')}</g>`, 'Illustrative preview: a service operations screen with crew list, equipment and job status');
+  if (kind === 'range') return win(`<g>${Array.from({ length: 8 }, (_, i) => `<rect x="${14 + (i % 4) * 46}" y="${14 + Math.floor(i / 4) * 54}" width="40" height="46" rx="6" class="${[0, 3, 4, 6].includes(i) ? 'pv-busy' : 'pv-card'}"/><rect x="${22 + (i % 4) * 46}" y="${24 + Math.floor(i / 4) * 54}" width="24" height="6" rx="3" class="pv-line"/>`).join('')}</g><rect x="204" y="14" width="102" height="142" rx="6" class="pv-card"/><rect x="214" y="26" width="52" height="7" rx="3" class="pv-line"/><g class="pv-rows">${[0, 1, 2, 3].map((i) => `<rect x="214" y="${46 + i * 20}" width="${60 - i * 6}" height="7" rx="3"/><rect x="278" y="${46 + i * 20}" width="18" height="7" rx="3"/>`).join('')}</g><rect x="214" y="132" width="82" height="16" rx="5" class="pv-accent"/>`, 'Illustrative preview: driving range bays with availability and a player tab');
+  if (kind === 'carwash') return win(`${[0, 1, 2].map((i) => `<rect x="14" y="${14 + i * 38}" width="292" height="32" rx="6" class="pv-card"/><rect x="24" y="${22 + i * 38}" width="44" height="7" rx="3" class="pv-line"/><rect x="${96 + i * 34}" y="${20 + i * 38}" width="62" height="20" rx="6" class="pv-busy"/><circle cx="${112 + i * 34}" cy="${42 + i * 38}" r="3" class="pv-accent"/><circle cx="${142 + i * 34}" cy="${42 + i * 38}" r="3" class="pv-accent"/><rect x="262" y="${24 + i * 38}" width="34" height="8" rx="4" class="${i === 0 ? 'pv-accent' : 'pv-line'}"/>`).join('')}<rect x="14" y="130" width="140" height="28" rx="6" class="pv-card"/><g class="pv-bars">${[10, 16, 12, 20, 14].map((h, i) => `<rect x="${26 + i * 24}" y="${152 - h}" width="12" height="${h}" rx="2"/>`).join('')}</g><rect x="166" y="130" width="140" height="28" rx="6" class="pv-card"/><rect x="178" y="138" width="70" height="7" rx="3" class="pv-line"/><rect x="178" y="148" width="40" height="6" rx="3" class="pv-accent"/>`, 'Illustrative preview: a car wash job queue by bay with sales and supplies panels');
+  if (kind === 'maintenance') return win(`<rect x="14" y="14" width="168" height="142" rx="6" class="pv-card"/><rect x="26" y="26" width="64" height="7" rx="3" class="pv-line"/>${[0, 1, 2, 3, 4].map((i) => `<rect x="26" y="${46 + i * 21}" width="12" height="12" rx="3" class="${i < 3 ? 'pv-accent' : 'pv-busy'}"/><rect x="46" y="${48 + i * 21}" width="${100 - (i % 3) * 18}" height="7" rx="3" class="pv-line"/>`).join('')}<rect x="194" y="14" width="112" height="142" rx="6" class="pv-card"/><rect x="206" y="26" width="52" height="7" rx="3" class="pv-line"/><rect x="206" y="44" width="88" height="56" rx="6" class="pv-busy"/><path d="M216 84c10-24 18 10 28-12s16 14 24-6 12 4 18-4" fill="none" stroke="var(--lime)" stroke-width="2.4" stroke-linecap="round"/><rect x="206" y="116" width="88" height="26" rx="8" class="pv-accent"/>`, 'Illustrative preview: a service visit checklist with a client sign-off panel');
+  return win(`<rect x="14" y="14" width="190" height="142" rx="6" class="pv-card"/><g>${Array.from({ length: 28 }, (_, i) => `<rect x="${24 + (i % 7) * 25}" y="${28 + Math.floor(i / 7) * 30}" width="20" height="24" rx="4" class="${[3, 9, 10, 16, 22, 24].includes(i) ? 'pv-accent' : [5, 12, 18, 20].includes(i) ? 'pv-busy' : 'pv-bg'}"/>`).join('')}</g><rect x="216" y="14" width="90" height="142" rx="6" class="pv-card"/><rect x="226" y="26" width="48" height="7" rx="3" class="pv-line"/><g class="pv-rows">${[0, 1, 2, 3, 4].map((i) => `<circle cx="232" cy="${54 + i * 21}" r="5"/><rect x="244" y="${50 + i * 21}" width="${50 - (i % 3) * 8}" height="7" rx="3"/>`).join('')}</g>`, 'Illustrative preview: a booking calendar with a staff list');
+};
 
-export const work = () => `
-<section class="section" id="work" aria-labelledby="work-title">
-  <div class="container">
-    ${sectionHead('Our Work', 'Two projects, described plainly.', 'We show where each project stands today. Previews below are illustrative, not screenshots.', true).replace('<h2>', '<h2 id="work-title">')}
-    <div class="work-grid">
-      ${c.projects.map((p) => `
-      <article class="work-card reveal">
+const workCard = (p) => `
+      <article class="work-card reveal${p.group === 'concept' ? ' work-concept' : ''}">
         <div class="work-preview"><div class="win-bar" aria-hidden="true"><i></i><i></i><i></i><span>Illustrative preview</span></div>${projectPreview(p.kind)}</div>
         <div class="work-body">
-          <span class="status-pill ${p.kind === 'topmop' ? 'pill-dev' : 'pill-demo'}">${p.status}</span>
+          <span class="status-pill ${p.group === 'concept' ? 'pill-concept' : p.kind === 'topmop' ? 'pill-dev' : 'pill-demo'}">${p.status}</span>
           <h3>${p.name}</h3>
           <p>${p.text}</p>
           <ul class="tags">${p.tags.map((t) => `<li>${t}</li>`).join('')}</ul>
         </div>
-      </article>`).join('')}
+      </article>`;
+
+export const work = () => `
+<section class="section" id="work" aria-labelledby="work-title">
+  <div class="container">
+    ${sectionHead('Our Work', 'Projects and concept prototypes.', 'Two projects we are building or demonstrating, plus concept prototypes that show how the approach adapts to other businesses. Previews are illustrative, not screenshots, and none is presented as a client deployment.', true).replace('<h2>', '<h2 id="work-title">')}
+    <h3 class="work-group-h reveal"><span>Projects</span></h3>
+    <div class="work-grid">${c.projects.filter((p) => p.group === 'project').map(workCard).join('')}
+    </div>
+    <h3 class="work-group-h reveal"><span>Concept prototypes</span><small>Built with sample data to show what is possible</small></h3>
+    <div class="work-grid work-grid-3">${c.projects.filter((p) => p.group === 'concept').map(workCard).join('')}
+    </div>
+    <div class="work-cta reveal">
+      <div><strong>Have a workflow in mind?</strong><span>We can prototype it with your own scenarios before you commit to a full build.</span></div>
+      ${button('Request a Demo', '#contact', 'primary')}
     </div>
   </div>
 </section>`;
