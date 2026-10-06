@@ -1,0 +1,5 @@
+{
+  "contactPerson": "Jig Narciso",
+  "formEndpoint": "",
+  "_notes": "formEndpoint: set to a form-submission URL (e.g. a Formspree/Basin/Getform endpoint or your own API). It is a public URL, not a secret. Leave empty until configured; the form then says it is not connected and never reports success."
+}

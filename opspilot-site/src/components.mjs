@@ -1,0 +1,217 @@
+// Reusable section/UI components. Each returns an HTML string.
+import { icon, logoMark } from './icons.mjs';
+import * as c from './content.mjs';
+import { heroDashboard, fullDashboard } from './dashboard.mjs';
+
+export const button = (label, href, variant = 'primary', extra = '') =>
+  `<a class="btn btn-${variant}" href="${href}">${label}${variant === 'primary' || variant === 'lime' ? icon('arrow', 18) : ''}${extra}</a>`;
+
+export const logo = (onDark = false) => `
+<a class="logo ${onDark ? 'logo-dark' : ''}" href="#home" aria-label="OpsPilot, Custom Business Systems — home">
+  ${logoMark()}
+  <span class="logo-text"><span class="wordmark">Ops<b>Pilot</b></span><span class="descriptor">Custom Business Systems</span></span>
+</a>`;
+
+export const sectionHead = (eyebrow, title, lead = '', center = false) => `
+<div class="section-head ${center ? 'center' : ''} reveal">
+  <p class="eyebrow">${eyebrow}</p>
+  <h2>${title}</h2>
+  ${lead ? `<p class="lead">${lead}</p>` : ''}
+</div>`;
+
+export const header = () => `
+<header class="site-header" id="top">
+  <div class="container header-inner">
+    ${logo()}
+    <nav class="nav" id="site-nav" aria-label="Primary">
+      <ul>${c.nav.map(([l, h]) => `<li><a href="${h}">${l}</a></li>`).join('')}</ul>
+      ${button('Request a Demo', '#contact', 'primary')}
+    </nav>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu">
+      <span class="icon-open">${icon('menu')}</span><span class="icon-close">${icon('close')}</span>
+    </button>
+  </div>
+</header>`;
+
+export const hero = () => `
+<section class="hero" id="home" aria-labelledby="hero-title">
+  <div class="container hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow eyebrow-dark">Custom Business Systems</p>
+      <h1 id="hero-title">Your business. <span>One clear system.</span></h1>
+      <p class="hero-lead">Custom operations systems for Philippine MSMEs. Connect your jobs, people, equipment, sales, and collections around the way your business works.</p>
+      <div class="btn-row">${button('Request a Demo', '#contact', 'lime')}${button('Explore Solutions', '#solutions', 'ghost')}</div>
+      <ul class="hero-points">
+        <li>${icon('check', 18)}Built around your workflow</li>
+        <li>${icon('check', 18)}Start with one module</li>
+        <li>${icon('check', 18)}Usable on phones and tablets</li>
+      </ul>
+    </div>
+    <div class="hero-visual">${heroDashboard()}</div>
+  </div>
+</section>`;
+
+export const problems = () => `
+<section class="section" id="problems" aria-labelledby="problems-title">
+  <div class="container">
+    ${sectionHead('Sound familiar?', 'Daily operations shouldn’t live in five different places.', 'These are common patterns in growing businesses. Each one maps to a practical capability in the system.').replace('<h2>', '<h2 id="problems-title">')}
+    <div class="problem-list">
+      ${c.problems.map((p) => `
+      <article class="problem reveal">
+        <div class="problem-from"><span class="problem-ico">${icon(p.icon, 22)}</span><p>${p.problem}</p></div>
+        <div class="problem-arrow" aria-hidden="true">${icon('arrow', 22)}</div>
+        <div class="problem-to"><h3>${p.capability}</h3><p>${p.detail}</p></div>
+      </article>`).join('')}
+    </div>
+  </div>
+</section>`;
+
+export const solutions = () => `
+<section class="section section-tint" id="solutions" aria-labelledby="solutions-title">
+  <div class="container">
+    ${sectionHead('Solutions', 'Modules that fit together.', 'Start with the module that matters most. Add others as your needs grow; they share the same records.').replace('<h2>', '<h2 id="solutions-title">')}
+    <div class="card-grid">
+      ${c.solutions.map((s) => `
+      <article class="card reveal">
+        <span class="card-ico">${icon(s.icon, 26)}</span>
+        <h3>${s.title}</h3>
+        <p>${s.text}</p>
+      </article>`).join('')}
+    </div>
+  </div>
+</section>`;
+
+export const sampleDashboard = () => `
+<section class="section" id="dashboard" aria-labelledby="dashboard-title">
+  <div class="container">
+    ${sectionHead('Sample dashboard', 'What the owner sees each morning.', 'An illustrative view of how records entered by your team can come together. All figures are sample data, in Philippine pesos.').replace('<h2>', '<h2 id="dashboard-title">')}
+    <div class="reveal">${fullDashboard()}</div>
+  </div>
+</section>`;
+
+export const industries = () => `
+<section class="section section-tint" id="industries" aria-labelledby="industries-title">
+  <div class="container">
+    ${sectionHead('Industries', 'One approach, adapted to how you operate.', 'The building blocks stay the same; the screens, fields and reports are configured for your kind of business.').replace('<h2>', '<h2 id="industries-title">')}
+    <div class="industry-grid">
+      ${c.industries.map((i) => `
+      <article class="industry reveal">
+        <span class="card-ico card-ico-blue">${icon(i.icon, 26)}</span>
+        <h3>${i.title}</h3>
+        <p class="industry-sub">${i.sub}</p>
+        <ul class="ticks">${i.items.map((t) => `<li>${icon('check', 18)}<span>${t}</span></li>`).join('')}</ul>
+      </article>`).join('')}
+    </div>
+  </div>
+</section>`;
+
+const projectPreview = (kind) => kind === 'topmop'
+  ? `<svg viewBox="0 0 320 170" role="img" aria-label="Illustrative preview: a service operations screen with crew list, equipment and job status"><rect width="320" height="170" rx="10" class="pv-bg"/><rect x="14" y="14" width="92" height="142" rx="6" class="pv-card"/><rect x="24" y="26" width="52" height="7" rx="3" class="pv-line"/><g class="pv-rows">${[0, 1, 2, 3, 4].map((i) => `<circle cx="32" cy="${54 + i * 22}" r="6"/><rect x="44" y="${50 + i * 22}" width="${48 - (i % 3) * 8}" height="7" rx="3"/>`).join('')}</g><rect x="118" y="14" width="188" height="40" rx="6" class="pv-card"/><rect x="130" y="26" width="40" height="7" rx="3" class="pv-line"/><rect x="130" y="38" width="64" height="8" rx="3" class="pv-accent"/><rect x="118" y="64" width="188" height="92" rx="6" class="pv-card"/><g class="pv-bars">${[34, 52, 40, 66, 48, 72].map((h, i) => `<rect x="${134 + i * 28}" y="${142 - h}" width="16" height="${h}" rx="2"/>`).join('')}</g></svg>`
+  : `<svg viewBox="0 0 320 170" role="img" aria-label="Illustrative preview: driving range bays with availability and a player tab"><rect width="320" height="170" rx="10" class="pv-bg"/><g>${Array.from({ length: 8 }, (_, i) => `<rect x="${14 + (i % 4) * 46}" y="${14 + Math.floor(i / 4) * 54}" width="40" height="46" rx="6" class="${[0, 3, 4, 6].includes(i) ? 'pv-busy' : 'pv-card'}"/><rect x="${22 + (i % 4) * 46}" y="${24 + Math.floor(i / 4) * 54}" width="24" height="6" rx="3" class="pv-line"/>`).join('')}</g><rect x="204" y="14" width="102" height="142" rx="6" class="pv-card"/><rect x="214" y="26" width="52" height="7" rx="3" class="pv-line"/><g class="pv-rows">${[0, 1, 2, 3].map((i) => `<rect x="214" y="${46 + i * 20}" width="${60 - i * 6}" height="7" rx="3"/><rect x="278" y="${46 + i * 20}" width="18" height="7" rx="3"/>`).join('')}</g><rect x="214" y="132" width="82" height="16" rx="5" class="pv-accent"/></svg>`;
+
+export const work = () => `
+<section class="section" id="work" aria-labelledby="work-title">
+  <div class="container">
+    ${sectionHead('Our Work', 'Two projects, described plainly.', 'We show where each project stands today. Previews below are illustrative, not screenshots.').replace('<h2>', '<h2 id="work-title">')}
+    <div class="work-grid">
+      ${c.projects.map((p) => `
+      <article class="work-card reveal">
+        <div class="work-preview">${projectPreview(p.kind)}<span class="preview-tag">Illustrative preview</span></div>
+        <div class="work-body">
+          <span class="status-pill ${p.kind === 'topmop' ? 'pill-dev' : 'pill-demo'}">${p.status}</span>
+          <h3>${p.name}</h3>
+          <p>${p.text}</p>
+          <ul class="tags">${p.tags.map((t) => `<li>${t}</li>`).join('')}</ul>
+        </div>
+      </article>`).join('')}
+    </div>
+  </div>
+</section>`;
+
+export const process = () => `
+<section class="section section-tint" id="process" aria-labelledby="process-title">
+  <div class="container">
+    ${sectionHead('Implementation process', 'From first conversation to launch.', 'A clear path with agreed scope at every stage.').replace('<h2>', '<h2 id="process-title">')}
+    <ol class="steps">
+      ${c.steps.map((s, i) => `
+      <li class="step reveal">
+        <span class="step-num">0${i + 1}</span>
+        <span class="step-ico">${icon(s.icon, 22)}</span>
+        <h3>${s.title}</h3>
+        <p>${s.text}</p>
+      </li>`).join('')}
+    </ol>
+  </div>
+</section>`;
+
+export const about = () => `
+<section class="section" id="about" aria-labelledby="about-title">
+  <div class="container about-grid">
+    <div class="reveal">
+      <p class="eyebrow">About OpsPilot</p>
+      <h2 id="about-title">Practical systems for the way real businesses run.</h2>
+      <p class="lead">OpsPilot builds custom business systems for Philippine MSMEs. We focus on everyday workflows (who worked where, what equipment went out, what was billed and what has been paid) and on systems that your staff can actually use.</p>
+      <p class="lead">We would rather understand your operation properly than hand you a generic package.</p>
+    </div>
+    <ul class="principles">
+      ${c.principles.map((p) => `<li class="principle reveal"><span class="card-ico card-ico-blue">${icon(p.icon, 24)}</span><div><h3>${p.title}</h3><p>${p.text}</p></div></li>`).join('')}
+    </ul>
+  </div>
+</section>`;
+
+export const engagement = () => `
+<section class="section section-tint" id="engagement" aria-labelledby="engagement-title">
+  <div class="container">
+    ${sectionHead('Engagement model', 'Simple to understand, defined in writing.', 'We are not publishing fixed prices yet. After a workflow consultation we provide a quotation based on your scope.').replace('<h2>', '<h2 id="engagement-title">')}
+    <div class="engage-grid">
+      ${c.engagement.map((e, i) => `<article class="engage reveal"><span class="engage-n">${i + 1}</span><h3>${e.title}</h3><p>${e.text}</p></article>`).join('')}
+    </div>
+    <p class="agreement-note reveal">${icon('shield', 22)}<span>Scope, data ownership, export arrangements and support terms are defined in the agreement.</span></p>
+  </div>
+</section>`;
+
+export const faq = () => `
+<section class="section" id="faq" aria-labelledby="faq-title">
+  <div class="container faq-wrap">
+    ${sectionHead('FAQ', 'Common questions', '').replace('<h2>', '<h2 id="faq-title">')}
+    <div class="faq-list reveal">
+      ${c.faqs.map((f) => `<details class="faq"><summary><span>${f.q}</span>${icon('plus', 20)}</summary><p>${f.a}</p></details>`).join('')}
+    </div>
+  </div>
+</section>`;
+
+export const contact = (config) => `
+<section class="section section-navy" id="contact" aria-labelledby="contact-title">
+  <div class="container contact-grid">
+    <div class="contact-copy reveal">
+      <p class="eyebrow eyebrow-dark">Contact</p>
+      <h2 id="contact-title">Let’s simplify your daily operations.</h2>
+      <p class="lead lead-dark">Tell us which workflow is giving you the most trouble. We will follow up to arrange a demo or workflow consultation.</p>
+      <p class="contact-person"><span>Contact person</span><strong>${config.contactPerson}</strong></p>
+    </div>
+    <form class="form reveal" id="contact-form" novalidate data-endpoint="${config.formEndpoint || ''}" ${config.formEndpoint ? 'action="' + config.formEndpoint + '" ' : ''}method="post">
+      ${config.formEndpoint ? '' : `<p class="form-notice" role="note">${icon('alert', 18)}<span><strong>This form is not connected yet.</strong> Submitting will not send your details anywhere until a submission service is configured.</span></p>`}
+      <div class="field"><label for="f-name">Name</label><input id="f-name" name="name" type="text" autocomplete="name" required></div>
+      <div class="field"><label for="f-company">Company</label><input id="f-company" name="company" type="text" autocomplete="organization" required></div>
+      <div class="field"><label for="f-type">Business type</label>
+        <select id="f-type" name="business_type" required><option value="">Select…</option>${c.businessTypes.map((t) => `<option>${t}</option>`).join('')}</select></div>
+      <div class="field-row">
+        <div class="field"><label for="f-email">Email</label><input id="f-email" name="email" type="email" autocomplete="email" required></div>
+        <div class="field"><label for="f-phone">Phone</label><input id="f-phone" name="phone" type="tel" autocomplete="tel" required></div>
+      </div>
+      <div class="field"><label for="f-workflow">Workflow to improve</label><textarea id="f-workflow" name="workflow" rows="4" required placeholder="e.g. Tracking crew attendance and equipment across sites"></textarea></div>
+      <div class="hp" aria-hidden="true"><label>Leave empty<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+      <button class="btn btn-lime" type="submit">Send request${icon('arrow', 18)}</button>
+      <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+</section>`;
+
+export const footer = () => `
+<footer class="site-footer">
+  <div class="container footer-inner">
+    ${logo(true)}
+    <p class="footer-tag">Your business. One clear system.</p>
+    <p class="footer-small">© <span id="year">${new Date().getFullYear()}</span> OpsPilot. Dashboards and previews on this site are illustrative and use sample data.</p>
+  </div>
+</footer>`;
