@@ -48,10 +48,13 @@ export function toDb(row: Record<string, unknown>, before?: Record<string, unkno
 }
 
 /* ---------- reading ---------- */
+const NEWER_TABLES = new Set(['maint_profiles', 'maint_plans', 'maint_templates', 'maint_records', 'job_orders']);
 async function readAll(table: string, order = 'id'): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = []; const page = 1000;
   for (let from = 0; ; from += page) {
     const { data, error } = await supabase().from(table).select('*').order(order).range(from, from + page - 1);
+    // a table from a newer migration that has not been applied yet reads as empty (the app still works; apply the migration to use it)
+    if (error && NEWER_TABLES.has(table) && (error.code === 'PGRST205' || error.code === '42P01' || /schema cache|does not exist/i.test(error.message))) return [];
     if (error) throw new CloudError(`Could not load ${table}: ${error.message}`, error.code);
     rows.push(...(data ?? []));
     if (!data || data.length < page) break;
