@@ -1,6 +1,6 @@
 import { logoDataUrl } from './logo';
 import { durationText, manpowerText } from './quote-text';
-import type { DB, Invoice, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
+import type { DB, Invoice, OcularVisit, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
 import { quoteImagesOf } from './quoteimages';
 import { paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
 import { fmtDate, fmtDateTime, nowLocal, round2, sum } from './util';
@@ -224,6 +224,55 @@ export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?:
   doc.setFontSize(9); doc.text('Approved / accepted by (signature over printed name):', 12, y + 8); doc.line(12, y + 20, 100, y + 20); doc.text('Date:', 120, y + 20); doc.line(130, y + 20, 190, y + 20);
   footer(doc); doc.save(`${q.number}.pdf`);
   store.audit('export', 'quotations', q.id, `Exported PDF ${q.number}`);
+}
+
+
+/** Ocular Inspection Report: what the estimator found and recommends, signed by the client. */
+export async function ocularReportPdf(db: DB, v: OcularVisit) {
+  const { doc, autoTable } = await newPdf();
+  const names = (codes: string[]) => codes.map((c) => db.services.find((x) => x.code === c)?.name ?? c).join(', ') || '-';
+  const estimator = db.employees.find((e) => e.id === v.assignee_id)?.full_name ?? '-';
+  header(doc, 'Ocular Report', `${v.number}${v.client_sig ? ' | SIGNED' : ''}`);
+  const cl = db.clients.find((c) => c.id === v.client_id); const site = db.sites.find((x) => x.id === v.site_id);
+  const col = (x: number, head: string, lines: string[], yy: number) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(91, 107, 128); doc.text(head.toUpperCase(), x, yy);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(20, 36, 58); let k = yy + 5;
+    for (const l of lines.filter(Boolean)) for (const part of doc.splitTextToSize(clean(l), 88) as string[]) { doc.text(part, x, k); k += 4.5; }
+    return k;
+  };
+  const yl = col(12, 'Prepared for', [cl?.name ?? '', `Attn: ${v.contact_person}${v.contact_mobile ? ` | ${v.contact_mobile}` : ''}`, site ? `Site: ${site.name}` : ''], 34);
+  const yr = col(110, 'Inspection details', [`Date: ${fmtDate(v.start_at.slice(0, 10))}, ${v.start_at.slice(11)}`, `Location: ${v.location}`, `Inspected by: ${estimator}`, `Requested: ${names(v.service_codes)}`], 34);
+  let y = Math.max(yl, yr) + 4;
+  const room = (n: number) => { if (y > 285 - n) { doc.addPage(); y = 16; } };
+  const section = (title: string, text?: string) => { if (!text?.trim()) return; room(24); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(11, 37, 69); doc.text(title, 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(20, 36, 58); y = wrapText(doc, text, 12, y + 5, 186, 4.4) + 4; };
+  section("Client's concerns / requested scope", v.concerns);
+  section('Site access', v.access_notes);
+  if (v.panels.length) {
+    room(40); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(11, 37, 69); doc.text('Glass panel count', 12, y); y += 3;
+    const pt = panelTotals(v.panels);
+    autoTable(doc, { startY: y, head: [['Floor / area', 'Side', 'External', 'Internal', 'Total', 'Notes']], body: v.panels.map((p) => [p.area, p.side, p.external, p.internal, p.external + p.internal, clean(p.notes ?? '')]), foot: [['Total', '', pt.external, pt.internal, pt.total, '']], ...tableStyle, footStyles: { fillColor: [234, 239, 244], textColor: NAVY, fontStyle: 'bold' }, margin: { left: 12, right: 12 } });
+    y = ymax(doc) + 6; doc.setTextColor(20, 36, 58);
+  }
+  if (v.measurements.length) {
+    room(36); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(11, 37, 69); doc.text('Measurements', 12, y); y += 3;
+    autoTable(doc, { startY: y, head: [['Item / area', 'Service', 'Quantity', 'Notes']], body: v.measurements.map((m) => [clean(m.label), m.service_code ? names([m.service_code]) : '-', `${m.qty} ${m.unit}`, clean(m.notes ?? '')]), ...tableStyle, margin: { left: 12, right: 12 } });
+    y = ymax(doc) + 6; doc.setTextColor(20, 36, 58);
+  }
+  section('Findings', v.findings);
+  section('Surface and site condition', v.report_surface);
+  section('Hazards, safety and access requirements', v.report_hazards);
+  section('Recommended service', `${names(v.report_services?.length ? v.report_services : v.service_codes)}${v.report_days ? `\nEstimated working days: ${v.report_days}` : ''}${v.report_crew ? `\nRecommended crew: ${v.report_crew}` : ''}${v.report_recommendation ? `\n${v.report_recommendation}` : ''}`);
+  section('Please note', 'This report records the conditions seen during the ocular visit and our recommended scope of work. It is not a quotation: prices, schedule and terms follow in a separate quotation. Hidden damage or conditions that were not visible during the visit may require changes to the scope.');
+  room(52);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text('Acknowledgement', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); y += 5;
+  y = wrapText(doc, 'I acknowledge that the site was inspected with me / my representative, and that the findings and recommended service above reflect what was seen and discussed.', 12, y, 186, 4.2) + 4;
+  doc.text('Client representative (signature over printed name)', 12, y); doc.text('Inspected by (signature over printed name)', 110, y);
+  sigImg(doc, v.client_sig, 12, y + 2); sigImg(doc, v.assessor_sig, 110, y + 2);
+  doc.line(12, y + 22, 100, y + 22); doc.line(110, y + 22, 198, y + 22);
+  doc.text(clean(v.client_sig_name ?? ''), 12, y + 27); doc.text(clean(estimator), 110, y + 27);
+  doc.text(`Date: ${v.client_sig_at ? fmtDate(v.client_sig_at.slice(0, 10)) : '________________'}`, 12, y + 32); doc.text(`Date: ${v.assessor_sig_at ? fmtDate(v.assessor_sig_at.slice(0, 10)) : '________________'}`, 110, y + 32);
+  footer(doc); doc.save(`Ocular-Report-${v.number}.pdf`);
+  store.audit('export', 'ocular_visits', v.id, `Exported ocular report ${v.number}`);
 }
 
 export async function invoicePdf(db: DB, inv: Invoice) {

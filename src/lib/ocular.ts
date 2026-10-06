@@ -1,4 +1,5 @@
 // Ocular visits: a site inspection booked in the same calendar as jobs. After it is completed the estimator (or Admin) turns it into a quotation.
+import { defaultCrew, defaultDisclaimer } from './quote-text';
 import { store, RuleError } from './store';
 import type { DB, Measurement, OcularStatus, OcularVisit, PanelRow, Quotation, ServiceCode } from './types';
 import { docTotals, ocularConflicts, quotationLinesFromOcular, panelTotals } from './business';
@@ -63,10 +64,38 @@ export function cancelOcularVisit(id: string, reason: string) {
   runAutomations();
   return r;
 }
+export interface OcularReportInput { report_surface: string; report_hazards: string; report_recommendation: string; report_services: ServiceCode[]; report_days?: number; report_crew?: string }
+const reportOk = (v: OcularVisit) => { if (!['Completed', 'Converted to Quotation'].includes(v.status)) fail('Complete the ocular visit before preparing its report.'); if (!canWork(v)) fail('Only the assigned Team Leader / estimator or Admin / Operations can prepare the report.'); if (v.client_sig) fail('The report was signed by the client and is locked. Admin / Operations can reopen it.'); };
+/** The estimator's part of the report: surface condition, hazards and access, recommended services, estimated days and crew. */
+export function saveOcularReport(id: string, r: OcularReportInput) {
+  const v = vOf(id); reportOk(v);
+  if (!r.report_services.length) fail('Choose at least one recommended service.');
+  if (r.report_days !== undefined && !(r.report_days >= 1)) fail('Estimated working days must be at least 1.');
+  return store.update('ocular_visits', id, { ...r, report_surface: r.report_surface.trim(), report_hazards: r.report_hazards.trim(), report_recommendation: r.report_recommendation.trim(), report_crew: r.report_crew?.trim() || undefined, report_at: isoNow() } as never, 'update', `Ocular report ${v.number} saved`);
+}
+/** The client signs to acknowledge what was found and recommended; the report is then locked. */
+export function signOcularReport(id: string, s: { name: string; client_sig: string; assessor_sig?: string }) {
+  const v = vOf(id);
+  if (!['Completed', 'Converted to Quotation'].includes(v.status)) fail('Complete the ocular visit first.');
+  if (!canWork(v)) fail('Only the assigned Team Leader / estimator or Admin / Operations can take the client signature.');
+  if (v.client_sig) fail('The report is already signed.');
+  if (!v.report_at) fail('Save the report (recommended services and conditions) before the client signs.');
+  if (!s.name.trim()) fail('Enter the client representative\'s printed name.');
+  if (!s.client_sig) fail('The client has not signed yet.');
+  const at = isoNow();
+  return store.update('ocular_visits', id, { client_sig: s.client_sig, client_sig_name: s.name.trim(), client_sig_at: at, ...(s.assessor_sig ? { assessor_sig: s.assessor_sig, assessor_sig_at: at } : {}) } as never, 'update', `Ocular report ${v.number} signed by ${s.name.trim()}`);
+}
+/** Admin / Operations reopen a signed report (clears the signature) so it can be corrected and signed again. */
+export function reopenOcularReport(id: string, reason: string) {
+  store.require('ocular.schedule'); const v = vOf(id);
+  if (!v.client_sig) fail('The report is not signed.'); if (!reason.trim()) fail('Give a reason for reopening the report.');
+  return store.update('ocular_visits', id, { client_sig: undefined, client_sig_name: undefined, client_sig_at: undefined, assessor_sig: undefined, assessor_sig_at: undefined } as never, 'update', `Ocular report ${v.number} reopened: ${reason.trim()}`);
+}
 export interface OcularResult { panels: PanelRow[]; measurements: Measurement[]; findings: string }
 /** Mark the visit Completed and record what was found: panel count (floor, side, external, internal), measurements and notes. No photos, no odometer. */
 export function completeOcularVisit(id: string, r: OcularResult) {
   const v = vOf(id);
+  if (v.client_sig) fail('The report was signed by the client, so the findings are locked. Admin / Operations can reopen it.');
   if (!canWork(v)) fail('Only the assigned Team Leader / estimator or Admin / Operations can complete this visit.');
   if (v.status === 'Converted to Quotation') fail('A quotation was already created from this visit.');
   if (!['Scheduled', 'Confirmed', 'Completed'].includes(v.status)) fail(`A ${v.status.toLowerCase()} visit cannot be completed.`);
@@ -96,11 +125,13 @@ export function createQuotationFromOcular(id: string): Quotation {
     v.concerns && `Client concerns / requested scope: ${v.concerns}`,
     v.panels.length ? `Glass panels counted: ${pt.external} external, ${pt.internal} internal (${pt.total} total) across ${v.panels.length} area(s): ${v.panels.map((p) => `${p.area} ${p.side} ${p.external}/${p.internal}`).join('; ')}.` : '',
     v.measurements.length ? `Measurements: ${v.measurements.map((m) => `${m.label} ${m.qty} ${m.unit}`).join('; ')}.` : '',
+    v.report_surface && `Surface condition: ${v.report_surface}`, v.report_hazards && `Hazards / access requirements: ${v.report_hazards}`, v.report_recommendation && `Recommendation: ${v.report_recommendation}`,
     v.findings && `Notes: ${v.findings}`, v.access_notes && `Access: ${v.access_notes}`, ...notes,
   ].filter(Boolean).join('\n');
   const q = store.insert('quotations', {
     number: store.nextNumber('QT'), client_id: v.client_id, site_id: site?.id ?? v.site_id, issue_date: today(), valid_until: addDays(today(), db().settings.quote_validity_days), scope, items,
     vat_mode: client.vat_status === 'VAT-registered' ? 'exclusive' : 'none', vat_rate: db().settings.vat_rate, discount: 0, terms: db().settings.default_terms, status: 'Draft', branch_id: v.branch_id,
+    crew_size: v.report_crew?.trim() || defaultCrew(db().settings), safety_officer: true, work_days: v.report_days ?? 1, disclaimer: defaultDisclaimer(db().settings),
     ocular_visit_id: v.id, ocular_assignee_id: v.assignee_id, ocular_panels: v.panels, ocular_measurements: v.measurements,
   } as never, `Quotation created from ocular visit ${v.number}`) as Quotation;
   store.update('ocular_visits', id, { status: 'Converted to Quotation' as OcularStatus, quotation_id: q.id, converted_at: isoNow() } as never, 'update', `Ocular visit ${v.number} converted to quotation ${q.number}`);

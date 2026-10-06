@@ -1,3 +1,4 @@
+import { OcularReport } from '@/components/OcularReport';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, live } from '@/lib/store';
@@ -111,6 +112,7 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
             {v.findings && <div className="small">{v.findings}</div>}
           </div>
         )}
+        {(v.status === 'Completed' || v.status === 'Converted to Quotation') && !rec && <OcularReport visit={v} />}
         {v.quotation_id && <div className="alert info">Converted to quotation <Link to={`/sales/quote/${v.quotation_id}`}>{db.quotations.find((q) => q.id === v.quotation_id)?.number}</Link> · {db.quotations.find((q) => q.id === v.quotation_id)?.status}</div>}
 
         {rec && (
@@ -144,7 +146,7 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
           <div className="row">
             {manager && v.status === 'Scheduled' && <button className="btn" onClick={() => attempt(() => confirmOcularVisit(v.id), 'Confirmed with the client')}>Confirm with client</button>}
             {manager && isOcularActive(v) && <button className="btn" onClick={() => setEdit(true)}>Reschedule / edit</button>}
-            {(isOcularActive(v) || v.status === 'Completed') && v.start_at.slice(0, 10) <= today() && <button className="btn primary" onClick={() => setRec(true)}>{v.status === 'Completed' ? 'Update findings' : 'Complete visit'}</button>}
+            {(isOcularActive(v) || v.status === 'Completed') && !v.client_sig && v.start_at.slice(0, 10) <= today() && <button className="btn primary" onClick={() => setRec(true)}>{v.status === 'Completed' ? 'Update findings' : 'Complete visit'}</button>}
             {v.status === 'Completed' && <button className="btn primary" onClick={toQuote}>Create quotation from this visit</button>}
             {manager && isOcularActive(v) && <button className="btn danger" onClick={async () => { const r = await ask('Cancel ocular visit', 'Reason for cancelling'); if (r) attempt(() => cancelOcularVisit(v.id, r), 'Ocular visit cancelled'); }}>Cancel visit</button>}
           </div>

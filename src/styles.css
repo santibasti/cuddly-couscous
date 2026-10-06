@@ -587,7 +587,7 @@ body.dark .recharts-sector[fill="#0B2545"] { fill: #4cc0ff; }
 /* map tiles */
 body.dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.7); } body.dark .leaflet-container { background: #0c1f3a; }
 /* ---- dark executive panel ---- */
-body.dark .card { background: var(--panel); border-color: var(--line); backdrop-filter: blur(6px); border-radius: 14px; }
+body.dark .card { background: var(--panel); border-color: var(--line); border-radius: 14px; }
 body.dark .card-h { border-bottom-color: var(--line-2); color: #fff; }
 body.dark .card-h h3, body.dark .card-h .t { color: #fff; }
 body.dark .list li { border-bottom-color: var(--line-2); color: var(--text); }
