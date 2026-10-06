@@ -10,6 +10,7 @@ import { InstallPrompt, UpdateBanner } from '@/components/InstallPrompt';
 import { confirmLeave } from '@/lib/sync';
 import { getTheme, setTheme } from '@/lib/theme';
 import { Logo } from '@/components/Logo';
+import { AvailabilityPrompt } from '@/components/AvailabilityPrompt';
 import { fmtStamp } from '@/lib/util';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
@@ -139,6 +140,7 @@ function Shell() {
           <div className="avatar" title={user.name}>{user.name.split(' ').map((s) => s[0]).slice(0, 2).join('')}</div>
         </header>
         <main className="content">
+          <AvailabilityPrompt />
           <Routes>
             <Route path="/dashboard" element={<Guard area="dashboard"><Dashboard /></Guard>} />
             <Route path="/maintenance" element={<Guard area="maintenance"><Maintenance /></Guard>} />

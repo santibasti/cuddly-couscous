@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, attempt, ask } from '@/components/ui';
 import { JobForm } from '@/components/JobForm';
+import { CrewAvailability } from '@/components/AvailabilityPrompt';
 import { invoiceFromJob, setJobStatus, updateJobField } from '@/lib/actions';
 import { invoiceBalance, finalContract, isDone, jobCost, JOB_FLOW, stockSummary } from '@/lib/business';
 import { Tabs } from '@/components/ui';
@@ -83,6 +84,7 @@ export default function JobDetail() {
             <div className="row"><Badge tone="navy">Leader</Badge><b>{emp(j.leader_id)}</b></div>
             <div className="row" style={{ marginTop: 8 }}>{j.crew_ids.map((id) => <Badge key={id} tone="blue">{emp(id)}</Badge>)}{!j.crew_ids.length && <span className="muted">No crew assigned</span>}</div>
           </Card>
+          <CrewAvailability job={j} />
           <Card title="Safety requirements / PPE"><div className="row">{j.ppe.map((p) => <Badge key={p} tone="amber">{p}</Badge>)}{!j.ppe.length && <span className="muted">None specified</span>}</div></Card>
           <Card title="Machines, equipment & vehicle" flush>
             <ul className="list">{assetsOn.map(({ a, co }) => (

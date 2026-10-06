@@ -15,6 +15,7 @@ import { isUnavailable, maintAlerts, profileOf } from './maintenance-core';
 import { syncMaintenance } from './maintenance';
 import { syncRatings } from './ratings';
 import { paymentDays } from './quote-text';
+import { answerOf, isAsking, summary as crewSummary, teamOf } from './crew-confirm-core';
 import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
 const db = () => store.getDB();
@@ -124,6 +125,17 @@ export function releaseCancelledJob(id: string) {
   for (const c of db().checkouts.filter((x) => x.job_id === id && x.status === 'Released' && !x.deleted_at)) {
     try { performReturn(c.id, { condition: 'Good', damage_notes: '', missing: '' }); } catch (e) { if (!(e instanceof RuleError)) throw e; /* a person without equipment rights returns it later */ }
   }
+}
+/** A team leader / crew member answers "can you make it?" for their own job (asked from 7 PM the evening before). */
+export function confirmAvailability(jobId: string, answer: 'confirmed' | 'declined', note?: string) {
+  const emp = store.user?.employee_id; if (!emp) fail('Your login is not linked to an employee record.');
+  const j = db().jobs.find((x) => x.id === jobId && !x.deleted_at); if (!j) fail('Job not found.');
+  if (!teamOf(j!).includes(emp!)) fail('You are not assigned to this job.');
+  if (!['Confirmed', 'Dispatch Checklist Pending'].includes(j!.status)) fail('This job is not open for confirmation.');
+  if (answer === 'declined' && (note ?? '').trim().length < 3) fail('Please tell us why you cannot make it.');
+  const cur = (j!.crew_confirmations ?? {}) as NonNullable<Job['crew_confirmations']>;
+  const name = db().employees.find((e) => e.id === emp)?.full_name ?? 'Crew';
+  return store.update('jobs', jobId, { crew_confirmations: { ...cur, [emp!]: { status: answer, at: isoNow(), ...(note?.trim() ? { note: note.trim() } : {}), for_start: j!.start_at } } } as never, 'update', `${name} ${answer === 'confirmed' ? 'confirmed availability' : 'cannot make it'} for ${j!.number}${note?.trim() ? `: ${note.trim()}` : ''}`);
 }
 /** Bookings cancelled before this existed still show their crew: release them. */
 function releaseCancelledJobs() {
@@ -704,6 +716,7 @@ export function syncBackJobs() {
     if (q && q.status !== 'Approved' && wf?.conf_mode === 'approval' && wf.conf_at) store.system('quotations', q.id, { status: 'Approved', decided_at: isoNow() } as never, `${q.number} approved by the client for back job ${b.number}`);
   }
 }
+const CONFIRM_LIVE: Job['status'][] = ['Confirmed', 'Dispatch Checklist Pending'];
 export function runAutomations() {
   releaseCancelledJobs();
   syncBackJobs();
@@ -725,6 +738,12 @@ export function runAutomations() {
     const rec = d.attendance.find((a) => a.employee_id === eid && a.date === t && !a.deleted_at);
     if (!rec?.clock_in && now.slice(11) > '09:00') add(`att-missing:${eid}:${t}`, 'attendance', 'Missing attendance', `${emp.full_name} has not clocked in for ${j.number}.`, 'critical', '/attendance', [...ops, 'leader'], true);
     else if (rec && rec.late_min > s.grace_minutes) add(`att-late:${eid}:${t}`, 'attendance', 'Late arrival', `${emp.full_name} was ${rec.late_min} min late today.`, 'warn', '/attendance', [...ops, 'leader']);
+  }
+  // crew availability (asked from 7 PM the evening before): tell Admin / Operations who cannot make it and who has not answered
+  for (const j of d.jobs.filter((x) => !x.deleted_at && CONFIRM_LIVE.includes(x.status) && x.start_at >= now)) {
+    const sm = crewSummary(j); const nm = (ids: string[]) => ids.map((id) => d.employees.find((e) => e.id === id)?.full_name ?? id).join(', ');
+    for (const id of sm.declined) { const a = answerOf(j, id)!; add(`crew-declined:${j.id}:${id}:${a.at}`, 'job', 'Crew cannot make it', `${nm([id])} cannot make ${j.number} on ${j.start_at.replace('T', ' ')}${a.note ? ` — ${a.note}` : ''}. Reassign the team.`, 'critical', `/jobs/${j.id}`, [...ops], true); }
+    if (isAsking(j, now) && sm.waiting.length && now >= `${addDays(j.start_at.slice(0, 10), -1)}T20:00`) add(`crew-waiting:${j.id}:${now.slice(0, 10)}`, 'job', 'Crew has not confirmed', `${nm(sm.waiting)} ha${sm.waiting.length > 1 ? 've' : 's'} not confirmed availability for ${j.number} on ${j.start_at.replace('T', ' ')}.`, 'warn', `/jobs/${j.id}`, [...ops], true);
   }
   const pendCor = d.corrections.filter((c) => c.status === 'Pending' && !c.deleted_at);
   if (pendCor.length) add('cor-pending', 'attendance', 'Unapproved attendance corrections', `${pendCor.length} correction request(s) awaiting approval.`, 'warn', '/attendance?tab=corrections', [...ops, 'leader']);

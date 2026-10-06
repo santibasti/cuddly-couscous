@@ -170,6 +170,8 @@ export interface JobMaterial { item_id: string; planned_qty: number; used_qty?: 
 
 export interface Job extends Base {
   number: string;
+  /** each assigned person's answer to "can you make it?" (asked from 7 PM the evening before): employee id → answer for this schedule */
+  crew_confirmations?: Record<string, { status: 'confirmed' | 'declined'; at: string; note?: string; for_start: string }>;
   client_id: string;
   site_id: string;
   quotation_id?: string;
