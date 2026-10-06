@@ -18,7 +18,7 @@ export function OcularReport({ visit }: { visit: OcularVisit }) {
   const who = db.employees.find((e) => e.id === v.assignee_id)?.full_name;
   const toggle = (c: ServiceCode) => setF({ ...f, report_services: f.report_services.includes(c) ? f.report_services.filter((x) => x !== c) : [...f.report_services, c] });
   const save = () => attempt(() => saveOcularReport(v.id, f), 'Report saved');
-  const pdf = () => void ocularReportPdf(db, v);
+  const pdf = () => attempt(() => ocularReportPdf(db, v));
   return (
     <div className="card" style={{ padding: 12 }}>
       <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}><b>Ocular report</b>{v.client_sig ? <Badge tone="green">Signed by {v.client_sig_name} · {fmtDate(v.client_sig_at!.slice(0, 10))}</Badge> : v.report_at ? <Badge tone="amber">Prepared — awaiting client signature</Badge> : <Badge>Not prepared</Badge>}</div>

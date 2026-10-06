@@ -84,14 +84,19 @@ export function Overlays() {
 }
 
 /** Run a domain action; show a friendly toast on success / rule violations. Returns true on success. */
+const explain = (e: unknown) => {
+  if (e instanceof RuleError || e instanceof PermissionError) toast((e as Error).message, 'err');
+  else { console.error(e); const m = (e as Error)?.message || 'Something went wrong'; toast(/dynamically imported|Failed to fetch|Importing a module script failed/i.test(m) ? 'Could not load part of the app (an update may have just been installed). Refresh the page (Ctrl+Shift+R) and try again.' : m, 'err'); }
+};
+/** Runs an action and shows the reason if it fails. If the action is asynchronous (PDF, Excel ...), a failure later on is shown too. */
 export function attempt<T>(fn: () => T, ok?: string): T | undefined {
   try {
     const r = fn();
+    if (r && typeof (r as unknown as Promise<unknown>).then === 'function') (r as unknown as Promise<unknown>).catch(explain);
     if (ok) toast(ok, 'ok');
     return r ?? (true as unknown as T);
   } catch (e) {
-    if (e instanceof RuleError || e instanceof PermissionError) toast((e as Error).message, 'err');
-    else { console.error(e); toast((e as Error).message || 'Something went wrong', 'err'); }
+    explain(e);
     return undefined;
   }
 }
