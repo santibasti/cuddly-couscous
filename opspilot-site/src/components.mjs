@@ -134,18 +134,67 @@ export const industries = () => `
   </div>
 </section>`;
 
-const win = (inner, label) => `<svg viewBox="0 0 320 170" role="img" aria-label="${label}"><rect width="320" height="170" rx="10" class="pv-bg"/>${inner}</svg>`;
+// Illustrative mini-interfaces with readable SAMPLE content (no real clients, names or figures).
+const chip = (cls, t) => `<span class="status ${cls}"><i aria-hidden="true"></i>${t}</span>`;
+const stat = (l, v) => `<div class="pv-stat"><small>${l}</small><b>${v}</b></div>`;
+const row = (t, sub, st) => `<li class="pv-row"><span class="l"><strong>${t}</strong><small>${sub}</small></span>${st}</li>`;
+const pvx = (label, inner) => `<div class="pvx" role="group" aria-label="Illustrative preview with sample data: ${label}">${inner}</div>`;
+const pvHead = (t, sub) => `<div class="pvx-h"><span>${t}</span><small>${sub}</small></div>`;
+
 const projectPreview = (kind) => {
-  if (kind === 'topmop') return win(`<rect x="14" y="14" width="92" height="142" rx="6" class="pv-card"/><rect x="24" y="26" width="52" height="7" rx="3" class="pv-line"/><g class="pv-rows">${[0, 1, 2, 3, 4].map((i) => `<circle cx="32" cy="${54 + i * 22}" r="6"/><rect x="44" y="${50 + i * 22}" width="${48 - (i % 3) * 8}" height="7" rx="3"/>`).join('')}</g><rect x="118" y="14" width="188" height="40" rx="6" class="pv-card"/><rect x="130" y="26" width="40" height="7" rx="3" class="pv-line"/><rect x="130" y="38" width="64" height="8" rx="3" class="pv-accent"/><rect x="118" y="64" width="188" height="92" rx="6" class="pv-card"/><g class="pv-bars">${[34, 52, 40, 66, 48, 72].map((h, i) => `<rect x="${134 + i * 28}" y="${142 - h}" width="16" height="${h}" rx="2"/>`).join('')}</g>`, 'Illustrative preview: a service operations screen with crew list, equipment and job status');
-  if (kind === 'range') return win(`<g>${Array.from({ length: 8 }, (_, i) => `<rect x="${14 + (i % 4) * 46}" y="${14 + Math.floor(i / 4) * 54}" width="40" height="46" rx="6" class="${[0, 3, 4, 6].includes(i) ? 'pv-busy' : 'pv-card'}"/><rect x="${22 + (i % 4) * 46}" y="${24 + Math.floor(i / 4) * 54}" width="24" height="6" rx="3" class="pv-line"/>`).join('')}</g><rect x="204" y="14" width="102" height="142" rx="6" class="pv-card"/><rect x="214" y="26" width="52" height="7" rx="3" class="pv-line"/><g class="pv-rows">${[0, 1, 2, 3].map((i) => `<rect x="214" y="${46 + i * 20}" width="${60 - i * 6}" height="7" rx="3"/><rect x="278" y="${46 + i * 20}" width="18" height="7" rx="3"/>`).join('')}</g><rect x="214" y="132" width="82" height="16" rx="5" class="pv-accent"/>`, 'Illustrative preview: driving range bays with availability and a player tab');
-  if (kind === 'carwash') return win(`${[0, 1, 2].map((i) => `<rect x="14" y="${14 + i * 38}" width="292" height="32" rx="6" class="pv-card"/><rect x="24" y="${22 + i * 38}" width="44" height="7" rx="3" class="pv-line"/><rect x="${96 + i * 34}" y="${20 + i * 38}" width="62" height="20" rx="6" class="pv-busy"/><circle cx="${112 + i * 34}" cy="${42 + i * 38}" r="3" class="pv-accent"/><circle cx="${142 + i * 34}" cy="${42 + i * 38}" r="3" class="pv-accent"/><rect x="262" y="${24 + i * 38}" width="34" height="8" rx="4" class="${i === 0 ? 'pv-accent' : 'pv-line'}"/>`).join('')}<rect x="14" y="130" width="140" height="28" rx="6" class="pv-card"/><g class="pv-bars">${[10, 16, 12, 20, 14].map((h, i) => `<rect x="${26 + i * 24}" y="${152 - h}" width="12" height="${h}" rx="2"/>`).join('')}</g><rect x="166" y="130" width="140" height="28" rx="6" class="pv-card"/><rect x="178" y="138" width="70" height="7" rx="3" class="pv-line"/><rect x="178" y="148" width="40" height="6" rx="3" class="pv-accent"/>`, 'Illustrative preview: a car wash job queue by bay with sales and supplies panels');
-  if (kind === 'maintenance') return win(`<rect x="14" y="14" width="168" height="142" rx="6" class="pv-card"/><rect x="26" y="26" width="64" height="7" rx="3" class="pv-line"/>${[0, 1, 2, 3, 4].map((i) => `<rect x="26" y="${46 + i * 21}" width="12" height="12" rx="3" class="${i < 3 ? 'pv-accent' : 'pv-busy'}"/><rect x="46" y="${48 + i * 21}" width="${100 - (i % 3) * 18}" height="7" rx="3" class="pv-line"/>`).join('')}<rect x="194" y="14" width="112" height="142" rx="6" class="pv-card"/><rect x="206" y="26" width="52" height="7" rx="3" class="pv-line"/><rect x="206" y="44" width="88" height="56" rx="6" class="pv-busy"/><path d="M216 84c10-24 18 10 28-12s16 14 24-6 12 4 18-4" fill="none" stroke="var(--lime)" stroke-width="2.4" stroke-linecap="round"/><rect x="206" y="116" width="88" height="26" rx="8" class="pv-accent"/>`, 'Illustrative preview: a service visit checklist with a client sign-off panel');
-  return win(`<rect x="14" y="14" width="190" height="142" rx="6" class="pv-card"/><g>${Array.from({ length: 28 }, (_, i) => `<rect x="${24 + (i % 7) * 25}" y="${28 + Math.floor(i / 7) * 30}" width="20" height="24" rx="4" class="${[3, 9, 10, 16, 22, 24].includes(i) ? 'pv-accent' : [5, 12, 18, 20].includes(i) ? 'pv-busy' : 'pv-bg'}"/>`).join('')}</g><rect x="216" y="14" width="90" height="142" rx="6" class="pv-card"/><rect x="226" y="26" width="48" height="7" rx="3" class="pv-line"/><g class="pv-rows">${[0, 1, 2, 3, 4].map((i) => `<circle cx="232" cy="${54 + i * 21}" r="5"/><rect x="244" y="${50 + i * 21}" width="${50 - (i % 3) * 8}" height="7" rx="3"/>`).join('')}</g>`, 'Illustrative preview: a booking calendar with a staff list');
+  if (kind === 'topmop') return pvx('crews, jobs and equipment', `
+    ${pvHead('Today · crews and jobs', 'Sample data')}
+    <div class="pv-stats">${stat('Crew present', '42 / 46')}${stat('Jobs today', '18')}${stat('Equipment out', '31')}</div>
+    <ul class="pv-rows-t">
+      ${row('Crew A · Sample Office Tower', 'Floor polisher #3 issued 8:00 AM', chip('st-progress', 'In progress'))}
+      ${row('Crew B · Sample Café', 'Return due 5:00 PM · sign-off pending', chip('st-wait', 'Awaiting sign-off'))}
+      ${row('Crew C · Sample Warehouse', 'Starts 1:00 PM', chip('st-sched', 'Scheduled'))}
+    </ul>`);
+  if (kind === 'range') return pvx('bays and a player tab', `
+    ${pvHead('Bays · today', 'Sample data')}
+    <div class="pv-split">
+      <div class="pv-bays">${[['Bay 1', 'st-progress', 'In use'], ['Bay 2', 'st-done', 'Open'], ['Bay 3', 'st-wait', 'Reserved'], ['Bay 4', 'st-progress', 'In use'], ['Bay 5', 'st-done', 'Open'], ['Bay 6', 'st-done', 'Open']].map(([n, c2, t]) => `<div class="pv-bay"><strong>${n}</strong>${chip(c2, t)}</div>`).join('')}</div>
+      <div class="pv-tab">
+        <p class="pv-tab-h">Player tab · Bay 4</p>
+        <p class="pv-line"><span>Medium bucket × 2</span><b>₱300</b></p>
+        <p class="pv-line"><span>Iced coffee</span><b>₱120</b></p>
+        <p class="pv-line pv-total"><span>Total</span><b>₱420</b></p>
+        <p class="pv-btn">Checkout</p>
+      </div>
+    </div>`);
+  if (kind === 'carwash') return pvx('job queue by bay', `
+    ${pvHead('Job queue · by bay', 'Sample data')}
+    <ul class="pv-rows-t">
+      ${row('Bay 1 · Sedan', 'Full wash · started 12 min ago', chip('st-progress', 'In progress'))}
+      ${row('Bay 2 · SUV', 'Exterior wash and wax', chip('st-sched', 'Waiting'))}
+      ${row('Bay 3 · Pickup', 'Interior clean · paid ₱450', chip('st-done', 'Done'))}
+    </ul>
+    <div class="pv-stats">${stat('Vehicles today', '24')}${stat('Sales recorded', '₱18,600')}${stat('Low stock', 'Shampoo')}</div>`);
+  if (kind === 'maintenance') return pvx('visit checklist and client sign-off', `
+    ${pvHead('Aircon check · Sample Clinic', '2:00 PM')}
+    <div class="pv-split">
+      <ul class="pv-check">${[['Filters cleaned', 1], ['Drain line cleared', 1], ['Pressure checked', 1], ['Photos attached', 0], ['Client sign-off', 0]].map(([t, d]) => `<li class="${d ? 'is-done' : ''}"><i class="pv-box" aria-hidden="true"></i>${t}</li>`).join('')}</ul>
+      <div class="pv-sign">
+        <p class="pv-tab-h">Client sign-off</p>
+        <svg viewBox="0 0 160 46" aria-hidden="true"><path d="M8 32c14-26 22 10 36-12s20 14 32-6 18 6 28-4 14 8 24 0" fill="none" stroke="#b6f23a" stroke-width="2.4" stroke-linecap="round"/></svg>
+        <p class="pv-line"><span>Signed by</span><b>Sample Client</b></p>
+        <p class="pv-line"><span>Invoice</span><b>₱4,500 · Sent</b></p>
+      </div>
+    </div>`);
+  return pvx('bookings and payments', `
+    ${pvHead('Today · bookings', 'Sample data')}
+    <ul class="pv-rows-t">
+      ${row('9:00 AM · Haircut', 'Stylist 1', chip('st-done', 'Paid ₱350'))}
+      ${row('10:00 AM · Color', 'Stylist 2', chip('st-sched', 'Booked ₱1,800'))}
+      ${row('11:30 AM · Haircut', 'Stylist 1', chip('st-sched', 'Booked ₱350'))}
+      ${row('1:00 PM · Treatment', 'Stylist 3', chip('st-done', 'Paid ₱1,200'))}
+    </ul>
+    <div class="pv-stats pv-stats-2">${stat('Bookings today', '12')}${stat('Payments recorded', '₱1,550')}</div>`);
 };
 
 const workCard = (p) => `
       <article class="work-card reveal${p.group === 'concept' ? ' work-concept' : ''}">
-        <div class="work-preview"><div class="win-bar" aria-hidden="true"><i></i><i></i><i></i><span>Illustrative preview</span></div>${projectPreview(p.kind)}</div>
+        <div class="work-preview"><div class="win-bar" aria-hidden="true"><i></i><i></i><i></i><span>Illustrative preview</span><em>Sample data</em></div>${projectPreview(p.kind)}</div>
         <div class="work-body">
           <span class="status-pill ${p.group === 'concept' ? 'pill-concept' : p.kind === 'topmop' ? 'pill-dev' : 'pill-demo'}">${p.status}</span>
           <h3>${p.name}</h3>
