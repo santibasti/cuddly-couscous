@@ -22,3 +22,15 @@ No submission service is configured. Until `formEndpoint` in `site.config.json` 
 
 ## Still to supply
 Public domain, email/phone/address (none invented), real screenshots for the project showcase, and the form endpoint.
+
+## Going online
+The build output is plain static files in `dist/`, so any static host works. Settings for any host: **root directory** `opspilot-site`, **build command** `node build.mjs`, **output directory** `dist`, no install step.
+
+**Vercel (recommended)** – New Project → import this repo → set *Root Directory* to `opspilot-site` (the repo root `vercel.json` belongs to the TopMop app; don't use it for this site). Deploy, then add the custom domain under Settings → Domains and follow the DNS records Vercel shows.
+
+**GitHub Pages** – Settings → Pages → Source: *GitHub Actions*. The workflow `.github/workflows/opspilot-site-pages.yml` publishes on every push to `main` that touches `opspilot-site/` (or run it manually from the Actions tab).
+
+**After the domain is live**
+1. Set `siteUrl` in `site.config.json` (e.g. `https://opspilot.ph`) and redeploy: adds canonical tags, `sitemap.xml` and the sitemap line in `robots.txt`.
+2. Connect the contact form: set `formEndpoint` (Formspree, Basin, Getform or your own API) and redeploy. Until then the site tells visitors the form is not connected and shows the email and mobile number instead.
+3. Fill in `officeHours` when confirmed.

@@ -22,6 +22,7 @@ const html = `<!doctype html>
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${description}">
 <meta property="og:type" content="website">
+${config.siteUrl ? `<link rel="canonical" href="${config.siteUrl}/">\n<meta property="og:url" content="${config.siteUrl}/">` : ''}
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 <script>document.documentElement.classList.add('js')</script>
@@ -57,4 +58,7 @@ await writeFile(join(dist, 'styles.css'), (await readFile(join(root, 'src/styles
 const scopeData = JSON.stringify({ types: scopeTypes, modules: solutions.map((m) => m.title), businessTypes });
 await writeFile(join(dist, 'main.js'), `window.OPSPILOT_SCOPE = ${scopeData};\n` + await readFile(join(root, 'src/main.js'), 'utf8'));
 await cp(join(root, 'public'), dist, { recursive: true });
+const site = (config.siteUrl || '').replace(/\/$/, '');
+await writeFile(join(dist, 'robots.txt'), `User-agent: *\nAllow: /\n${site ? `Sitemap: ${site}/sitemap.xml\n` : ''}`);
+if (site) await writeFile(join(dist, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${site}/</loc></url></urlset>\n`);
 console.log(`Built dist/ (${(html.length / 1024).toFixed(0)} KB HTML). Form endpoint: ${config.formEndpoint ? 'configured' : 'NOT configured'}`);
