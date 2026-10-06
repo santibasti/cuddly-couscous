@@ -124,3 +124,17 @@ export const businessTypes = [
   'Car wash',
   'Other MSME',
 ];
+
+// Scope builder: `modules` are indexes into `solutions`; `formType` is an index into `businessTypes`.
+export const scopeTypes = [
+  { id: 'contractor', label: 'Service contractor', hint: 'Cleaning, maintenance, crews', formType: 0, modules: [0, 1, 2, 3, 4, 5] },
+  { id: 'range', label: 'Driving range', hint: 'Bays, tabs, café', formType: 1, modules: [1, 2, 5, 6] },
+  { id: 'carwash', label: 'Car wash', hint: 'Job queue, supplies, sales', formType: 2, modules: [1, 2, 5, 6] },
+  { id: 'other', label: 'Other MSME', hint: 'Staff, stock, bookings', formType: 3, modules: [] },
+];
+
+export const scopeNotes = [
+  { id: 'import', label: 'We have existing records (e.g. spreadsheets) to bring in' },
+  { id: 'mobile', label: 'Staff will use phones or tablets' },
+  { id: 'sites', label: 'We work across several sites or branches' },
+];

@@ -343,3 +343,42 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 
 /* Process step header */
 .step-top { display: flex; justify-content: space-between; align-items: center; }
+
+/* Scope builder */
+.scope { display: grid; gap: 22px; align-items: start; }
+@media (min-width: 960px) { .scope { grid-template-columns: 1.5fr 1fr; gap: 28px; } .scope-summary { position: sticky; top: 96px; } }
+.scope-main { display: grid; gap: 28px; padding: clamp(20px, 3vw, 32px); border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: var(--shadow); }
+.scope-group { border: 0; padding: 0; margin: 0; min-width: 0; }
+.scope-group legend { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 0; margin-bottom: 14px; font-weight: 700; font-size: 1.05rem; color: var(--ink); }
+.scope-group legend small { font-weight: 500; font-size: .82rem; color: var(--muted); }
+.scope-n { color: var(--blue); font-weight: 800; }
+.choice-grid { display: grid; gap: 10px; }
+.choice-4 { grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 640px) { .choice-4 { grid-template-columns: repeat(4, 1fr); } .choice-2 { grid-template-columns: repeat(2, 1fr); } }
+.choice { position: relative; display: block; cursor: pointer; }
+.choice input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.choice-box { display: flex; flex-direction: column; gap: 2px; height: 100%; padding: 14px 16px; border: 1.5px solid #c5cee0; border-radius: 12px; background: #fff; color: var(--ink); transition: border-color .15s, background-color .15s, box-shadow .15s; }
+.choice-box strong { font-size: .95rem; line-height: 1.3; }
+.choice-box small { font-size: .78rem; color: var(--muted); }
+.choice-row { flex-direction: row; align-items: center; gap: 12px; font-size: .95rem; }
+.choice-row .icon { color: var(--muted); }
+.choice:hover .choice-box { border-color: #8d9bb8; }
+.choice input:checked + .choice-box { border-color: var(--blue); background: var(--blue-soft); box-shadow: inset 0 0 0 1px var(--blue); }
+.choice input:checked + .choice-box .icon { color: var(--blue); }
+.choice input:focus-visible + .choice-box { outline: 3px solid var(--blue); outline-offset: 2px; }
+.scope-summary { background: var(--navy); color: #c9d4ea; border-radius: 18px; padding: clamp(22px, 3vw, 30px); display: grid; gap: 14px; box-shadow: var(--shadow); }
+.scope-summary h3 { color: #fff; font-size: 1.3rem; }
+.scope-type-line { color: var(--lime); font-weight: 700; font-size: .9rem; margin-top: -8px; }
+.scope-list { display: grid; gap: 8px; }
+.scope-list:empty::before { content: "No modules selected yet."; color: #8fa3cc; font-size: .92rem; }
+.scope-list li { display: flex; gap: 10px; align-items: flex-start; font-size: .95rem; color: #fff; }
+.scope-list li::before { content: ""; flex: none; width: 8px; height: 8px; margin-top: .55em; border-radius: 50%; background: var(--lime); }
+.scope-count { font-size: .86rem; color: #a8b5d0; }
+.scope-count:empty { display: none; }
+.scope-pricing { border-top: 1px solid rgba(255, 255, 255, .14); padding-top: 14px; font-size: .86rem; display: grid; gap: 8px; }
+.scope-pricing strong { color: #fff; }
+.scope-pricing ul { display: grid; gap: 4px; padding-left: 18px; list-style: disc; }
+.scope-summary .btn { width: 100%; }
+.scope-summary .btn:disabled { background: #2a3d66; color: #8fa3cc; border-color: transparent; cursor: not-allowed; transform: none; box-shadow: none; }
+.scope-hint { font-size: .84rem; color: #a8b5d0; text-align: center; }
+.noscript-note { text-align: center; padding: 12px; background: var(--tint); border-radius: 10px; margin-bottom: 20px; }

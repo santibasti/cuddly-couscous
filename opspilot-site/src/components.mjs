@@ -190,8 +190,55 @@ export const engagement = () => `
   </div>
 </section>`;
 
+export const scopeBuilder = () => `
+<section class="section" id="scope" aria-labelledby="scope-title">
+  <div class="container">
+    ${sectionHead('Scope builder', 'Outline the system you have in mind.', 'Pick your business type and the modules that matter most. You will get a scope outline to send with your inquiry. No prices are shown; a quotation follows the consultation.', true).replace('<h2>', '<h2 id="scope-title">')}
+    <noscript><p class="noscript-note">The scope builder needs JavaScript. You can still describe your workflow in the contact form below.</p></noscript>
+    <div class="scope reveal" id="scope-tool">
+      <div class="scope-main">
+        <fieldset class="scope-group">
+          <legend><span class="scope-n">01</span>Business type</legend>
+          <div class="choice-grid choice-4">
+            ${c.scopeTypes.map((t, i) => `<label class="choice"><input type="radio" name="scope-type" value="${t.id}"${i === 0 ? ' checked' : ''}><span class="choice-box"><strong>${t.label}</strong><small>${t.hint}</small></span></label>`).join('')}
+          </div>
+        </fieldset>
+        <fieldset class="scope-group">
+          <legend><span class="scope-n">02</span>Modules <small>(suggested for your type; change freely)</small></legend>
+          <div class="choice-grid choice-2">
+            ${c.solutions.map((m, i) => `<label class="choice"><input type="checkbox" name="scope-module" value="${i}"><span class="choice-box choice-row">${icon(m.icon, 20)}<strong>${m.title}</strong></span></label>`).join('')}
+          </div>
+        </fieldset>
+        <fieldset class="scope-group">
+          <legend><span class="scope-n">03</span>Worth discussing</legend>
+          <div class="choice-grid choice-1">
+            ${c.scopeNotes.map((n) => `<label class="choice"><input type="checkbox" name="scope-note" value="${n.id}" data-label="${n.label}"><span class="choice-box choice-row">${icon('check', 18)}<span>${n.label}</span></span></label>`).join('')}
+          </div>
+        </fieldset>
+      </div>
+      <aside class="scope-summary" aria-labelledby="scope-sum-title">
+        <h3 id="scope-sum-title">Your scope outline</h3>
+        <p class="scope-type-line" id="scope-type-line"></p>
+        <ul class="scope-list" id="scope-list" aria-live="polite"></ul>
+        <p class="scope-count" id="scope-count"></p>
+        <div class="scope-pricing">
+          <strong>How it is priced</strong>
+          <ul>
+            <li>One-time implementation fee for agreed setup, configuration and training</li>
+            <li>Monthly package for hosting, maintenance, backups and defined support</li>
+            <li>Extra modules and major changes quoted separately</li>
+          </ul>
+          <p>No price is estimated here. Scope, data ownership, export arrangements and support terms are defined in the agreement.</p>
+        </div>
+        <button type="button" class="btn btn-primary" id="scope-send" disabled>Use this scope in my inquiry${icon('arrow', 18)}</button>
+        <p class="scope-hint" id="scope-hint">Select at least one module.</p>
+      </aside>
+    </div>
+  </div>
+</section>`;
+
 export const faq = () => `
-<section class="section" id="faq" aria-labelledby="faq-title">
+<section class="section section-tint" id="faq" aria-labelledby="faq-title">
   <div class="container faq-wrap">
     ${sectionHead('FAQ', 'Common questions', '', true).replace('<h2>', '<h2 id="faq-title">')}
     <div class="faq-list reveal">

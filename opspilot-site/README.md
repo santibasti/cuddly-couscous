@@ -12,6 +12,7 @@ npm run dev     # build + preview at http://localhost:4173
 - `src/components.mjs` – section/UI components (header, hero, cards, FAQ, form…)
 - `src/dashboard.mjs` – illustrative dashboard (KPIs, SVG chart, schematic map, table). All figures are labelled sample data.
 - `src/icons.mjs` – inline icons and the OpsPilot logo mark
+- Scope builder: `scopeTypes` / `scopeNotes` in `content.mjs` (presets per business type); logic at the end of `main.js`. Shows no prices and copies a scope outline into the contact form.
 - `src/styles.css`, `src/main.js` – styling and progressive enhancement
 - `site.config.json` – contact person and form endpoint
 - `public/favicon.svg` – brand favicon

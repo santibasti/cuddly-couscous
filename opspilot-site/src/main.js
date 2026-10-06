@@ -72,4 +72,43 @@
       submit.disabled = false;
     }
   });
+
+  // Scope builder: builds an outline (no prices) and can copy it into the contact form.
+  const tool = $('#scope-tool');
+  const data = window.OPSPILOT_SCOPE;
+  if (tool && data) {
+    const typeRadios = [...tool.querySelectorAll('input[name=scope-type]')];
+    const mods = [...tool.querySelectorAll('input[name=scope-module]')];
+    const notes = [...tool.querySelectorAll('input[name=scope-note]')];
+    const list = $('#scope-list'), count = $('#scope-count'), typeLine = $('#scope-type-line');
+    const send = $('#scope-send'), hint = $('#scope-hint');
+    const currentType = () => data.types.find((t) => t.id === typeRadios.find((r) => r.checked).value);
+    const chosen = () => mods.filter((m) => m.checked).map((m) => data.modules[+m.value]);
+    const chosenNotes = () => notes.filter((n) => n.checked).map((n) => n.dataset.label);
+
+    const render = () => {
+      const t = currentType(), picked = chosen();
+      typeLine.textContent = t.label;
+      list.replaceChildren(...picked.map((name) => Object.assign(document.createElement('li'), { textContent: name })));
+      count.textContent = picked.length === 1 ? 'Starting with one module is a good way to begin; we confirm the order with you.' : picked.length > 1 ? `${picked.length} modules. Many businesses start with one or two and add the rest later.` : '';
+      send.disabled = picked.length === 0;
+      hint.hidden = picked.length > 0;
+    };
+    const applyPreset = () => { const t = currentType(); mods.forEach((m) => { m.checked = t.modules.includes(+m.value); }); render(); };
+    typeRadios.forEach((r) => r.addEventListener('change', applyPreset));
+    [...mods, ...notes].forEach((i) => i.addEventListener('change', render));
+    applyPreset();
+
+    send.addEventListener('click', () => {
+      const f = $('#contact-form'), t = currentType();
+      f.elements.business_type.value = data.businessTypes[t.formType];
+      const lines = ['Scope outline from the website scope builder:', ...chosen().map((m) => '- ' + m)];
+      const n = chosenNotes();
+      if (n.length) lines.push('', 'Also: ' + n.join('; ') + '.');
+      const ta = f.elements.workflow;
+      ta.value = lines.join('\n');
+      $('#contact').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
+      setTimeout(() => f.elements.name.focus({ preventScroll: true }), reduced ? 0 : 500);
+    });
+  }
 })();
