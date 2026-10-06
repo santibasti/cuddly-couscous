@@ -1,3 +1,4 @@
+import { isUnavailable } from '@/lib/maintenance-core';
 import { useState } from 'react';
 import { useAuth, live } from '@/lib/store';
 import { Badge, Field, Icon, Modal, attempt, toast } from '@/components/ui';
@@ -46,7 +47,7 @@ export function ItemCard({ it, setItem, confirmItem, onScan, disabled, onRemove 
 export function AddToolModal({ items, job, onAdd, onClose }: { items: CheckItem[]; job: Job; onAdd: (i: CheckItem) => void; onClose: () => void }) {
   const { db } = useAuth();
   const [code, setCode] = useState(''); const [name, setName] = useState(''); const [qty, setQty] = useState(1);
-  const avail = live(db.assets).filter((a) => !['Retired', 'Damaged', 'Missing', 'Under Maintenance', 'In Use'].includes(a.status) && !items.some((i) => i.asset_id === a.id));
+  const avail = live(db.assets).filter((a) => !isUnavailable(a.status) && a.status !== 'In Use' && !items.some((i) => i.asset_id === a.id));
   const byCode = db.assets.find((a) => a.code.toUpperCase() === code.trim().toUpperCase());
   const add = () => {
     if (code.trim()) {

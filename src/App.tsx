@@ -13,6 +13,7 @@ import { Logo } from '@/components/Logo';
 import { fmtStamp } from '@/lib/util';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
+import Maintenance from '@/pages/Maintenance';
 import Clients from '@/pages/Clients';
 import ClientDetail from '@/pages/ClientDetail';
 import Sales from '@/pages/Sales';
@@ -39,6 +40,7 @@ const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: st
   { to: '/attendance', key: 'attendance', label: 'Attendance', icon: 'attendance' },
   { to: '/assets', key: 'assets', label: 'Equipment Out/In', icon: 'assets' },
   { to: '/inventory', key: 'inventory', label: 'Inventory', icon: 'inventory' },
+  { to: '/maintenance', key: 'maintenance', label: 'Maintenance', icon: 'maintenance' },
   { to: '/clients', key: 'clients', label: 'Clients', icon: 'clients', group: 'Sales' },
   { to: '/sales', key: 'sales', label: 'Quotations', icon: 'sales' },
   { to: '/finance', key: 'finance', label: 'Finance', icon: 'finance', group: 'Finance & People' },
@@ -138,6 +140,7 @@ function Shell() {
         <main className="content">
           <Routes>
             <Route path="/dashboard" element={<Guard area="dashboard"><Dashboard /></Guard>} />
+            <Route path="/maintenance" element={<Guard area="maintenance"><Maintenance /></Guard>} />
             <Route path="/clients" element={<Guard area="clients"><Clients /></Guard>} />
             <Route path="/clients/:id" element={<Guard area="clients"><ClientDetail /></Guard>} />
             <Route path="/sales" element={<Guard area="sales"><Sales /></Guard>} />

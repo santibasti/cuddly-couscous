@@ -12,6 +12,7 @@ import { addDays, eachDay, fmtDate, fmtTime, inRange, monthEnd, monthStart, mone
 import { paymentCounts, AWAY_JOB, FIELD_JOB, variationTotals, docTotals, invoiceBalance, invoiceTotals, isDone, isOpen, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
 import { isOverdue } from '@/lib/actions';
 import GeoInsights from '@/components/GeoInsights';
+import { MaintWidget } from '@/components/maint/MaintWidget';
 import { STAGES, areaOptions, attention, growth, kpis, operationsToday, serviceRevenue, scopeOf, trend, type InsightFilters, type TrendRange } from '@/lib/insights';
 import type { DB, Invoice, ServiceCode } from '@/lib/types';
 
@@ -74,7 +75,7 @@ export default function Dashboard() {
 
   const d = useMemo(() => compute(db, from, to, { branch, service, client }, mine ? myEmp : undefined), [db, from, to, branch, service, client, mine, myEmp]);
 
-  const inbox = <><DiscountInbox /><OcularWidget /><FollowUpWidget /></>;
+  const inbox = <><DiscountInbox /><OcularWidget /><FollowUpWidget />{mine && <MaintWidget />}</>;
   const filterBar = (
     <div className="filterbar no-print">
       <Field label="Period"><select value={preset} onChange={(e) => { setPreset(e.target.value); if (e.target.value !== 'custom') setRange(presetRange(e.target.value)); }}>{PRESETS.map(([k2, l]) => <option key={k2} value={k2}>{l}</option>)}<option value="custom">Custom…</option></select></Field>
@@ -317,6 +318,8 @@ export default function Dashboard() {
           </BarChart></ResponsiveContainer></div>
         </Card>
       </div>
+
+      {can('maintenance.view') && <div className="exec-section"><MaintWidget /></div>}
 
       <div className="exec-section"><GeoInsights db={db} scope={scope} /></div>
 

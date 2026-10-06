@@ -13,6 +13,7 @@ const P: Record<string, string> = {
   employees: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1M17 8h4M17 12h4M17 16h4',
   payroll: 'M3 6h18v12H3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 9v.01M18 15v.01',
   inventory: 'M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8',
+  maintenance: 'M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2-2z',
   assets: 'M14 7l-3 3 3 3 3-3M4 20l8-8M14.5 4.5a4 4 0 0 1 5 5l-3 3-5-5z',
   finance: 'M4 20V10M10 20V4M16 20v-8M22 20H2',
   reports: 'M6 3h9l4 4v14H6zM9 12h7M9 16h7M9 8h3',

@@ -7,6 +7,7 @@ import type {
 } from './types';
 import { DEFAULT_ACCESS } from './rbac';
 import { geoPatch } from './geo-ph';
+import { seedMaintenance } from './maint-seed';
 import { findConflicts, buildChecklistItems, buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
 import { addDays, clone, diffDays, dow, eachDay, monthEnd, monthStart, round2, sum, today } from './util';
 import { planFollowUps } from './followup-core';
@@ -277,7 +278,7 @@ export function seedDB(): DB {
   const attendance: Attendance[] = [];
   const checkouts: Checkout[] = [];
   const jobs: Job[] = [];
-  const counters: Record<string, number> = { QT: 0, JOB: 0, INV: 0, OR: 0, EMP: employees.length, INC: 0, DR: 0, BJ: 0, OV: 0 };
+  const counters: Record<string, number> = { QT: 0, JOB: 0, INV: 0, OR: 0, EMP: employees.length, INC: 0, DR: 0, BJ: 0, OV: 0, MT: 0 };
   const nn = (k: string) => { counters[k] += 1; return `${k}-${yr}-${String(counters[k]).padStart(4, '0')}`; };
 
   const teamAssets = { A: ['VEH-001', 'ROD-001', 'WFP-001', 'WFP-003', 'PWR-001', 'EXC-001', 'SAF-001'], B: ['VEH-002', 'ROD-002', 'WFP-002', 'PWR-002', 'SFC-001', 'EXC-002', 'SAF-002'] };
@@ -930,12 +931,14 @@ export function seedDB(): DB {
   for (const row of [...clients, ...sites] as { address: string }[]) Object.assign(row, geoPatch(row.address));
   for (const row of ocularVisits) Object.assign(row, geoPatch(row.location));
 
+  const maint = seedMaintenance({ assets, items, T, opsId: E_OPS.id, leaderId: E_L1.id, ownerUser: OWNER, base, nn });
+
   return {
     users, branches, clients, sites, communications, complaints, services, inquiries, quotations, jobs, employees, attendance, corrections: [
       { ...base('cor'), employee_id: FIELD[1].id, date: addDays(T, -2), clock_in: `${addDays(T, -2)}T08:00`, clock_out: `${addDays(T, -2)}T17:00`, reason: 'Forgot to clock out; was on site until 5PM per team leader.', status: 'Pending' },
     ], holidays, reviews, adjustments, periods, runs, locations, items, stock, requests: [
       { ...base('mr'), job_id: jobs.find((j) => j.status === 'Confirmed')?.id ?? jobs[0].id, requested_by: E_L1.id, lines: [{ item_id: item('CHM-001').id, qty: 4 }, { item_id: item('PPE-002').id, qty: 2 }], status: 'Pending', note: 'Extra chemical for large glass job.' },
-    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, payment_confirmations: confirmations, ocular_visits: ocularVisits, quote_images: quoteImages, followups, followup_rules: followupRules, job_orders: [], audit: [], settings: { ...settings, counters }, version: 1,
+    ], assets, checkouts, tickets, invoices, payments, expenses, petty, notifications: [], workflows, variations, incidents, discount_requests: discountRequests, client_feedback: feedback, back_jobs: backJobs, payment_confirmations: confirmations, ocular_visits: ocularVisits, quote_images: quoteImages, followups, followup_rules: followupRules, job_orders: [], ...maint, audit: [], settings: { ...settings, counters }, version: 1,
   };
 }
 

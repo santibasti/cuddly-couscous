@@ -5,6 +5,7 @@ import type { Client, DB, FollowUp, Job, ServiceCode } from './types';
 import { clientFollow, clientValue, completedJobs, followUpStats, serviceDate } from './followup-core';
 import { docTotals, invoiceBalance, invoiceTotals, isDone, isOpenBackJob, jobCost, paymentCounts, profitAndLoss } from './business';
 import { locate, PH_CENTER } from './geo-ph';
+import { maintStats } from './maintenance-core';
 import { addDays, inRange, monthEnd, monthStart, round2, sum, weekStart } from './util';
 
 export type Stage = 'Lead' | 'Quoted' | 'Booked' | 'Completed';
@@ -288,6 +289,8 @@ export function attention(db: DB, s: Scope, money: (n: number) => string): Atten
   out.push({ key: 'bj', label: 'Open back jobs', count: bj.length, detail: bj.length ? 'Rework not yet closed' : 'None open', to: '/jobs', tone: 'warn' });
   const eq = live(db.assets).filter((a) => a.status === 'Missing' || a.status === 'Damaged').length + live(db.incidents).filter((i) => ['Open', 'Investigating'].includes(i.status)).length;
   out.push({ key: 'eq', label: 'Equipment issues', count: eq, detail: eq ? 'Missing / damaged items and open incidents' : 'No issues', to: '/assets?tab=incidents', tone: 'warn' });
+  const ms = maintStats(db, T); const mlate = new Set([...ms.overdue, ...ms.urgent].map((r) => r.id));
+  out.push({ key: 'maint', label: 'Maintenance overdue or urgent', count: mlate.size, detail: mlate.size ? `${ms.overdue.length} overdue · ${ms.urgent.length} urgent` : 'All maintenance on schedule', to: '/maintenance', tone: 'bad' });
   return out;
 }
 

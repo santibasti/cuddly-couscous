@@ -67,7 +67,7 @@ class Store {
     let db: DB | null = null;
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { db = JSON.parse(raw) as DB; if (!db.discount_requests) db.discount_requests = []; if (!db.client_feedback) db.client_feedback = []; if (!db.back_jobs) db.back_jobs = []; if (!db.payment_confirmations) db.payment_confirmations = []; if (!db.ocular_visits) db.ocular_visits = []; if (!db.quote_images) db.quote_images = []; if (!db.followups) db.followups = []; if (!db.followup_rules) db.followup_rules = []; if (!db.job_orders) db.job_orders = []; db.payments = db.payments.map((p) => ((p.method as string) === 'Check' ? { ...p, method: 'Cheque' as const } : (['Credit Card', 'Other'] as string[]).includes(p.method) ? { ...p, method: 'Bank Transfer' as const } : p)); }   // data saved before Discount Requests existed
+      if (raw) { db = JSON.parse(raw) as DB; for (const t of ['maint_profiles', 'maint_plans', 'maint_templates', 'maint_records']) if (!(db as unknown as Record<string, unknown>)[t]) (db as unknown as Record<string, unknown>)[t] = []; if (!db.discount_requests) db.discount_requests = []; if (!db.client_feedback) db.client_feedback = []; if (!db.back_jobs) db.back_jobs = []; if (!db.payment_confirmations) db.payment_confirmations = []; if (!db.ocular_visits) db.ocular_visits = []; if (!db.quote_images) db.quote_images = []; if (!db.followups) db.followups = []; if (!db.followup_rules) db.followup_rules = []; if (!db.job_orders) db.job_orders = []; db.payments = db.payments.map((p) => ((p.method as string) === 'Check' ? { ...p, method: 'Cheque' as const } : (['Credit Card', 'Other'] as string[]).includes(p.method) ? { ...p, method: 'Bank Transfer' as const } : p)); }   // data saved before Discount Requests existed
     } catch { /* ignore corrupted / unavailable storage */ }
     this._db = db ?? seedDB();
     this.baseline = this._db;
@@ -118,7 +118,7 @@ class Store {
     this._db = { ...db, version: 1 }; this.baseline = this._db; this.sessionUser = uid;
     try { localStorage.setItem('topmop-last-user', uid); } catch { /* noop */ }
     await this.restoreLocal(uid);
-    for (const k of ['QT', 'JOB', 'INV', 'OR', 'EMP', 'INC', 'DR', 'BJ', 'OV', 'JO']) void this.refill(k);
+    for (const k of ['QT', 'JOB', 'INV', 'OR', 'EMP', 'INC', 'DR', 'BJ', 'OV', 'JO', 'MT']) void this.refill(k);
     this.saveSnapshot();
     this.listeners.forEach((l) => l());
   }
@@ -374,7 +374,7 @@ class Store {
     this.audit('update', 'settings', 'settings', summary, undefined, patch);
     this.set((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
   }
-  nextNumber(kind: 'QT' | 'JOB' | 'INV' | 'OR' | 'EMP' | 'INC' | 'DR' | 'BJ' | 'OV' | 'JO'): string {
+  nextNumber(kind: 'QT' | 'JOB' | 'INV' | 'OR' | 'EMP' | 'INC' | 'DR' | 'BJ' | 'OV' | 'JO' | 'MT'): string {
     if (CLOUD) {
       const pool = this.pool[kind]; const n = pool?.shift();
       if (n === undefined) { void this.refill(kind); throw new RuleError('Document numbers are still loading from the server. Try again in a moment.'); }

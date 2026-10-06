@@ -11,6 +11,8 @@ import { copyQuoteImages } from './quoteimages';
 import { syncFollowUps } from './followups';
 import { syncJobOrders } from './joborders';
 import { followUpAlerts } from './followup-core';
+import { isUnavailable, maintAlerts, profileOf } from './maintenance-core';
+import { syncMaintenance } from './maintenance';
 import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
 const db = () => store.getDB();
@@ -93,7 +95,7 @@ function checkJob(j: Pick<Job, 'id' | 'start_at' | 'end_at' | 'leader_id' | 'cre
   }
   for (const aid of [...(j.vehicle_id ? [j.vehicle_id] : []), ...j.equipment_ids]) {
     const a = d.assets.find((x) => x.id === aid);
-    if (a && ['Retired', 'Damaged', 'Under Maintenance', 'Missing'].includes(a.status)) fail(`${a.name} is ${a.status.toLowerCase()} and cannot be assigned.`);
+    if (a && isUnavailable(a.status)) fail(`${a.name} is ${a.status.toLowerCase()} and cannot be assigned.`);
   }
 }
 /** Called after a job is saved (the workflow module registers here to refresh the HQ prep list). */
@@ -282,7 +284,7 @@ const heldBy = (assetId: string, jobId: string) => {
 export function requestCheckout(p: { asset_id: string; job_id: string; responsible_id: string; expected_return: string; note?: string }) {
   store.require('assets.request');
   const a = asset(p.asset_id); const job = db().jobs.find((j) => j.id === p.job_id)!;
-  if (['Retired', 'Damaged', 'Under Maintenance', 'Missing'].includes(a.status)) fail(`${a.name} is ${a.status.toLowerCase()} and cannot be requested.`);
+  if (isUnavailable(a.status)) fail(`${a.name} is ${a.status.toLowerCase()} and cannot be requested.`);
   clearStaleHolds(p.asset_id, p.job_id);
   const holder = heldBy(p.asset_id, p.job_id);
   if (holder) fail(`${a.name} is currently checked out to ${holder}. Return it on the Equipment Out/In page first, or take it off this booking.`);
@@ -299,7 +301,7 @@ export function releaseCheckout(id: string, p: { condition: Condition; meter?: n
 export function performRelease(id: string, p: { condition: Condition; meter?: number }) {
   const c = db().checkouts.find((x) => x.id === id)!; const a = asset(c.asset_id);
   if (c.status !== 'Requested') fail('Only requested items can be released.');
-  if (['Retired', 'Damaged', 'Under Maintenance', 'Missing'].includes(a.status)) fail(`${a.name} is ${a.status.toLowerCase()}.`);
+  if (isUnavailable(a.status)) fail(`${a.name} is ${a.status.toLowerCase()}.`);
   clearStaleHolds(c.asset_id, c.job_id);
   const holder = heldBy(c.asset_id, c.job_id);
   if (holder) fail(`${a.name} is still checked out to ${holder}. Return it first – equipment can never be on two jobs at once.`);
@@ -663,6 +665,7 @@ export function runAutomations() {
   syncBackJobs();
   syncFollowUps();
   syncJobOrders();
+  syncMaintenance();
   const d = db(); const s = d.settings; const now = nowLocal(); const t = today();
   const list: Omit<Notification, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'read_by'>[] = [];
   const add = (key: string, type: string, title: string, body: string, severity: Notification['severity'], link: string, roles: Notification['for_roles'], external = false) => {
@@ -707,7 +710,7 @@ export function runAutomations() {
     const a = d.assets.find((x) => x.id === c.asset_id);
     add(`overdue:${c.id}`, 'asset', 'Overdue equipment return', `${a?.name} was due ${c.expected_return.replace('T', ' ')}.`, 'critical', '/assets', [...ops, 'leader'], true);
   }
-  for (const a of d.assets.filter((x) => !x.deleted_at && x.status !== 'Retired' && x.maintenance_interval_days)) {
+  for (const a of d.assets.filter((x) => !x.deleted_at && x.status !== 'Retired' && x.maintenance_interval_days && !profileOf(d, x.id))) {
     const due = addDays(a.last_maintenance || a.purchase_date, a.maintenance_interval_days); const dt = daysTo(due);
     if (dt <= s.reminder_days.maintenance) add(`maint:${a.id}`, 'asset', dt < 0 ? 'Maintenance overdue' : 'Maintenance due', `${a.code} ${a.name}: ${dt < 0 ? `${-dt} day(s) overdue` : `due in ${dt} day(s)`}.`, dt < 0 ? 'warn' : 'info', '/assets', [...ops]);
   }
@@ -760,6 +763,7 @@ export function runAutomations() {
   for (const v of d.variations.filter((x) => !x.deleted_at && x.status === 'Pending Approval')) {
     add(`var-pend:${v.id}`, 'job', 'Variation awaiting client approval', `${v.number}: ${v.reason}`, 'warn', `/jobs/${v.job_id}`, [...ops, 'leader']);
   }
+  for (const a of maintAlerts(d, t)) add(a.key, 'asset', a.title, a.body, a.severity, a.to, [...ops, 'leader']);
   // client follow-ups: Admin is told 14 days before and on each 6-month / 1-year follow-up date
   for (const a of followUpAlerts(d, t)) add(a.key, 'crm', a.title, a.body, a.severity, `/clients/${a.client_id}`, ['owner']);
   // finance

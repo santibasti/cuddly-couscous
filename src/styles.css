@@ -643,3 +643,15 @@ body.dark .kpi[class*="g-"] .v { font-size: 27px; text-shadow: 0 1px 6px rgba(0,
 .login-foot { position: relative; margin-top: 26px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #5f7a99; }
 @media (max-width: 480px) { .login-card { padding: 30px 22px 26px; } .login-logo { width: 96px; height: 96px; margin-top: -66px; } }
 .login-card .demo-accts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; } .login-card .demo-accts .btn { min-width: 0; padding: 6px 4px; font-size: 12px; white-space: normal; }
+
+/* ---- maintenance ---- */
+.partrow { display: grid; grid-template-columns: minmax(130px, 2fr) minmax(120px, 1.2fr) 70px 90px minmax(100px, 1fr) 140px 120px minmax(130px, 1.4fr) 34px; gap: 6px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; }
+.partrow input, .partrow select { min-height: 34px; padding: 5px 8px; font-size: 13px; }
+@media (max-width: 1100px) { .partrow { grid-template-columns: 1fr 1fr; } }
+.mcal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.mcal .dh { background: var(--gray-bg); padding: 6px 8px; font-size: 11.5px; font-weight: 650; text-transform: uppercase; color: var(--muted); }
+.mcal .cell { background: var(--panel); min-height: 96px; padding: 4px; display: flex; flex-direction: column; gap: 3px; }
+.mcal .cell.dim { opacity: .45; } .mcal .cell.today { outline: 2px solid var(--teal); outline-offset: -2px; }
+.mcal .cell .n { font-size: 11px; font-weight: 700; color: var(--muted); }
+.mchip { display: block; width: 100%; text-align: left; font: inherit; font-size: 11.5px; padding: 3px 6px; border-radius: 4px; border: 0; border-left: 3px solid var(--teal); background: var(--teal-bg); color: var(--text); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mchip.Overdue { border-color: var(--red); background: var(--red-bg); } .mchip.DueSoon { border-color: var(--amber); background: var(--amber-bg); } .mchip.Completed { border-color: var(--green); background: var(--green-bg); opacity: .8; } .mchip.InProgress { border-color: #4cc0ff; background: var(--blue-bg); }

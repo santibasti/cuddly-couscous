@@ -373,7 +373,7 @@ export interface MaterialRequest extends Base {
 export type AssetCategory =
   | 'RO/DI Pure-Water System' | 'Water-Fed Pole' | 'Pressure Washer' | 'Surface Cleaner'
   | 'Industrial Vacuum' | 'Pump' | 'Hose' | 'Ladder' | 'Extension Cord' | 'Safety Equipment' | 'Vehicle' | 'Other';
-export type AssetStatus = 'Available' | 'Reserved' | 'In Use' | 'Under Maintenance' | 'Damaged' | 'Missing' | 'Retired';
+export type AssetStatus = 'Available' | 'Reserved' | 'In Use' | 'Due for Maintenance' | 'Under Maintenance' | 'Out of Service' | 'Damaged' | 'Missing' | 'Retired';
 export type Condition = 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Damaged';
 export interface Asset extends Base {
   code: string;
@@ -858,7 +858,43 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations' | 'ocular_visits' | 'quote_images' | 'followups' | 'followup_rules' | 'job_orders';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations' | 'ocular_visits' | 'quote_images' | 'followups' | 'followup_rules' | 'job_orders' | 'maint_profiles' | 'maint_plans' | 'maint_templates' | 'maint_records';
+
+/* ---------- Maintenance ---------- */
+export type MaintCategory = 'Vehicle' | 'Water System' | 'Pump' | 'Pressure Washer' | 'Vacuum' | 'Safety Equipment' | 'Tool' | 'Other';
+export type MaintFreqKind = 'date' | 'hours' | 'usage' | 'mileage' | 'custom';
+export type MaintTaskType = 'Inspect' | 'Clean' | 'Replace' | 'Repair' | 'Refill' | 'Calibrate' | 'Service';
+export type MaintPriority = 'Low' | 'Normal' | 'High' | 'Urgent';
+export type MaintStatus = 'Requested' | 'Scheduled' | 'In Progress' | 'Completed' | 'Deferred' | 'Cancelled';
+export type MaintPartCategory = 'Replacement Part' | 'Cleaning Material' | 'Consumable' | 'Repair Item';
+export type MaintPartStatus = 'Needed' | 'Requested' | 'Ordered' | 'Received' | 'Installed' | 'Cancelled';
+export interface MaintPart { id: string; name: string; category: MaintPartCategory; qty: number; est_cost: number; supplier?: string; required_by?: string; status: MaintPartStatus; item_id?: string; deducted?: boolean }
+/** One per tracked asset: how it is maintained. (Name, code, status, location, custodian and date acquired stay on the asset itself.) */
+export interface MaintProfile extends Base {
+  asset_id: string; mcategory: MaintCategory; assigned_to?: string; responsible_id?: string; provider?: string; notes?: string;
+  reading_unit?: 'km' | 'hours'; last_reading?: number; reading_at?: string;          // current mileage / operating hours
+  registration_due?: string; insurance_due?: string;                                  // vehicles
+}
+export interface MaintTaskDef {
+  task_name: string; task_type: MaintTaskType; description: string; freq_kind: MaintFreqKind; interval_days?: number; interval_reading?: number; custom_note?: string;
+  est_minutes?: number; est_cost: number; priority: MaintPriority; parts: Omit<MaintPart, 'id' | 'status' | 'deducted'>[];
+}
+export interface MaintTemplate extends Base { name: string; mcategory: MaintCategory; tasks: MaintTaskDef[] }
+/** A recurring maintenance task on one asset. */
+export interface MaintPlan extends Base, MaintTaskDef {
+  asset_id: string; responsible_id?: string; active: boolean; template_name?: string;
+  last_done?: string; last_done_reading?: number; next_due?: string; next_due_reading?: number;
+}
+export interface MaintRecord extends Base {
+  number: string; asset_id: string; plan_id?: string; title: string; task_type: MaintTaskType; description: string; priority: MaintPriority; status: MaintStatus;
+  due_date?: string; due_reading?: number; responsible_id?: string; est_cost: number;
+  requested_by?: string; request_note?: string; approval: 'Not needed' | 'Pending' | 'Approved'; approved_by?: string; approved_at?: string;
+  parts: MaintPart[]; checklist: { label: string; done: boolean }[];
+  started_at?: string; completed_at?: string; completed_by?: string; actual_cost?: number; provider?: string; before_notes?: string; after_notes?: string; reading_at_done?: number;
+  next_due?: string; next_due_reading?: number; link?: string;
+  deferred_until?: string; defer_reason?: string; cancel_reason?: string; expense_id?: string;
+  history: { at: string; by: string; action: string; note?: string }[];
+}
 
 export interface DB {
   users: UserAccount[]; branches: Branch[]; clients: Client[]; sites: Site[]; communications: Communication[];
@@ -867,7 +903,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[]; ocular_visits: OcularVisit[]; quote_images: QuoteImage[]; followups: FollowUp[]; followup_rules: FollowUpRule[]; job_orders: JobOrder[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[]; ocular_visits: OcularVisit[]; quote_images: QuoteImage[]; followups: FollowUp[]; followup_rules: FollowUpRule[]; job_orders: JobOrder[]; maint_profiles: MaintProfile[]; maint_plans: MaintPlan[]; maint_templates: MaintTemplate[]; maint_records: MaintRecord[];
   audit: AuditLog[];
   settings: Settings;
   version: number;

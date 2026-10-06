@@ -1,3 +1,4 @@
+import { isUnavailable } from '@/lib/maintenance-core';
 import { useMemo, useState } from 'react';
 import { useAuth, live } from '@/lib/store';
 import { Field, Icon, Modal, attempt, useObj } from '@/components/ui';
@@ -68,7 +69,7 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
         <Field label="Estimated direct cost (₱)"><input type="number" min="0" {...f.bind('estimated_cost')} /></Field>
         <Field label="Status"><select {...f.bind('status')} disabled={!!initial && !['Pending', 'Confirmed', 'Cancelled'].includes(initial.status)}>{(initial && !['Pending', 'Confirmed', 'Cancelled'].includes(initial.status) ? [initial.status] : ['Pending', 'Confirmed', 'Cancelled']).map((s) => <option key={s}>{s}</option>)}</select></Field>
         <Field label="Team leader"><select value={v.leader_id ?? ''} onChange={(e) => f.set('leader_id', e.target.value || undefined)}><option value="">— none —</option>{leaders.map((e) => <option key={e.id} value={e.id}>{e.full_name}{tag('crew', e.id)}</option>)}</select></Field>
-        <Field label="Vehicle"><select value={v.vehicle_id ?? ''} onChange={(e) => f.set('vehicle_id', e.target.value || undefined)}><option value="">— none —</option>{vehicles.map((a) => <option key={a.id} value={a.id} disabled={['Damaged', 'Under Maintenance', 'Missing'].includes(a.status)}>{a.name}{a.status !== 'Available' && a.status !== 'Reserved' && a.status !== 'In Use' ? ` (${a.status})` : ''}{tag('vehicle', a.id)}</option>)}</select></Field>
+        <Field label="Vehicle"><select value={v.vehicle_id ?? ''} onChange={(e) => f.set('vehicle_id', e.target.value || undefined)}><option value="">— none —</option>{vehicles.map((a) => <option key={a.id} value={a.id} disabled={isUnavailable(a.status)}>{a.name}{a.status !== 'Available' && a.status !== 'Reserved' && a.status !== 'In Use' ? ` (${a.status})` : ''}{tag('vehicle', a.id)}</option>)}</select></Field>
         <div className="full">
           <div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Crew</div>
           <div className="grid g-auto">{field.map((e) => <label key={e.id} className="check" style={{ color: busy.has(`crew:${e.id}`) ? 'var(--red)' : undefined }}><input type="checkbox" checked={v.crew_ids.includes(e.id)} disabled={e.id === v.leader_id} onChange={() => toggle('crew_ids', e.id)} />{e.full_name}<span className="small muted">{tag('crew', e.id)}</span></label>)}</div>
@@ -76,7 +77,7 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
         <div className="full">
           <div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Machines & equipment</div>
           <div className="grid g-auto">{equipment.map((a) => {
-            const off = ['Damaged', 'Under Maintenance', 'Missing'].includes(a.status);
+            const off = isUnavailable(a.status);
             return <label key={a.id} className="check" style={{ color: busy.has(`equipment:${a.id}`) ? 'var(--red)' : off ? 'var(--muted)' : undefined }}><input type="checkbox" checked={v.equipment_ids.includes(a.id)} disabled={off} onChange={() => toggle('equipment_ids', a.id)} />{a.name}<span className="small muted">{off ? ` (${a.status})` : tag('equipment', a.id)}</span></label>;
           })}</div>
         </div>
