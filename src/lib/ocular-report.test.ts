@@ -37,3 +37,21 @@ describe('ocular report', () => {
     expect(q.disclaimer).toMatch(/Our cleaning process/); expect(q.scope).toMatch(/Recommendation: Two-day wash/);
   });
 });
+
+describe('job order shows the client address', () => {
+  it('is in the content; an old unsent order picks it up; a sent order is never revised for it', async () => {
+    const C = await import('./joborder-core'); const J = await import('./joborders');
+    await store.login('ops@topmop.ph', 'topmop123');
+    const job = db().jobs.find((j) => j.status === 'Confirmed' && db().quotations.some((q) => q.id === j.quotation_id && q.status === 'Approved'))!;
+    J.syncJobOrders(job.id);
+    const head = C.headOrder(db(), job.id)!;
+    const client = db().clients.find((c) => c.id === job.client_id)!;
+    expect(head.content.client_address).toBe((client.address || client.billing_address).trim());
+    const old = { ...head, content: { ...head.content, client_address: undefined } };
+    const d1 = { ...db(), job_orders: db().job_orders.map((o) => (o.id === head.id ? old : o)) };
+    expect(C.planJobOrders(d1 as never, job.id).map((s) => s.kind)).toEqual(['refresh']);
+    const sent = { ...old, status: 'Sent to Client' as const };
+    const d2 = { ...db(), job_orders: db().job_orders.map((o) => (o.id === head.id ? sent : o)) };
+    expect(C.planJobOrders(d2 as never, job.id)).toEqual([]);
+  });
+});

@@ -23,7 +23,7 @@ export function JobOrderDocument({ order }: { order: View }) {
       {(order.status === 'Draft' || order.status === 'Revised') && <div className="alert warn"><b>Draft — not yet sent to the client.</b></div>}
       <p className="muted small">This document confirms your scheduled service. It is not an invoice, an official receipt or a new quotation.</p>
       <div className="grid g2">
-        <div><div className="joc-k">Client</div><b>{c.client.name}</b><div>{c.client.contact_person && `Attention: ${c.client.contact_person}`}</div></div>
+        <div><div className="joc-k">Client</div><b>{c.client.name}</b>{c.client_address && <div>{c.client_address}</div>}<div>{c.client.contact_person && `Attention: ${c.client.contact_person}`}</div></div>
         <div><div className="joc-k">Service location</div><b>{c.location.name}</b><div>{c.location.address}</div>{c.location.contact_mobile && <div>Contact number: {c.location.contact_mobile}</div>}</div>
       </div>
       <div className="grid g4 keep2" style={{ margin: '12px 0' }}>

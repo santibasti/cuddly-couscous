@@ -45,6 +45,7 @@ export function buildContent(db: DB, job: Job): JobOrderContent {
   return {
     company: { name: s.company.name, tagline: s.company.tagline, address: s.company.address, phone: s.company.phone, email: s.company.email, tin: s.company.tin },
     client: { name: c?.name ?? '', contact_person: site?.contact_person || c?.contact_person || '', email: c?.email || undefined },
+    client_address: (c?.address || c?.billing_address || '').trim() || undefined,
     location: { name: site?.name ?? '', address: site?.address ?? '', contact_person: site?.contact_person || c?.contact_person || '', contact_mobile: site?.contact_mobile || c?.mobile || '' },
     booking_date: job.created_at.slice(0, 10), service_date: job.start_at.slice(0, 10), arrival_from: start, arrival_to: addMin(start, 30), duration_hours: hours,
     service_types: job.service_codes.map((code) => db.services.find((x) => x.code === code)?.name ?? code),
@@ -95,7 +96,9 @@ export function planJobOrders(db: DB, only?: string): OrderStep[] {
     if (!head) { out.push({ kind: 'create', job: j }); continue; }
     if (head.status === 'Superseded') continue;
     const content = buildContent(db, j); const key = contentKey(content);
-    if (key === head.content_key) continue;
+    // an unsent order picks up the client's address when it was made before the address was shown (a sent one is never touched for this)
+    const needsAddress = ['Draft', 'Revised'].includes(head.status) && !head.content.client_address && !!content.client_address;
+    if (key === head.content_key && !needsAddress) continue;
     out.push({ kind: head.status === 'Sent to Client' ? 'revise' : 'refresh', order: head, content, key });
   }
   return out;

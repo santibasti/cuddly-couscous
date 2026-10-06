@@ -51,7 +51,7 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
   // ---- client and location cards ----
   const half = (CW - 6) / 2; const inner = half - 11;
   const sameContact = !c.location.contact_person || c.location.contact_person === c.client.contact_person;
-  const left = [c.client.name, c.client.contact_person && c.client.contact_person !== c.client.name ? `Attention: ${c.client.contact_person}` : ''].filter(Boolean);
+  const left = [c.client.name, c.client_address ?? '', c.client.contact_person && c.client.contact_person !== c.client.name ? `Attention: ${c.client.contact_person}` : ''].filter(Boolean);
   const right = [c.location.name, c.location.address, c.location.contact_mobile ? `Contact number: ${c.location.contact_mobile}` : '', !sameContact ? `On-site contact: ${c.location.contact_person}` : ''].filter(Boolean);
   const hOf = (arr: string[]) => arr.reduce((n, l) => n + lines(l, inner, 9.8).length, 0) * 4.7 + 12;
   const ch = Math.max(hOf(left), hOf(right));
