@@ -53,7 +53,7 @@ ${ui.footer()}
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 await writeFile(join(dist, 'index.html'), html);
-await cp(join(root, 'src/styles.css'), join(dist, 'styles.css'));
+await writeFile(join(dist, 'styles.css'), (await readFile(join(root, 'src/styles.css'), 'utf8')) + '\n' + (await readFile(join(root, 'src/dashboard.css'), 'utf8')));
 const scopeData = JSON.stringify({ types: scopeTypes, modules: solutions.map((m) => m.title), businessTypes });
 await writeFile(join(dist, 'main.js'), `window.OPSPILOT_SCOPE = ${scopeData};\n` + await readFile(join(root, 'src/main.js'), 'utf8'));
 await cp(join(root, 'public'), dist, { recursive: true });

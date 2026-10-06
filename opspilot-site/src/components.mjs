@@ -21,6 +21,7 @@ export const sectionHead = (eyebrow, title, lead = '', center = false) => `
 
 export const header = () => `
 <header class="site-header" id="top">
+  <div class="scroll-progress" aria-hidden="true"><i></i></div>
   <div class="container header-inner">
     ${logo()}
     <nav class="nav" id="site-nav" aria-label="Primary">
@@ -54,6 +55,7 @@ export const hero = () => `
       </dl>
     </div>
     <div class="hero-visual">
+      <div class="orbit" aria-hidden="true"><i></i><i></i></div>
       ${heroDashboard()}
       <div class="float-badge fb-top">${icon('shield', 20)}<div><strong>Agreed scope</strong><span>Data ownership defined in the agreement</span></div></div>
       <div class="float-badge fb-bottom">${icon('layers', 20)}<div><strong>Start with one module</strong><span>Add more as you grow</span></div></div>
@@ -90,12 +92,13 @@ export const solutions = () => `
 <section class="section section-tint" id="solutions" aria-labelledby="solutions-title">
   <div class="container">
     ${sectionHead('Solutions', 'Modules that fit together.', 'Start with the module that matters most. Add others as your needs grow; they share the same records.', true).replace('<h2>', '<h2 id="solutions-title">')}
-    <div class="card-grid">
-      ${c.solutions.map((s) => `
-      <article class="card reveal">
+    <div class="card-grid bento">
+      ${c.solutions.map((s, i) => `
+      <article class="card reveal b${i}">
+        <span class="card-idx">0${i + 1}</span>
         <span class="card-ico">${icon(s.icon, 26)}</span>
-        <h3>${s.title}</h3>
-        <p>${s.text}</p>
+        <div class="b${i}-copy"><h3>${s.title}</h3>
+        <p>${s.text}</p></div>
         <a class="card-link" href="#contact">Ask about this ${icon('arrow', 16)}</a>
       </article>`).join('')}
     </div>
@@ -103,10 +106,15 @@ export const solutions = () => `
 </section>`;
 
 export const sampleDashboard = () => `
-<section class="section" id="dashboard" aria-labelledby="dashboard-title">
+<section class="section dash-section" id="dashboard" aria-labelledby="dashboard-title">
   <div class="container">
-    ${sectionHead('Sample dashboard', 'What the owner sees each morning.', 'An illustrative view of how records entered by your team can come together. All figures are sample data, in Philippine pesos.', true).replace('<h2>', '<h2 id="dashboard-title">')}
-    <div class="reveal">${fullDashboard()}</div>
+    <div class="section-head center reveal">
+      <p class="eyebrow eyebrow-dark">Sample dashboard</p>
+      <h2 id="dashboard-title">What the owner sees each morning.</h2>
+      <p class="lead">An illustrative view of how records entered by your team come together: jobs, crews, equipment, sales, payments and balances in one place. Hover the chart to explore.</p>
+    </div>
+    <div class="dash-stage reveal">${fullDashboard()}</div>
+    <p class="dash-foot"><span>Illustrative dashboard</span><span>Sample data</span><span>Philippine pesos</span><span>Recorded locations, not live tracking</span></p>
   </div>
 </section>`;
 

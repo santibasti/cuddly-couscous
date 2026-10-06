@@ -111,4 +111,74 @@
       setTimeout(() => f.elements.name.focus({ preventScroll: true }), reduced ? 0 : 500);
     });
   }
+
+  // ---- Premium layer: scroll progress, card spotlight, count-up, interactive chart ----
+  const bar = $('.scroll-progress i');
+  if (bar) {
+    const upd = () => { const h = document.documentElement.scrollHeight - innerHeight; bar.style.setProperty('--p', h > 0 ? Math.min(1, scrollY / h).toFixed(4) : 0); };
+    addEventListener('scroll', upd, { passive: true }); addEventListener('resize', upd); upd();
+  }
+
+  if (!reduced && matchMedia('(hover: hover)').matches) {
+    document.querySelectorAll('.card, .industry, .engage, .principle, .step, .problem').forEach((el) => {
+      el.setAttribute('data-spot', '');
+      el.addEventListener('pointermove', (e) => {
+        const r = el.getBoundingClientRect();
+        el.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+        el.style.setProperty('--my', (e.clientY - r.top) + 'px');
+      });
+    });
+  }
+
+  // Count-up for KPI numbers. Final text is already in the HTML; this only animates it.
+  const fmt = (el, n) => (el.dataset.money ? '₱' : '') + Math.round(n).toLocaleString('en-PH');
+  const countUp = (el) => {
+    const end = +el.dataset.count, t0 = performance.now(), dur = 1300;
+    const tick = (t) => {
+      const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = fmt(el, end * e);
+      if (k < 1) requestAnimationFrame(tick); else el.textContent = fmt(el, end);
+    };
+    requestAnimationFrame(tick);
+  };
+  if (!reduced && 'IntersectionObserver' in window) {
+    const co = new IntersectionObserver((es) => es.forEach((en) => {
+      if (en.isIntersecting) { countUp(en.target); co.unobserve(en.target); }
+    }), { threshold: 0.6 });
+    document.querySelectorAll('[data-count]').forEach((el) => co.observe(el));
+  }
+
+  // Interactive area chart: pointer + keyboard crosshair with tooltip (sample data).
+  document.querySelectorAll('.chart[data-chart]').forEach((wrap) => {
+    const m = JSON.parse(wrap.dataset.chart);
+    const svg = wrap.querySelector('svg'), g = wrap.querySelector('.ch-hover'), tip = wrap.querySelector('.ch-tip');
+    const line = g.querySelector('.ch-cross'), hb = g.querySelector('.ch-hot-b'), hp = g.querySelector('.ch-hot-p');
+    const n = m.labels.length, step = (m.W - m.L - m.R) / (n - 1), plotH = m.H - m.T - m.B;
+    const X = (i) => m.L + i * step, Y = (v) => m.T + plotH - (v / m.max) * plotH;
+    let idx = n - 1;
+    const show = (i) => {
+      idx = Math.max(0, Math.min(n - 1, i));
+      const x = X(idx);
+      line.setAttribute('x1', x); line.setAttribute('x2', x);
+      hb.setAttribute('cx', x); hb.setAttribute('cy', Y(m.billed[idx]));
+      hp.setAttribute('cx', x); hp.setAttribute('cy', Y(m.paid[idx]));
+      g.hidden = false; tip.hidden = false;
+      const pct = Math.max(14, Math.min(86, (x / m.W) * 100));
+      tip.style.left = pct + '%';
+      tip.innerHTML = `<b>${m.labels[idx]}</b><span><i style="background:#3d7bff"></i>Billed<em>₱${m.billed[idx]}k</em></span><span><i style="background:#12a594"></i>Collected<em>₱${m.paid[idx]}k</em></span><small>Sample data</small>`;
+    };
+    const hide = () => { g.hidden = true; tip.hidden = true; };
+    svg.addEventListener('pointermove', (e) => {
+      const r = svg.getBoundingClientRect();
+      show(Math.round((((e.clientX - r.left) / r.width) * m.W - m.L) / step));
+    });
+    svg.addEventListener('pointerleave', () => { if (document.activeElement !== wrap) hide(); });
+    wrap.addEventListener('focus', () => show(idx));
+    wrap.addEventListener('blur', hide);
+    wrap.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); show(idx - 1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); show(idx + 1); }
+      else if (e.key === 'Escape') hide();
+    });
+  });
 })();

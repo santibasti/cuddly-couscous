@@ -10,7 +10,7 @@ npm run dev     # build + preview at http://localhost:4173
 ## Structure
 - `src/content.mjs` – all copy (edit wording here)
 - `src/components.mjs` – section/UI components (header, hero, cards, FAQ, form…)
-- `src/dashboard.mjs` – illustrative dashboard (KPIs, SVG chart, schematic map, table). All figures are labelled sample data.
+- `src/dashboard.mjs` + `src/dashboard.css` – illustrative "command center" dashboard (KPI sparklines, interactive chart, gauge rings, dot-matrix map, job table). All figures are labelled sample data. Chart colours were checked with a palette validator.
 - `src/icons.mjs` – inline icons and the OpsPilot logo mark
 - Scope builder: `scopeTypes` / `scopeNotes` in `content.mjs` (presets per business type); logic at the end of `main.js`. Shows no prices and copies a scope outline into the contact form.
 - `src/styles.css`, `src/main.js` – styling and progressive enhancement
