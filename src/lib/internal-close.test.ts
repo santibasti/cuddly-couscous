@@ -41,4 +41,27 @@ describe('Stage 8 — job expenses & internal close', () => {
     const closed = db().jobs.find((j) => j.internal_closed_at)!;
     if (closed) expect(() => A.reopenJobInternally(closed.id, 'x')).toThrow(/Owner/);
   });
+
+  it('budget vs actual, and crew out-of-pocket expenses are paid back by Finance (also after the job is closed)', async () => {
+    await store.login('owner@topmop.ph', 'topmop123');
+    const noExp = (j: { id: string }) => !db().expenses.some((e) => e.job_id === j.id && !e.deleted_at);
+    const job = db().jobs.find((j) => j.status === 'Closed' && !j.deleted_at && !j.internal_closed_at && noExp(j))!;
+    const leader = job.leader_id!;
+    A.setExpenseBudget(job.id, 2000); expect(db().jobs.find((j) => j.id === job.id)!.expense_budget).toBe(2000);
+    expect(() => A.setExpenseBudget(job.id, -5)).toThrow(/valid/);
+    const mine = A.addJobExpense(job.id, { ...exp, paid_by_employee: leader }) as { id: string };
+    A.addJobExpense(job.id, { category: 'Fuel', payee: 'Shell', amount: 900, date: '2026-10-01', method: 'Cash' });
+    const own = db().expenses.find((e) => e.id === mine.id)!;
+    expect(own.paid_by_employee).toBe(leader); expect(own.petty_cash).toBe(false); expect(own.paid).toBe(false);
+    expect(A.reimbursable(db()).some((e) => e.id === own.id)).toBe(true);
+    A.closeJobInternally(job.id, {});
+    expect(() => A.reimburseExpenses([own.id], '')).toThrow(/how/i);
+    A.reimburseExpenses([own.id], 'GCash');
+    expect(db().expenses.find((e) => e.id === own.id)!.reimbursed_via).toBe('GCash');
+    expect(A.reimbursable(db()).some((e) => e.id === own.id)).toBe(false);
+    expect(() => A.reimburseExpenses([own.id], 'Cash')).toThrow(/Already/);
+    expect(() => A.reimburseExpenses([A.jobExpenses(db(), job.id).find((e) => !e.paid_by_employee)!.id], 'Cash')).toThrow(/not paid by an employee/);
+    await store.login('leader@topmop.ph', 'topmop123');
+    expect(() => A.reimburseExpenses([own.id], 'Cash')).toThrow(/not permitted/i);
+  });
 });

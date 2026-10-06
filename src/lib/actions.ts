@@ -623,16 +623,41 @@ export const JOB_EXPENSE_PRESETS: { label: string; category: ExpenseCategory; pa
   { label: 'Other', category: 'Other', payee: '' },
 ];
 /** Admin / Finance records one expense that was spent on this job (after the service is done, until the job is closed internally). */
-export function addJobExpense(jobId: string, e: { category: ExpenseCategory; payee: string; amount: number; date: string; method: Expense['method']; petty_cash?: boolean; receipt?: string; notes?: string }) {
+export function addJobExpense(jobId: string, e: { category: ExpenseCategory; payee: string; amount: number; date: string; method: Expense['method']; petty_cash?: boolean; paid_by_employee?: string; receipt?: string; notes?: string }) {
   store.require('expenses.edit');
   const j = db().jobs.find((x) => x.id === jobId && !x.deleted_at) ?? fail('Job not found.');
   if (!isDone(j!.status)) fail('Expenses are entered after the service is completed.');
   if (j!.internal_closed_at) fail('This job is closed internally. The Owner must reopen it before expenses change.');
   if (!e.payee.trim()) fail('Say what the expense was for (e.g. "NLEX toll").');
   const auto = store.can('expenses.approve');
-  const r = saveExpense({ date: e.date, payee: e.payee.trim(), category: e.category, job_id: jobId, branch_id: j!.branch_id, amount: round2(e.amount), vat: 0, wht: 0, method: e.method, receipt: e.receipt, approval: auto ? 'Approved' : 'Pending', approved_by: auto ? me()!.id : undefined, paid: true, petty_cash: !!e.petty_cash, notes: e.notes?.trim() || `Job ${j!.number}` } as never);
-  if (e.petty_cash) pettyCash('Disbursement', round2(e.amount), `${e.category} – ${e.payee.trim()} (${j!.number})`);
+  const r = saveExpense({ date: e.date, payee: e.payee.trim(), category: e.category, job_id: jobId, branch_id: j!.branch_id, amount: round2(e.amount), vat: 0, wht: 0, method: e.method, receipt: e.receipt, approval: auto ? 'Approved' : 'Pending', approved_by: auto ? me()!.id : undefined, paid: !e.paid_by_employee, petty_cash: !!e.petty_cash && !e.paid_by_employee, paid_by_employee: e.paid_by_employee || undefined, notes: e.notes?.trim() || `Job ${j!.number}` } as never);
+  if (e.petty_cash && !e.paid_by_employee) pettyCash('Disbursement', round2(e.amount), `${e.category} – ${e.payee.trim()} (${j!.number})`);
   return r;
+}
+/** Budget for gas, toll, meals and other job expenses (compared with what is actually entered in Stage 8). */
+export function setExpenseBudget(jobId: string, amount: number | undefined) {
+  if (!store.can('jobs.edit') && !store.can('jobs.close_internal')) fail('Not permitted.');
+  const j = db().jobs.find((x) => x.id === jobId && !x.deleted_at) ?? fail('Job not found.');
+  if (j!.internal_closed_at) fail('This job is closed internally.');
+  if (amount !== undefined && !(amount >= 0)) fail('Enter a valid budget.');
+  return store.update('jobs', jobId, { expense_budget: amount === undefined ? undefined : round2(amount) } as never, 'update', `Expense budget for ${j!.number}: ${amount === undefined ? 'cleared' : money(amount)}`);
+}
+/** Expenses an employee paid out of pocket that Finance has not paid back yet (approved ones only). */
+export const reimbursable = (d: Pick<DB, 'expenses'>) => d.expenses.filter((x) => x.paid_by_employee && !x.reimbursed_at && !x.deleted_at && !x.reversed && x.approval === 'Approved');
+export const REIMBURSE_VIA = ['Cash', 'GCash', 'Bank Transfer', 'Added to payroll', 'Other'] as const;
+/** Finance pays an employee back for expenses they covered (also allowed after the job is closed internally). */
+export function reimburseExpenses(ids: string[], via: string) {
+  store.require('expenses.approve');
+  if (!ids.length) fail('Nothing selected.');
+  if (!via) fail('Say how they were paid back.');
+  for (const id of ids) {
+    const e = db().expenses.find((x) => x.id === id) ?? fail('Expense not found.');
+    if (!e!.paid_by_employee) fail('This expense was not paid by an employee.');
+    if (e!.approval !== 'Approved' || e!.reversed) fail('Only approved expenses can be reimbursed.');
+    if (e!.reimbursed_at) fail('Already reimbursed.');
+    const who = db().employees.find((x) => x.id === e!.paid_by_employee)?.full_name ?? 'employee';
+    store.update('expenses', id, { reimbursed_at: isoNow(), reimbursed_by: me()!.id, reimbursed_via: via } as never, 'update', `Reimbursed ${who} ${money(e!.amount)} for ${e!.payee} (${via})`);
+  }
 }
 export const jobExpenses = (d: Pick<DB, 'expenses'>, jobId: string) => d.expenses.filter((x) => x.job_id === jobId && !x.deleted_at && !x.reversed && x.approval !== 'Rejected');
 /** Admin / Finance closes the job internally once every expense is in (or confirms there were none). Locks the job's expenses. */
@@ -794,6 +819,10 @@ export function runAutomations() {
     const c = d.clients.find((x) => x.id === j.client_id);
     add(`job-expenses:${j.id}`, 'job', 'Enter job expenses & close internally', `${j.number} • ${c?.name} — add gas, toll, meals and other expenses, then close the job internally.`, 'warn', `/jobs/${j.id}`, ['owner', 'finance']);
   }
+  // crew paid for job expenses out of pocket: Finance pays them back
+  const owed = new Map<string, number>();
+  for (const x of reimbursable(d)) owed.set(x.paid_by_employee!, (owed.get(x.paid_by_employee!) ?? 0) + x.amount);
+  for (const [eid, amt] of owed) add(`reimburse:${eid}:${t}`, 'finance', 'Reimbursement due', `${d.employees.find((e) => e.id === eid)?.full_name ?? 'An employee'} paid ${money(amt)} out of pocket for job expenses.`, 'warn', '/finance?tab=expenses', ['owner', 'finance']);
   const pendCor = d.corrections.filter((c) => c.status === 'Pending' && !c.deleted_at);
   if (pendCor.length) add('cor-pending', 'attendance', 'Unapproved attendance corrections', `${pendCor.length} correction request(s) awaiting approval.`, 'warn', '/attendance?tab=corrections', [...ops, 'leader']);
   // jobs

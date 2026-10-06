@@ -7,7 +7,7 @@ import { DataTable } from '@/components/DataTable';
 import { bulkApproveAttendance, clockIn, clockOut, decideAttendance, decideCorrection, manualAttendance, requestCorrection } from '@/lib/actions';
 import { getGeo } from '@/lib/geo';
 import { LIVE_JOB } from '@/lib/business';
-import { addDays, dow, fmtDate, fmtStamp, fmtTime, nowLocal, today } from '@/lib/util';
+import { addDays, dow, fmtDate, fmtStamp, fmtTime, money, nowLocal, today } from '@/lib/util';
 import type { Attendance as Att, Employee } from '@/lib/types';
 
 function Clock() {
@@ -36,6 +36,11 @@ function MyClock({ emp }: { emp: Employee }) {
   };
   return (
     <div className="grid g2">
+      {db.expenses.some((x) => x.paid_by_employee === emp.id && !x.deleted_at && !x.reversed && x.approval === 'Approved') && (() => { const mine = db.expenses.filter((x) => x.paid_by_employee === emp.id && !x.deleted_at && !x.reversed && x.approval === 'Approved'); const due = mine.filter((x) => !x.reimbursed_at); return (
+        <div style={{ gridColumn: '1 / -1' }}><Card title="My reimbursements" actions={<span className="small muted">Expenses you paid for the job</span>}>
+          {due.length > 0 ? <div className="alert warn" style={{ marginBottom: 8 }}>The company owes you <b>{money(due.reduce((n, x) => n + x.amount, 0))}</b> — Finance will pay it back.</div> : <div className="small muted" style={{ marginBottom: 8 }}>Everything you paid has been paid back. Thank you!</div>}
+          <ul className="list">{mine.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6).map((x) => <li key={x.id}><span>{fmtDate(x.date)} · {x.payee}</span><span className="row" style={{ gap: 6 }}><b>{money(x.amount)}</b><Badge tone={x.reimbursed_at ? 'green' : 'amber'}>{x.reimbursed_at ? 'Paid back' : 'To be paid back'}</Badge></span></li>)}</ul>
+        </Card></div>); })()}
       <div style={{ gridColumn: '1 / -1' }}><RatingCard emp={emp} phase={state === 'none' ? 'in' : state === 'in' ? 'out' : 'done'} /></div>
       <Card className="clock-card">
         <div className="muted">{fmtDate(T)} · Asia/Manila</div>

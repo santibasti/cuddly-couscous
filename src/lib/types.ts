@@ -172,6 +172,8 @@ export interface Job extends Base {
   number: string;
   /** each assigned person's answer to "can you make it?" (asked from 7 PM the evening before): employee id → answer for this schedule */
   /** Stage 8: after the service Admin enters every job expense (gas, toll, meals, purchases) and closes the job internally */
+  /** planned spend on gas, toll, meals and other job expenses (compared with the actual in Stage 8) */
+  expense_budget?: number;
   internal_closed_at?: string; internal_closed_by?: string; internal_no_expenses?: boolean; internal_notes?: string; internal_expense_total?: number;
   crew_confirmations?: Record<string, { status: 'confirmed' | 'declined'; at: string; note?: string; for_start: string }>;
   client_id: string;
@@ -750,6 +752,8 @@ export interface Expense extends Base {
   source?: 'payroll' | 'maintenance';
   source_id?: string;
   reversed?: boolean;
+  /** an employee paid this out of pocket: Finance pays them back (reimbursed_* is filled in when done) */
+  paid_by_employee?: string; reimbursed_at?: string; reimbursed_by?: string; reimbursed_via?: string;
 }
 export interface PettyCashEntry extends Base {
   date: string;
