@@ -1,4 +1,5 @@
 import { logoDataUrl } from './logo';
+import { durationText, manpowerText } from './quote-text';
 import type { DB, Invoice, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
 import { quoteImagesOf } from './quoteimages';
 import { paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
@@ -199,6 +200,16 @@ const clientLines = (db: DB, id: string, siteId?: string): string[] => {
   return [c.name, `Attn: ${c.contact_person}`, c.billing_address || c.address, c.tin ? `TIN: ${c.tin}` : '', s ? `Site: ${s.name} – ${s.address}` : ''];
 };
 
+/** Manpower deployment, estimated duration and the service disclaimer (only what the quotation has). */
+function deploymentBlock(doc: Doc, q: Quotation, y: number): number {
+  const part = (title: string, text: string | null, size = 9) => {
+    if (!text) return;
+    if (y > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); y = 16; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text(title, 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(size); y = wrapText(doc, text, 12, y + 4.5, 186, size === 9 ? 4.2 : 3.7) + 3;
+  };
+  part('Manpower Deployment', manpowerText(q)); part('Estimated Duration', durationText(q)); part('Service Disclaimer', q.disclaimer?.trim() || null, 8);
+  return y + 2;
+}
 export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?: boolean } = {}) {
   const { doc, autoTable } = await newPdf();
   header(doc, 'Quotation', `${q.number} • ${q.status}`);
@@ -206,6 +217,7 @@ export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?:
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Scope of work', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
   y = wrapText(doc, q.scope, 12, y + 5, 186) + 3;
   y = itemsTable(doc, autoTable, y, q.items, q.vat_mode, q.vat_rate, q.discount) + 4;
+  y = deploymentBlock(doc, q, y);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Terms & conditions', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
   y = wrapText(doc, q.terms, 12, y + 5, 186, 4) + 8;
   if (opts.includeImages) y = imagesBlock(doc, y, await pdfReady(quoteImagesOf(db, { quotation_id: q.id }, true)), 'Attachments — site images');
@@ -367,6 +379,7 @@ export async function conformePdf(db: DB, j: Job, opts: { includeImages?: boolea
     autoTable(doc, { startY: y, head: [['Area / floor', 'Side', 'External', 'Internal', 'Total', 'Notes']], body: wf.panels.map((p) => [p.area, p.side, p.external, p.internal, rowPanels(p), clean(`${p.additional ? '[additional] ' : ''}${p.notes ?? ''}`)]), foot: [['Total', '', pt.external, pt.internal, pt.total, '']], ...tableStyle, footStyles: { fillColor: [234, 239, 244], textColor: NAVY, fontStyle: 'bold' }, margin: { left: 12, right: 12 } });
     y = ymax(doc) + 3; doc.setFontSize(9); doc.text(`Panels: ${pb.original} in original quotation, ${pb.additional} additional, ${pb.external} external, ${pb.internal} internal, ${pb.total} counted in total.`, 12, y); y += 7;
   }
+  if (q?.disclaimer?.trim()) { room(30); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text('Service disclaimer', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); y = wrapText(doc, q.disclaimer, 12, y + 4.5, 186, 3.7) + 4; }
   if (q?.terms) { room(30); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text('Terms and exclusions', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); y = wrapText(doc, q.terms, 12, y + 4.5, 186) + 4; }
 
   h('2. Additional Work Requested / Confirmed at Site');

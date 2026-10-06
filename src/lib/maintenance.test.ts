@@ -107,3 +107,19 @@ describe('employee rating', () => {
     Rt.syncRatings(); expect(db().employees).toBe(before);
   });
 });
+
+describe('quotation manpower, duration and disclaimer', () => {
+  it('builds the standard wording and keeps the fields when saved', async () => {
+    const Q = await import('./quote-text');
+    expect(Q.manpowerText({ crew_size: '6-7', safety_officer: true, work_days: 1 })).toMatch(/^6-7 trained Crew with Certified Work at Height, Designated Safety Officer, will be deployed/);
+    expect(Q.manpowerText({ crew_size: '4', safety_officer: false, work_days: 1 })).not.toMatch(/Safety Officer/);
+    expect(Q.manpowerText({ safety_officer: true })).toBeNull();
+    expect(Q.durationText({ work_days: 3 })).toMatch(/within 3 day\/s, subject to weather/);
+    await store.login('ops@topmop.ph', 'topmop123');
+    const q0 = db().quotations[0];
+    const saved = A.saveQuotation({ ...q0, id: undefined, number: undefined, status: 'Draft', crew_size: '5', safety_officer: false, work_days: 2, disclaimer: 'Custom disclaimer' } as never) as { id: string };
+    const row = db().quotations.find((x) => x.id === saved.id)!;
+    expect([row.crew_size, row.safety_officer, row.work_days, row.disclaimer]).toEqual(['5', false, 2, 'Custom disclaimer']);
+    expect(db().quotations.some((x) => x.disclaimer?.startsWith('Our cleaning process'))).toBe(true);
+  });
+});

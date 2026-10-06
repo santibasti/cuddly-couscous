@@ -1,3 +1,4 @@
+import { defaultCrew, defaultDisclaimer, durationText, manpowerText } from '@/lib/quote-text';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
@@ -53,7 +54,7 @@ export default function QuoteEditor() {
   const [note, setNote] = useState('');
   const f = useObj<Form>(() => existing ? { ...existing } : {
     client_id: sp.get('client') ?? live(db.clients)[0]?.id ?? '', site_id: undefined, inquiry_id: sp.get('inquiry') ?? undefined, issue_date: today(), valid_until: addDays(today(), db.settings.quote_validity_days),
-    scope: '', items: [], vat_mode: 'exclusive', vat_rate: db.settings.vat_rate, discount: 0, terms: db.settings.default_terms, status: 'Draft', branch_id: db.branches[0].id,
+    scope: '', items: [], vat_mode: 'exclusive', vat_rate: db.settings.vat_rate, discount: 0, terms: db.settings.default_terms, crew_size: defaultCrew(db.settings), safety_officer: true, work_days: 1, disclaimer: defaultDisclaimer(db.settings), status: 'Draft', branch_id: db.branches[0].id,
   });
   const v = f.v;
   const client = db.clients.find((c) => c.id === v.client_id);
@@ -160,6 +161,16 @@ export default function QuoteEditor() {
           {existing
             ? <QuoteImageGallery target={{ quotation_id: existing.id }} items={existing.items} title="Pictures that explain this quotation" />
             : <div className="small muted">Save the quotation first, then add pictures if they help explain the scope (site areas, panel-counting areas, access limits, exclusions). They are optional.</div>}
+        </Card>
+        <Card title="Manpower, duration & disclaimer" actions={<span className="small muted">Shown on the quotation sent to the client</span>}>
+          <div className="form-grid">
+            <Field label="Crew deployed" hint="e.g. 6-7 — edit for each job"><input disabled={readOnly} value={v.crew_size ?? ''} onChange={(e) => f.set('crew_size', e.target.value)} placeholder="6-7" /></Field>
+            <Field label="Working days"><input type="number" min={1} step={1} disabled={readOnly} value={v.work_days ?? ''} onChange={(e) => f.set('work_days', e.target.value === '' ? undefined : Math.max(1, Math.round(Number(e.target.value))))} /></Field>
+            <label className="check full"><input type="checkbox" disabled={readOnly} checked={!!v.safety_officer} onChange={(e) => f.set('safety_officer', e.target.checked)} /> Include a Designated Safety Officer</label>
+          </div>
+          {(manpowerText(v) || durationText(v)) && <div className="alert info" style={{ margin: '10px 0' }}>{manpowerText(v) && <div><b>Manpower Deployment:</b> {manpowerText(v)}</div>}{durationText(v) && <div style={{ marginTop: 4 }}><b>Estimated Duration:</b> {durationText(v)}</div>}</div>}
+          <Field label="Service disclaimer" hint="Printed on the quotation. Edit it for this client, or reset to the company default." className="full"><textarea rows={8} style={{ width: '100%' }} disabled={readOnly} value={v.disclaimer ?? ''} onChange={(e) => f.set('disclaimer', e.target.value)} /></Field>
+          {!readOnly && <button type="button" className="btn sm" onClick={() => f.set('disclaimer', defaultDisclaimer(db.settings))}>Reset to company default</button>}
         </Card>
         <Card title="Terms & conditions"><textarea rows={5} style={{ width: '100%' }} disabled={readOnly} {...f.bind('terms')} /></Card>
 

@@ -7,6 +7,7 @@ import type {
 } from './types';
 import { DEFAULT_ACCESS } from './rbac';
 import { geoPatch } from './geo-ph';
+import { DEFAULT_DISCLAIMER } from './quote-text';
 import { seedMaintenance } from './maint-seed';
 import { employeeRating } from './rating-core';
 import { findConflicts, buildChecklistItems, buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
@@ -307,7 +308,7 @@ export function seedDB(): DB {
     const vat_mode = client.vat_status === 'VAT-registered' ? 'exclusive' : 'none';
     return {
       ...base('qt', date), number: nn('QT'), client_id: client.id, site_id: site.id, issue_date: date, valid_until: addDays(date, settings.quote_validity_days),
-      scope: `${codes.map((c) => S(c).name).join(', ')} at ${site.name}.`, items, vat_mode, vat_rate: 12, discount: 0, terms: settings.default_terms, status, branch_id: branch,
+      scope: `${codes.map((c) => S(c).name).join(', ')} at ${site.name}.`, items, vat_mode, vat_rate: 12, discount: 0, terms: settings.default_terms, crew_size: '6-7', safety_officer: true, work_days: between(1, 3), disclaimer: DEFAULT_DISCLAIMER, status, branch_id: branch,
       sent_at: status !== 'Draft' ? stamp(date) : undefined, decided_at: status === 'Approved' || status === 'Rejected' ? stamp(addDays(date, 3)) : undefined,
     };
   };
