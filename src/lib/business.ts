@@ -379,9 +379,9 @@ export function jobCost(db: DB, j: Job): JobCost {
   }
   const exp = db.expenses.filter((e) => e.job_id === j.id && !e.deleted_at && !e.reversed && e.approval !== 'Rejected');
   const net = (e: { amount: number; vat: number }) => e.amount - e.vat;
-  const transport = sum(exp.filter((e) => e.category === 'Transportation' || e.category === 'Fuel'), net);
+  const transport = sum(exp.filter((e) => e.category === 'Transportation' || e.category === 'Fuel' || e.category === 'Toll & Parking'), net);
   const subcontractor = sum(exp.filter((e) => e.category === 'Subcontractor'), net);
-  const other = sum(exp.filter((e) => !['Transportation', 'Fuel', 'Subcontractor'].includes(e.category)), net);
+  const other = sum(exp.filter((e) => !['Transportation', 'Fuel', 'Toll & Parking', 'Subcontractor'].includes(e.category)), net);
   const equipment = sum([...j.equipment_ids, ...(j.vehicle_id ? [j.vehicle_id] : [])], (id) => (db.assets.find((a: Asset) => a.id === id)?.daily_allocation ?? 0) * jobDays(j));
   const { revenue, basis } = jobRevenue(db, j);
   const bjs = noChargeBackJobs(db, j.id);

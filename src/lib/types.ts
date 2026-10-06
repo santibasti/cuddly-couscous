@@ -171,6 +171,8 @@ export interface JobMaterial { item_id: string; planned_qty: number; used_qty?: 
 export interface Job extends Base {
   number: string;
   /** each assigned person's answer to "can you make it?" (asked from 7 PM the evening before): employee id → answer for this schedule */
+  /** Stage 8: after the service Admin enters every job expense (gas, toll, meals, purchases) and closes the job internally */
+  internal_closed_at?: string; internal_closed_by?: string; internal_no_expenses?: boolean; internal_notes?: string; internal_expense_total?: number;
   crew_confirmations?: Record<string, { status: 'confirmed' | 'declined'; at: string; note?: string; for_start: string }>;
   client_id: string;
   site_id: string;
@@ -727,7 +729,7 @@ export interface Payment extends Base {
 
 export type ExpenseCategory =
   | 'Payroll' | 'Fuel' | 'Materials' | 'Equipment Repair' | 'Transportation' | 'Marketing'
-  | 'Rent' | 'Utilities' | 'Government Fees' | 'Subcontractor' | 'Other';
+  | 'Rent' | 'Utilities' | 'Government Fees' | 'Subcontractor' | 'Toll & Parking' | 'Meals & Snacks' | 'Other';
 export interface Expense extends Base {
   date: string;
   payee: string;

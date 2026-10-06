@@ -1,6 +1,6 @@
 // Domain operations. Every function validates permissions and business rules, then writes through the audited store.
 import { store, RuleError } from './store';
-import type {
+import type { DB, ExpenseCategory,
   Attendance, Checkout, ChequeStatus, Condition, Expense, Invoice, Job, JobStatus, MaintenanceTicket, Notification, PayMethod, PayrollAdjustment,
   Payment, Quotation, QuoteStatus, StockTx,
 } from './types';
@@ -610,8 +610,51 @@ export function saveExpense(e: Omit<Expense, 'id' | 'created_at' | 'updated_at' 
   store.require('expenses.edit');
   if (!(e.amount > 0)) fail('Enter an amount.');
   if (e.vat > e.amount) fail('VAT cannot exceed the amount.');
+  if (jobIsInternallyClosed(e.job_id)) fail('This job is closed internally. The Owner must reopen it before expenses change.');
   if (e.id) { const cur = db().expenses.find((x) => x.id === e.id)!; if (cur.approval === 'Approved') fail('Approved expenses are locked. Reverse and re-enter.'); return store.update('expenses', e.id, e as never); }
   return store.insert('expenses', e as never);
+}
+/* ---- Stage 8: job expenses & internal close ---- */
+const jobIsInternallyClosed = (jobId?: string) => !!jobId && !!db().jobs.find((j) => j.id === jobId)?.internal_closed_at;
+export const JOB_EXPENSE_PRESETS: { label: string; category: ExpenseCategory; payee: string }[] = [
+  { label: 'Gas / fuel', category: 'Fuel', payee: 'Gas station' }, { label: 'Toll', category: 'Toll & Parking', payee: 'Toll fee' },
+  { label: 'Parking', category: 'Toll & Parking', payee: 'Parking' }, { label: 'Meals / snacks', category: 'Meals & Snacks', payee: 'Crew meals / snacks' },
+  { label: 'Supplies bought', category: 'Materials', payee: 'Supplies purchased during the job' }, { label: 'Transport / fare', category: 'Transportation', payee: 'Fare / delivery' },
+  { label: 'Other', category: 'Other', payee: '' },
+];
+/** Admin / Finance records one expense that was spent on this job (after the service is done, until the job is closed internally). */
+export function addJobExpense(jobId: string, e: { category: ExpenseCategory; payee: string; amount: number; date: string; method: Expense['method']; petty_cash?: boolean; receipt?: string; notes?: string }) {
+  store.require('expenses.edit');
+  const j = db().jobs.find((x) => x.id === jobId && !x.deleted_at) ?? fail('Job not found.');
+  if (!isDone(j!.status)) fail('Expenses are entered after the service is completed.');
+  if (j!.internal_closed_at) fail('This job is closed internally. The Owner must reopen it before expenses change.');
+  if (!e.payee.trim()) fail('Say what the expense was for (e.g. "NLEX toll").');
+  const auto = store.can('expenses.approve');
+  const r = saveExpense({ date: e.date, payee: e.payee.trim(), category: e.category, job_id: jobId, branch_id: j!.branch_id, amount: round2(e.amount), vat: 0, wht: 0, method: e.method, receipt: e.receipt, approval: auto ? 'Approved' : 'Pending', approved_by: auto ? me()!.id : undefined, paid: true, petty_cash: !!e.petty_cash, notes: e.notes?.trim() || `Job ${j!.number}` } as never);
+  if (e.petty_cash) pettyCash('Disbursement', round2(e.amount), `${e.category} – ${e.payee.trim()} (${j!.number})`);
+  return r;
+}
+export const jobExpenses = (d: Pick<DB, 'expenses'>, jobId: string) => d.expenses.filter((x) => x.job_id === jobId && !x.deleted_at && !x.reversed && x.approval !== 'Rejected');
+/** Admin / Finance closes the job internally once every expense is in (or confirms there were none). Locks the job's expenses. */
+export function closeJobInternally(jobId: string, p: { noExpenses?: boolean; notes?: string }) {
+  store.require('jobs.close_internal');
+  const j = db().jobs.find((x) => x.id === jobId && !x.deleted_at) ?? fail('Job not found.');
+  if (j!.internal_closed_at) fail('Already closed internally.');
+  if (j!.status !== 'Closed') fail('Finish the operational close-out (equipment return and arrival at HQ) before closing the job internally.');
+  const list = jobExpenses(db(), jobId);
+  if (p.noExpenses && list.length) fail('This job has expenses recorded — untick "No expenses".');
+  if (!p.noExpenses && !list.length) fail('Enter the job expenses, or tick "No expenses for this job", before closing.');
+  const pend = list.filter((x) => x.approval === 'Pending'); if (pend.length) fail(`${pend.length} expense(s) are still waiting for approval. Approve or reject them first.`);
+  const total = round2(sum(list, (x) => x.amount));
+  return store.update('jobs', jobId, { internal_closed_at: isoNow(), internal_closed_by: me()!.id, internal_no_expenses: !!p.noExpenses, internal_notes: p.notes?.trim() || undefined, internal_expense_total: total } as never, 'approve', `Job ${j!.number} closed internally — expenses ${money(total)}${p.noExpenses ? ' (none)' : ''}`);
+}
+/** Owner only: reopen an internally closed job (with a reason) to correct its expenses. */
+export function reopenJobInternally(jobId: string, reason: string) {
+  if (store.user?.role !== 'owner') fail('Only the Owner can reopen an internally closed job.');
+  const j = db().jobs.find((x) => x.id === jobId && !x.deleted_at) ?? fail('Job not found.');
+  if (!j!.internal_closed_at) fail('This job is not closed internally.');
+  if (!reason.trim()) fail('A reason is required.');
+  return store.update('jobs', jobId, { internal_closed_at: undefined, internal_closed_by: undefined, internal_no_expenses: undefined, internal_expense_total: undefined, internal_notes: `${j!.internal_notes ?? ''} [Reopened: ${reason.trim()}]`.trim() } as never, 'update', `Job ${j!.number} reopened for expense changes: ${reason.trim()}`);
 }
 export function decideExpense(id: string, approve: boolean) {
   store.require('expenses.approve');
@@ -623,6 +666,7 @@ export function reverseExpense(id: string, reason: string) {
   store.require('expenses.approve');
   const e = db().expenses.find((x) => x.id === id)!;
   if (e.source === 'payroll') fail('Payroll expenses are managed from the payroll module.');
+  if (jobIsInternallyClosed(e.job_id)) fail('This job is closed internally. The Owner must reopen it before expenses change.');
   if (!reason.trim()) fail('A reason is required.');
   store.update('expenses', id, { reversed: true, notes: `${e.notes ?? ''} [Reversed: ${reason}]`.trim() }, 'reverse', `Reversed expense ${e.payee}`);
 }
@@ -744,6 +788,11 @@ export function runAutomations() {
     const sm = crewSummary(j); const nm = (ids: string[]) => ids.map((id) => d.employees.find((e) => e.id === id)?.full_name ?? id).join(', ');
     for (const id of sm.declined) { const a = answerOf(j, id)!; add(`crew-declined:${j.id}:${id}:${a.at}`, 'job', 'Crew cannot make it', `${nm([id])} cannot make ${j.number} on ${j.start_at.replace('T', ' ')}${a.note ? ` — ${a.note}` : ''}. Reassign the team.`, 'critical', `/jobs/${j.id}`, [...ops], true); }
     if (isAsking(j, now) && sm.waiting.length && now >= `${addDays(j.start_at.slice(0, 10), -1)}T20:00`) add(`crew-waiting:${j.id}:${now.slice(0, 10)}`, 'job', 'Crew has not confirmed', `${nm(sm.waiting)} ha${sm.waiting.length > 1 ? 've' : 's'} not confirmed availability for ${j.number} on ${j.start_at.replace('T', ' ')}.`, 'warn', `/jobs/${j.id}`, [...ops], true);
+  }
+  // Stage 8: finished jobs waiting for their expenses to be entered and the internal close
+  for (const j of d.jobs.filter((x) => !x.deleted_at && x.status === 'Closed' && !x.internal_closed_at && (x.completed_at ?? x.end_at).slice(0, 10) <= t)) {
+    const c = d.clients.find((x) => x.id === j.client_id);
+    add(`job-expenses:${j.id}`, 'job', 'Enter job expenses & close internally', `${j.number} • ${c?.name} — add gas, toll, meals and other expenses, then close the job internally.`, 'warn', `/jobs/${j.id}`, ['owner', 'finance']);
   }
   const pendCor = d.corrections.filter((c) => c.status === 'Pending' && !c.deleted_at);
   if (pendCor.length) add('cor-pending', 'attendance', 'Unapproved attendance corrections', `${pendCor.length} correction request(s) awaiting approval.`, 'warn', '/attendance?tab=corrections', [...ops, 'leader']);

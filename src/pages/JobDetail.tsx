@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, attempt, ask } from '@/components/ui';
 import { JobForm } from '@/components/JobForm';
+import { JobExpensesPanel } from '@/components/JobExpensesPanel';
 import { CrewAvailability } from '@/components/AvailabilityPrompt';
 import { invoiceFromJob, setJobStatus, updateJobField } from '@/lib/actions';
 import { invoiceBalance, finalContract, isDone, jobCost, JOB_FLOW, stockSummary } from '@/lib/business';
@@ -73,6 +74,7 @@ export default function JobDetail() {
       <div style={{ marginBottom: 14 }}><JobOrderPanel job={j} /></div>
       {!wide && <Tabs tabs={[{ id: 'workflow' as const, label: 'Workflow' }, { id: 'details' as const, label: 'Job details' }]} value={tab} onChange={setTab} />}
       {(wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><WorkflowPanel job={j} onDetails={() => { setTab('details'); window.scrollTo({ top: 0 }); }} /></div>}
+      {(wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><JobExpensesPanel job={j} /></div>}
       {(wide || tab === 'details') && <div className="grid g2">
         <div className="stack">
           <Card title="Scope of work"><p style={{ marginTop: 0 }}>{j.scope || '—'}</p><div className="row">{j.service_codes.map((c) => <Badge key={c} tone="teal">{db.services.find((s) => s.code === c)?.name}</Badge>)}</div></Card>

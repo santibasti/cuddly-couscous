@@ -11,7 +11,7 @@ import { addDays, diffDays, fmtDate, fmtDateTime, monthEnd, monthStart, money, m
 import type { ChequeStatus, Expense, ExpenseCategory, ExpenseMethod, Invoice, Payment, QuoteItem } from '@/lib/types';
 
 const METHODS: ExpenseMethod[] = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Credit Card', 'Other'];
-const CATEGORIES: ExpenseCategory[] = ['Payroll', 'Fuel', 'Materials', 'Equipment Repair', 'Transportation', 'Marketing', 'Rent', 'Utilities', 'Government Fees', 'Subcontractor', 'Other'];
+const CATEGORIES: ExpenseCategory[] = ['Payroll', 'Fuel', 'Materials', 'Equipment Repair', 'Transportation', 'Marketing', 'Rent', 'Utilities', 'Government Fees', 'Subcontractor', 'Toll & Parking', 'Meals & Snacks', 'Other'];
 type Tab = 'overview' | 'invoices' | 'receivables' | 'payments' | 'expenses' | 'profit' | 'discounts';
 
 /* ---------- Invoice editor ---------- */

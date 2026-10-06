@@ -30,6 +30,7 @@ export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'jobs.all', group: 'Jobs', label: 'View all jobs & calendar' },
   { key: 'jobs.mine', group: 'Jobs', label: 'View assigned jobs only' },
   { key: 'jobs.edit', group: 'Jobs', label: 'Schedule & edit jobs' },
+  { key: 'jobs.close_internal', group: 'Jobs', label: 'Enter job expenses and close a job internally (Stage 8)' },
   { key: 'jobs.complete', group: 'Jobs', label: 'Update checklist & submit completion' },
   { key: 'attendance.own', group: 'Attendance', label: 'Clock in/out (own)' },
   { key: 'attendance.view', group: 'Attendance', label: 'View crew attendance' },
@@ -96,7 +97,7 @@ export const DEFAULT_ACCESS: Record<Role, string[]> = {
   ],
   finance: [
     'dashboard.view', 'dashboard.finance', 'clients.view', 'clients.tax', 'sales.view',
-    'jobs.all', 'attendance.view', 'employees.view', 'employees.pay',
+    'jobs.all', 'jobs.close_internal', 'attendance.view', 'employees.view', 'employees.pay',
     'payroll.view', 'payroll.edit', 'inventory.view', 'assets.view',
     'invoices.view', 'invoices.edit', 'invoices.approve', 'payments.record', 'payments.verify', 'expenses.view', 'expenses.edit', 'expenses.approve',
     'profit.view', 'reports.ops', 'reports.hr', 'reports.finance', 'maintenance.view',
