@@ -52,3 +52,18 @@ export function durationText(q: Q): string | null {
   if (!q.work_days || q.work_days <= 0) return null;
   return `The cleaning activity is projected to be completed within ${q.work_days} day/s, subject to weather conditions and site accessibility.`;
 }
+
+/** How the client pays: on completion of the job, or net N days after the invoice date. Chosen on each quotation. */
+export const PAYMENT_OPTIONS = [
+  { value: 'completion', label: 'Upon job completion' },
+  { value: 'net_7', label: 'Net 7 days' }, { value: 'net_15', label: 'Net 15 days' }, { value: 'net_30', label: 'Net 30 days' },
+  { value: 'net_45', label: 'Net 45 days' }, { value: 'net_60', label: 'Net 60 days' },
+] as const;
+export const DEFAULT_PAYMENT_OPTION = 'completion';
+/** days allowed to pay after the invoice date (0 = payable upon completion) */
+export const paymentDays = (opt?: string): number | undefined => (!opt ? undefined : opt === 'completion' ? 0 : Number(opt.replace('net_', '')) || undefined);
+export const paymentLabel = (opt?: string) => PAYMENT_OPTIONS.find((o) => o.value === opt)?.label;
+export const paymentSentence = (opt?: string) => {
+  const d = paymentDays(opt); if (d === undefined) return undefined;
+  return d === 0 ? 'Payment is due upon completion of the job.' : `Payment is due within ${d} days (net ${d}) from the invoice date.`;
+};

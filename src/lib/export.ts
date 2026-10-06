@@ -1,5 +1,5 @@
 import { logoDataUrl } from './logo';
-import { DEFAULT_TECHNOLOGY, defaultIntro, defaultMethodology, durationText, manpowerText, parseMethodology } from './quote-text';
+import { DEFAULT_TECHNOLOGY, defaultIntro, defaultMethodology, durationText, paymentLabel, paymentSentence, manpowerText, parseMethodology } from './quote-text';
 import type { DB, Invoice, OcularVisit, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
 import { quoteImagesOf } from './quoteimages';
 import { paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
@@ -303,6 +303,9 @@ export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?:
     cols.forEach(([head, tx], i) => { const x = M + i * (cw2 + 6); doc.setFillColor(...SOFT); doc.roundedRect(x, y, cw2, hh, 2, 2, 'F'); doc.setFillColor(...CYAN); doc.rect(x, y + 2, 1.2, hh - 4, 'F'); setText(8, true, MUTED); doc.text(head.toUpperCase(), x + 6, y + 6); setText(9.2); let k = y + 11.5; for (const line of doc.splitTextToSize(clean(tx), cw2 - 10) as string[]) { doc.text(line, x + 6, k); k += 4.5; } });
     y += hh + 4;
   }
+
+  // ---- payment ----
+  if (paymentSentence(q.payment_option)) { section('Payment terms'); para(`${paymentLabel(q.payment_option)}. ${paymentSentence(q.payment_option)}`, M, CW, 9.4, 4.5, INK); y += 2; }
 
   // ---- terms ----
   if (q.terms?.trim()) { section('Terms & conditions'); for (const term of q.terms.trim().split(/\s+(?=\d{1,2}\.\s)/)) para(term, M, CW, 8.8, 4.3, INK); y += 1; }

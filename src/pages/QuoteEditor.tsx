@@ -1,4 +1,4 @@
-import { defaultCrew, defaultDisclaimer, defaultIntro, defaultMethodology, durationText, manpowerText } from '@/lib/quote-text';
+import { PAYMENT_OPTIONS, defaultCrew, defaultDisclaimer, defaultIntro, defaultMethodology, durationText, manpowerText } from '@/lib/quote-text';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
@@ -54,7 +54,7 @@ export default function QuoteEditor() {
   const [note, setNote] = useState('');
   const f = useObj<Form>(() => existing ? { ...existing } : {
     client_id: sp.get('client') ?? live(db.clients)[0]?.id ?? '', site_id: undefined, inquiry_id: sp.get('inquiry') ?? undefined, issue_date: today(), valid_until: addDays(today(), db.settings.quote_validity_days),
-    scope: '', items: [], vat_mode: 'exclusive', vat_rate: db.settings.vat_rate, discount: 0, terms: db.settings.default_terms, crew_size: defaultCrew(db.settings), safety_officer: true, work_days: 1, disclaimer: defaultDisclaimer(db.settings), intro: defaultIntro(db.settings), methodology: defaultMethodology(db.settings), status: 'Draft', branch_id: db.branches[0].id,
+    scope: '', items: [], vat_mode: 'exclusive', vat_rate: db.settings.vat_rate, discount: 0, terms: db.settings.default_terms, payment_option: 'completion', crew_size: defaultCrew(db.settings), safety_officer: true, work_days: 1, disclaimer: defaultDisclaimer(db.settings), intro: defaultIntro(db.settings), methodology: defaultMethodology(db.settings), status: 'Draft', branch_id: db.branches[0].id,
   });
   const v = f.v;
   const client = db.clients.find((c) => c.id === v.client_id);
@@ -187,6 +187,9 @@ export default function QuoteEditor() {
           {(manpowerText(v) || durationText(v)) && <div className="alert info" style={{ margin: '10px 0' }}>{manpowerText(v) && <div><b>Manpower Deployment:</b> {manpowerText(v)}</div>}{durationText(v) && <div style={{ marginTop: 4 }}><b>Estimated Duration:</b> {durationText(v)}</div>}</div>}
           <Field label="Service disclaimer" hint="Printed on the quotation. Edit it for this client, or reset to the company default." className="full"><textarea rows={8} style={{ width: '100%' }} disabled={readOnly} value={v.disclaimer ?? ''} onChange={(e) => f.set('disclaimer', e.target.value)} /></Field>
           {!readOnly && <button type="button" className="btn sm" onClick={() => f.set('disclaimer', defaultDisclaimer(db.settings))}>Reset to company default</button>}
+        </Card>
+        <Card title="Payment terms" actions={<span className="small muted">Printed on the quotation and carried to the Job Order and invoice due date</span>}>
+          <Field label="Client pays"><select disabled={readOnly} value={v.payment_option ?? ''} onChange={(e) => f.set('payment_option', e.target.value || undefined)}><option value="">— not specified (company default) —</option>{PAYMENT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
         </Card>
         <Card title="Terms & conditions"><textarea rows={5} style={{ width: '100%' }} disabled={readOnly} {...f.bind('terms')} /></Card>
 

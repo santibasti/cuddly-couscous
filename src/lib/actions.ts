@@ -14,6 +14,7 @@ import { followUpAlerts } from './followup-core';
 import { isUnavailable, maintAlerts, profileOf } from './maintenance-core';
 import { syncMaintenance } from './maintenance';
 import { syncRatings } from './ratings';
+import { paymentDays } from './quote-text';
 import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
 const db = () => store.getDB();
@@ -406,7 +407,7 @@ export function invoiceFromJob(jobId: string): Invoice {
   const grantedNet = dr ? (mode === 'exclusive' ? round2((dr.approved_amount ?? 0) / (1 + vrate / 100)) : dr.approved_amount ?? 0) : 0;
   const drNote = dr ? `Discount ${dr.number} approved by TopMop management (${money(dr.approved_amount ?? 0)}) and reflected in the final agreed amount.` : '';
   return store.allowDiscount(() => saveInvoice({
-    notes: [notes, drNote, pc ? `Client payment arrangement confirmed on site: ${paymentPlanLabel(pc)}.${pc.note ? ` Note: ${pc.note}` : ''}` : ''].filter(Boolean).join(' ') || undefined, client_id: j.client_id, site_id: j.site_id, job_id: j.id, quotation_id: q?.id, issue_date: today(), due_date: pc?.due_date && pc.due_date >= today() ? pc.due_date : addDays(today(), db().settings.payment_terms_days),
+    notes: [notes, drNote, pc ? `Client payment arrangement confirmed on site: ${paymentPlanLabel(pc)}.${pc.note ? ` Note: ${pc.note}` : ''}` : ''].filter(Boolean).join(' ') || undefined, client_id: j.client_id, site_id: j.site_id, job_id: j.id, quotation_id: q?.id, issue_date: today(), due_date: pc?.due_date && pc.due_date >= today() ? pc.due_date : addDays(today(), paymentDays(q?.payment_option) ?? db().settings.payment_terms_days),
     items: [...(q?.items ?? [{ service_code: j.service_codes[0], description: j.scope, qty: 1, unit: 'lot', rate: fc.originalNet, discount: 0 }]), ...varItems],
     vat_mode: mode, vat_rate: vrate, discount: round2((q?.discount ?? 0) + grantedNet), discount_request_id: dr?.id, discount_granted: dr?.approved_amount,
     withholding_rate: client.withholding_rate, status: 'Draft', branch_id: j.branch_id,

@@ -6,6 +6,7 @@ import { CLOUD, emptyDB, supabase } from '@/lib/cloud';
 import { Field, SignaturePad } from '@/components/ui';
 import { LOGO_SMALL_URL } from '@/lib/logo';
 import { docTotals } from '@/lib/business';
+import { paymentLabel, paymentSentence } from '@/lib/quote-text';
 import { acceptQuoteByLink } from '@/lib/actions';
 import { quotationPdf } from '@/lib/export';
 import { fmtDate, fmtDateTime, money } from '@/lib/util';
@@ -75,6 +76,7 @@ export default function QuotePublic() {
           {q.vat_mode !== 'none' && <tr><td>VAT {q.vat_rate}%{q.vat_mode === 'inclusive' ? ' (included)' : ''}</td><td className="num">{money(t.vat)}</td></tr>}
           <tr><td><b>Total</b></td><td className="num"><b style={{ fontSize: 17 }}>{money(t.total)}</b></td></tr></tbody></table>
         {(q.crew_size || q.work_days) && <p className="small" style={{ marginTop: 10 }}><b>Manpower and duration:</b> {q.crew_size ? `${q.crew_size} personnel${q.safety_officer ? ' including a designated safety officer' : ''}` : ''}{q.work_days ? `${q.crew_size ? ' · ' : ''}${q.work_days} working day${q.work_days > 1 ? 's' : ''}` : ''}.</p>}
+        {paymentSentence(q.payment_option) && <p className="small" style={{ marginTop: 10 }}><b>Payment terms:</b> {paymentLabel(q.payment_option)}. {paymentSentence(q.payment_option)}</p>}
         {q.terms && <><div className="joc-k">Terms and conditions</div><p className="small" style={{ marginTop: 2, whiteSpace: 'pre-wrap' }}>{q.terms}</p></>}
         {q.disclaimer?.trim() && <><div className="joc-k">Service disclaimer</div>{q.disclaimer.trim().split(/\n\s*\n/).map((p, i) => <p key={i} className="small" style={{ marginTop: 2 }}>{p}</p>)}</>}
       </div>

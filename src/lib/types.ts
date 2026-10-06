@@ -144,6 +144,8 @@ export interface Quotation extends Base {
   /** how the overall discount was entered: a peso amount (default) or a percentage of the subtotal after line discounts */
   discount_type?: 'amount' | 'percent'; discount_percent?: number;
   terms: string;
+  /** 'completion' (payable when the job is done) or 'net_30' etc. (days after the invoice date); absent on older quotations */
+  payment_option?: string;
   /** manpower, duration and disclaimer shown on the quotation (absent on quotations made before they existed) */
   crew_size?: string; safety_officer?: boolean; work_days?: number; disclaimer?: string; intro?: string; methodology?: string;
   status: QuoteStatus;

@@ -4,7 +4,7 @@
 import type { DB, Job, JobOrder, JobOrderContent, JobOrderStatus, QuoteItem } from './types';
 import { appliedDiscount, docTotals, finalQuoteSummary, invoiceLedger, invoiceTotals, lineTotals, variationTotals } from './business';
 import { round2 } from './util';
-import { defaultDisclaimer } from './quote-text';
+import { defaultDisclaimer, paymentSentence } from './quote-text';
 
 export const JO_STATUSES: JobOrderStatus[] = ['Draft', 'Sent to Client', 'Revised', 'Superseded'];
 /** A booking that has been confirmed and not yet finished or cancelled. */
@@ -41,7 +41,7 @@ export function buildContent(db: DB, job: Job): JobOrderContent {
   const inv = db.invoices.find((i) => i.job_id === job.id && i.status === 'Approved' && !i.deleted_at);
   let payment_status = 'No payment is due yet — the invoice is issued after the service is completed.';
   if (inv) { const lg = invoiceLedger(db, inv); payment_status = lg.balance <= 0.005 ? 'Paid' : lg.received > 0 ? 'Partially paid' : 'Unpaid'; }
-  const terms = [`Payment is due within ${s.payment_terms_days} days of the invoice date.`, approvedQ?.terms?.trim()].filter(Boolean).join(' ');
+  const terms = [paymentSentence(approvedQ?.payment_option) ?? `Payment is due within ${s.payment_terms_days} days of the invoice date.`, approvedQ?.terms?.trim()].filter(Boolean).join(' ');
   const vatMode = approvedQ?.vat_mode ?? 'none'; const vatRate = approvedQ?.vat_rate ?? 0;
   return {
     company: { name: s.company.name, tagline: s.company.tagline, address: s.company.address, phone: s.company.phone, email: s.company.email, tin: s.company.tin },
