@@ -1,5 +1,5 @@
 import { logoDataUrl } from './logo';
-import { durationText, manpowerText } from './quote-text';
+import { DEFAULT_TECHNOLOGY, defaultIntro, defaultMethodology, durationText, manpowerText, parseMethodology } from './quote-text';
 import type { DB, Invoice, OcularVisit, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
 import { quoteImagesOf } from './quoteimages';
 import { paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
@@ -200,28 +200,128 @@ const clientLines = (db: DB, id: string, siteId?: string): string[] => {
   return [c.name, `Attn: ${c.contact_person}`, c.billing_address || c.address, c.tin ? `TIN: ${c.tin}` : '', s ? `Site: ${s.name} – ${s.address}` : ''];
 };
 
-/** Manpower deployment, estimated duration and the service disclaimer (only what the quotation has). */
-function deploymentBlock(doc: Doc, q: Quotation, y: number): number {
-  const part = (title: string, text: string | null, size = 9) => {
-    if (!text) return;
-    if (y > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); y = 16; }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text(title, 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(size); y = wrapText(doc, text, 12, y + 4.5, 186, size === 9 ? 4.2 : 3.7) + 3;
-  };
-  part('Manpower Deployment', manpowerText(q)); part('Estimated Duration', durationText(q)); part('Service Disclaimer', q.disclaimer?.trim() || null, 8);
-  return y + 2;
-}
+const INK: [number, number, number] = [20, 36, 58]; const MUTED: [number, number, number] = [91, 107, 128]; const SOFT: [number, number, number] = [243, 247, 250]; const TEAL: [number, number, number] = [14, 154, 167]; const GREEN: [number, number, number] = [44, 154, 69];
+/** Premium quotation: letter, scope, price table, methodology, project plan, terms, disclaimer and acceptance. */
 export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?: boolean } = {}) {
   const { doc, autoTable } = await newPdf();
+  const W = doc.internal.pageSize.getWidth(); const H = doc.internal.pageSize.getHeight(); const M = 14; const CW = W - 2 * M;
+  const co = db.settings.company;
   header(doc, 'Quotation', `${q.number} • ${q.status}`);
-  let y = partyBlock(doc, 34, ['Prepared for', clientLines(db, q.client_id, q.site_id)], ['Quotation details', [`Date: ${fmtDate(q.issue_date)}`, `Valid until: ${fmtDate(q.valid_until)}`, `Prepared by: ${db.users.find((u) => u.id === q.created_by)?.name ?? '—'}`]]);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Scope of work', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-  y = wrapText(doc, q.scope, 12, y + 5, 186) + 3;
-  y = itemsTable(doc, autoTable, y, q.items, q.vat_mode, q.vat_rate, q.discount) + 4;
-  y = deploymentBlock(doc, q, y);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text('Terms & conditions', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-  y = wrapText(doc, q.terms, 12, y + 5, 186, 4) + 8;
-  if (opts.includeImages) y = imagesBlock(doc, y, await pdfReady(quoteImagesOf(db, { quotation_id: q.id }, true)), 'Attachments — site images');
-  doc.setFontSize(9); doc.text('Approved / accepted by (signature over printed name):', 12, y + 8); doc.line(12, y + 20, 100, y + 20); doc.text('Date:', 120, y + 20); doc.line(130, y + 20, 190, y + 20);
+  let y = 34;
+  const page = () => {
+    doc.addPage(); doc.setFillColor(...NAVY); doc.rect(0, 0, W, 11, 'F'); doc.setFillColor(...CYAN); doc.rect(0, 11, W, 0.8, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255); doc.text(clean(co.name), M, 7.2);
+    doc.setFont('helvetica', 'normal'); doc.text(`Quotation ${q.number}`, W - M, 7.2, { align: 'right' }); doc.setTextColor(...INK); y = 20;
+  };
+  const need = (h: number) => { if (y + h > H - 18) page(); };
+  const setText = (size: number, bold = false, color: [number, number, number] = INK) => { doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(...color); };
+  /** wrapped paragraph; breaks across pages line by line */
+  const para = (text: string, x: number, w: number, size = 9.5, lh = 4.6, color: [number, number, number] = INK, bold = false) => {
+    setText(size, bold, color);
+    for (const line of doc.splitTextToSize(clean(text), w) as string[]) { need(lh); doc.text(line, x, y); y += lh; }
+  };
+  const section = (title: string) => { need(22); y += 3; setText(10.5, true, NAVY); doc.text(clean(title).toUpperCase(), M, y); doc.setFillColor(...CYAN); doc.rect(M, y + 1.6, 16, 0.9, 'F'); y += 7; };
+  const linesOf = (t: string, w: number, size: number) => { doc.setFontSize(size); return (doc.splitTextToSize(clean(t), w) as string[]).length; };
+
+  // ---- who it is for / the quotation ----
+  const cl = db.clients.find((c) => c.id === q.client_id); const site = db.sites.find((x) => x.id === q.site_id);
+  const left = [cl?.name ?? '', cl?.contact_person ? `Attn: ${cl.contact_person}` : '', cl?.address ?? '', site ? `Site: ${site.name}${site.address ? ` - ${site.address}` : ''}` : '', cl?.tin ? `TIN: ${cl.tin}` : ''].filter(Boolean);
+  const right = [`Quotation no.: ${q.number}`, `Date: ${fmtDate(q.issue_date)}`, `Valid until: ${fmtDate(q.valid_until)}`, `Prepared by: ${db.users.find((u) => u.id === q.created_by)?.name ?? 'TopMop'}`];
+  const cardW = (CW - 6) / 2; doc.setFontSize(9.5);
+  const lh = (arr: string[]) => arr.reduce((n, l, i) => n + (doc.splitTextToSize(clean(l), cardW - 10) as string[]).length + (i === 0 ? 0.4 : 0), 0) * 4.6 + 12;
+  const ch = Math.max(lh(left), lh(right));
+  const card = (x: number, head: string, lines: string[]) => {
+    doc.setFillColor(...SOFT); doc.roundedRect(x, y, cardW, ch, 2, 2, 'F'); doc.setFillColor(...CYAN); doc.rect(x, y + 2, 1.2, ch - 4, 'F');
+    setText(7.5, true, MUTED); doc.text(head.toUpperCase(), x + 6, y + 6);
+    let k = y + 11.5; lines.forEach((l, i) => { setText(i === 0 && head === 'Prepared for' ? 10.5 : 9.5, i === 0 && head === 'Prepared for'); for (const part of doc.splitTextToSize(clean(l), cardW - 10) as string[]) { doc.text(part, x + 6, k); k += 4.6; } });
+  };
+  card(M, 'Prepared for', left); card(M + cardW + 6, 'Quotation details', right); y += ch + 7;
+
+  // ---- greeting ----
+  setText(10, true); doc.text('Dear Sir/Ma\'am,', M, y); y += 6;
+  para(q.intro?.trim() || defaultIntro(db.settings), M, CW, 9.8, 5);
+  y += 2;
+
+  // ---- scope and price ----
+  section('Scope of work'); para(q.scope || '-', M, CW, 9.5, 4.8); y += 2;
+  need(60);
+  autoTable(doc, {
+    startY: y, head: [['#', 'Description', 'Qty', 'Unit', 'Unit rate', 'Discount', 'Amount']],
+    body: q.items.map((i, n) => [n + 1, clean(i.description), i.qty.toLocaleString('en-PH'), i.unit, pm(i.rate), i.discount ? pm(i.discount) : '-', pm(i.qty * i.rate - i.discount)]),
+    theme: 'plain', margin: { left: M, right: M },
+    styles: { fontSize: 9, cellPadding: { top: 2.6, bottom: 2.6, left: 2.5, right: 2.5 }, textColor: INK, lineColor: [221, 228, 236], lineWidth: { bottom: 0.2 } },
+    headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 8.5, lineWidth: 0 },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 2: { cellWidth: 16, halign: 'right' }, 3: { cellWidth: 16 }, 4: { cellWidth: 29, halign: 'right' }, 5: { cellWidth: 24, halign: 'right' }, 6: { cellWidth: 31, halign: 'right', fontStyle: 'bold' } },
+    didParseCell: (d) => { if (d.section === 'head' && [2, 4, 5, 6].includes(d.column.index)) d.cell.styles.halign = 'right'; if (d.section === 'head' && d.column.index === 0) d.cell.styles.halign = 'center'; },
+  });
+  y = ymax(doc) + 5;
+  const t = docTotals(q.items, q.discount, q.vat_mode, q.vat_rate);
+  const rows: [string, string][] = [['Subtotal', pm(t.gross)]];
+  if (t.discount > 0.005) rows.push(['Discount', '- ' + pm(t.discount)]);
+  if (q.vat_mode !== 'none') rows.push([q.vat_mode === 'inclusive' ? `VAT ${q.vat_rate}% (included)` : `VAT ${q.vat_rate}%`, pm(t.vat)]);
+  need(rows.length * 5.5 + 14);
+  const bx = W - M - 82; const bh = rows.length * 5.5 + 11;
+  doc.setFillColor(...SOFT); doc.roundedRect(bx, y, 82, bh - 11 + 3, 2, 2, 'F');
+  let ty = y + 5.5; for (const [k, v] of rows) { setText(9.5, false, MUTED); doc.text(k, bx + 4, ty); setText(9.5); doc.text(v, bx + 78, ty, { align: 'right' }); ty += 5.5; }
+  doc.setFillColor(...NAVY); doc.roundedRect(bx, ty - 2.5, 82, 10, 2, 2, 'F'); setText(11, true, [255, 255, 255]); doc.text('TOTAL', bx + 4, ty + 3.8); doc.text(pm(t.total), bx + 78, ty + 3.8, { align: 'right' });
+  y = ty + 14;
+  if (q.vat_mode === 'none') { setText(8, false, MUTED); doc.text('Prices are not subject to VAT.', M, y - 5); }
+
+  // ---- methodology ----
+  const mth = parseMethodology(q.methodology?.trim() || defaultMethodology(db.settings));
+  section('Our cleaning system methodology');
+  need(26); doc.setFillColor(...NAVY); doc.roundedRect(M, y, CW, 11, 2, 2, 'F'); setText(10, true, [255, 255, 255]); doc.text(clean(DEFAULT_TECHNOLOGY), M + 5, y + 7);
+  setText(8.5, false, [170, 200, 230]); doc.text('Water-Fed Pole | Deionized Water Technology | No harsh chemicals', W - M - 5, y + 7, { align: 'right' }); y += 16;
+  mth.paragraphs.forEach((p, i) => { if (i === mth.stepsAfter && mth.steps.length) drawSteps(); para(p, M, CW, 9.5, 4.8); y += 2.5; });
+  if (mth.steps.length && mth.stepsAfter >= mth.paragraphs.length) drawSteps();
+  function drawSteps() {
+    setText(9.5, true, NAVY); need(10); doc.text('The process', M, y); y += 4;
+    mth.steps.forEach((st, i) => {
+      const w = CW - 16; const body = `${st.text}`; doc.setFontSize(9); const n = (doc.splitTextToSize(clean(body), w) as string[]).length; const h = Math.max(11, 8 + n * 4.3);
+      need(h + 2); doc.setFillColor(...SOFT); doc.roundedRect(M, y, CW, h, 2, 2, 'F');
+      doc.setFillColor(...TEAL); doc.circle(M + 7, y + h / 2, 3.6, 'F'); setText(10, true, [255, 255, 255]); doc.text(String(i + 1), M + 7, y + h / 2 + 1.3, { align: 'center' });
+      setText(9.5, true, NAVY); if (st.name) doc.text(clean(st.name), M + 14, y + 5.4);
+      setText(9, false, INK); let k = y + (st.name ? 10 : 5.4); for (const line of doc.splitTextToSize(clean(body), w) as string[]) { doc.text(line, M + 14, k); k += 4.3; }
+      y += h + 2;
+    });
+    y += 4;
+  }
+  if (mth.note) {
+    doc.setFontSize(9); const n = (doc.splitTextToSize(clean(mth.note), CW - 22) as string[]).length; const h = 7 + n * 4.5; need(h + 3);
+    doc.setFillColor(255, 247, 224); doc.roundedRect(M, y, CW, h, 2, 2, 'F'); doc.setFillColor(...GREEN); doc.rect(M, y + 2, 1.2, h - 4, 'F');
+    setText(9, true, [138, 90, 16]); doc.text('Note', M + 5, y + 5.2); setText(9, false, INK); let k = y + 5.2; for (const line of doc.splitTextToSize(clean(mth.note), CW - 22) as string[]) { doc.text(line, M + 17, k); k += 4.5; } y += h + 4;
+  }
+
+  // ---- project plan: manpower and duration ----
+  const mp = manpowerText(q); const du = durationText(q);
+  if (mp || du) {
+    section('Project plan');
+    const cols: [string, string][] = [['Manpower deployment', mp ?? ''], ['Estimated duration', du ?? '']].filter((c) => c[1]) as [string, string][];
+    const cw2 = cols.length === 2 ? (CW - 6) / 2 : CW; doc.setFontSize(9.2);
+    const hh = Math.max(...cols.map(([, tx]) => (doc.splitTextToSize(clean(tx), cw2 - 10) as string[]).length)) * 4.5 + 13; need(hh + 2);
+    cols.forEach(([head, tx], i) => { const x = M + i * (cw2 + 6); doc.setFillColor(...SOFT); doc.roundedRect(x, y, cw2, hh, 2, 2, 'F'); doc.setFillColor(...CYAN); doc.rect(x, y + 2, 1.2, hh - 4, 'F'); setText(8, true, MUTED); doc.text(head.toUpperCase(), x + 6, y + 6); setText(9.2); let k = y + 11.5; for (const line of doc.splitTextToSize(clean(tx), cw2 - 10) as string[]) { doc.text(line, x + 6, k); k += 4.5; } });
+    y += hh + 4;
+  }
+
+  // ---- terms ----
+  if (q.terms?.trim()) { section('Terms & conditions'); for (const term of q.terms.trim().split(/\s+(?=\d{1,2}\.\s)/)) para(term, M, CW, 8.8, 4.3, INK); y += 1; }
+  // ---- disclaimer ----
+  if (q.disclaimer?.trim()) {
+    section('Service disclaimer'); const paras = q.disclaimer.trim().split(/\n\s*\n/);
+    doc.setFontSize(8.3); const lines = paras.reduce((n, p) => n + (doc.splitTextToSize(clean(p), CW - 10) as string[]).length, 0); const h = lines * 3.9 + paras.length * 2.2 + 3; need(Math.min(h, 60));
+    const startPage = doc.getNumberOfPages(); const y0 = y; doc.setFillColor(250, 251, 252); if (h < H - 40) doc.roundedRect(M, y - 1, CW, h, 2, 2, 'F'); void startPage; void y0;
+    y += 3; for (const p of paras) { para(p, M + 5, CW - 10, 8.3, 3.9, MUTED); y += 2.2; } y += 3;
+  }
+  if (opts.includeImages) { const imgs = await pdfReady(quoteImagesOf(db, { quotation_id: q.id }, true)); if (imgs.length) { need(40); y = imagesBlock(doc, y, imgs, 'Attachments - site images'); } }
+
+  // ---- acceptance ----
+  need(48); y += 4; doc.setDrawColor(...CYAN); doc.setLineWidth(0.4); doc.line(M, y, W - M, y); y += 7;
+  setText(10, true, NAVY); doc.text('ACCEPTANCE', M, y); y += 5; setText(8.8, false, MUTED);
+  y = wrapText(doc, 'By signing below, the client accepts this quotation, including the scope of work, methodology, terms and service disclaimer.', M, y, CW, 4.3) + 9;
+  doc.setDrawColor(...INK); doc.setLineWidth(0.2); doc.line(M, y + 12, M + 84, y + 12); doc.line(W - M - 84, y + 12, W - M, y + 12);
+  setText(8.5, false, MUTED); doc.text('Approved / accepted by - signature over printed name', M, y + 17); doc.text(`Prepared by ${clean(db.users.find((u) => u.id === q.created_by)?.name ?? co.name)}`, W - M - 84, y + 17);
+  doc.text('Date:', M, y + 25); doc.line(M + 10, y + 25.5, M + 60, y + 25.5);
   footer(doc); doc.save(`${q.number}.pdf`);
   store.audit('export', 'quotations', q.id, `Exported PDF ${q.number}`);
 }

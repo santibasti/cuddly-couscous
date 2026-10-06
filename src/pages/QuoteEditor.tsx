@@ -1,4 +1,4 @@
-import { defaultCrew, defaultDisclaimer, durationText, manpowerText } from '@/lib/quote-text';
+import { defaultCrew, defaultDisclaimer, defaultIntro, defaultMethodology, durationText, manpowerText } from '@/lib/quote-text';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
@@ -54,7 +54,7 @@ export default function QuoteEditor() {
   const [note, setNote] = useState('');
   const f = useObj<Form>(() => existing ? { ...existing } : {
     client_id: sp.get('client') ?? live(db.clients)[0]?.id ?? '', site_id: undefined, inquiry_id: sp.get('inquiry') ?? undefined, issue_date: today(), valid_until: addDays(today(), db.settings.quote_validity_days),
-    scope: '', items: [], vat_mode: 'exclusive', vat_rate: db.settings.vat_rate, discount: 0, terms: db.settings.default_terms, crew_size: defaultCrew(db.settings), safety_officer: true, work_days: 1, disclaimer: defaultDisclaimer(db.settings), status: 'Draft', branch_id: db.branches[0].id,
+    scope: '', items: [], vat_mode: 'exclusive', vat_rate: db.settings.vat_rate, discount: 0, terms: db.settings.default_terms, crew_size: defaultCrew(db.settings), safety_officer: true, work_days: 1, disclaimer: defaultDisclaimer(db.settings), intro: defaultIntro(db.settings), methodology: defaultMethodology(db.settings), status: 'Draft', branch_id: db.branches[0].id,
   });
   const v = f.v;
   const client = db.clients.find((c) => c.id === v.client_id);
@@ -161,6 +161,11 @@ export default function QuoteEditor() {
           {existing
             ? <QuoteImageGallery target={{ quotation_id: existing.id }} items={existing.items} title="Pictures that explain this quotation" />
             : <div className="small muted">Save the quotation first, then add pictures if they help explain the scope (site areas, panel-counting areas, access limits, exclusions). They are optional.</div>}
+        </Card>
+        <Card title="Introduction & cleaning methodology" actions={<span className="small muted">Printed on the quotation — edit for this client if needed</span>}>
+          <Field label="Introduction (after “Dear Sir/Ma'am,”)" className="full"><textarea rows={4} style={{ width: '100%' }} disabled={readOnly} value={v.intro ?? ''} onChange={(e) => f.set('intro', e.target.value)} /></Field>
+          <Field label="Our cleaning system methodology" className="full" hint="Leave a blank line between paragraphs. A block starting “Process:” lists steps as “Name: what happens”; a paragraph starting “Note:” is shown as a note."><textarea rows={12} style={{ width: '100%' }} disabled={readOnly} value={v.methodology ?? ''} onChange={(e) => f.set('methodology', e.target.value)} /></Field>
+          {!readOnly && <div className="row" style={{ gap: 8 }}><button type="button" className="btn sm" onClick={() => f.set('intro', defaultIntro(db.settings))}>Reset introduction</button><button type="button" className="btn sm" onClick={() => f.set('methodology', defaultMethodology(db.settings))}>Reset methodology</button></div>}
         </Card>
         <Card title="Manpower, duration & disclaimer" actions={<span className="small muted">Shown on the quotation sent to the client</span>}>
           <div className="form-grid">

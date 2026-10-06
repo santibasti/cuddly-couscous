@@ -8,6 +8,37 @@ While our team will apply the appropriate cleaning methods and make every reason
 
 In some cases, these marks may already be etched, embedded, or permanently bonded to the surface, and their true condition will only become fully visible after the cleaning process has been completed.`;
 
+export const DEFAULT_TECHNOLOGY = 'Advanced Infinity Series System';
+export const DEFAULT_INTRO = `We are pleased to present our Professional Cleaning Services, utilizing the ${DEFAULT_TECHNOLOGY} to deliver streak-free and spotless results for glass, ceilings, solar panels, roofs, ACP and walls. Our expertise, eco-friendly methods and attention to detail ensure your property achieves a polished, refreshed appearance.`;
+/** Paragraphs are separated by a blank line. A "Process:" block lists steps as "Name: what happens"; a "Note:" paragraph is shown as a callout. */
+export const DEFAULT_METHODOLOGY = `We utilize a Water-Fed Pole System with Deionized Water Technology, ensuring a spot-free, streak-free finish without the need for harsh chemicals. This system allows us to clean windows efficiently and safely from the ground, minimizing the need for scaffolding or ladders.
+
+Process:
+Pre-Rinse: Removes loose dirt and debris.
+Deep Cleaning: Our water-fed pole with soft bristle brush gently scrubs the glass while deionized water dissolves contaminants.
+Final Rinse: Leaves the surface crystal clear, as deionized water naturally dries without residue or streaks.
+
+This method ensures maximum cleanliness, safety, and efficiency while maintaining the integrity of your glass surfaces.
+
+Note: We will use your property's water connection to operate our Water-Fed Pole System. Rest assured, the water consumption is minimal and environmentally friendly.`;
+export const defaultIntro = (s?: Pick<Settings, 'default_intro'>) => s?.default_intro?.trim() || DEFAULT_INTRO;
+export const defaultMethodology = (s?: Pick<Settings, 'default_methodology'>) => s?.default_methodology?.trim() || DEFAULT_METHODOLOGY;
+export interface MethodBlocks { paragraphs: string[]; steps: { name: string; text: string }[]; note?: string; stepsAfter: number }
+/** Splits the methodology text into plain paragraphs, the numbered process steps and the closing note. */
+export function parseMethodology(text: string): MethodBlocks {
+  const out: MethodBlocks = { paragraphs: [], steps: [], stepsAfter: 0 };
+  for (const block of text.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean)) {
+    if (/^process\s*:/i.test(block)) {
+      const lines = block.split('\n').slice(1).map((l) => l.replace(/^[\s•\-*o]+(?=\S)/, '').trim()).filter(Boolean);
+      if (!lines.length) { const rest = block.replace(/^process\s*:/i, '').trim(); if (rest) lines.push(rest); }
+      for (const l of lines) { const m = l.match(/^([^:]{2,40}):\s*(.+)$/); out.steps.push(m ? { name: m[1].trim(), text: m[2].trim() } : { name: '', text: l }); }
+      out.stepsAfter = out.paragraphs.length;
+    } else if (/^note\s*:/i.test(block)) out.note = block.replace(/^note\s*:/i, '').trim();
+    else out.paragraphs.push(block.replace(/\s*\n\s*/g, ' '));
+  }
+  return out;
+}
+
 type Q = Pick<Quotation, 'crew_size' | 'safety_officer' | 'work_days'>;
 export const defaultCrew = (s?: Pick<Settings, 'default_crew_size'>) => s?.default_crew_size?.trim() || DEFAULT_CREW_SIZE;
 export const defaultDisclaimer = (s?: Pick<Settings, 'default_disclaimer'>) => s?.default_disclaimer?.trim() || DEFAULT_DISCLAIMER;

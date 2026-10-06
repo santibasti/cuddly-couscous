@@ -143,7 +143,7 @@ export interface Quotation extends Base {
   discount: number; // overall peso discount
   terms: string;
   /** manpower, duration and disclaimer shown on the quotation (absent on quotations made before they existed) */
-  crew_size?: string; safety_officer?: boolean; work_days?: number; disclaimer?: string;
+  crew_size?: string; safety_officer?: boolean; work_days?: number; disclaimer?: string; intro?: string; methodology?: string;
   status: QuoteStatus;
   sent_at?: string;
   decided_at?: string;
@@ -849,7 +849,7 @@ export interface Settings {
   company: { name: string; tin: string; address: string; phone: string; email: string; tagline: string };
   vat_rate: number;
   default_terms: string;
-  default_crew_size?: string; default_disclaimer?: string;
+  default_crew_size?: string; default_disclaimer?: string; default_intro?: string; default_methodology?: string;
   quote_validity_days: number;
   payment_terms_days: number;
   std_hours_per_day: number;

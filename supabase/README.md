@@ -31,6 +31,7 @@ records are enforced **in the database** (triggers + row-level security), so the
 | `migrations/0027_employee_rating.sql` | Employee rating (1–5) + breakdown on the employee record, readable by the employee themselves (via 0025) and by Admin. |
 | `migrations/0028_quotation_manpower.sql` | Quotations: `crew_size`, `safety_officer`, `work_days`, `disclaimer`. |
 | `migrations/0029_ocular_report.sql` | Ocular report fields (surface condition, hazards, recommendation, services, days, crew) and client / estimator signatures; once the client has signed the visit's findings and report are locked, only Admin / Operations can reopen it. |
+| `migrations/0030_quotation_intro_methodology.sql` | Quotations: `intro` and `methodology` text. |
 | `migrations/0005_final_quote_review.sql` | Client Final Quote Review: additional-work variations (source, revision, decided time, sign GPS / device), deposit and final total on the conforme; the conforme waits for open additions; approved / declined variations are locked. |
 | `migrations/0004_job_workflow_and_incidents.sql` | Per-job 11-step workflow, variations and incident tables; step-order / evidence guards, job status flow, variation locking and contract value, `In Use` / `Missing` asset statuses, edit-with-reason, RLS. |
 | `migrations/0003_role_permissions.sql` | Default role → permission matrix (generated from `src/lib/rbac.ts`). The Owner edits it afterwards. |

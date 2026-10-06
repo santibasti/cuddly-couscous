@@ -1,4 +1,4 @@
-import { DEFAULT_DISCLAIMER } from '@/lib/quote-text';
+import { DEFAULT_DISCLAIMER, DEFAULT_INTRO, DEFAULT_METHODOLOGY } from '@/lib/quote-text';
 import { CLOUD } from '@/lib/cloud';
 import { useState } from 'react';
 import { store, useAuth } from '@/lib/store';
@@ -43,7 +43,7 @@ function Rates({ s }: { s: Settings }) {
   const [draft, setDraft] = useState<Settings>(() => clone(s));
   const setM = (k: keyof Settings['multipliers'], v: number) => setDraft({ ...draft, multipliers: { ...draft.multipliers, [k]: v } });
   const setStat = (i: number, patch: Partial<StatutoryRate>) => setDraft({ ...draft, statutory: draft.statutory.map((r, k) => (k === i ? { ...r, ...patch } : r)) });
-  const save = () => attempt(() => { store.require('admin.settings'); store.patchSettings({ vat_rate: draft.vat_rate, multipliers: draft.multipliers, statutory: draft.statutory, std_hours_per_day: draft.std_hours_per_day, monthly_divisor_days: draft.monthly_divisor_days, grace_minutes: draft.grace_minutes, payment_terms_days: draft.payment_terms_days, quote_validity_days: draft.quote_validity_days, glass_group_size: draft.glass_group_size, channels: draft.channels, reminder_days: draft.reminder_days, default_terms: draft.default_terms, default_crew_size: draft.default_crew_size, default_disclaimer: draft.default_disclaimer, company: draft.company }, 'Updated payroll, tax and system settings'); }, 'Settings saved');
+  const save = () => attempt(() => { store.require('admin.settings'); store.patchSettings({ vat_rate: draft.vat_rate, multipliers: draft.multipliers, statutory: draft.statutory, std_hours_per_day: draft.std_hours_per_day, monthly_divisor_days: draft.monthly_divisor_days, grace_minutes: draft.grace_minutes, payment_terms_days: draft.payment_terms_days, quote_validity_days: draft.quote_validity_days, glass_group_size: draft.glass_group_size, channels: draft.channels, reminder_days: draft.reminder_days, default_terms: draft.default_terms, default_crew_size: draft.default_crew_size, default_disclaimer: draft.default_disclaimer, default_intro: draft.default_intro, default_methodology: draft.default_methodology, company: draft.company }, 'Updated payroll, tax and system settings'); }, 'Settings saved');
   const n = (v: number, fn: (x: number) => void, label: string, step = 'any') => <Field label={label}><input type="number" step={step} value={v} onChange={(e) => fn(+e.target.value)} /></Field>;
   return (
     <div className="stack">
@@ -60,6 +60,8 @@ function Rates({ s }: { s: Settings }) {
       <Card title="Commercial defaults"><div className="form-grid">
         {n(draft.vat_rate, (v) => setDraft({ ...draft, vat_rate: v }), 'VAT rate (%)')}{n(draft.payment_terms_days, (v) => setDraft({ ...draft, payment_terms_days: v }), 'Default payment terms (days)')}{n(draft.quote_validity_days, (v) => setDraft({ ...draft, quote_validity_days: v }), 'Quotation validity (days)')}{n(draft.glass_group_size, (v) => setDraft({ ...draft, glass_group_size: v }), 'Small glass panels grouped per 1 panel')}
         <Field label="Default crew size on quotations" hint="e.g. 6-7"><input value={draft.default_crew_size ?? ''} onChange={(e) => setDraft({ ...draft, default_crew_size: e.target.value })} placeholder="6-7" /></Field>
+        <Field label="Default introduction on quotations" className="full" hint="Leave empty to use the standard wording."><textarea rows={4} value={draft.default_intro ?? ''} onChange={(e) => setDraft({ ...draft, default_intro: e.target.value })} placeholder={DEFAULT_INTRO} /></Field>
+        <Field label="Default cleaning methodology on quotations" className="full" hint="Blank line between paragraphs; “Process:” lists the steps; “Note:” becomes a note."><textarea rows={8} value={draft.default_methodology ?? ''} onChange={(e) => setDraft({ ...draft, default_methodology: e.target.value })} placeholder={DEFAULT_METHODOLOGY} /></Field>
         <Field label="Default service disclaimer on quotations" className="full" hint="Leave empty to use the standard wording. Each quotation can still be edited."><textarea rows={6} value={draft.default_disclaimer ?? ''} onChange={(e) => setDraft({ ...draft, default_disclaimer: e.target.value })} placeholder={DEFAULT_DISCLAIMER} /></Field>
         <Field label="Default quotation terms & conditions" className="full"><textarea rows={5} value={draft.default_terms} onChange={(e) => setDraft({ ...draft, default_terms: e.target.value })} /></Field>
       </div></Card>
