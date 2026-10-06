@@ -105,10 +105,30 @@ export const jobSavedHooks: ((jobId: string) => void)[] = [];
 export function saveJob(j: JobInput): Job {
   store.require('jobs.edit');
   checkJob({ ...j, id: j.id ?? '' });
-  if (j.id) { const r = store.update('jobs', j.id, j as never, 'update', `Updated job ${j.number}`); for (const h of jobSavedHooks) h(j.id); syncJobOrders(j.id); return r; }
+  if (j.id) { const r = store.update('jobs', j.id, j as never, 'update', `Updated job ${j.number}`); for (const h of jobSavedHooks) h(j.id); if (j.status === 'Cancelled') releaseCancelledJob(j.id); syncJobOrders(j.id); return r; }
   const created = store.insert('jobs', { ...j, number: store.nextNumber('JOB') } as never) as Job;
   syncJobOrders(created.id);
   return created;
+}
+/**
+ * A cancelled booking no longer holds anyone: the team leader, crew, vehicle and equipment go back to the pool (they can be booked again at once),
+ * and anything still checked out for it is returned. The cancellation reason stays on the job and the audit trail names who was released.
+ */
+export function releaseCancelledJob(id: string) {
+  const j = db().jobs.find((x) => x.id === id);
+  if (!j || j.deleted_at || j.status !== 'Cancelled') return;
+  const held = [...(j.leader_id ? [j.leader_id] : []), ...j.crew_ids];
+  if (!held.length && !j.vehicle_id && !j.equipment_ids.length) return;
+  const names = held.map((e) => db().employees.find((x) => x.id === e)?.full_name ?? e).join(', ');
+  store.update('jobs', id, { leader_id: undefined, crew_ids: [], vehicle_id: undefined, equipment_ids: [] } as never, 'update', `Booking ${j.number} cancelled — released ${names || 'no crew'}${j.vehicle_id || j.equipment_ids.length ? ' and its vehicle / equipment' : ''}`);
+  for (const c of db().checkouts.filter((x) => x.job_id === id && x.status === 'Released' && !x.deleted_at)) {
+    try { performReturn(c.id, { condition: 'Good', damage_notes: '', missing: '' }); } catch (e) { if (!(e instanceof RuleError)) throw e; /* a person without equipment rights returns it later */ }
+  }
+}
+/** Bookings cancelled before this existed still show their crew: release them. */
+function releaseCancelledJobs() {
+  if (!store.can('jobs.edit')) return;
+  for (const j of db().jobs) if (j.status === 'Cancelled' && !j.deleted_at && (j.leader_id || j.crew_ids.length || j.vehicle_id || j.equipment_ids.length)) releaseCancelledJob(j.id);
 }
 export function moveJob(id: string, startAt: string) {
   store.require('jobs.edit');
@@ -128,6 +148,7 @@ export function setJobStatus(id: string, status: JobStatus, note?: string) {
   if (!['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)) fail(`A job that is ${j.status.toLowerCase()} can only change status through the job workflow, or by an Operations Manager / Admin override with a reason.`);
   if (j.back_job_id && status === 'Confirmed') { const bj = db().back_jobs.find((b) => b.id === j.back_job_id); if (bj && ['Reported', 'Under Review', 'Rejected'].includes(bj.status)) fail(`Back job ${bj.number} must be approved by Admin / Operations before it can be scheduled.`); }
   const r = status === 'Cancelled' && note ? store.update('jobs', id, { status, damage_report: note }, 'update', `Cancelled ${j.number}: ${note}`) : store.update('jobs', id, { status }, 'update', `${j.number} → ${status}`);
+  if (status === 'Cancelled') releaseCancelledJob(id);
   syncBackJobs();
   syncJobOrders(id);
   return r;
@@ -684,6 +705,7 @@ export function syncBackJobs() {
   }
 }
 export function runAutomations() {
+  releaseCancelledJobs();
   syncBackJobs();
   syncFollowUps();
   syncJobOrders();
