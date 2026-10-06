@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/store';
 import { confirmAvailability } from '@/lib/actions';
 import { answerOf, isAsking, opensAt, pendingFor, summary, teamOf } from '@/lib/crew-confirm-core';
 import { ask, attempt, Badge, Card } from '@/components/ui';
+import { PriceLine, useCanSeePrice } from '@/components/ServicePrice';
 import { fmtDate, fmtStamp, nowLocal } from '@/lib/util';
 import type { Job } from '@/lib/types';
 
@@ -19,6 +20,7 @@ function JobBrief({ job }: { job: Job }) {
   const vehicle = job.vehicle_id ? db.assets.find((a) => a.id === job.vehicle_id)?.name : undefined;
   const mats = job.materials.map((m) => { const it = db.items.find((i) => i.id === m.item_id); return it ? `${it.name} × ${m.planned_qty} ${it.uom}` : ''; }).filter(Boolean);
   const team = teamOf(job).map((id) => db.employees.find((e) => e.id === id)?.full_name).filter(Boolean) as string[];
+  const showPrice = useCanSeePrice();
   const row = (k: string, v: React.ReactNode) => <div style={{ display: 'grid', gridTemplateColumns: '112px 1fr', gap: 8 }}><span className="muted">{k}</span><span>{v}</span></div>;
   return (
     <div className="small" style={{ display: 'grid', gap: 5, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
@@ -26,6 +28,7 @@ function JobBrief({ job }: { job: Job }) {
       {client && row('Client', client.name)}
       {(site?.contact_person || site?.access_instructions) && row('Site contact', <>{site?.contact_person}{site?.contact_mobile ? ` · ${site.contact_mobile}` : ''}{site?.access_instructions ? <div className="muted">{site.access_instructions}</div> : null}</>)}
       {row('Service', <><b>{services.join(', ') || '—'}</b>{job.scope ? <div>{job.scope}</div> : null}</>)}
+      {showPrice && row('Service price', <PriceLine job={job} />)}
       {row('Equipment', gear.length ? gear.join(', ') : <span className="muted">none listed — Operations prepares it at HQ</span>)}
       {vehicle && row('Vehicle', vehicle)}
       {mats.length > 0 && row('Materials', mats.join(' · '))}

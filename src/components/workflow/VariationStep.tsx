@@ -57,19 +57,19 @@ export function VariationStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run
   );
 }
 
-function VariationModal({ wf, job, initial, onClose }: { wf: JobWorkflow; job: Job; initial?: Variation; onClose: () => void }) {
+export function VariationModal({ wf, job, initial, onClose }: { wf?: JobWorkflow; job: Job; initial?: Variation; onClose: () => void }) {
   const { db, can } = useAuth();
   const q = db.quotations.find((x) => x.id === job.quotation_id);
   const [f, setF] = useState<VariationInput>(() => initial ? { reason: initial.reason, items: initial.items, discount: initial.discount, vat_mode: initial.vat_mode, vat_rate: initial.vat_rate, panel_row_ids: initial.panel_row_ids, notes: initial.notes } : { reason: '', items: [], discount: 0, vat_mode: q?.vat_mode ?? 'exclusive', vat_rate: q?.vat_rate ?? db.settings.vat_rate ?? 12, panel_row_ids: [] });
   const t = docTotals(f.items, f.discount, f.vat_mode, f.vat_rate);
-  const dr = useDraft(`d:${wf.id}:var:${initial?.id ?? 'new'}`, f, (d) => setF(d));
+  const dr = useDraft(`d:${wf?.id ?? job.id}:var:${initial?.id ?? 'new'}`, f, (d) => setF(d));
   const close = () => { if (dr.dirty && !confirmLeave()) return; onClose(); };
   const setItem = (i: number, p: Partial<QuoteItem>) => setF({ ...f, items: f.items.map((x, k) => (k === i ? { ...x, ...p } : x)) });
-  const extra = wf.panels.filter((p) => p.additional);
+  const extra = (wf?.panels ?? []).filter((p) => p.additional);
   const toggle = (id: string) => setF({ ...f, panel_row_ids: f.panel_row_ids.includes(id) ? f.panel_row_ids.filter((x) => x !== id) : [...f.panel_row_ids, id] });
   const glass = db.services.find((s) => s.code === 'GLASS_EXT');
   const fromPanels = () => {
-    const rows = wf.panels.filter((p) => f.panel_row_ids.includes(p.id));
+    const rows = (wf?.panels ?? []).filter((p) => f.panel_row_ids.includes(p.id));
     const ext = rows.reduce((s, r) => s + r.external, 0), int = rows.reduce((s, r) => s + r.internal, 0);
     const rate = glass?.excess_rate ?? glass?.rate ?? 0;
     const add: QuoteItem[] = [];

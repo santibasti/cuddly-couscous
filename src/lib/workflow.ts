@@ -348,10 +348,13 @@ const varNumber = (job: Job) => `${job.number}-V${db().variations.filter((v) => 
 export interface VariationInput { reason: string; items: QuoteItem[]; discount: number; vat_mode: Variation['vat_mode']; vat_rate: number; panel_row_ids: string[]; notes?: string }
 export function createVariation(jobId: string, f: VariationInput): Variation {
   const job = db().jobs.find((j) => j.id === jobId) ?? fail('Job not found.');
-  const wf = workflowFor(jobId) ?? fail('Open the job workflow first.');
+  const wf = workflowFor(jobId);
   needRun(job);
-  if (!wf.start_at) fail('Variations can be raised once work has started.');
-  if (wf.rep_at) fail('The service report is signed — no more variations can be added to this job.');
+  // the Owner / Operations may add extra work ahead of time (the Team Leader shows it to the client; the client signs once work has started)
+  const early = store.can('jobs.edit') && ['Confirmed', 'Dispatch Checklist Pending', 'Dispatched', 'On Site', 'In Progress'].includes(job.status);
+  if (!wf && !early) fail('Open the job workflow first.');
+  if (wf && !wf.start_at && !early) fail('Variations can be raised once work has started.');
+  if (wf?.rep_at) fail('The service report is signed — no more variations can be added to this job.');
   validateVariation(f);
   return store.insert('variations', { job_id: jobId, number: varNumber(job), ...f, status: 'Draft' } as never, `Variation ${varNumber(job)} drafted for ${job.number}`) as Variation;
 }
