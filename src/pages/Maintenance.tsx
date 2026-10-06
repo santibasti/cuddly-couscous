@@ -273,14 +273,16 @@ function RecordModal({ id, onClose }: { id: string; onClose: () => void }) {
   const { db, can, user } = useAuth(); const manage = can('maintenance.manage'); const T = today();
   const r = db.maint_records.find((x) => x.id === id);
   const [completing, setCompleting] = useState(false);
+  const [draft, setDraft] = useState<MaintPart[] | null>(null);          // parts being typed, saved with the button
   if (!r) return null;
   const a = db.assets.find((x) => x.id === r.asset_id)!; const st = dueState(db, r, T); const plan = db.maint_plans.find((p) => p.id === r.plan_id);
   const editable = manage && !['Completed', 'Cancelled'].includes(r.status);
   const items = live(db.items).map((i) => ({ id: i.id, code: i.code, name: i.name, uom: i.uom }));
-  const setParts = (parts: MaintPart[]) => run(() => M.saveRecord(r.id, { parts }));
+  const shown = draft ?? r.parts;
+  const saveParts = () => { if (draft && run(() => M.saveRecord(r.id, { parts: draft }), 'Parts saved')) setDraft(null); };
   const cur = plan ? readingFor(db, plan.freq_kind, r.asset_id) : undefined;
   return (
-    <Modal title={<span>{r.number} · {a.name}</span>} size="xl" onClose={onClose} footer={<RecordActions r={r} manage={manage} onClose={onClose} onComplete={() => setCompleting(true)} />}>
+    <Modal title={<span>{r.number} · {a.name}</span>} size="xl" onClose={onClose} footer={<RecordActions r={r} manage={manage} onClose={onClose} onComplete={() => { if (draft) return toast('Save the parts changes first (or discard them).', 'err'); setCompleting(true); }} />}>
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8 }}><Badge tone={maintTone(st)}>{st}</Badge><Badge tone={r.priority === 'Urgent' ? 'red' : r.priority === 'High' ? 'amber' : 'gray'}>{r.priority}</Badge><Badge tone="blue">{r.task_type}</Badge><Badge tone={a.status === 'Available' ? 'green' : 'amber'}>Asset: {a.status}</Badge>{r.approval === 'Pending' && <Badge tone="amber">Awaiting approval</Badge>}</div>
       <h3 style={{ margin: '2px 0 4px' }}>{r.title}</h3>
       {r.request_note && <div className="alert info" style={{ marginBottom: 8 }}><b>Reported by {empName(db, r.requested_by)}:</b> {r.request_note}</div>}
@@ -299,7 +301,8 @@ function RecordModal({ id, onClose }: { id: string; onClose: () => void }) {
       <h4 style={{ margin: '12px 0 4px' }}>Checklist</h4>
       <ul className="list">{r.checklist.map((c, i) => <li key={i}><label className="check"><input type="checkbox" checked={c.done} disabled={!editable} onChange={() => run(() => M.saveRecord(r.id, { checklist: r.checklist.map((x, k) => (k === i ? { ...x, done: !x.done } : x)) }))} /> {c.label}</label></li>)}</ul>
       <h4 style={{ margin: '12px 0 4px' }}>Parts, replacements and cleaning plan</h4>
-      <PartsEditor parts={r.parts} onChange={setParts} readOnly={!editable} items={items} short={(p) => stockShort(db, p)} />
+      <PartsEditor parts={shown} onChange={setDraft} readOnly={!editable} items={items} short={(p) => stockShort(db, p)} />
+      {draft && <div className="row" style={{ gap: 8, marginTop: 8 }}><button className="btn primary sm" onClick={saveParts}>Save parts</button><button className="btn sm" onClick={() => setDraft(null)}>Discard changes</button><span className="small" style={{ color: 'var(--amber)' }}>Parts changes are not saved yet.</span></div>}
       <p className="small muted">Linked inventory is deducted only when the task is marked completed, and only if enough is in stock.</p>
       <h4 style={{ margin: '12px 0 4px' }}>History</h4>
       <ul className="list small">{[...r.history].reverse().map((h, i) => <li key={i}><span>{h.action}{h.note ? ` — ${h.note}` : ''}</span><span className="muted">{h.by} · {fmtDate(h.at)}</span></li>)}</ul>
