@@ -201,6 +201,8 @@ export type EmployeeTier = 'Trainee' | 'Technician' | 'Senior Technician' | 'Tea
 export interface EmployeeDoc { name: string; number?: string; expires?: string; file?: string }
 export interface Training { name: string; completed_on: string; expires?: string; hours: number }
 
+/** What went into the rating, each 0–100 (absent = no data yet). */
+export interface RatingParts { attendance?: number; punctuality?: number; client?: number; quality?: number; safety?: number; teamwork?: number; months: number }
 export interface Employee extends Base {
   code: string;
   full_name: string;
@@ -226,6 +228,8 @@ export interface Employee extends Base {
   shift_start: string; // HH:mm
   shift_end: string;
   rest_day: number; // 0=Sun..6=Sat
+  /** 1–5 star rating from the monthly scorecard (last 3 months), kept on the record so the employee can see their own. */
+  rating?: number; rating_parts?: RatingParts; rating_at?: string;
 }
 
 export interface Attendance extends Base {

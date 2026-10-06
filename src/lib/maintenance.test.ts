@@ -79,3 +79,31 @@ describe('maintenance rules', () => {
     expect(alerts.some((a) => a.title === 'Maintenance request awaiting approval')).toBe(true);
   });
 });
+
+describe('employee rating', () => {
+  it('every active employee with approved attendance has a 1–5 rating and a message', async () => {
+    const R = await import('./rating-core');
+    await store.login('owner@topmop.ph', 'topmop123');
+    const rated = db().employees.filter((e) => e.rating !== undefined);
+    expect(rated.length).toBeGreaterThan(5);
+    for (const e of rated) { expect(e.rating).toBeGreaterThanOrEqual(1); expect(e.rating).toBeLessThanOrEqual(5); const m = R.motivation(e.rating, e.rating_parts, e.full_name.split(' ')[0], 'in'); expect(m.message.length).toBeGreaterThan(20); }
+    expect(R.ratingStats(db()).avg).toBeGreaterThan(1);
+  });
+  it('messages are encouraging at every level and mention a focus area when one is weak', async () => {
+    const R = await import('./rating-core');
+    expect(R.motivation(undefined, undefined, 'Ana', 'in').headline).toMatch(/Welcome/);
+    expect(R.motivation(2.1, { punctuality: 60, attendance: 95, months: 1 }, 'Ana', 'in').tip).toMatch(/on time/);
+    expect(R.motivation(4.8, { attendance: 99, punctuality: 98, months: 3 }, 'Ana', 'out').message).toMatch(/Thank you/);
+    expect(R.motivation(2.1, undefined, 'Ana', 'in').message).not.toMatch(/bad|poor|fail|warning/i);
+  });
+  it('the sync updates only people whose rating changed and needs permission', async () => {
+    const Rt = await import('./ratings');
+    await store.login('owner@topmop.ph', 'topmop123');
+    const e = db().employees.find((x) => x.rating !== undefined)!;
+    store.update('employees', e.id, { rating: 1.0 } as never);
+    Rt.syncRatings(); expect(db().employees.find((x) => x.id === e.id)!.rating).not.toBe(1);
+    await store.login('field@topmop.ph', 'topmop123');
+    const before = db().employees;
+    Rt.syncRatings(); expect(db().employees).toBe(before);
+  });
+});

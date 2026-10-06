@@ -13,6 +13,7 @@ import { syncJobOrders } from './joborders';
 import { followUpAlerts } from './followup-core';
 import { isUnavailable, maintAlerts, profileOf } from './maintenance-core';
 import { syncMaintenance } from './maintenance';
+import { syncRatings } from './ratings';
 import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
 
 const db = () => store.getDB();
@@ -666,6 +667,7 @@ export function runAutomations() {
   syncFollowUps();
   syncJobOrders();
   syncMaintenance();
+  syncRatings();
   const d = db(); const s = d.settings; const now = nowLocal(); const t = today();
   const list: Omit<Notification, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'read_by'>[] = [];
   const add = (key: string, type: string, title: string, body: string, severity: Notification['severity'], link: string, roles: Notification['for_roles'], external = false) => {

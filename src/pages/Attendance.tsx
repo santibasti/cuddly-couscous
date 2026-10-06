@@ -1,3 +1,4 @@
+import { RatingCard } from '@/components/RatingCard';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth, live } from '@/lib/store';
@@ -35,6 +36,7 @@ function MyClock({ emp }: { emp: Employee }) {
   };
   return (
     <div className="grid g2">
+      <div style={{ gridColumn: '1 / -1' }}><RatingCard emp={emp} phase={state === 'none' ? 'in' : state === 'in' ? 'out' : 'done'} /></div>
       <Card className="clock-card">
         <div className="muted">{fmtDate(T)} · Asia/Manila</div>
         <Clock />

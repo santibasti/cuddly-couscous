@@ -13,6 +13,7 @@ import { paymentCounts, AWAY_JOB, FIELD_JOB, variationTotals, docTotals, invoice
 import { isOverdue } from '@/lib/actions';
 import GeoInsights from '@/components/GeoInsights';
 import { MaintWidget } from '@/components/maint/MaintWidget';
+import { RatingsWidget } from '@/components/RatingsWidget';
 import { STAGES, areaOptions, attention, growth, kpis, operationsToday, serviceRevenue, scopeOf, trend, type InsightFilters, type TrendRange } from '@/lib/insights';
 import type { DB, Invoice, ServiceCode } from '@/lib/types';
 
@@ -318,6 +319,8 @@ export default function Dashboard() {
           </BarChart></ResponsiveContainer></div>
         </Card>
       </div>
+
+      {can('performance.view') && <div className="exec-section"><RatingsWidget /></div>}
 
       {can('maintenance.view') && <div className="exec-section"><MaintWidget /></div>}
 
