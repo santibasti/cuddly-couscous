@@ -43,13 +43,13 @@ export const problems = [
 ];
 
 export const solutions = [
-  { icon: 'clock', title: 'Attendance and payroll preparation', text: 'Capture attendance, review and verify it, then prepare payroll figures from verified attendance and the pay rules your business has approved. Final payroll and statutory obligations stay with your business and its advisers.' },
-  { icon: 'box', title: 'Inventory and equipment tracking', text: 'Track supplies and equipment: what is in stock, what has been issued, to whom, and what has been returned.' },
-  { icon: 'calendar', title: 'Bookings, jobs and crew assignments', text: 'Schedule jobs or bookings, assign crews and keep status visible from request to completion.' },
-  { icon: 'quote', title: 'Quotations and approved scope changes', text: 'Prepare quotations, then record approved changes to scope so additional work is traceable to the bill.' },
-  { icon: 'report', title: 'Service reports and client sign-off', text: 'Complete service reports on a phone or tablet and capture the client’s acknowledgement for your records.' },
-  { icon: 'wallet', title: 'Sales, expenses, billing and collections', text: 'Record sales and expenses, issue bills, log payments and follow up outstanding balances.' },
-  { icon: 'dashboard', title: 'Management dashboards and reports', text: 'Daily and periodic views built from the records your team already enters, so reports need no re-typing.' },
+  { icon: 'clock', title: 'Attendance and payroll preparation', points: ["Time-in and time-out recorded per job and crew", "Supervisor verification before figures are used", "Payroll figures prepared from approved rules"], text: 'Capture attendance, review and verify it, then prepare payroll figures from verified attendance and the pay rules your business has approved. Final payroll and statutory obligations stay with your business and its advisers.' },
+  { icon: 'box', title: 'Inventory and equipment tracking', points: ["Stock levels for supplies and consumables", "Equipment issued to a named person or crew", "Return records with overdue items flagged"], text: 'Track supplies and equipment: what is in stock, what has been issued, to whom, and what has been returned.' },
+  { icon: 'calendar', title: 'Bookings, jobs and crew assignments', points: ["Job and booking schedule by day", "Crew assignment for each job", "Status from request to completion"], text: 'Schedule jobs or bookings, assign crews and keep status visible from request to completion.' },
+  { icon: 'quote', title: 'Quotations and approved scope changes', points: ["Quotations prepared from your service list", "Additional work recorded and approved", "Approved changes carried into the bill"], text: 'Prepare quotations, then record approved changes to scope so additional work is traceable to the bill.' },
+  { icon: 'report', title: 'Service reports and client sign-off', points: ["Checklist completed on a phone or tablet", "Notes kept together with the job", "Client acknowledgement recorded"], text: 'Complete service reports on a phone or tablet and capture the client’s acknowledgement for your records.' },
+  { icon: 'wallet', title: 'Sales, expenses, billing and collections', points: ["Sales and expenses recorded daily", "Payments logged against each bill", "Outstanding balances by client"], text: 'Record sales and expenses, issue bills, log payments and follow up outstanding balances.' },
+  { icon: 'dashboard', title: 'Management dashboards and reports', points: ["Daily view of jobs, crews and equipment", "Sales, payments and balances in one place", "Items needing attention highlighted"], text: 'Daily and periodic views built from the records your team already enters, so reports need no re-typing.' },
 ];
 
 export const industries = [

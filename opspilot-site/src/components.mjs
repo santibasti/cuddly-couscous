@@ -98,7 +98,8 @@ export const solutions = () => `
         <span class="card-idx">0${i + 1}</span>
         <span class="card-ico">${icon(s.icon, 26)}</span>
         <div class="b${i}-copy"><h3>${s.title}</h3>
-        <p>${s.text}</p></div>
+        <p>${s.text}</p>
+        <ul class="card-points">${s.points.map((t) => `<li>${icon('check', 16)}<span>${t}</span></li>`).join('')}</ul></div>
         <a class="card-link" href="#contact">Ask about this ${icon('arrow', 16)}</a>
       </article>`).join('')}
     </div>

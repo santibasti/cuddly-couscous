@@ -455,3 +455,19 @@ html { color-scheme: light; }
 .footer-contact a { color: #fff; text-decoration: none; }
 .footer-contact a:hover { text-decoration: underline; }
 @media (min-width: 800px) { .footer-contact { grid-column: 1 / -1; } }
+
+/* Solution cards: checklist + pinned link (reference-style service cards) */
+.card { display: flex; flex-direction: column; }
+.card .card-link { margin-top: auto; padding-top: 18px; }
+.card [class*="-copy"] { display: block; }
+.card-points { display: grid; gap: 9px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.card-points li { display: flex; gap: 9px; align-items: flex-start; font-size: .88rem; color: var(--ink); line-height: 1.4; }
+.card-points .icon { color: var(--blue); margin-top: 2px; }
+@media (min-width: 1000px) {
+  .bento .b6 { display: grid; grid-template-columns: auto 1fr auto; }
+  .bento .b6 .b6-copy { display: grid; gap: 6px; }
+  .bento .b6 .card-points { grid-template-columns: repeat(3, 1fr); border-top-color: rgba(255, 255, 255, .15); gap: 12px 24px; }
+  .bento .b6 .card-points li { color: #fff; }
+  .bento .b6 .card-points .icon { color: var(--lime); }
+  .bento .b6 .card-link { padding-top: 0; }
+}
