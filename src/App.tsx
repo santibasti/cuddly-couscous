@@ -33,6 +33,7 @@ import Admin from '@/pages/Admin';
 import Notifications from '@/pages/Notifications';
 import Portal from '@/pages/Portal';
 import JobOrderPublic from '@/pages/JobOrderPublic';
+import QuotePublic from '@/pages/QuotePublic';
 
 const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: string; group?: string }[] = [
   { to: '/dashboard', key: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'Overview' },
@@ -187,6 +188,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/portal/*" element={<Portal />} />
         <Route path="/jo/:token" element={<JobOrderPublic />} />
+        <Route path="/q/:token" element={<QuotePublic />} />
         <Route path="/*" element={user ? <Shell /> : <Navigate to="/login" replace />} />
       </Routes>
       {user && <InstallPrompt />}

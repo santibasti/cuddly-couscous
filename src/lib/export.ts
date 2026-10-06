@@ -202,7 +202,7 @@ const clientLines = (db: DB, id: string, siteId?: string): string[] => {
 
 const INK: [number, number, number] = [20, 36, 58]; const MUTED: [number, number, number] = [91, 107, 128]; const SOFT: [number, number, number] = [243, 247, 250]; const TEAL: [number, number, number] = [14, 154, 167]; const GREEN: [number, number, number] = [44, 154, 69];
 /** Premium quotation: letter, scope, price table, methodology, project plan, terms, disclaimer and acceptance. */
-export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?: boolean } = {}) {
+export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?: boolean; blob?: boolean } = {}): Promise<Blob | undefined> {
   const { doc, autoTable } = await newPdf();
   const W = doc.internal.pageSize.getWidth(); const H = doc.internal.pageSize.getHeight(); const M = 14; const CW = W - 2 * M;
   const co = db.settings.company;
@@ -320,9 +320,13 @@ export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?:
   setText(10, true, NAVY); doc.text('ACCEPTANCE', M, y); y += 5; setText(8.8, false, MUTED);
   y = wrapText(doc, 'By signing below, the client accepts this quotation, including the scope of work, methodology, terms and service disclaimer.', M, y, CW, 4.3) + 9;
   doc.setDrawColor(...INK); doc.setLineWidth(0.2); doc.line(M, y + 12, M + 84, y + 12); doc.line(W - M - 84, y + 12, W - M, y + 12);
-  setText(8.5, false, MUTED); doc.text('Approved / accepted by - signature over printed name', M, y + 17); doc.text(`Prepared by ${clean(db.users.find((u) => u.id === q.created_by)?.name ?? co.name)}`, W - M - 84, y + 17);
-  doc.text('Date:', M, y + 25); doc.line(M + 10, y + 25.5, M + 60, y + 25.5);
-  footer(doc); doc.save(`${q.number}.pdf`);
+  if (q.client_sig) { try { doc.addImage(q.client_sig, 'PNG', M + 2, y - 4, 50, 15); } catch { /* unreadable signature image: the line stays blank */ } }
+  setText(8.5, false, MUTED); doc.text(q.client_sig_name ? `Accepted by ${clean(q.client_sig_name)} - signature over printed name` : 'Approved / accepted by - signature over printed name', M, y + 17); doc.text(`Prepared by ${clean(db.users.find((u) => u.id === q.created_by)?.name ?? co.name)}`, W - M - 84, y + 17);
+  doc.text('Date:', M, y + 25);
+  if (q.client_sig_at) { setText(9.5, true, INK); doc.text(clean(fmtDate(q.client_sig_at.slice(0, 10))), M + 11, y + 24.5); setText(7.5, false, MUTED); doc.text('Accepted online through the TopMop share link', M + 60, y + 24.5); } else doc.line(M + 10, y + 25.5, M + 60, y + 25.5);
+  footer(doc);
+  if (opts.blob) return doc.output('blob');
+  doc.save(`${q.number}.pdf`);
   store.audit('export', 'quotations', q.id, `Exported PDF ${q.number}`);
 }
 
@@ -606,7 +610,7 @@ export async function variationPdf(db: DB, v: Variation, opts: { includeImages?:
 
 export const shareTextQuote = (db: DB, q: Quotation) => {
   const c = db.clients.find((x) => x.id === q.client_id)!; const t = docTotals(q.items, q.discount, q.vat_mode, q.vat_rate);
-  return `Hello ${c.contact_person}, this is ${db.settings.company.name}. Quotation ${q.number} for ${q.scope} — Total ${pm(t.total).replace('PHP', '₱')} (valid until ${fmtDate(q.valid_until)}). Please reply to approve or ask questions. Thank you!`;
+  return `Hello ${c.contact_person}, this is ${db.settings.company.name}. Quotation ${q.number} for ${q.scope} — Total ${pm(t.total).replace('PHP', '₱')} (valid until ${fmtDate(q.valid_until)}). ${q.share_token && ['Sent', 'Approved'].includes(q.status) ? `Please review and sign it online: ${location.origin}${location.pathname.replace(/index\.html$/, '')}#/q/${q.share_token}` : 'Please reply to approve or ask questions.'} Thank you!`;
 };
 
 /* ---------- QR labels (A4, 3 × 8) ---------- */

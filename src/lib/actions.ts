@@ -144,7 +144,27 @@ export function saveQuotation(q: Omit<Quotation, 'id' | 'created_at' | 'updated_
   const cur = q.id ? db().quotations.find((x) => x.id === q.id) : undefined;
   if (cur && cur.status !== 'Draft') fail('Only draft quotations can be edited. Duplicate it to revise.');
   if (q.id) return store.update('quotations', q.id, q as never);
-  return store.insert('quotations', { ...q, number: store.nextNumber('QT') } as never);
+  return store.insert('quotations', { ...q, number: store.nextNumber('QT'), share_token: q.share_token ?? shareToken() } as never);
+}
+const shareToken = () => (uid() + uid()).replace(/-/g, '').slice(0, 24);
+export const quoteLinkUrl = (q: Pick<Quotation, 'share_token'>) => `${location.origin}${location.pathname.replace(/index\.html$/, '')}#/q/${q.share_token}`;
+/** The client's link for a quotation (made on first use for quotations that were created before links existed). */
+export function quoteLink(id: string): string {
+  let q = db().quotations.find((x) => x.id === id)!;
+  if (!q.share_token) { store.require('sales.edit'); q = store.update('quotations', id, { share_token: shareToken() } as never, 'update', `Quotation ${q.number} client link created`) as Quotation; }
+  return quoteLinkUrl(q);
+}
+/** Demo mode only (the cloud does this inside the database): the client accepts and signs through the link. */
+export function acceptQuoteByLink(token: string, name: string, sig: string) {
+  const q = db().quotations.find((x) => x.share_token === token && !x.deleted_at);
+  if (!q) fail('This link is not available.');
+  if (q!.status === 'Approved' && q!.client_sig) fail('This quotation was already accepted and signed.');
+  if (q!.status !== 'Sent') fail('This quotation is not open for acceptance. Please contact us.');
+  if (!name.trim()) fail('Please type your full name.');
+  if (!sig) fail('Please sign in the signature box.');
+  if (q!.valid_until < today()) fail(`This quotation has expired (valid until ${q!.valid_until}). Please contact us for an updated one.`);
+  store.system('quotations', q!.id, { status: 'Approved', decided_at: isoNow(), client_sig: sig, client_sig_name: name.trim(), client_sig_at: isoNow(), client_sig_note: 'Accepted online through the share link' } as never, `Quotation ${q!.number} accepted and signed by ${name.trim()} through the share link`);
+  if (q!.inquiry_id) store.system('inquiries', q!.inquiry_id, { stage: 'Booked' } as never);
 }
 export function setQuoteStatus(id: string, status: QuoteStatus, reason?: string) {
   store.require('sales.approve');
@@ -161,8 +181,8 @@ export function setQuoteStatus(id: string, status: QuoteStatus, reason?: string)
 export function duplicateQuotation(id: string) {
   store.require('sales.edit');
   const q = db().quotations.find((x) => x.id === id)!;
-  const { id: _i, number: _n, created_at: _c, updated_at: _u, created_by: _b, sent_at: _s, decided_at: _d, reject_reason: _r, ...rest } = q; void [_i, _n, _c, _u, _b, _s, _d, _r];
-  const copy = store.insert('quotations', { ...rest, status: 'Draft', issue_date: today(), valid_until: addDays(today(), db().settings.quote_validity_days), number: store.nextNumber('QT') } as never, `Duplicated ${q.number}`);
+  const { id: _i, number: _n, created_at: _c, updated_at: _u, created_by: _b, sent_at: _s, decided_at: _d, reject_reason: _r, share_token: _t, client_sig: _g, client_sig_name: _gn, client_sig_at: _ga, client_sig_note: _gt, ...rest } = q; void [_i, _n, _c, _u, _b, _s, _d, _r, _t, _g, _gn, _ga, _gt];
+  const copy = store.insert('quotations', { ...rest, share_token: shareToken(), status: 'Draft', issue_date: today(), valid_until: addDays(today(), db().settings.quote_validity_days), number: store.nextNumber('QT') } as never, `Duplicated ${q.number}`);
   copyQuoteImages(id, copy.id);        // the original keeps its own images; the revision starts with copies
   return copy;
 }

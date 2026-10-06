@@ -150,6 +150,8 @@ export interface Quotation extends Base {
   sent_at?: string;
   decided_at?: string;
   reject_reason?: string;
+  /** the link the client opens (no sign-in) to read and accept the quotation; the acceptance and drawn signature are stored here */
+  share_token?: string; client_sig?: string; client_sig_name?: string; client_sig_at?: string; client_sig_note?: string;
   branch_id: string;
   /** created from a completed ocular visit: what the estimator found is carried forward */
   ocular_visit_id?: string; ocular_assignee_id?: string; ocular_panels?: PanelRow[]; ocular_measurements?: Measurement[];

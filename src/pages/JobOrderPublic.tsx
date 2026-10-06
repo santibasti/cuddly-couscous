@@ -12,6 +12,7 @@ type Shown = Pick<JobOrder, 'number' | 'version' | 'status' | 'issued_on' | 'con
 export default function JobOrderPublic() {
   const { token } = useParams();
   const { db } = useAuth();
+  useEffect(() => { document.body.classList.remove('dark'); }, []);   // the client's page is always the light, printable look
   const [o, setO] = useState<Shown | null | undefined>(undefined);
   useEffect(() => {
     let live = true;

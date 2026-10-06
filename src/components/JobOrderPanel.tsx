@@ -51,13 +51,16 @@ export function JobOrderPanel({ job }: { job: Job }) {
   }
   const who = user?.name;
   const log = (o: JobOrder, a: string) => logJobOrderEvent(o.id, a);
+  // the client can open the link only after the Job Order is sent (a Draft is never shown to a client): ask to mark it as sent first
+  const needSend = (o: JobOrder) => { if (o.status === 'Sent to Client' || o.status === 'Superseded') return false; attempt(() => { throw new Error(manage ? 'Mark the Job Order as sent to the client first — the link opens only after that.' : 'This Job Order has not been sent yet. Ask Admin / Operations to mark it as sent first.'); }); if (manage && !o.content.blocker) setSend({ order: o, resend: false }); return true; };
   const mail = (o: JobOrder) => {
+    if (needSend(o)) return;
     const c = o.content;
     const body = `Hello ${c.client.contact_person || c.client.name},\n\nPlease find the confirmation of your scheduled service.\n\nJob Order: ${orderLabel(o)}\nService: ${c.service_types.join(', ')}\nDate: ${fmtDate(c.service_date)}\nLocation: ${c.location.name}, ${c.location.address}\n\nView or download it here:\n${shareLink(o)}\n\nThank you,\n${c.company.name}\n${c.company.phone}`;
     location.href = `mailto:${client?.email ?? ''}?subject=${encodeURIComponent(`Job Order Confirmation ${orderLabel(o)} – ${fmtDate(c.service_date)}`)}&body=${encodeURIComponent(body)}`;
     log(o, 'E-mail opened for the client');
   };
-  const copy = async (o: JobOrder) => { try { await navigator.clipboard.writeText(shareLink(o)); log(o, 'Share link copied'); attempt(() => true, 'Share link copied'); } catch { window.prompt('Copy this link', shareLink(o)); } };
+  const copy = async (o: JobOrder) => { if (needSend(o)) return; try { await navigator.clipboard.writeText(shareLink(o)); log(o, 'Share link copied'); attempt(() => true, 'Share link copied'); } catch { window.prompt('Copy this link', shareLink(o)); } };
   const sentOk = head.status === 'Sent to Client';
   return (
     <Card title="Job Order Confirmation" actions={<Badge tone={TONE[head.status]}>{head.status}</Badge>}>

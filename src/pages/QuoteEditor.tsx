@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, attempt, ask, useObj } from '@/components/ui';
 import { countPanels, docTotals, priceService, type GlassRow } from '@/lib/business';
-import { duplicateQuotation, saveQuotation, setQuoteStatus } from '@/lib/actions';
+import { duplicateQuotation, quoteLink, saveQuotation, setQuoteStatus } from '@/lib/actions';
 import { quotationPdf, shareTextQuote } from '@/lib/export';
 import { IncludeImagesToggle, QuoteImageGallery } from '@/components/QuoteImages';
 import { SiteForm } from './ClientDetail';
@@ -98,9 +98,12 @@ export default function QuoteEditor() {
         {existing && <button className="btn" onClick={() => attempt(() => quotationPdf(db, existing, { includeImages: pdfImg }))}><Icon name="download" />PDF</button>}
         {existing && client?.email && <a className="btn" href={`mailto:${client.email}?subject=${encodeURIComponent(`Quotation ${existing.number} – ${db.settings.company.name}`)}&body=${encodeURIComponent(share + '\n\n(Attach the downloaded PDF.)')}`}><Icon name="mail" />Email</a>}
         {existing && <a className="btn" target="_blank" rel="noreferrer" href={`https://wa.me/${wa}?text=${encodeURIComponent(share)}`}><Icon name="share" />WhatsApp</a>}
+        {existing && ['Sent', 'Approved'].includes(existing.status) && <button className="btn" onClick={async () => { const url = quoteLink(existing.id); try { await navigator.clipboard.writeText(url); attempt(() => true, 'Client link copied — paste it in WhatsApp, Viber or email'); } catch { window.prompt('Copy this link for the client', url); } }}><Icon name="share" />Copy client link</button>}
         {existing && can('sales.edit') && <button className="btn" onClick={() => { const q = attempt(() => duplicateQuotation(existing.id), 'Duplicated as draft') as Quotation | undefined; if (q && (q as Quotation).id) nav(`/sales/quote/${(q as Quotation).id}`); }}>Duplicate</button>}
       </PageHead>
 
+      {existing?.client_sig && <div className="alert info" style={{ marginBottom: 12 }}><b>Accepted and signed by {existing.client_sig_name}</b> on {fmtStamp(existing.client_sig_at ?? existing.decided_at ?? '')} through the client link. <img src={existing.client_sig} alt="Client signature" style={{ display: 'block', background: '#fff', borderRadius: 6, maxWidth: 220, marginTop: 6 }} /></div>}
+      {existing?.status === 'Draft' && <div className="muted small" style={{ marginBottom: 8 }}>Mark the quotation as sent to get a link the client can open to review and sign it.</div>}
       {locked && <div className="alert info" style={{ marginBottom: 12 }}>This quotation is {existing!.status.toLowerCase()} and read-only. Use Duplicate to prepare a revised quote.</div>}
       {ov && <div className="alert info" style={{ marginBottom: 12 }}>Created from ocular visit <b>{ov.number}</b> ({v.ocular_assignee_id ? db.employees.find((e) => e.id === v.ocular_assignee_id)?.full_name : '—'}). Carried forward: {ov.panels.length ? `${ov.panels.reduce((n, p) => n + p.external + p.internal, 0)} counted glass panels across ${ov.panels.length} area(s)` : 'no panel count'}{ov.measurements.length ? `, ${ov.measurements.map((m) => `${m.label} ${m.qty} ${m.unit}`).join(', ')}` : ''}. Check the quantities and rates before sending.</div>}
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
