@@ -115,6 +115,8 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
   for (const l of PREPARE) { doc.setFillColor(...TEAL); doc.circle(M + 6, pk - 1.2, 1.1, 'F'); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.4); doc.setTextColor(...INK); for (const part of lines(l, CW - 16, 9.4)) { doc.text(part, M + 11, pk); pk += 4.5; } pk += 1.6; }
   y += ph + 4;
 
+  if (c.disclaimer?.trim()) { section('Service disclaimer'); for (const t of c.disclaimer.trim().split(/\n\s*\n/)) { para(t.trim(), M, CW, 8.8, 4.2, MUTED); y += 1; } y += 2; }
+
   // ---- please note ----
   const notes = [CHANGE_NOTE, WEATHER_NOTE]; const nh = notes.reduce((n, l) => n + lines(l, CW - 18, 9.2).length, 0) * 4.4 + notes.length * 1.4 + 9; need(nh + 2);
   doc.setFillColor(255, 247, 224); doc.roundedRect(M, y, CW, nh, 2, 2, 'F'); doc.setFillColor(...[44, 154, 69] as RGB); doc.rect(M, y + 2, 1.2, nh - 4, 'F'); txt('PLEASE NOTE', M + 6, y + 6, { size: 7.5, bold: true, color: [138, 90, 16] });

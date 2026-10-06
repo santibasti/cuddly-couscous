@@ -46,6 +46,7 @@ export function JobOrderDocument({ order }: { order: View }) {
       <div className="joc-k">Your team</div><p style={{ marginTop: 2 }}>{c.team.leader ? <>Team Leader: <b>{c.team.leader}</b>{c.team.crew.length ? <><br />Crew: {c.team.crew.join(', ')}</> : null}</> : 'Team assignment to follow.'}</p>
       {c.access_notes.length > 0 && <><div className="joc-k">Safety and access notes / your requirements</div><ul style={{ marginTop: 2 }}>{c.access_notes.map((n, i) => <li key={i}>{n}</li>)}</ul></>}
       <div className="joc-k">What to prepare</div><ul style={{ marginTop: 2 }}>{PREPARE.map((n) => <li key={n}>{n}</li>)}</ul>
+      {c.disclaimer?.trim() && <><div className="joc-k">Service disclaimer</div>{c.disclaimer.trim().split(/\n\s*\n/).map((t, i) => <p key={i} style={{ marginTop: 2 }}>{t}</p>)}</>}
       <div className="joc-k">Please note</div><ul style={{ marginTop: 2 }}><li>{CHANGE_NOTE}</li><li>{WEATHER_NOTE}</li></ul>
     </div>
   );

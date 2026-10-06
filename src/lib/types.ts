@@ -798,6 +798,8 @@ export interface JobOrderContent {
   client: { name: string; contact_person: string; email?: string };
   /** client's own address (kept outside `client` so adding it never creates a spurious revised version of an order already sent) */
   client_address?: string;
+  /** service disclaimer from the approved quotation (company default when it has none) */
+  disclaimer?: string;
   location: { name: string; address: string; contact_person: string; contact_mobile: string };
   booking_date: string; service_date: string; arrival_from: string; arrival_to: string; duration_hours: number;
   service_types: string[];
