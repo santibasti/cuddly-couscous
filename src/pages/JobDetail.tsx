@@ -37,7 +37,7 @@ export default function JobDetail() {
   const myEmp = user?.employee_id;
   if (!can('jobs.all') && !(myEmp && (j.leader_id === myEmp || j.crew_ids.includes(myEmp)))) return <div className="alert warn">This job is not assigned to you.</div>;
 
-  const client = db.clients.find((c) => c.id === j.client_id)!;
+  const client = db.clients.find((c) => c.id === j.client_id);   // may be unreadable for crew accounts
   const site = db.sites.find((s) => s.id === j.site_id);
   const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? '—';
   const locked = isDone(j.status);
@@ -46,14 +46,14 @@ export default function JobDetail() {
   const canWork = can('jobs.complete') && !locked && j.status !== 'Cancelled';
   const cost = can('profit.view') ? jobCost(db, j) : null;
   const inv = db.invoices.find((i) => i.job_id === j.id && i.status !== 'Reversed' && !i.deleted_at);
-  const assetsOn = [...(j.vehicle_id ? [j.vehicle_id] : []), ...j.equipment_ids].map((aid) => ({ a: db.assets.find((a) => a.id === aid)!, co: db.checkouts.filter((c) => c.asset_id === aid && c.job_id === j.id).sort((x, y) => y.created_at.localeCompare(x.created_at))[0] }));
+  const assetsOn = [...(j.vehicle_id ? [j.vehicle_id] : []), ...j.equipment_ids].map((aid) => ({ a: db.assets.find((a) => a.id === aid), co: db.checkouts.filter((c) => c.asset_id === aid && c.job_id === j.id).sort((x, y) => y.created_at.localeCompare(x.created_at))[0] })).flatMap((x) => (x.a ? [{ a: x.a, co: x.co }] : []));   // assets this account cannot read are left out
   const logs = db.audit.filter((a) => a.record_id === j.id).slice(0, 12);
 
   const upd = (patch: Partial<Job>, ok?: string) => attempt(() => updateJobField(j.id, patch), ok);
 
   return (
     <>
-      <PageHead title={<>{j.number} <Badge>{j.status}</Badge></>} sub={<>{client.name} · {site?.name} · {fmtDateTime(j.start_at)} → {fmtDateTime(j.end_at)}</>}>
+      <PageHead title={<>{j.number} <Badge>{j.status}</Badge></>} sub={<>{client?.name ?? ''}{client ? ' · ' : ''}{site?.name} · {fmtDateTime(j.start_at)} → {fmtDateTime(j.end_at)}</>}>
         <Link to="/jobs" className="btn">← Jobs</Link>
         {can('jobs.edit') && !locked && <button className="btn" onClick={() => setEdit(true)}><Icon name="edit" />Edit / reassign</button>}
         {can('jobs.edit') && j.status === 'Pending' && <button className="btn" onClick={() => attempt(() => setJobStatus(j.id, 'Confirmed'), 'Job confirmed')}>Confirm</button>}
@@ -80,7 +80,7 @@ export default function JobDetail() {
           <Card title="Scope of work"><p style={{ marginTop: 0 }}>{j.scope || '—'}</p><div className="row">{j.service_codes.map((c) => <Badge key={c} tone="teal">{db.services.find((s) => s.code === c)?.name}</Badge>)}</div></Card>
           <Card title="Site & contact">
             <dl className="kv"><dt>Site</dt><dd>{site?.name}</dd><dt>Address</dt><dd>{site?.address} {site && <a target="_blank" rel="noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.address)}`}>Map ↗</a>}</dd>
-              <dt>Contact</dt><dd>{site?.contact_person} {site?.contact_mobile && <a href={`tel:${site.contact_mobile}`}>{site.contact_mobile}</a>}</dd><dt>Access</dt><dd>{site?.access_instructions || client.access_instructions || '—'}</dd></dl>
+              <dt>Contact</dt><dd>{site?.contact_person} {site?.contact_mobile && <a href={`tel:${site.contact_mobile}`}>{site.contact_mobile}</a>}</dd><dt>Access</dt><dd>{site?.access_instructions || client?.access_instructions || '—'}</dd></dl>
           </Card>
           <Card title="Assigned crew">
             <div className="row"><Badge tone="navy">Leader</Badge><b>{emp(j.leader_id)}</b></div>
@@ -114,7 +114,8 @@ export default function JobDetail() {
           <Card title="Materials" flush>
             <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Item</th><th className="num">Planned</th><th className="num">Issued (net)</th><th className="num">Used</th><th className="num">Available</th></tr></thead><tbody>
               {j.materials.map((m) => {
-                const it = db.items.find((i) => i.id === m.item_id)!;
+                const it = db.items.find((i) => i.id === m.item_id);
+                if (!it) return <tr key={m.item_id}><td colSpan={5} className="muted">Material planned: {m.planned_qty} (item details not available to your login)</td></tr>;
                 const issued = -db.stock.filter((t) => t.approval === 'Approved' && t.job_id === j.id && t.item_id === m.item_id && ['Issue to Job', 'Return from Job'].includes(t.type)).reduce((s, t) => s + t.qty, 0);
                 return <tr key={m.item_id}><td>{it.name}</td><td className="num">{m.planned_qty} {it.uom}</td><td className="num">{issued}</td><td className="num">{m.used_qty ?? '—'}</td><td className="num">{stockSummary(db, it.id).available}</td></tr>;
               })}
