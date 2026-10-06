@@ -202,6 +202,7 @@ export async function pushChanges(prev: DB, next: DB, soft: Set<string>, journal
       await run(op.id, async () => {
         const { data, error } = await tolerant(t, row, (x) => supabase().from(t).update(x).eq('id', op.id).select('id'));
         if (error) throw new CloudError(error.message, error.code);
+        if (!(data as unknown[] | null | undefined)?.length && Object.keys(row).length && Object.keys(row).every((k) => missingCols[t]?.has(k))) throw new CloudError(`The database has not been updated for this change yet (${Object.keys(row).join(', ')}). Ask the administrator to run the latest database update (supabase db push), then try again.`, '42501');
         if (!(data as unknown[] | null | undefined)?.length) throw new CloudError(`You do not have permission to change this record (${t.replace(/_/g, ' ')}).`, '42501');
       });
     }

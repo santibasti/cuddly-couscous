@@ -10,6 +10,31 @@ import type { Job } from '@/lib/types';
 const t12 = (hm: string) => { const h = +hm.slice(0, 2); return `${((h + 11) % 12) + 1}:${hm.slice(3, 5)} ${h >= 12 ? 'PM' : 'AM'}`; };
 const useNow = () => { const [n, setN] = useState(nowLocal()); useEffect(() => { const t = setInterval(() => setN(nowLocal()), 30000); return () => clearInterval(t); }, []); return n; };
 
+/** Where the job is, what the service is and what the team must use and bring — so they know before they confirm. */
+function JobBrief({ job }: { job: Job }) {
+  const { db } = useAuth();
+  const site = db.sites.find((x) => x.id === job.site_id); const client = db.clients.find((x) => x.id === job.client_id);
+  const services = job.service_codes.map((c) => db.services.find((x) => x.code === c)?.name ?? c);
+  const gear = job.equipment_ids.map((id) => db.assets.find((a) => a.id === id)?.name).filter(Boolean) as string[];
+  const vehicle = job.vehicle_id ? db.assets.find((a) => a.id === job.vehicle_id)?.name : undefined;
+  const mats = job.materials.map((m) => { const it = db.items.find((i) => i.id === m.item_id); return it ? `${it.name} × ${m.planned_qty} ${it.uom}` : ''; }).filter(Boolean);
+  const team = teamOf(job).map((id) => db.employees.find((e) => e.id === id)?.full_name).filter(Boolean) as string[];
+  const row = (k: string, v: React.ReactNode) => <div style={{ display: 'grid', gridTemplateColumns: '112px 1fr', gap: 8 }}><span className="muted">{k}</span><span>{v}</span></div>;
+  return (
+    <div className="small" style={{ display: 'grid', gap: 5, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+      {row('Location', <><b>{site?.name ?? '—'}</b>{site?.address ? <>, {site.address} <a target="_blank" rel="noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.address)}`}>Map ↗</a></> : null}</>)}
+      {client && row('Client', client.name)}
+      {(site?.contact_person || site?.access_instructions) && row('Site contact', <>{site?.contact_person}{site?.contact_mobile ? ` · ${site.contact_mobile}` : ''}{site?.access_instructions ? <div className="muted">{site.access_instructions}</div> : null}</>)}
+      {row('Service', <><b>{services.join(', ') || '—'}</b>{job.scope ? <div>{job.scope}</div> : null}</>)}
+      {row('Equipment', gear.length ? gear.join(', ') : <span className="muted">none listed — Operations prepares it at HQ</span>)}
+      {vehicle && row('Vehicle', vehicle)}
+      {mats.length > 0 && row('Materials', mats.join(' · '))}
+      {job.ppe.length > 0 && row('PPE to wear', job.ppe.join(', '))}
+      {team.length > 0 && row('Team', team.join(', '))}
+    </div>
+  );
+}
+
 /** Banner at the top of the app for the signed-in employee: one card per job still waiting for their answer. */
 export function AvailabilityPrompt() {
   const { db, user } = useAuth(); const now = useNow();
@@ -20,12 +45,12 @@ export function AvailabilityPrompt() {
   return (
     <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
       {jobs.map((j) => {
-        const c = db.clients.find((x) => x.id === j.client_id); const site = db.sites.find((x) => x.id === j.site_id);
         const day = j.start_at.slice(0, 10) === now.slice(0, 10) ? 'Today' : 'Tomorrow';
         return (
           <div key={j.id} className="alert warn" role="alert" style={{ display: 'grid', gap: 8 }}>
             <div><b style={{ fontSize: 15 }}>Please confirm your availability — {day}, {fmtDate(j.start_at.slice(0, 10))} at {t12(j.start_at.slice(11))}</b></div>
-            <div className="small">{c?.name}{site ? ` · ${site.name}` : ''}{site?.address ? ` · ${site.address}` : ''} · {j.number}{j.leader_id === emp ? ' · you are the Team Leader' : ''}</div>
+            <div className="small">{j.number}{j.leader_id === emp ? ' · you are the Team Leader' : ''}</div>
+            <JobBrief job={j} />
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
               <button className="btn primary" onClick={() => attempt(() => confirmAvailability(j.id, 'confirmed'), 'Thank you — confirmed')}>✔ I'm available</button>
               <button className="btn danger" onClick={async () => { const r = await ask('I cannot make it', 'Reason (the Operations team will be told)', { required: true, okLabel: 'Send' }); if (r) attempt(() => confirmAvailability(j.id, 'declined', r), 'Operations has been told'); }}>✖ I can't make it</button>
