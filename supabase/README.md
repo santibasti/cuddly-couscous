@@ -90,3 +90,10 @@ Give each person their email and password privately. A crew member opens the app
 sees their jobs, the job workflow and attendance approval for the crew. Replayed under row-level security: a crew member can clock in / out and file a
 correction for themselves only, cannot clock in for someone else or approve attendance, and sees no payroll; a Team Leader can approve crew
 attendance but not their own.
+
+## Removing the sample data
+
+`tools/preview-demo-data.sql` (read-only) counts the sample rows and your own rows; `tools/clear-demo-data.sql` removes the sample rows only
+(ids like `cl-0007`; rows you created have long random ids) in one transaction. It keeps logins, your own records, company settings and document counters,
+the service price list, branches, storage locations, holidays, maintenance checklist templates, and the inventory / equipment names as a starting list
+(their stock movements, checkouts and maintenance history are cleared). Run it once in the Supabase SQL editor, after the preview.
