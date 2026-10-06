@@ -46,15 +46,35 @@ export const hero = () => `
         <li>${icon('check', 18)}Start with one module</li>
         <li>${icon('check', 18)}Usable on phones and tablets</li>
       </ul>
+      <dl class="facts">
+        <div><dt>${c.solutions.length}</dt><dd>Core modules</dd></div>
+        <div><dt>${c.steps.length}</dt><dd>Implementation steps</dd></div>
+        <div><dt>${c.industries.length}</dt><dd>Industry setups</dd></div>
+        <div><dt>1</dt><dd>Shared set of records</dd></div>
+      </dl>
     </div>
-    <div class="hero-visual">${heroDashboard()}</div>
+    <div class="hero-visual">
+      ${heroDashboard()}
+      <div class="float-badge fb-top">${icon('shield', 20)}<div><strong>Agreed scope</strong><span>Data ownership defined in the agreement</span></div></div>
+      <div class="float-badge fb-bottom">${icon('layers', 20)}<div><strong>Start with one module</strong><span>Add more as you grow</span></div></div>
+    </div>
+  </div>
+</section>`;
+
+const tickerItems = ['Attendance', 'Payroll preparation', 'Equipment tracking', 'Inventory', 'Bookings', 'Job queue', 'Crew assignments', 'Quotations', 'Service reports', 'Client sign-off', 'Billing', 'Collections', 'Player tabs', 'Management dashboards'];
+export const ticker = () => `
+<section class="ticker" aria-label="Capabilities">
+  <p class="ticker-label">Built around everyday operations</p>
+  <div class="ticker-viewport">
+    <ul class="ticker-track">${tickerItems.map((t) => `<li>${t}</li>`).join('')}</ul>
+    <ul class="ticker-track" aria-hidden="true">${tickerItems.map((t) => `<li>${t}</li>`).join('')}</ul>
   </div>
 </section>`;
 
 export const problems = () => `
 <section class="section" id="problems" aria-labelledby="problems-title">
   <div class="container">
-    ${sectionHead('Sound familiar?', 'Daily operations shouldn’t live in five different places.', 'These are common patterns in growing businesses. Each one maps to a practical capability in the system.').replace('<h2>', '<h2 id="problems-title">')}
+    ${sectionHead('Sound familiar?', 'Daily operations shouldn’t live in five different places.', 'These are common patterns in growing businesses. Each one maps to a practical capability in the system.', true).replace('<h2>', '<h2 id="problems-title">')}
     <div class="problem-list">
       ${c.problems.map((p) => `
       <article class="problem reveal">
@@ -69,13 +89,14 @@ export const problems = () => `
 export const solutions = () => `
 <section class="section section-tint" id="solutions" aria-labelledby="solutions-title">
   <div class="container">
-    ${sectionHead('Solutions', 'Modules that fit together.', 'Start with the module that matters most. Add others as your needs grow; they share the same records.').replace('<h2>', '<h2 id="solutions-title">')}
+    ${sectionHead('Solutions', 'Modules that fit together.', 'Start with the module that matters most. Add others as your needs grow; they share the same records.', true).replace('<h2>', '<h2 id="solutions-title">')}
     <div class="card-grid">
       ${c.solutions.map((s) => `
       <article class="card reveal">
         <span class="card-ico">${icon(s.icon, 26)}</span>
         <h3>${s.title}</h3>
         <p>${s.text}</p>
+        <a class="card-link" href="#contact">Ask about this ${icon('arrow', 16)}</a>
       </article>`).join('')}
     </div>
   </div>
@@ -84,7 +105,7 @@ export const solutions = () => `
 export const sampleDashboard = () => `
 <section class="section" id="dashboard" aria-labelledby="dashboard-title">
   <div class="container">
-    ${sectionHead('Sample dashboard', 'What the owner sees each morning.', 'An illustrative view of how records entered by your team can come together. All figures are sample data, in Philippine pesos.').replace('<h2>', '<h2 id="dashboard-title">')}
+    ${sectionHead('Sample dashboard', 'What the owner sees each morning.', 'An illustrative view of how records entered by your team can come together. All figures are sample data, in Philippine pesos.', true).replace('<h2>', '<h2 id="dashboard-title">')}
     <div class="reveal">${fullDashboard()}</div>
   </div>
 </section>`;
@@ -92,7 +113,7 @@ export const sampleDashboard = () => `
 export const industries = () => `
 <section class="section section-tint" id="industries" aria-labelledby="industries-title">
   <div class="container">
-    ${sectionHead('Industries', 'One approach, adapted to how you operate.', 'The building blocks stay the same; the screens, fields and reports are configured for your kind of business.').replace('<h2>', '<h2 id="industries-title">')}
+    ${sectionHead('Industries', 'One approach, adapted to how you operate.', 'The building blocks stay the same; the screens, fields and reports are configured for your kind of business.', true).replace('<h2>', '<h2 id="industries-title">')}
     <div class="industry-grid">
       ${c.industries.map((i) => `
       <article class="industry reveal">
@@ -112,11 +133,11 @@ const projectPreview = (kind) => kind === 'topmop'
 export const work = () => `
 <section class="section" id="work" aria-labelledby="work-title">
   <div class="container">
-    ${sectionHead('Our Work', 'Two projects, described plainly.', 'We show where each project stands today. Previews below are illustrative, not screenshots.').replace('<h2>', '<h2 id="work-title">')}
+    ${sectionHead('Our Work', 'Two projects, described plainly.', 'We show where each project stands today. Previews below are illustrative, not screenshots.', true).replace('<h2>', '<h2 id="work-title">')}
     <div class="work-grid">
       ${c.projects.map((p) => `
       <article class="work-card reveal">
-        <div class="work-preview">${projectPreview(p.kind)}<span class="preview-tag">Illustrative preview</span></div>
+        <div class="work-preview"><div class="win-bar" aria-hidden="true"><i></i><i></i><i></i><span>Illustrative preview</span></div>${projectPreview(p.kind)}</div>
         <div class="work-body">
           <span class="status-pill ${p.kind === 'topmop' ? 'pill-dev' : 'pill-demo'}">${p.status}</span>
           <h3>${p.name}</h3>
@@ -131,12 +152,11 @@ export const work = () => `
 export const process = () => `
 <section class="section section-tint" id="process" aria-labelledby="process-title">
   <div class="container">
-    ${sectionHead('Implementation process', 'From first conversation to launch.', 'A clear path with agreed scope at every stage.').replace('<h2>', '<h2 id="process-title">')}
+    ${sectionHead('Implementation process', 'From first conversation to launch.', 'A clear path with agreed scope at every stage.', true).replace('<h2>', '<h2 id="process-title">')}
     <ol class="steps">
       ${c.steps.map((s, i) => `
       <li class="step reveal">
-        <span class="step-num">0${i + 1}</span>
-        <span class="step-ico">${icon(s.icon, 22)}</span>
+        <div class="step-top"><span class="step-num">0${i + 1}</span><span class="step-ico">${icon(s.icon, 22)}</span></div>
         <h3>${s.title}</h3>
         <p>${s.text}</p>
       </li>`).join('')}
@@ -162,7 +182,7 @@ export const about = () => `
 export const engagement = () => `
 <section class="section section-tint" id="engagement" aria-labelledby="engagement-title">
   <div class="container">
-    ${sectionHead('Engagement model', 'Simple to understand, defined in writing.', 'We are not publishing fixed prices yet. After a workflow consultation we provide a quotation based on your scope.').replace('<h2>', '<h2 id="engagement-title">')}
+    ${sectionHead('Engagement model', 'Simple to understand, defined in writing.', 'We are not publishing fixed prices yet. After a workflow consultation we provide a quotation based on your scope.', true).replace('<h2>', '<h2 id="engagement-title">')}
     <div class="engage-grid">
       ${c.engagement.map((e, i) => `<article class="engage reveal"><span class="engage-n">${i + 1}</span><h3>${e.title}</h3><p>${e.text}</p></article>`).join('')}
     </div>
@@ -173,7 +193,7 @@ export const engagement = () => `
 export const faq = () => `
 <section class="section" id="faq" aria-labelledby="faq-title">
   <div class="container faq-wrap">
-    ${sectionHead('FAQ', 'Common questions', '').replace('<h2>', '<h2 id="faq-title">')}
+    ${sectionHead('FAQ', 'Common questions', '', true).replace('<h2>', '<h2 id="faq-title">')}
     <div class="faq-list reveal">
       ${c.faqs.map((f) => `<details class="faq"><summary><span>${f.q}</span>${icon('plus', 20)}</summary><p>${f.a}</p></details>`).join('')}
     </div>

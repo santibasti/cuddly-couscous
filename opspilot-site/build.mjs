@@ -30,6 +30,7 @@ const html = `<!doctype html>
 ${ui.header()}
 <main id="main">
 ${ui.hero()}
+${ui.ticker()}
 ${ui.problems()}
 ${ui.solutions()}
 ${ui.sampleDashboard()}
