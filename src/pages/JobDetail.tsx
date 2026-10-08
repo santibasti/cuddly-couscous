@@ -40,7 +40,7 @@ export default function JobDetail() {
 
   const client = db.clients.find((c) => c.id === j.client_id);   // may be unreadable for crew accounts
   const site = db.sites.find((s) => s.id === j.site_id);
-  const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? '—';
+  const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? (id ? 'Unknown employee' : '—');
   const locked = isDone(j.status);
   const fc = finalContract(db, j);
   const hasVars = db.variations.some((v) => v.job_id === j.id && v.status === 'Approved' && !v.deleted_at);

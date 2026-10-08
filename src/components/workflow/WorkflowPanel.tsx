@@ -126,7 +126,7 @@ export function WorkflowPanel({ job, above }: { job: Job; onDetails?: () => void
 /* ================= Step 1: Job Prep at HQ ================= */
 function PrepForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
   const { db } = useAuth();
-  const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? '—';
+  const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? (id ? 'Unknown employee (reassign on the job)' : '—');
   const [items, setItems] = useState<CheckItem[]>(wf.items);
   const [fuel, setFuel] = useState<FuelLevel | undefined>(wf.hq_fuel);
   const [reason, setReason] = useState(wf.hq_shortage_reason ?? '');
@@ -239,7 +239,7 @@ function mergePrep(saved: CheckItem[], local: CheckItem[]): CheckItem[] {
 function CheckInForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
   const { db } = useAuth();
   const crew = [...new Set([...(job.leader_id ? [job.leader_id] : []), ...job.crew_ids])];
-  const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? '—';
+  const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? (id ? 'Unknown employee (reassign on the job)' : '—');
   const site = db.sites.find((s) => s.id === job.site_id);
   const [at, setAt] = useState(nowLocal());
   const [present, setPresent] = useState<string[]>(crew);
@@ -271,7 +271,7 @@ function CheckInForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean
 }
 function CheckInSummary({ wf }: { wf: JobWorkflow }) {
   const { db } = useAuth();
-  const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? '—';
+  const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? (id ? 'Unknown employee (reassign on the job)' : '—');
   return <dl className="kv"><dt>Arrived</dt><dd>{fmtDateTime(wf.arr_at)}</dd><dt>Site contact</dt><dd>{wf.arr_contact_name} {wf.arr_contact_mobile}</dd>
     <dt>Attendance</dt><dd>Present: {(wf.arr_crew_present ?? []).map(emp).join(', ') || '—'}{(wf.arr_crew_absent ?? []).length > 0 && <div className="small">Absent: {(wf.arr_crew_absent ?? []).map((a) => `${emp(a.id)} (${a.reason})`).join(', ')}</div>}</dd>{wf.arr_notes && <><dt>Site note</dt><dd>{wf.arr_notes}</dd></>}</dl>;
 }

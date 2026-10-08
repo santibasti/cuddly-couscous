@@ -173,14 +173,15 @@ export function arriveAtSite(id: string, f: CheckInForm) {
   const unaccounted = crew.filter((e) => !f.present.includes(e) && !f.absent.some((a) => a.id === e && a.reason.trim()));
   if (unaccounted.length) fail(`Confirm attendance for every assigned crew member. Missing: ${unaccounted.map((e) => db().employees.find((x) => x.id === e)?.full_name ?? e).join(', ')}.`);
   if (!f.present.length) fail('At least one crew member must be present on site.');
-  // sync to the existing Attendance module — link / create a single record per person per day, never a duplicate
+  // sync to the existing Attendance module — link / create a single record per person per day, never a duplicate.
+  // (housekeeping: if one record is refused — e.g. a crew id that no longer exists — the check-in itself still saves)
   const date = at.slice(0, 10);
   for (const e of f.present) {
     const att = db().attendance.find((a) => a.employee_id === e && a.date === date && !a.deleted_at);
     if (!att) {
       const emp = db().employees.find((x) => x.id === e);
-      store.insert('attendance', { employee_id: e, date, kind: 'Present', clock_in: at, job_id: job.id, field_work: true, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending', notes: 'Presence confirmed by Team Leader at site check-in' } as never, `Attendance synced from job workflow: ${emp?.full_name}`);
-    } else if (!att.job_id || !att.field_work) store.update('attendance', att.id, { job_id: job.id, field_work: true }, 'update', `Attendance linked to ${job.number} at site check-in`);
+      store.systemInsert('attendance', { employee_id: e, date, kind: 'Present', clock_in: at, job_id: job.id, field_work: true, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending', notes: 'Presence confirmed by Team Leader at site check-in' } as never, `Attendance synced from job workflow: ${emp?.full_name}`);
+    } else if (!att.job_id || !att.field_work) store.system('attendance', att.id, { job_id: job.id, field_work: true }, `Attendance linked to ${job.number} at site check-in`);
   }
   store.update('workflows', id, { arr_at: at, arr_by: uidNow(), arr_contact_name: f.contact_name.trim(), arr_contact_mobile: f.contact_mobile, arr_notes: f.notes, arr_crew_present: f.present, arr_crew_absent: f.absent } as never, 'update', `${job.number}: checked in at site ${at.slice(11)}, attendance confirmed`);
   setStatus(db().jobs.find((j) => j.id === job.id)!, 'On Site');
