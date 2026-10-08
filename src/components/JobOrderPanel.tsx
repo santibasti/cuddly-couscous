@@ -1,5 +1,6 @@
 // Job Order Confirmation section on the booking (job) page: status, sent date / time, version history and the send / download actions.
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Modal, attempt, useObj } from '@/components/ui';
 import { Fold } from '@/components/Fold';
@@ -40,7 +41,7 @@ function SendModal({ order, resend, onClose }: { order: JobOrder; resend: boolea
 
 export function JobOrderPanel({ job, fold = false }: { job: Job; fold?: boolean }) {
   const { db, can, user } = useAuth();
-  const [preview, setPreview] = useState<JobOrder | null>(null);
+  const nav = useNavigate(); const setPreview = (o: JobOrder) => nav(`/job-order/${o.id}`);
   const [send, setSend] = useState<{ order: JobOrder; resend: boolean } | null>(null);
   const manage = can('joborders.manage');
   useEffect(() => { if (manage && ORDER_JOB_STATUSES.includes(job.status)) syncJobOrders(job.id); }, [manage, job.id, job.status, job.start_at, job.end_at, job.leader_id, job.crew_ids.join(), job.quotation_id, db.variations, db.discount_requests]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -88,7 +89,6 @@ export function JobOrderPanel({ job, fold = false }: { job: Job; fold?: boolean 
           <td><button className="btn sm" onClick={() => setPreview(o)}>Open</button> <button className="btn sm" onClick={() => attempt(() => downloadJobOrder(o, who))}>PDF</button></td></tr>)}</tbody></table>
       <details style={{ marginTop: 8 }}><summary className="small" style={{ cursor: 'pointer' }}>Audit trail ({head.history.length})</summary>
         <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{[...head.history].reverse().map((h, i) => <li key={i}>{fmtStamp(h.at)} · {h.by} · {h.action}{h.note ? ` — ${h.note}` : ''}</li>)}</ul></details>
-      {preview && <Modal size="wide" title={`${orderLabel(preview)} · ${preview.status}`} onClose={() => setPreview(null)} footer={<><button className="btn" onClick={() => setPreview(null)}>Close</button><button className="btn" onClick={() => attempt(() => printJobOrder(preview, who))}>Print</button><button className="btn primary" onClick={() => attempt(() => downloadJobOrder(preview, who))}>Download PDF</button></>}><JobOrderDocument order={preview} /></Modal>}
       {send && <SendModal order={send.order} resend={send.resend} onClose={() => setSend(null)} />}
     </Card>
   );

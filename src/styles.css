@@ -714,3 +714,19 @@ body.dark .kpi[class*="g-"] .v { font-size: 27px; text-shadow: 0 1px 6px rgba(0,
   .pcount tfoot th:first-child::after { content: ''; }
 }
 @media (max-width: 880px) { .pcount tfoot th[data-label]::before { content: attr(data-label) ': '; font-weight: 400; color: var(--muted); } }
+
+/* Job Order review page: the document on a centred sheet */
+.jopage { max-width: 900px; margin: 0 auto; }
+.jopage-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.jopage-bar .grow { flex: 1; min-width: 180px; }
+.jopage-sheet { background: #fff; color: #14243a; border-radius: 12px; box-shadow: 0 6px 28px rgba(0,0,0,.28); padding: 28px 34px 34px; margin-bottom: 30px; }
+.jopage-sheet .joc { padding: 0; }
+@media (max-width: 700px) { .jopage-sheet { padding: 14px 14px 20px; border-radius: 8px; } }
+/* the paper stays light in the dark theme: tiles and the final total keep their own colours */
+body.dark .jopage-sheet, body.dark .joc { --panel: #fff; --line: #dde4ec; --line-2: #eaeff4; --text: #14243a; --muted: #5b6b80; --head: #0b2545; --ink: #14243a; --gray-bg: #eef2f6; --teal-bg: #dff4f6; --green-bg: #e3f4e8; --amber-bg: #fdf3dc; --red-bg: #fde8ea; }
+body.dark .joc .stat { background: #f8fafc; border-color: #dde4ec; color: #14243a; }
+body.dark .joc .stat .k { color: #5b6b80; } body.dark .joc .stat .v { color: #0b2545; } body.dark .joc .stat .s { color: #5b6b80; }
+body.dark .joc .joc-final td { background: #0b2545; color: #fff; }
+body.dark .joc .joc-k { color: #5b6b80; } body.dark .joc .small { color: #5b6b80; } body.dark .joc .joc-head .small { color: #b7cde4; }
+body.dark .joc a { color: #0a5b64; }
+body.dark .joc .alert.warn { background: #fdf3dc; border-color: #efd28f; color: #6d4708; } body.dark .joc .alert.info { background: #dff4f6; border-color: #b6e1e5; color: #0a5b64; }

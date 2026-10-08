@@ -35,6 +35,7 @@ import Notifications from '@/pages/Notifications';
 import Portal from '@/pages/Portal';
 import JobOrderPublic from '@/pages/JobOrderPublic';
 import QuotePublic from '@/pages/QuotePublic';
+import JobOrderPage from '@/pages/JobOrderPage';
 
 const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: string; group?: string }[] = [
   { to: '/dashboard', key: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'Overview' },
@@ -150,6 +151,7 @@ function Shell() {
             <Route path="/sales/quote/:id" element={<Guard area="sales"><QuoteEditor /></Guard>} />
             <Route path="/jobs" element={<Guard area="jobs"><Jobs /></Guard>} />
             <Route path="/jobs/:id" element={<Guard area="jobs"><JobDetail /></Guard>} />
+            <Route path="/job-order/:id" element={<Guard area="jobs"><JobOrderPage /></Guard>} />
             <Route path="/dispatch/*" element={<Navigate to="/jobs" replace />} />
             <Route path="/attendance" element={<Guard area="attendance"><Attendance /></Guard>} />
             <Route path="/employees" element={<Guard area="employees"><Employees /></Guard>} />
