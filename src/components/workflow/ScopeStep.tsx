@@ -73,7 +73,7 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
   const { db } = useAuth();
   const q = db.quotations.find((x) => x.id === (wf.conf_quotation_id ?? job.quotation_id));
   const t = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
-  const client = db.clients.find((c) => c.id === job.client_id)!; const site = db.sites.find((s) => s.id === job.site_id);
+  const client = db.clients.find((c) => c.id === job.client_id); const site = db.sites.find((s) => s.id === job.site_id);
   const signed = !!wf.conf_at;
   const route = scopeRoute(db, job, wf);
   const recurring = route === 'recurring';
@@ -94,7 +94,7 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
       )}
       <div className="card" style={{ padding: 12 }}>
         <div className="row between"><b>{recurring && !signed ? 'Existing approved scope' : 'Original quotation'} {q?.number ?? '—'}</b><Badge tone="gray">approved — read-only</Badge></div>
-        <dl className="kv"><dt>Client / site</dt><dd>{client.name} · {site?.name}</dd><dt>Scope</dt><dd>{q?.scope ?? job.scope}</dd></dl>
+        <dl className="kv"><dt>Client / site</dt><dd>{client?.name ?? ''}{client ? ' · ' : ''}{site?.name}</dd><dt>Scope</dt><dd>{q?.scope ?? job.scope}</dd></dl>
         {q && t ? (
           <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Description</th><th className="num">Qty</th><th>Unit</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead><tbody>
             {q.items.map((i, k) => <tr key={k}><td>{i.description}</td><td className="num">{i.qty}</td><td>{i.unit}</td><td className="num">{money(i.rate)}</td><td className="num">{money(i.qty * i.rate - i.discount)}</td></tr>)}

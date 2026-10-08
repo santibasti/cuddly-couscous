@@ -186,7 +186,7 @@ function PrepForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean })
 
 function MaterialCard({ it, setItem, confirmItem, disabled }: { it: CheckItem; setItem: (k: string, p: Partial<CheckItem>) => void; confirmItem: (i: CheckItem, by: 'manual') => void; disabled: boolean }) {
   const { db } = useAuth();
-  const inv = db.items.find((x) => x.id === it.item_id)!; const oh = db.stock.filter((t) => t.approval === 'Approved' && t.item_id === inv.id && t.location_id === inv.location_id).reduce((s, t) => s + t.qty, 0);
+  const inv = db.items.find((x) => x.id === it.item_id); const oh = !inv ? 0 : db.stock.filter((t) => t.approval === 'Approved' && t.item_id === inv.id && t.location_id === inv.location_id).reduce((s, t) => s + t.qty, 0);
   return (
     <div className={`itemcard ${it.out_ok ? 'ok' : ''}`}>
       <div className="row between"><div><b>{it.label}</b> <span className="muted small">{it.code}</span></div>{it.out_ok ? <Badge tone="green">✓ Confirmed</Badge> : <Badge tone="amber">Not confirmed</Badge>}</div>
@@ -194,7 +194,7 @@ function MaterialCard({ it, setItem, confirmItem, disabled }: { it: CheckItem; s
         <Field label={`Quantity issued (${it.unit ?? ''}) — need ${it.qty}`}><MatStepper it={it} setItem={setItem} disabled={disabled} /></Field>
         <Field label="Container"><Seg value={it.out_container ?? 'Good'} options={['Good', 'Damaged', 'Leaking'] as const} disabled={disabled} tone={(v) => (v === 'Good' ? 'good' : 'bad')} onChange={(v) => setItem(it.key, { out_container: v })} /></Field>
       </div>
-      <div className="small muted">On hand: <b>{Math.round(oh * 100) / 100} {inv.uom}</b> — issuing deducts from Inventory when job prep is confirmed.</div>
+      <div className="small muted">On hand: <b>{Math.round(oh * 100) / 100} {inv?.uom ?? ""}</b> — issuing deducts from Inventory when job prep is confirmed.</div>
       {!disabled && <label className="check"><input type="checkbox" checked={!!it.out_ok} onChange={(e) => (e.target.checked ? confirmItem(it, 'manual') : setItem(it.key, { out_ok: false }))} />Confirm</label>}
     </div>
   );

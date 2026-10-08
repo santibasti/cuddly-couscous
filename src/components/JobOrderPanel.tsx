@@ -47,7 +47,20 @@ export function JobOrderPanel({ job, fold = false }: { job: Job; fold?: boolean 
   useEffect(() => { if (manage && ORDER_JOB_STATUSES.includes(job.status)) syncJobOrders(job.id); }, [manage, job.id, job.status, job.start_at, job.end_at, job.leader_id, job.crew_ids.join(), job.quotation_id, db.variations, db.discount_requests]); // eslint-disable-line react-hooks/exhaustive-deps
   const head = headOrder(db, job.id); const all = ordersOf(db, job.id);
   const client = db.clients.find((c) => c.id === job.client_id);
-  if (!can('joborders.manage') && !can('jobs.all')) return null;
+  if (!can('joborders.manage') && !can('jobs.all')) {
+    // Team Leader on site: show the Job Order to the building security or the client (read-only)
+    const mineOnJob = !!user?.employee_id && (job.leader_id === user.employee_id || job.crew_ids.includes(user.employee_id));
+    if (!can('dispatch.run') || !mineOnJob || !head) return null;
+    return (
+      <Card title="Job Order Confirmation" actions={<Badge tone={TONE[head.status]}>{head.status}</Badge>}>
+        <div className="small muted" style={{ marginBottom: 10 }}>{orderLabel(head)} · {head.content.service_types.join(', ')}. Show this to the building security or the client when you arrive at the site.</div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn primary lg" onClick={() => setPreview(head)}>Show Job Order</button>
+          <button className="btn" onClick={() => attempt(async () => { await downloadJobOrder(head, user?.name); })}>Download PDF</button>
+        </div>
+      </Card>
+    );
+  }
   if (!head) {
     return <Card title="Job Order Confirmation"><p className="muted small" style={{ margin: 0 }}>{['Cancelled', 'Rescheduled'].includes(job.status) ? 'No Job Order was issued for this booking.' : 'A Job Order Confirmation is created automatically when the booking is confirmed. Admin / Operations review it here and send it to the client.'}</p></Card>;
   }

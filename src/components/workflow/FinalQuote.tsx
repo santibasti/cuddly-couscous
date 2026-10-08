@@ -166,7 +166,7 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
 export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: Job; run: boolean; onClose: () => void }) {
   const { db } = useAuth();
   const q = db.quotations.find((x) => x.id === (wf.conf_quotation_id ?? job.quotation_id));
-  const client = db.clients.find((c) => c.id === job.client_id)!; const site = db.sites.find((s) => s.id === job.site_id);
+  const client = db.clients.find((c) => c.id === job.client_id); const site = db.sites.find((s) => s.id === job.site_id);
   const { draft, history } = useReview(job);
   const vat = reviewVat(job);
   const signed = !!wf.conf_at;
@@ -201,7 +201,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
           <div><div className="crbrand">TOPMOP</div><div className="small muted">Window Cleaning Solutions Corp.</div></div>
           <div className="right"><b>Final Quote</b><div className="small muted">{q?.number ?? '—'} · Job {job.number}</div><div className="small muted">{signed ? fmtDateTime(wf.conf_at) : fmtStamp(new Date().toISOString())}</div></div>
         </header>
-        <div className="crparty"><div><span className="small muted">Client</span><br /><b>{client.name}</b></div><div><span className="small muted">Site</span><br /><b>{site?.name}</b><div className="small muted">{site?.address}</div></div></div>
+        <div className="crparty"><div><span className="small muted">Client</span><br /><b>{client?.name ?? '—'}</b></div><div><span className="small muted">Site</span><br /><b>{site?.name}</b><div className="small muted">{site?.address}</div></div></div>
 
         <h3 className="crh">1 · Original Scope of Work <Badge tone="gray">approved quotation — unchanged</Badge></h3>
         <p style={{ margin: '4px 0 8px' }}>{q?.scope ?? job.scope}</p>
