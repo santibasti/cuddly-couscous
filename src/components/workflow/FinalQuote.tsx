@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { LOGO_SMALL_URL } from '@/lib/logo';
+import { LineItems } from '@/components/LineItems';
 import { useAuth } from '@/lib/store';
 import { Badge, Field, Modal, SignaturePad, attempt } from '@/components/ui';
 import { DraftBar, PresetChips, Stepper, Toggle } from '@/components/touch';
@@ -53,6 +55,26 @@ export function FinalSummary({ sm, pendingLabel }: { sm: ReturnType<typeof final
         {sm.deposit > 0 && row('Balance due', money(sm.balance), 'big')}
       </tbody></table>
       {sm.granted > 0 && <p className="small" style={{ margin: '6px 0 0', color: 'var(--green)' }}>{DISCOUNT_NOTICE}</p>}
+    </>
+  );
+}
+
+/** The final billing summary in the premium look (client-facing review). */
+function PremiumSummary({ sm, pendingLabel }: { sm: ReturnType<typeof finalQuoteSummary>; pendingLabel?: string }) {
+  const r = (k: string, v: string, cls?: string) => <div className="row" key={k} style={cls ? { color: cls } : undefined}><span>{k}</span><span>{v}</span></div>;
+  return (
+    <>
+      <div className="pd-tot">
+        {r('Original quote total', money(sm.originalTotal))}
+        {r(pendingLabel ?? 'Additional work total', money(sm.additionalTotal))}
+        {sm.discount > 0 && r('Discounts already in the quoted prices', money(sm.discount))}
+        {sm.granted > 0 && r(`Discount (approved)${sm.request ? ` · ${sm.request.number}` : ''}`, `− ${money(sm.granted)}`)}
+        {r('VAT', money(sm.vat))}
+        <div className="fin"><span>FINAL AMOUNT PAYABLE</span><span>{money(sm.finalTotal)}</span></div>
+        {sm.deposit > 0 && r('Less: deposit / prior payment', `− ${money(sm.deposit)}`)}
+        {sm.deposit > 0 && <div className="fin" style={{ marginTop: 6 }}><span>BALANCE DUE</span><span>{money(sm.balance)}</span></div>}
+      </div>
+      {sm.granted > 0 && <p className="pd-small" style={{ color: '#1f7a3a' }}>{DISCOUNT_NOTICE}</p>}
     </>
   );
 }
@@ -196,30 +218,30 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
     <div className="clientreview" role="dialog" aria-modal="true" aria-label="Client Final Quote Review">
       {declining && <DeclineJobModal wf={wf} job={job} onClose={() => setDeclining(false)} onDone={() => { setDeclining(false); onClose(); }} />}
       <div className="crbar"><b>Client Final Quote Review</b><span className="grow" />{!signed && run && <DraftBar d={dr} />}<button className="btn" onClick={close}>{signed ? 'Close' : '← Back to editing'}</button></div>
-      <div className="crpaper">
-        <header className="crhead">
-          <div><div className="crbrand">TOPMOP</div><div className="small muted">Window Cleaning Solutions Corp.</div></div>
-          <div className="right"><b>Final Quote</b><div className="small muted">{q?.number ?? '—'} · Job {job.number}</div><div className="small muted">{signed ? fmtDateTime(wf.conf_at) : fmtStamp(new Date().toISOString())}</div></div>
-        </header>
-        <div className="crparty"><div><span className="small muted">Client</span><br /><b>{client?.name ?? '—'}</b></div><div><span className="small muted">Site</span><br /><b>{site?.name}</b><div className="small muted">{site?.address}</div></div></div>
+      <div className="crpaper"><div className="pd">
+        <div className="pd-head">
+          <div className="pd-brand"><img src={LOGO_SMALL_URL} alt="TopMop" width={54} height={54} /><div><div className="pd-co">{db.settings.company.name}</div><div className="s">{db.settings.company.tagline}</div><div className="s">{db.settings.company.phone} · {db.settings.company.email}</div></div></div>
+          <div className="pd-title"><div className="t1">FINAL QUOTE</div><div className="no">{q?.number ?? '—'} · Job {job.number}</div><div className="s">{signed ? fmtDateTime(wf.conf_at) : fmtStamp(new Date().toISOString())}</div></div>
+        </div>
+        <div className="pd-two"><div className="pd-card"><div className="pd-k">Client</div><b className="n">{client?.name ?? '—'}</b>{client?.address && <div>{client.address}</div>}</div><div className="pd-card"><div className="pd-k">Site</div><b className="n">{site?.name}</b><div>{site?.address}</div></div></div>
 
-        <h3 className="crh">1 · Original Scope of Work <Badge tone="gray">approved quotation — unchanged</Badge></h3>
-        <p style={{ margin: '4px 0 8px' }}>{q?.scope ?? job.scope}</p>
-        {q && <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Description</th><th className="num">Qty</th><th>Unit</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead><tbody>{q.items.map((i, k) => <tr key={k}><td>{i.description}</td><td className="num">{i.qty}</td><td>{i.unit}</td><td className="num">{money(i.rate)}</td><td className="num">{money(i.qty * i.rate - i.discount)}</td></tr>)}</tbody></table></div>}
+        <div className="pd-h">1 · Original scope of work <span className="pd-small" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>— approved quotation, unchanged</span></div>
+        <p className="pd-scope">{q?.scope ?? job.scope}</p>
+        {q && <LineItems title="Services" rows={q.items.map((i) => ({ description: i.description, qty: i.qty, unit: i.unit, rate: i.rate, amount: i.qty * i.rate - i.discount }))} />}
         {q && <QuoteImageGallery target={{ quotation_id: q.id }} items={q.items} client />}
         {wf.panels.length > 0 && <div style={{ marginTop: 8 }}><div className="small muted">Glass panels counted on site</div><div className="pbks"><div className="pbk"><span>Original</span><b>{pb.original}</b></div><div className={`pbk ${pb.additional ? 'warn' : ''}`}><span>Additional</span><b>{pb.additional}</b></div><div className="pbk"><span>External</span><b>{pb.external}</b></div><div className="pbk"><span>Internal</span><b>{pb.internal}</b></div><div className="pbk navy"><span>Total</span><b>{pb.total}</b></div></div></div>}
 
-        <h3 className="crh">2 · Additional Work Requested / Confirmed at Site</h3>
+        <div className="pd-h">2 · Additional work requested / confirmed at site</div>
         {revision && <div className="alert warn">A revision was requested: “{draft?.revision_note}”. The additional work is being updated.</div>}
         {draft && hasAdds && <div style={{ marginBottom: 8 }}><QuoteImageGallery target={{ variation_id: draft.id }} items={draft.items} client /></div>}
-        {hasAdds ? <QuoteLines items={pendingItems} mode={vat.vat_mode} rate={vat.vat_rate} /> : adds.length ? adds.map((v) => <div key={v.id}><div className="small muted">{v.number} · approved {fmtDateTime(v.signed_at)}</div><QuoteImageGallery target={{ variation_id: v.id }} items={v.items} client /><QuoteLines items={v.items} mode={v.vat_mode} rate={v.vat_rate} /></div>) : <p className="muted">No additional work.</p>}
+        {hasAdds ? <LineItems title="Additional work (for your approval)" rows={pendingItems.map((i) => ({ description: i.description + (i.note ? ` — ${i.note}` : ''), qty: i.qty, unit: i.unit, rate: i.rate, amount: lineTotals(i, vat.vat_mode, vat.vat_rate).total }))} /> : adds.length ? adds.map((v) => <div key={v.id}><div className="small muted">{v.number} · approved {fmtDateTime(v.signed_at)}</div><QuoteImageGallery target={{ variation_id: v.id }} items={v.items} client /><QuoteLines items={v.items} mode={v.vat_mode} rate={v.vat_rate} /></div>) : <p className="muted">No additional work.</p>}
         {history.filter((h) => h.status === 'Rejected').map((h) => <div key={h.id} className="alert info" style={{ marginTop: 8 }}>Offered and declined by the client ({h.number}): {h.items.map((i) => i.description).join('; ')} — <b>not included</b> in the final bill.</div>)}
 
-        <h3 className="crh">3 · Final Billing Summary</h3>
-        <FinalSummary sm={sm} pendingLabel={hasAdds ? 'Additional Work Total (for your approval)' : undefined} />
-        <p className="crnotice">{NOTICE}</p>
+        <div className="pd-h">3 · Final billing summary</div>
+        <PremiumSummary sm={sm} pendingLabel={hasAdds ? 'Additional work total (for your approval)' : undefined} />
+        <div className="pd-note" style={{ marginTop: 10 }}><div className="pd-k">Please note</div>{NOTICE}</div>
 
-        <h3 className="crh">4 · Client Approval and Signature</h3>
+        <div className="pd-h">4 · Client approval and signature</div>
 
         {signed && wf.conf_mode === 'declined' ? (
           <div className="alert err"><b>The client declined the job</b> — {wf.conf_name}, {fmtDateTime(wf.conf_at)}{wf.conf_notes ? `: ${wf.conf_notes}` : ''}. No work was started and nothing is billed.</div>
@@ -267,7 +289,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
             )}
           </div>
         ) : <div className="alert info">Only the Team Leader or a manager can record the client's decision.</div>}
-      </div>
+      </div></div>
     </div>
   );
 }

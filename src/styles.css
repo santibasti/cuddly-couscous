@@ -798,3 +798,8 @@ body.dark .joc .alert.warn { background: #fdf3dc; border-color: #efd28f; color: 
 .pd-brand { flex: 1 1 auto; } .pd-title { flex: none; }
 @media (min-width: 701px) { .pd-head { flex-wrap: nowrap; } }
 @media (max-width: 700px) { .pd-head { padding: 14px 16px; } .pd-brand { align-items: flex-start; flex-wrap: wrap; } .pd-brand img { width: 46px; height: 46px; } .pd-title { text-align: left; margin-left: 0; width: 100%; } .pd-co { font-size: 17px; } }
+/* final quote review sheet stays a light paper in the dark theme */
+body.dark .crpaper .pbk { background: #f1f6f9; border-color: #dde6ee; color: #14243a; } body.dark .crpaper .pbk b { color: #0b2545; } body.dark .crpaper .pbk.warn { background: #fdf0cf; } body.dark .crpaper .pbk span { color: #5b6b80; }
+body.dark .crpaper .btn:not(.primary):not(.navy):not(.danger) { background: #fff; color: #14243a; border-color: #c9d4e0; }
+body.dark .crpaper .card { background: #fff; border-color: #dde4ec; color: #14243a; } body.dark .crpaper .kv dt { color: #5b6b80; } body.dark .crpaper .kv dd { color: #14243a; }
+body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small { color: #14243a; } body.dark .crpaper .muted { color: #5b6b80; }
