@@ -86,10 +86,10 @@ export default function QuotePublic() {
         {signed ? <>
           <div className="alert info"><b>Accepted and signed.</b> Thank you{q.client_sig_name ? `, ${q.client_sig_name}` : ''}. {b.company.name} has received your acceptance{q.client_sig_at ? ` (${fmtDateTime(q.client_sig_at)})` : ''} and will contact you to schedule the service.</div>
           <img src={q.client_sig} alt="Your signature" style={{ background: '#fff', borderRadius: 8, maxWidth: 320, marginTop: 10, border: '1px solid var(--line)' }} />
-        </> : q.status !== 'Sent' ? <div className="alert warn">This quotation is not open for acceptance. Please contact us.</div>
-          : expired ? <div className="alert warn">This quotation was valid until {fmtDate(q.valid_until)} and has expired. Please contact us for an updated quotation.</div>
+        </> : !['Sent', 'Approved'].includes(q.status) ? <div className="alert warn">This quotation is not open for acceptance. Please contact us.</div>
+          : q.status === 'Sent' && expired ? <div className="alert warn">This quotation was valid until {fmtDate(q.valid_until)} and has expired. Please contact us for an updated quotation.</div>
           : <>
-            <b style={{ fontSize: 16 }}>Accept this quotation</b>
+            <b style={{ fontSize: 16 }}>{q.status === 'Approved' ? 'Sign to confirm your acceptance' : 'Accept this quotation'}</b>
             <p className="small muted" style={{ margin: '4px 0 10px' }}>Type your name and sign below to accept the scope, price, terms and disclaimer above. Your acceptance is sent to {b.company.name} immediately.</p>
             <Field label="Full name" required><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" autoComplete="name" /></Field>
             <div style={{ marginTop: 10 }}><SignaturePad value={sig} onChange={setSig} /></div>

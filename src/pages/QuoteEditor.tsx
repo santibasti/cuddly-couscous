@@ -8,7 +8,7 @@ import { duplicateQuotation, quoteLink, saveQuotation, setQuoteStatus } from '@/
 import { quotationPdf, shareTextQuote } from '@/lib/export';
 import { IncludeImagesToggle, QuoteImageGallery } from '@/components/QuoteImages';
 import { SiteForm } from './ClientDetail';
-import { addDays, fmtStamp, money, today } from '@/lib/util';
+import { addDays, fmtDate, fmtStamp, money, today } from '@/lib/util';
 import type { Quotation, QuoteItem, ServiceCode } from '@/lib/types';
 
 type Form = Omit<Quotation, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'number'>;
@@ -103,6 +103,7 @@ export default function QuoteEditor() {
       </PageHead>
 
       {existing?.client_sig && <div className="alert info" style={{ marginBottom: 12 }}><b>Accepted and signed by {existing.client_sig_name}</b> on {fmtStamp(existing.client_sig_at ?? existing.decided_at ?? '')} through the client link. <img src={existing.client_sig} alt="Client signature" style={{ display: 'block', background: '#fff', borderRadius: 6, maxWidth: 220, marginTop: 6 }} /></div>}
+      {existing?.status === 'Sent' && existing.valid_until < today() && <div className="alert warn" style={{ marginBottom: 12 }}><b>This quotation expired on {fmtDate(existing.valid_until)}.</b> The client can open the link but cannot sign it. Duplicate it to issue a new one with a fresh validity date.</div>}
       {existing?.status === 'Draft' && <div className="muted small" style={{ marginBottom: 8 }}>Mark the quotation as sent to get a link the client can open to review and sign it.</div>}
       {locked && <div className="alert info" style={{ marginBottom: 12 }}>This quotation is {existing!.status.toLowerCase()} and read-only. Use Duplicate to prepare a revised quote.</div>}
       {ov && <div className="alert info" style={{ marginBottom: 12 }}>Created from ocular visit <b>{ov.number}</b> ({v.ocular_assignee_id ? db.employees.find((e) => e.id === v.ocular_assignee_id)?.full_name : '—'}). Carried forward: {ov.panels.length ? `${ov.panels.reduce((n, p) => n + p.external + p.internal, 0)} counted glass panels across ${ov.panels.length} area(s)` : 'no panel count'}{ov.measurements.length ? `, ${ov.measurements.map((m) => `${m.label} ${m.qty} ${m.unit}`).join(', ')}` : ''}. Check the quantities and rates before sending.</div>}

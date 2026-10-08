@@ -193,11 +193,11 @@ export function acceptQuoteByLink(token: string, name: string, sig: string) {
   const q = db().quotations.find((x) => x.share_token === token && !x.deleted_at);
   if (!q) fail('This link is not available.');
   if (q!.status === 'Approved' && q!.client_sig) fail('This quotation was already accepted and signed.');
-  if (q!.status !== 'Sent') fail('This quotation is not open for acceptance. Please contact us.');
+  if (!['Sent', 'Approved'].includes(q!.status)) fail('This quotation is not open for acceptance. Please contact us.');
   if (!name.trim()) fail('Please type your full name.');
   if (!sig) fail('Please sign in the signature box.');
-  if (q!.valid_until < today()) fail(`This quotation has expired (valid until ${q!.valid_until}). Please contact us for an updated one.`);
-  store.system('quotations', q!.id, { status: 'Approved', decided_at: isoNow(), client_sig: sig, client_sig_name: name.trim(), client_sig_at: isoNow(), client_sig_note: 'Accepted online through the share link' } as never, `Quotation ${q!.number} accepted and signed by ${name.trim()} through the share link`);
+  if (q!.status === 'Sent' && q!.valid_until < today()) fail(`This quotation has expired (valid until ${q!.valid_until}). Please contact us for an updated one.`);
+  store.system('quotations', q!.id, { status: 'Approved', decided_at: q!.decided_at ?? isoNow(), client_sig: sig, client_sig_name: name.trim(), client_sig_at: isoNow(), client_sig_note: 'Accepted online through the share link' } as never, `Quotation ${q!.number} accepted and signed by ${name.trim()} through the share link`);
   if (q!.inquiry_id) store.system('inquiries', q!.inquiry_id, { stage: 'Booked' } as never);
 }
 export function setQuoteStatus(id: string, status: QuoteStatus, reason?: string) {
