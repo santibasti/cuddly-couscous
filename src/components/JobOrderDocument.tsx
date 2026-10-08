@@ -1,7 +1,8 @@
-// On-screen version of the client Job Order Confirmation (preview for Admin / Operations, and the page the client opens from the share link).
+// On-screen Job Order Confirmation — the same premium layout as the PDF. Used for the review page and for the page the client opens from the share link.
 import { LOGO_SMALL_URL } from '@/lib/logo';
 import type { JobOrder, JobOrderContent } from '@/lib/types';
 import { CHANGE_NOTE, PREPARE, WEATHER_NOTE, orderLabel } from '@/lib/joborder-core';
+import { DEFAULT_TECHNOLOGY } from '@/lib/quote-text';
 import { fmtDate, money } from '@/lib/util';
 import { LineItems, TermsList } from './LineItems';
 
@@ -10,42 +11,55 @@ type View = Pick<JobOrder, 'number' | 'version' | 'status' | 'issued_on'> & { co
 
 export function JobOrderDocument({ order }: { order: View }) {
   const c = order.content;
-  const lines = (rows: JobOrderContent['items']) => <LineItems rows={rows} />;
   return (
-    <div className="joc">
-      <div className="joc-head">
-        <div className="row" style={{ gap: 12, alignItems: 'center' }}><img src={LOGO_SMALL_URL} alt="TopMop" width={54} height={54} /><div><b className="joc-co">{c.company.name}</b><div className="small">{c.company.tagline}</div><div className="small">{c.company.address}</div><div className="small">{c.company.phone} · {c.company.email}{c.company.tin ? ` · TIN ${c.company.tin}` : ''}</div></div></div>
-        <div className="joc-title"><b>JOB ORDER<br />CONFIRMATION</b><div>{orderLabel(order)}</div><div className="small">Issued {fmtDate(order.issued_on)}</div></div>
+    <div className="pd">
+      <div className="pd-head">
+        <div className="pd-brand"><img src={LOGO_SMALL_URL} alt="TopMop" width={58} height={58} />
+          <div><div className="pd-co">{c.company.name}</div><div className="s">{c.company.tagline}</div><div className="s">{c.company.address}</div><div className="s">{c.company.phone} · {c.company.email}{c.company.tin ? ` · TIN ${c.company.tin}` : ''}</div></div></div>
+        <div className="pd-title"><div className="t1">JOB ORDER</div><div className="t2">CONFIRMATION</div><div className="no">{orderLabel(order)}</div><div className="s">Issued {fmtDate(order.issued_on)}</div></div>
       </div>
-      {order.status === 'Superseded' && <div className="alert warn"><b>Superseded.</b> A newer version of this Job Order has been issued. Please use the latest version.</div>}
-      {(order.status === 'Draft' || order.status === 'Revised') && <div className="alert warn"><b>Draft — not yet sent to the client.</b></div>}
-      <p className="muted small">This document confirms your scheduled service. It is not an invoice, an official receipt or a new quotation.</p>
-      <div className="grid g2">
-        <div><div className="joc-k">Client</div><b>{c.client.name}</b>{c.client_address && <div>{c.client_address}</div>}<div>{c.client.contact_person && `Attention: ${c.client.contact_person}`}</div></div>
-        <div><div className="joc-k">Service location</div><b>{c.location.name}</b><div>{c.location.address}</div>{c.location.contact_mobile && <div>Contact number: {c.location.contact_mobile}</div>}</div>
+      {order.status === 'Superseded' && <div className="pd-banner bad">SUPERSEDED — a newer version of this Job Order has been issued. Please use the latest version.</div>}
+      {(order.status === 'Draft' || order.status === 'Revised') && <div className="pd-banner">DRAFT — not yet sent to the client</div>}
+      <p className="pd-lead">This document confirms your scheduled service. It is not an invoice, an official receipt or a new quotation.</p>
+
+      <div className="pd-two">
+        <div className="pd-card"><div className="pd-k">Client</div><b className="n">{c.client.name}</b>{c.client_address && <div>{c.client_address}</div>}{c.client.contact_person && <div>Attention: {c.client.contact_person}</div>}</div>
+        <div className="pd-card"><div className="pd-k">Service location</div><b className="n">{c.location.name}</b><div>{c.location.address}</div>{c.location.contact_mobile && <div>Contact number: {c.location.contact_mobile}</div>}</div>
       </div>
-      <div className="grid g4 keep2" style={{ margin: '12px 0' }}>
-        <div className="stat"><div className="k">Booking date</div><div className="v" style={{ fontSize: 16 }}>{fmtDate(c.booking_date)}</div></div>
-        <div className="stat"><div className="k">Service date</div><div className="v" style={{ fontSize: 16 }}>{fmtDate(c.service_date)}</div></div>
-        <div className="stat"><div className="k">Arrival window</div><div className="v" style={{ fontSize: 16 }}>{t12(c.arrival_from)} – {t12(c.arrival_to)}</div></div>
-        <div className="stat"><div className="k">Estimated duration</div><div className="v" style={{ fontSize: 16 }}>about {c.duration_hours} h</div></div>
+      <div className="pd-tiles">
+        <div className="pd-tile"><div className="pd-k">Booking date</div><div className="v">{fmtDate(c.booking_date)}</div></div>
+        <div className="pd-tile hl"><div className="pd-k">Service date</div><div className="v">{fmtDate(c.service_date)}</div></div>
+        <div className="pd-tile"><div className="pd-k">Arrival window</div><div className="v">{t12(c.arrival_from)} – {t12(c.arrival_to)}</div></div>
+        <div className="pd-tile"><div className="pd-k">Estimated duration</div><div className="v">about {c.duration_hours} {c.duration_hours === 1 ? 'hour' : 'hours'}</div></div>
       </div>
-      <div className="joc-k">Service</div><b>{c.service_types.join(', ') || '—'}</b>
-      <div className="joc-k" style={{ marginTop: 10 }}>Approved scope of work</div><p style={{ marginTop: 2 }}>{c.scope || 'As per the approved quotation.'}</p>
-      {c.items.length > 0 && <><div className="joc-k">Approved services</div>{lines(c.items)}</>}
-      {c.additions.map((a) => <div key={a.number} style={{ marginTop: 10 }}><div className="joc-k">Approved additional work {a.number}{a.reason ? ` — ${a.reason}` : ''}</div>{lines(a.items)}</div>)}
-      <table className="tbl joc-tot"><tbody>
-        {c.discounts.map((d, i) => <tr key={i}><td>{d.label}</td><td className="num">− {money(d.amount)}</td></tr>)}
-        <tr><td>Subtotal (before VAT)</td><td className="num">{money(c.subtotal)}</td></tr>
-        <tr><td>{c.vat_label}</td><td className="num">{money(c.vat)}</td></tr>
-        <tr className="joc-final"><td>Final approved total</td><td className="num">{money(c.total)}</td></tr>
-      </tbody></table>
-      <div className="joc-k">Payment terms and payment status</div><TermsList text={c.payment_terms} /><p style={{ marginTop: 6 }}><b>Payment status:</b> {c.payment_status}</p>
-      <div className="joc-k">Your team</div><p style={{ marginTop: 2 }}>{c.team.leader ? <>Team Leader: <b>{c.team.leader}</b>{c.team.crew.length ? <><br />Crew: {c.team.crew.join(', ')}</> : null}</> : 'Team assignment to follow.'}</p>
-      {c.access_notes.length > 0 && <><div className="joc-k">Safety and access notes / your requirements</div><ul style={{ marginTop: 2 }}>{c.access_notes.map((n, i) => <li key={i}>{n}</li>)}</ul></>}
-      <div className="joc-k">What to prepare</div><ul style={{ marginTop: 2 }}>{PREPARE.map((n) => <li key={n}>{n}</li>)}</ul>
-      {c.disclaimer?.trim() && <><div className="joc-k">Service disclaimer</div>{c.disclaimer.trim().split(/\n\s*\n/).map((t, i) => <p key={i} style={{ marginTop: 2 }}>{t}</p>)}</>}
-      <div className="joc-k">Please note</div><ul style={{ marginTop: 2 }}><li>{CHANGE_NOTE}</li><li>{WEATHER_NOTE}</li></ul>
+
+      <div className="pd-h" style={{ marginTop: 6 }}>Service</div>
+      <div className="pd-svc">{c.service_types.join(', ') || '—'}</div>
+      <div className="pd-tech"><b>{DEFAULT_TECHNOLOGY}</b><span>Pre-Rinse › Deep Cleaning › Final Rinse · Water-Fed Pole, deionized water</span></div>
+      <div className="pd-k">Approved scope of work</div><p className="pd-scope">{c.scope || 'As per the approved quotation.'}</p>
+
+      {c.items.length > 0 && <LineItems rows={c.items} title="Approved services" />}
+      {c.additions.map((a) => <div key={a.number} style={{ marginTop: 12 }}><div className="pd-k">Approved additional work {a.number}{a.reason ? ` — ${a.reason}` : ''}</div><LineItems rows={a.items} title="Additional work" /></div>)}
+      <div className="pd-tot">
+        {c.discounts.map((d, i) => <div className="row" key={i}><span>{d.label}</span><span>− {money(d.amount)}</span></div>)}
+        <div className="row"><span>Subtotal (before VAT)</span><span>{money(c.subtotal)}</span></div>
+        <div className="row"><span>{c.vat_label}</span><span>{money(c.vat)}</span></div>
+        <div className="fin"><span>FINAL APPROVED TOTAL</span><span>{money(c.total)}</span></div>
+      </div>
+
+      <div className="pd-h">Payment terms and status</div>
+      <TermsList text={c.payment_terms} />
+      <div className="pd-pay">{c.payment_status}</div>
+
+      <div className="pd-h">Your team</div>
+      <div className="pd-card">{c.team.leader ? <><div>Team Leader: <b>{c.team.leader}</b></div>{c.team.crew.length > 0 && <div>Crew: {c.team.crew.join(', ')}</div>}</> : 'Team assignment to follow.'}</div>
+
+      {c.access_notes.length > 0 && <><div className="pd-h">Safety and access notes / your requirements</div><ul className="pd-bul">{c.access_notes.map((n, i) => <li key={i}>{n}</li>)}</ul></>}
+      <div className="pd-h">What to prepare</div>
+      <ul className="pd-bul">{PREPARE.map((n) => <li key={n}>{n}</li>)}</ul>
+      {c.disclaimer?.trim() && <><div className="pd-h">Service disclaimer</div>{c.disclaimer.trim().split(/\n\s*\n/).map((t, i) => <p key={i} className="pd-small">{t}</p>)}</>}
+      <div className="pd-note"><div className="pd-k">Please note</div><ul><li>{CHANGE_NOTE}</li><li>{WEATHER_NOTE}</li></ul></div>
+      <div className="pd-foot"><span>{orderLabel(order)} · {c.company.name}</span><span>{c.company.phone} · {c.company.email}</span></div>
     </div>
   );
 }

@@ -7,16 +7,13 @@ import { Field, SignaturePad } from '@/components/ui';
 import { LOGO_SMALL_URL } from '@/lib/logo';
 import { docTotals } from '@/lib/business';
 import { paymentLabel, paymentSentence } from '@/lib/quote-text';
-import { LineItems, TermsList } from '@/components/LineItems';
+import { QuotationDocument, type QuoteBundle } from '@/components/QuotationDocument';
 import { acceptQuoteByLink } from '@/lib/actions';
 import { quotationPdf } from '@/lib/export';
 import { fmtDate, fmtDateTime, money } from '@/lib/util';
 import type { Quotation, Settings } from '@/lib/types';
 
-interface Bundle {
-  quotation: Quotation; client: { name: string; contact_person?: string; address?: string }; site?: { name: string; address: string } | null;
-  company: Settings['company']; defaults?: { intro?: string; methodology?: string; disclaimer?: string; crew?: string };
-}
+type Bundle = QuoteBundle;
 
 export default function QuotePublic() {
   const { token } = useParams();
@@ -61,28 +58,7 @@ export default function QuotePublic() {
     <div className="pubpage">
       <div className="pubbar no-print"><span className="muted small">Quotation</span><span className="row" style={{ gap: 6 }}><button className="btn sm" onClick={() => window.print()}>Print</button><button className="btn primary sm" onClick={() => void download()}>Download PDF</button></span></div>
       <div className="pubsheet">
-      <div className="joc">
-        <div className="joc-head">
-          <div className="row" style={{ gap: 12, alignItems: 'center' }}><img src={LOGO_SMALL_URL} alt="TopMop" width={54} height={54} /><div><b className="joc-co">{b.company.name}</b><div className="small">{b.company.tagline}</div><div className="small">{b.company.address}</div><div className="small">{b.company.phone} · {b.company.email}</div></div></div>
-          <div className="joc-title"><b>QUOTATION</b><div>{q.number}</div><div className="small">Issued {fmtDate(q.issue_date)} · Valid until {fmtDate(q.valid_until)}</div></div>
-        </div>
-        <div className="grid g2">
-          <div><div className="joc-k">Prepared for</div><b>{b.client.name}</b>{b.client.address && <div>{b.client.address}</div>}{b.client.contact_person && <div>Attention: {b.client.contact_person}</div>}</div>
-          <div><div className="joc-k">Service location</div>{b.site ? <><b>{b.site.name}</b><div>{b.site.address}</div></> : <span className="muted">As discussed</span>}</div>
-        </div>
-        <div className="joc-k" style={{ marginTop: 12 }}>Scope of work</div><p style={{ marginTop: 2 }}>{q.scope}</p>
-        <LineItems rows={q.items.map((r) => ({ description: r.description, qty: r.qty, unit: r.unit, rate: r.rate, amount: r.qty * r.rate - r.discount }))} />
-        <table className="tbl" style={{ marginTop: 6, maxWidth: 360, marginLeft: 'auto' }}><tbody>
-          <tr><td>Subtotal</td><td className="num">{money(t.gross)}</td></tr>
-          {t.discount > 0 && <tr><td>Discount</td><td className="num">− {money(t.discount)}</td></tr>}
-          {q.vat_mode !== 'none' && <tr><td>VAT {q.vat_rate}%{q.vat_mode === 'inclusive' ? ' (included)' : ''}</td><td className="num">{money(t.vat)}</td></tr>}
-          <tr><td><b>Total</b></td><td className="num"><b style={{ fontSize: 17 }}>{money(t.total)}</b></td></tr></tbody></table>
-        {(q.crew_size || q.work_days) && <p className="small" style={{ marginTop: 10 }}><b>Manpower and duration:</b> {q.crew_size ? `${q.crew_size} personnel${q.safety_officer ? ' including a designated safety officer' : ''}` : ''}{q.work_days ? `${q.crew_size ? ' · ' : ''}${q.work_days} working day${q.work_days > 1 ? 's' : ''}` : ''}.</p>}
-        {paymentSentence(q.payment_option) && <p className="small" style={{ marginTop: 10 }}><b>Payment terms:</b> {paymentLabel(q.payment_option)}. {paymentSentence(q.payment_option)}</p>}
-        {q.terms && <><div className="joc-k">Terms and conditions</div><TermsList text={q.terms} /></>}
-        {q.disclaimer?.trim() && <><div className="joc-k">Service disclaimer</div>{q.disclaimer.trim().split(/\n\s*\n/).map((p, i) => <p key={i} className="small" style={{ marginTop: 2 }}>{p}</p>)}</>}
-      </div>
-
+      <QuotationDocument b={b} />
       <div className="pubsign no-print">
         {signed ? <>
           <div className="alert info"><b>Accepted and signed.</b> Thank you{q.client_sig_name ? `, ${q.client_sig_name}` : ''}. {b.company.name} has received your acceptance{q.client_sig_at ? ` (${fmtDateTime(q.client_sig_at)})` : ''} and will contact you to schedule the service.</div>

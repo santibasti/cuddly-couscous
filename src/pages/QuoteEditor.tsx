@@ -95,6 +95,7 @@ export default function QuoteEditor() {
       <PageHead title={existing ? `Quotation ${existing.number}` : 'New quotation'} sub={existing ? <><Badge>{existing.status}</Badge> · created {fmtStamp(existing.created_at)} by {db.users.find((u) => u.id === existing.created_by)?.name}</> : 'Draft — save to assign a quotation number'}>
         <Link to="/sales" className="btn">← Quotations</Link>
         {existing && <IncludeImagesToggle target={{ quotation_id: existing.id }} checked={pdfImg} onChange={setPdfImg} />}
+        {existing && <Link to={`/sales/quote/${existing.id}/preview`} className="btn">Preview</Link>}
         {existing && <button className="btn" onClick={() => attempt(() => quotationPdf(db, existing, { includeImages: pdfImg }))}><Icon name="download" />PDF</button>}
         {existing && client?.email && <a className="btn" href={`mailto:${client.email}?subject=${encodeURIComponent(`Quotation ${existing.number} – ${db.settings.company.name}`)}&body=${encodeURIComponent(share + '\n\n(Attach the downloaded PDF.)')}`}><Icon name="mail" />Email</a>}
         {existing && <a className="btn" target="_blank" rel="noreferrer" href={`https://wa.me/${wa}?text=${encodeURIComponent(share)}`}><Icon name="share" />WhatsApp</a>}

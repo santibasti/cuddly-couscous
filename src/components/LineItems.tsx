@@ -1,15 +1,17 @@
-// Priced lines for the client-facing pages: each line stacks (description, then qty × rate and the amount) so nothing is clipped on a phone.
+// Priced lines for the client-facing documents: a navy header bar and aligned columns on a computer; stacked rows on a phone.
 import { money } from '@/lib/util';
 
 export interface Line { description: string; qty: number; unit: string; rate: number; amount: number }
 
-export function LineItems({ rows }: { rows: Line[] }) {
+export function LineItems({ rows, title = 'Description' }: { rows: Line[]; title?: string }) {
   return (
     <div className="jl">
+      <div className="jl-head"><span>{title}</span><span>Qty / unit</span><span>Rate</span><span>Amount</span></div>
       {rows.map((r, i) => (
         <div className="jl-row" key={i}>
           <div className="jl-desc">{r.description}</div>
-          <div className="jl-calc">{r.qty.toLocaleString('en-PH')} {r.unit} × {money(r.rate)}</div>
+          <div className="jl-q">{r.qty.toLocaleString('en-PH')} {r.unit}</div>
+          <div className="jl-r">{money(r.rate)}</div>
           <div className="jl-amt">{money(r.amount)}</div>
         </div>
       ))}
@@ -21,5 +23,5 @@ export function LineItems({ rows }: { rows: Line[] }) {
 export function TermsList({ text }: { text: string }) {
   const parts = text.trim().split(/\s+(?=\d{1,2}\.\s)/).map((t) => t.replace(/^\d{1,2}\.\s*/, '').trim()).filter(Boolean);
   if (parts.length < 2) return <p className="small" style={{ marginTop: 2 }}>{text}</p>;
-  return <ol className="small jl-terms">{parts.map((t, i) => <li key={i}>{t}</li>)}</ol>;
+  return <ol className="small jl-terms pd-list">{parts.map((t, i) => <li key={i}>{t}</li>)}</ol>;
 }
