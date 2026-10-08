@@ -687,3 +687,30 @@ body.dark .kpi[class*="g-"] .v { font-size: 27px; text-shadow: 0 1px 6px rgba(0,
 .fold-body { padding: 0; }
 .fold-body > .card { border: 0; box-shadow: none; background: transparent; margin: 0; }
 .wfdone > summary { cursor: pointer; padding: 10px 2px; color: var(--muted); font-size: 13px; font-weight: 600; }
+
+/* Glass panel count: the whole table fits the screen (no sideways dragging) */
+.pcount-wrap { width: 100%; }
+.pcount { table-layout: fixed; width: 100%; }
+.pcount th, .pcount td { padding: 6px 5px; vertical-align: middle; overflow: hidden; }
+.pcount select, .pcount input:not([type=checkbox]):not([type=number]) { width: 100%; min-width: 0; padding-left: 6px; padding-right: 6px; }
+.pcount .stepper { width: 100%; display: flex; }
+.pcount .stepper button { width: 30px; flex: none; min-height: 40px; font-size: 20px; }
+.pcount .stepper input { flex: 1; width: auto; min-width: 0; padding: 0 2px; }
+.pcount .check { white-space: nowrap; font-size: 12.5px; gap: 4px; }
+@media (max-width: 880px) {
+  .pcount, .pcount tbody, .pcount tfoot, .pcount tr, .pcount td, .pcount th { display: block; width: auto; }
+  .pcount colgroup, .pcount thead { display: none; }
+  .pcount tbody tr { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 10px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); position: relative; }
+  .pcount tbody td { padding: 0; border: 0; }
+  .pcount tbody td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+  .pcount .num { text-align: left; }
+  .pcount tbody td:nth-child(5) { order: 5; } .pcount .pc-extra { order: 6; } .pcount .pc-notes { order: 7; grid-column: 1 / -1; }
+  .pcount .pc-x { order: 8; grid-column: 1 / -1; justify-self: end; }
+  .pcount .pc-x .btn { min-height: 32px; }
+  .pcount .pc-x .btn::after { content: ' Remove area'; }
+  .pcount tfoot tr { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 4px; font-weight: 700; }
+  .pcount tfoot th { display: inline; padding: 0; border: 0; }
+  .pcount tfoot th:first-child { flex-basis: 100%; }
+  .pcount tfoot th:first-child::after { content: ''; }
+}
+@media (max-width: 880px) { .pcount tfoot th[data-label]::before { content: attr(data-label) ': '; font-weight: 400; color: var(--muted); } }

@@ -34,20 +34,20 @@ export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolea
     <div className="stack" style={{ gap: 8 }}>
       <div className="row between"><b>Glass panel count</b>{quoted > 0 && <span className="small muted">Quoted: {quoted} panels{t.total > quoted && <> · counted {t.total} (<b>{t.total - quoted} more</b>)</>}</span>}</div>
       <div className="small muted">Up to 2 m × 1 m = 1 panel · larger than 2 m × 1 m = 2 panels · smaller standard windows still count as 1 · small sections may be grouped into 1.</div>
-      <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Area / Floor</th><th>Side / Location</th><th className="num">External</th><th className="num">Internal</th><th className="num">Total</th><th>Notes</th>{editable && <th>Extra</th>}{editable && <th />}</tr></thead><tbody>
+      <div className="pcount-wrap"><table className="tbl pcount"><colgroup><col style={{ width: '17%' }} /><col style={{ width: '17%' }} /><col style={{ width: '15%' }} /><col style={{ width: '15%' }} /><col style={{ width: '7%' }} /><col />{editable && <col style={{ width: '8%' }} />}{editable && <col style={{ width: '5%' }} />}</colgroup><thead><tr><th>Area / Floor</th><th>Side / Location</th><th className="num">External</th><th className="num">Internal</th><th className="num">Total</th><th>Notes</th>{editable && <th>Extra</th>}{editable && <th />}</tr></thead><tbody>
         {rows.map((r) => (
           <tr key={r.id}>
-            <td>{editable ? <select value={r.area} onChange={(e) => set(r.id, { area: e.target.value })}>{PANEL_AREAS.map((a) => <option key={a}>{a}</option>)}</select> : r.area}</td>
-            <td>{editable ? <select value={r.side} onChange={(e) => set(r.id, { side: e.target.value })}>{PANEL_SIDES.map((a) => <option key={a}>{a}</option>)}</select> : r.side}</td>
-            <td className="num">{editable ? numIn(r, 'external') : r.external}</td><td className="num">{editable ? numIn(r, 'internal') : r.internal}</td>
-            <td className="num"><b>{rowPanels(r)}</b></td>
-            <td>{editable ? <input value={r.notes ?? ''} onChange={(e) => set(r.id, { notes: e.target.value })} aria-label="Notes" /> : <>{r.notes}{r.additional && <> <Badge tone="amber">additional</Badge></>}</>}</td>
-            {editable && <td><label className="check" title="Beyond the quoted scope — can be added to a variation"><input type="checkbox" checked={!!r.additional} onChange={(e) => set(r.id, { additional: e.target.checked })} />Add’l</label></td>}
-            {editable && <td><button className="btn sm danger" onClick={() => setRows(rows.filter((x) => x.id !== r.id))} aria-label="Remove row">✕</button></td>}
+            <td data-label="Area / Floor">{editable ? <select value={r.area} onChange={(e) => set(r.id, { area: e.target.value })}>{PANEL_AREAS.map((a) => <option key={a}>{a}</option>)}</select> : r.area}</td>
+            <td data-label="Side / Location">{editable ? <select value={r.side} onChange={(e) => set(r.id, { side: e.target.value })}>{PANEL_SIDES.map((a) => <option key={a}>{a}</option>)}</select> : r.side}</td>
+            <td className="num" data-label="External">{editable ? numIn(r, 'external') : r.external}</td><td className="num" data-label="Internal">{editable ? numIn(r, 'internal') : r.internal}</td>
+            <td className="num" data-label="Total"><b>{rowPanels(r)}</b></td>
+            <td data-label="Notes" className="pc-notes">{editable ? <input value={r.notes ?? ''} onChange={(e) => set(r.id, { notes: e.target.value })} aria-label="Notes" /> : <>{r.notes}{r.additional && <> <Badge tone="amber">additional</Badge></>}</>}</td>
+            {editable && <td data-label="Extra" className="pc-extra"><label className="check" title="Beyond the quoted scope — can be added to a variation"><input type="checkbox" checked={!!r.additional} onChange={(e) => set(r.id, { additional: e.target.checked })} />Add’l</label></td>}
+            {editable && <td className="pc-x"><button className="btn sm danger" onClick={() => setRows(rows.filter((x) => x.id !== r.id))} aria-label="Remove row">✕</button></td>}
           </tr>
         ))}
         {!rows.length && <tr><td colSpan={8} className="muted">No areas counted yet.</td></tr>}
-      </tbody><tfoot><tr><th colSpan={2}>Total</th><th className="num">{t.external}</th><th className="num">{t.internal}</th><th className="num">{t.total}</th><th colSpan={3}>{t.additional > 0 && <Badge tone="amber">{t.additional} additional panels</Badge>}</th></tr></tfoot></table></div>
+      </tbody><tfoot><tr><th colSpan={2}>Total</th><th className="num" data-label="External">{t.external}</th><th className="num" data-label="Internal">{t.internal}</th><th className="num" data-label="Total">{t.total}</th><th colSpan={3}>{t.additional > 0 && <Badge tone="amber">{t.additional} additional panels</Badge>}</th></tr></tfoot></table></div>
       {editable && (
         <>
           <div className="row"><button className="btn sm" onClick={() => setRows([...rows, newRow()])}>+ Add area</button>{dirty && <button className="btn sm primary" onClick={() => { if (attempt(() => savePanels(wf.id, rows), 'Panel count saved')) dr.markSaved(); }}>Save panel count</button>}{dirty && <span className="small" style={{ color: 'var(--amber)' }}>Unsaved panel changes</span>}</div>
