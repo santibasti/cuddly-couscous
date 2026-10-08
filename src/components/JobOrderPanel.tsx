@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Modal, attempt, useObj } from '@/components/ui';
+import { Fold } from '@/components/Fold';
 import { JobOrderDocument } from '@/components/JobOrderDocument';
 import { SEND_VIA, logJobOrderEvent, markJobOrderSent, resendJobOrder, syncJobOrders } from '@/lib/joborders';
 import { ORDER_JOB_STATUSES, headOrder, ordersOf, orderLabel } from '@/lib/joborder-core';
@@ -37,7 +38,7 @@ function SendModal({ order, resend, onClose }: { order: JobOrder; resend: boolea
   );
 }
 
-export function JobOrderPanel({ job }: { job: Job }) {
+export function JobOrderPanel({ job, fold = false }: { job: Job; fold?: boolean }) {
   const { db, can, user } = useAuth();
   const [preview, setPreview] = useState<JobOrder | null>(null);
   const [send, setSend] = useState<{ order: JobOrder; resend: boolean } | null>(null);
@@ -62,8 +63,8 @@ export function JobOrderPanel({ job }: { job: Job }) {
   };
   const copy = async (o: JobOrder) => { if (needSend(o)) return; try { await navigator.clipboard.writeText(shareLink(o)); log(o, 'Share link copied'); attempt(() => true, 'Share link copied'); } catch { window.prompt('Copy this link', shareLink(o)); } };
   const sentOk = head.status === 'Sent to Client';
-  return (
-    <Card title="Job Order Confirmation" actions={<Badge tone={TONE[head.status]}>{head.status}</Badge>}>
+  const card = (
+    <Card title={fold ? undefined : 'Job Order Confirmation'} actions={fold ? undefined : <Badge tone={TONE[head.status]}>{head.status}</Badge>}>
       <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
         <div><b style={{ fontSize: 16 }}>{orderLabel(head)}</b>
           <div className="small muted">Issued {fmtDate(head.issued_on)}{head.sent_at ? ` · Sent ${fmtStamp(head.sent_at)} via ${head.sent_via}${head.sent_count > 1 ? ` · resent ${head.sent_count - 1}×, last ${fmtStamp(head.last_sent_at)}` : ''}` : ' · not sent yet'}</div>
@@ -91,4 +92,5 @@ export function JobOrderPanel({ job }: { job: Job }) {
       {send && <SendModal order={send.order} resend={send.resend} onClose={() => setSend(null)} />}
     </Card>
   );
+  return fold ? <Fold title="Job Order Confirmation" hint={<>{orderLabel(head)} · {head.status}</>}>{card}</Fold> : card;
 }

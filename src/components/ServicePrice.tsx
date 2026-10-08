@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/store';
 import { VariationModal } from '@/components/workflow/VariationStep';
 import { docTotals, finalContract, variationTotals } from '@/lib/business';
 import { Badge, Card } from '@/components/ui';
+import { Fold } from '@/components/Fold';
 import { money } from '@/lib/util';
 import type { Job, QuoteItem } from '@/lib/types';
 
@@ -29,14 +30,16 @@ const Lines = ({ items }: { items: QuoteItem[] }) => (
   <ul className="list" style={{ margin: 0 }}>{items.map((i, k) => <li key={k}><span>{i.description}<div className="small muted">{i.qty.toLocaleString('en-PH')} {i.unit} × {money(i.rate)}{i.discount ? ` − ${money(i.discount)}` : ''}</div></span><b className="mono">{money(lineAmt(i))}</b></li>)}</ul>
 );
 
-export function ServicePriceCard({ job }: { job: Job }) {
+/** `step` = the workflow step on screen (0-6, -1 before the workflow starts). The full card shows before Scope Approval; Scope Approval already
+ *  carries the quotation, so it is left out there; after it the card folds into one line. */
+export function ServicePriceCard({ job, step = -1 }: { job: Job; step?: number }) {
   const ok = useCanSeePrice(); const { can } = useAuth(); const [add, setAdd] = useState(false);
   const canAdd = can('jobs.edit') && can('dispatch.run') && ['Confirmed', 'Dispatch Checklist Pending', 'Dispatched', 'On Site', 'In Progress'].includes(job.status);
   const { q, approved, waiting, fc, qt, waitingTotal } = usePriceView(job);
-  if (!ok) return null;
+  if (!ok || step === 3) return null;
   if (!q && !approved.length && !waiting.length) return <Card title="Service & price"><div className="small muted">No approved quotation is linked to this booking yet.</div></Card>;
-  return (
-    <Card title="Service & price" actions={<span className="small muted">Verify this with the client on site</span>}>
+  const body = (
+    <Card title={step >= 4 ? undefined : 'Service & price'} actions={step >= 4 ? undefined : <span className="small muted">Verify this with the client on site</span>}>
       {q && <>
         <div className="row between" style={{ marginBottom: 4 }}><b>Quotation {q.number}</b><Badge tone="green">{q.status}</Badge></div>
         {q.scope && <div className="small" style={{ marginBottom: 6 }}>{q.scope}</div>}
@@ -58,6 +61,7 @@ export function ServicePriceCard({ job }: { job: Job }) {
       </div>
     </Card>
   );
+  return step >= 4 ? <Fold title="Service & price" hint={<>{money(fc.payableTotal)} · tap to see the lines</>}>{body}</Fold> : body;
 }
 
 /** One-line version for the confirmation banner. */

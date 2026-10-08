@@ -40,7 +40,7 @@ export function Step({ n, state, at, by, children, wfId, done }: { n: number; st
         <span className="grow"><b id={`step-${n}-t`} style={{ fontSize: 17 }}>{n}. {WORKFLOW_STEPS[n - 1]}</b>{done && at && <div className="small muted">{fmtDateTime(at)} · {userName(db, by)}</div>}</span>
         <Badge tone={done ? 'green' : state === 'current' ? 'blue' : 'gray'}>{done ? 'Done' : state === 'current' ? 'Next' : 'Locked'}</Badge>
       </div>
-      <div className="wfbody" key={nonce}>{children}</div>
+      <div className="wfbody" key={nonce}>{done && n !== 4 ? <details className="wfdone"><summary>Show what was recorded</summary>{children}</details> : children}</div>
     </section>
   );
 }
@@ -48,7 +48,7 @@ const Locked = ({ why }: { why: string }) => <div className="muted">{why}</div>;
 const last = 6;
 
 /* ================= the panel ================= */
-export function WorkflowPanel({ job }: { job: Job; onDetails?: () => void }) {
+export function WorkflowPanel({ job, above }: { job: Job; onDetails?: () => void; above?: (step: number) => ReactNode }) {
   const { db, can } = useAuth();
   const wf = db.workflows.find((w) => w.job_id === job.id && !w.deleted_at);
   const vars = db.variations.filter((v) => v.job_id === job.id && !v.deleted_at);
@@ -69,13 +69,14 @@ export function WorkflowPanel({ job }: { job: Job; onDetails?: () => void }) {
 
   if (canceled) return null;
   if (!wf) {
-    return (
+    return (<>
+      {above?.(-1)}
       <Card title="Job workflow">
         <p style={{ marginTop: 0 }}>The 7-step workflow (job prep → dispatch → site check-in → scope approval → work → client handover → close-out) starts at HQ. It loads the crew, vehicle, equipment, PPE and materials from this booking.</p>
         {job.status === 'Pending' && <div className="alert warn" style={{ marginBottom: 10 }}>Confirm the booking first.</div>}
         {['Confirmed', 'Dispatch Checklist Pending'].includes(job.status) ? (run ? <button className="btn primary lg" onClick={() => attempt(() => openWorkflow(job.id), 'Job prep ready')}>Start job prep (HQ)</button> : <div className="alert warn">Only the assigned Team Leader or a manager can start this checklist.</div>) : job.status !== 'Pending' && <div className="muted">This job has no workflow record (it was completed before the workflow was introduced).</div>}
       </Card>
-    );
+    </>);
   }
 
   const body: ReactNode[] = [
@@ -91,7 +92,8 @@ export function WorkflowPanel({ job }: { job: Job; onDetails?: () => void }) {
   const stamps = [{ at: wf.hq_at, by: wf.hq_by }, { at: wf.disp_at, by: wf.disp_by }, { at: wf.arr_at, by: wf.arr_by }, { at: wf.conf_at, by: wf.conf_by }, { at: wf.finish_at, by: wf.finish_by }, { at: wf.rep_at, by: wf.rep_by }, { at: wf.closed_at, by: wf.closed_by }];
   const fixBtn = can('incidents.manage') ? <button className="btn sm" onClick={() => setFix(true)}><Icon name="edit" />Correct record</button> : null;
 
-  return (
+  return (<>
+    {above?.(cur)}
     <div className="wfwrap">
       {/* landscape tablets / desktop: full tracker rail beside the step */}
       <aside className="wfrail card" aria-label="Job workflow progress">
@@ -118,7 +120,7 @@ export function WorkflowPanel({ job }: { job: Job; onDetails?: () => void }) {
       </div>
       {fix && <CorrectModal wf={wf} onClose={() => setFix(false)} />}
     </div>
-  );
+  </>);
 }
 
 /* ================= Step 1: Job Prep at HQ ================= */
