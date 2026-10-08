@@ -248,6 +248,7 @@ function CheckInForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean
   // the contact comes from the booking: the site's contact, else the client's contact person (nothing to retype)
   const [contact, setContact] = useState({ name: site?.contact_person || client?.contact_person || '', mobile: site?.contact_mobile || client?.mobile || '' });
   const [notes, setNotes] = useState('');
+  const missClock = present.filter((e) => !db.attendance.some((x) => x.employee_id === e && x.date === at.slice(0, 10) && x.clock_in && !x.deleted_at));   // present but not clocked in → cannot check in
   const dr = useDraft(`d:${wf.id}:arr`, { at, present, absent, contact, notes }, (d) => { setAt(d.at); setPresent(d.present); setAbsent(d.absent); setContact(d.contact); setNotes(d.notes); }, run && !wf.arr_at);
   return (
     <div className="stack">
@@ -260,12 +261,12 @@ function CheckInForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean
           {crew.map((e) => { const a = db.attendance.find((x) => x.employee_id === e && x.date === at.slice(0, 10) && x.clock_in && !x.deleted_at); const on = present.includes(e);
             return <li key={e}><div className="grow"><Toggle checked={on} disabled={!run} onChange={() => setPresent(on ? present.filter((x) => x !== e) : [...present, e])}><b>{emp(e)}</b>{e === job.leader_id && <span className="muted small"> · Team Leader</span>}</Toggle>
               {!on && <div style={{ marginTop: 6 }}><input disabled={!run} placeholder="Reason absent (required)" value={absent[e] ?? ''} onChange={(ev) => setAbsent({ ...absent, [e]: ev.target.value })} aria-label={`Reason ${emp(e)} is absent`} /><PresetChips replace options={PRESETS.absent} value={absent[e] ?? ''} onChange={(v) => setAbsent({ ...absent, [e]: v })} disabled={!run} /></div>}</div>
-              {a ? <Badge tone="green">Clocked in {a.clock_in?.slice(11, 16)}</Badge> : on ? <Badge tone="blue">Will be recorded</Badge> : <Badge tone="red">Absent</Badge>}</li>; })}
+              {a ? <Badge tone="green">Clocked in {a.clock_in?.slice(11, 16)}</Badge> : on ? <Badge tone="red">Not clocked in</Badge> : <Badge tone="red">Absent</Badge>}</li>; })}
         </ul>
-        <div className="small muted" style={{ marginTop: 6 }}>Crew who already clocked in keep their single attendance record (linked to this job). Others get one created — never a duplicate.</div>
+        {(() => { const miss = missClock; return miss.length ? <div className="alert warn" style={{ marginTop: 8 }}><b>Cannot check in yet.</b> {miss.map(emp).join(', ')} {miss.length > 1 ? 'have' : 'has'} not clocked in. Each crew member must clock in on their own Attendance page first — or switch them off above and give the reason they are absent.</div> : <div className="small muted" style={{ marginTop: 6 }}>Everyone marked present has clocked in. Their attendance record is linked to this job.</div>; })()}
       </div>
       <details><summary className="small" style={{ cursor: 'pointer' }}>Add a site note (optional)</summary><div style={{ marginTop: 8 }}><textarea disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Access, hazards, restrictions…" /><PresetChips options={PRESETS.site} value={notes} onChange={setNotes} disabled={!run} /></div></details>
-      {run && <button className="btn primary lg" onClick={() => attempt(() => arriveAtSite(wf.id, { at, contact_name: contact.name, contact_mobile: contact.mobile, notes, present, absent: crew.filter((e) => !present.includes(e)).map((e) => ({ id: e, reason: absent[e] ?? '' })) }), 'Checked in — attendance confirmed')}>Confirm check-in &amp; attendance</button>}
+      {run && <button className="btn primary lg" disabled={missClock.length > 0} onClick={() => attempt(() => arriveAtSite(wf.id, { at, contact_name: contact.name, contact_mobile: contact.mobile, notes, present, absent: crew.filter((e) => !present.includes(e)).map((e) => ({ id: e, reason: absent[e] ?? '' })) }), 'Checked in — attendance confirmed')}>Confirm check-in &amp; attendance</button>}
     </div>
   );
 }
