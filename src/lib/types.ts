@@ -568,6 +568,8 @@ export interface OcularVisit extends Base, GeoFields {
   // ocular report: what the estimator recommends, and the client's signed acknowledgement of the findings
   report_surface?: string; report_hazards?: string; report_recommendation?: string; report_services?: ServiceCode[]; report_days?: number; report_crew?: string; report_at?: string;
   client_sig?: string; client_sig_name?: string; client_sig_at?: string; assessor_sig?: string; assessor_sig_at?: string;
+  /** the contact person signs on site when the visit is completed: proof that the ocular visit took place */
+  visit_sig?: string; visit_sig_name?: string; visit_sig_at?: string;
 }
 
 /* ---------- Back Jobs / Callbacks ---------- */

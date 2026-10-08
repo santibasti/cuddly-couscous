@@ -920,7 +920,10 @@ describe('Ocular visits', () => {
     await as('leader@topmop.ph');
     expect(() => O.completeOcularVisit(v.id, { panels: [], measurements: [], findings: 'x' })).toThrow(/glass panel count/);
     expect(() => O.completeOcularVisit(v.id, { panels, measurements: [{ id: 'm', label: '', qty: 0, unit: '' }], findings: '' })).toThrow(/label/);
-    O.completeOcularVisit(v.id, { panels, measurements: meas, findings: 'Hard-water stains upstairs' });
+    expect(() => O.completeOcularVisit(v.id, { panels, measurements: meas, findings: 'Hard-water stains upstairs' })).toThrow(/contact person to sign/);
+    expect(() => O.completeOcularVisit(v.id, { panels, measurements: meas, findings: 'Hard-water stains upstairs', visit_sig: 'data:image/png;base64,AA', visit_sig_name: ' ' })).toThrow(/printed name/);
+    O.completeOcularVisit(v.id, { panels, measurements: meas, findings: 'Hard-water stains upstairs', visit_sig: 'data:image/png;base64,AA', visit_sig_name: 'Ms. Reyes' });
+    expect(db().ocular_visits.find((x) => x.id === v.id)).toMatchObject({ visit_sig_name: 'Ms. Reyes', visit_sig: expect.any(String), visit_sig_at: expect.any(String) });
     expect(db().ocular_visits.find((x) => x.id === v.id)).toMatchObject({ status: 'Completed', completed_by: expect.any(String) });
     expect(B.ocularStats(db()).awaiting.some((x) => x.id === v.id)).toBe(true);
     expect(db().notifications.some((n) => n.key === `oc-quote:${v.id}`)).toBe(true);

@@ -91,7 +91,7 @@ export function reopenOcularReport(id: string, reason: string) {
   if (!v.client_sig) fail('The report is not signed.'); if (!reason.trim()) fail('Give a reason for reopening the report.');
   return store.update('ocular_visits', id, { client_sig: undefined, client_sig_name: undefined, client_sig_at: undefined, assessor_sig: undefined, assessor_sig_at: undefined } as never, 'update', `Ocular report ${v.number} reopened: ${reason.trim()}`);
 }
-export interface OcularResult { panels: PanelRow[]; measurements: Measurement[]; findings: string }
+export interface OcularResult { panels: PanelRow[]; measurements: Measurement[]; findings: string; visit_sig?: string; visit_sig_name?: string }
 /** Mark the visit Completed and record what was found: panel count (floor, side, external, internal), measurements and notes. No photos, no odometer. */
 export function completeOcularVisit(id: string, r: OcularResult) {
   const v = vOf(id);
@@ -104,7 +104,13 @@ export function completeOcularVisit(id: string, r: OcularResult) {
   if (glass && !r.panels.length && !r.measurements.length) fail('Record the glass panel count (floor, side, external, internal) or a measurement.');
   if (!glass && !r.measurements.length && !r.findings.trim()) fail('Record at least one measurement or a note.');
   if (r.measurements.some((m) => !m.label.trim() || !(m.qty > 0) || !m.unit.trim())) fail('Every measurement needs a label, a quantity above zero and a unit.');
-  const res = store.update('ocular_visits', id, { status: 'Completed', panels: r.panels, measurements: r.measurements, findings: r.findings.trim(), completed_at: v.completed_at ?? nowLocal(), completed_by: v.completed_by ?? store.user?.id } as never, 'update', `Ocular visit ${v.number} ${v.status === 'Completed' ? 'findings updated' : 'completed'}${r.panels.length ? ` — ${panelTotals(r.panels).total} panels counted` : ''}`);
+  // the contact person signs on site to show the visit really took place (asked the first time the visit is completed)
+  if (!v.visit_sig && v.status !== 'Completed') {
+    if (!r.visit_sig) fail('Ask the contact person to sign to confirm the ocular visit took place.');
+    if (!r.visit_sig_name?.trim()) fail("Type the contact person's printed name next to the signature.");
+  }
+  const sigPatch = r.visit_sig ? { visit_sig: r.visit_sig, visit_sig_name: (r.visit_sig_name ?? v.contact_person).trim(), visit_sig_at: isoNow() } : {};
+  const res = store.update('ocular_visits', id, { ...sigPatch, status: 'Completed', panels: r.panels, measurements: r.measurements, findings: r.findings.trim(), completed_at: v.completed_at ?? nowLocal(), completed_by: v.completed_by ?? store.user?.id } as never, 'update', `Ocular visit ${v.number} ${v.status === 'Completed' ? 'findings updated' : 'completed'}${r.panels.length ? ` — ${panelTotals(r.panels).total} panels counted` : ''}`);
   runAutomations();
   return res;
 }

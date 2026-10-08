@@ -370,6 +370,11 @@ export async function ocularReportPdf(db: DB, v: OcularVisit) {
   section('Hazards, safety and access requirements', v.report_hazards);
   section('Recommended service', `${names(v.report_services?.length ? v.report_services : v.service_codes)}${v.report_days ? `\nEstimated working days: ${v.report_days}` : ''}${v.report_crew ? `\nRecommended crew: ${v.report_crew}` : ''}${v.report_recommendation ? `\n${v.report_recommendation}` : ''}`);
   section('Please note', 'This report records the conditions seen during the ocular visit and our recommended scope of work. It is not a quotation: prices, schedule and terms follow in a separate quotation. Hidden damage or conditions that were not visible during the visit may require changes to the scope.');
+  if (v.visit_sig) {
+    room(40); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(11, 37, 69); doc.text('Site visit confirmation', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(20, 36, 58); y += 5;
+    y = wrapText(doc, `The ocular visit took place on ${fmtDate((v.completed_at ?? v.start_at).slice(0, 10))}. Confirmed on site by ${clean(v.visit_sig_name ?? v.contact_person)}${v.visit_sig_at ? ` (${fmtDateTime(v.visit_sig_at)})` : ''}.`, 12, y, 186, 4.2) + 2;
+    sigImg(doc, v.visit_sig, 12, y); doc.line(12, y + 18, 100, y + 18); y += 26;
+  }
   room(52);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text('Acknowledgement', 12, y); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); y += 5;
   y = wrapText(doc, 'I acknowledge that the site was inspected with me / my representative, and that the findings and recommended service above reflect what was seen and discussed.', 12, y, 186, 4.2) + 4;

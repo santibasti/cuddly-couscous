@@ -2,7 +2,7 @@ import { OcularReport } from '@/components/OcularReport';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, live } from '@/lib/store';
-import { Badge, Field, Modal, Stat, attempt, ask } from '@/components/ui';
+import { Badge, Field, Modal, SignaturePad, Stat, attempt, ask } from '@/components/ui';
 import { Stepper } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { confirmLeave } from '@/lib/sync';
@@ -83,12 +83,14 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
   const [panels, setPanels] = useState<PanelRow[]>(v.panels.length ? v.panels : []);
   const [meas, setMeas] = useState<Measurement[]>(v.measurements);
   const [notes, setNotes] = useState(v.findings);
+  const [vname, setVname] = useState(v.contact_person); const [vsig, setVsig] = useState<string>();
+  const needSig = !v.visit_sig && v.status !== 'Completed';   // the first time the visit is completed, the contact person signs on site
   const glass = v.service_codes.some((c) => c === 'GLASS_EXT' || c === 'GLASS_INT');
   const dr = useDraft(`d:ocular:${v.id}:result`, { panels, meas, notes }, (d) => { setPanels(d.panels); setMeas(d.meas); setNotes(d.notes); }, rec);
   const pt = panelTotals(panels);
   const setP = (id: string, p: Partial<PanelRow>) => setPanels(panels.map((r) => (r.id === id ? { ...r, ...p } : r)));
   const setM = (id: string, p: Partial<Measurement>) => setMeas(meas.map((r) => (r.id === id ? { ...r, ...p } : r)));
-  const save = () => { if (attempt(() => completeOcularVisit(v.id, { panels, measurements: meas, findings: notes }), 'Ocular visit completed')) { dr.markSaved(); setRec(false); } };
+  const save = () => { if (attempt(() => completeOcularVisit(v.id, { panels, measurements: meas, findings: notes, visit_sig: vsig, visit_sig_name: vname }), 'Ocular visit completed')) { dr.markSaved(); setRec(false); } };
   const toQuote = () => { const q = attempt(() => createQuotationFromOcular(v.id), 'Draft quotation created from the ocular visit'); if (q) { onClose(); if (can('sales.edit')) nav(`/sales/quote/${q.id}`); } };
   if (edit) return <OcularFormModal initial={v} onClose={() => setEdit(false)} />;
   const canAct = (manager || mine);
@@ -112,6 +114,7 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
             {v.findings && <div className="small">{v.findings}</div>}
           </div>
         )}
+        {v.visit_sig && !rec && <div className="alert info" style={{ display: 'grid', gap: 6 }}><span><b>Visit confirmed on site</b> by {v.visit_sig_name}{v.visit_sig_at ? ` · ${fmtDateTime(v.visit_sig_at)}` : ''}</span><img src={v.visit_sig} alt="Contact person signature" style={{ background: '#fff', borderRadius: 6, maxWidth: 240, border: '1px solid var(--line)' }} /></div>}
         {(v.status === 'Completed' || v.status === 'Converted to Quotation') && !rec && <OcularReport visit={v} />}
         {v.quotation_id && <div className="alert info">Converted to quotation <Link to={`/sales/quote/${v.quotation_id}`}>{db.quotations.find((q) => q.id === v.quotation_id)?.number}</Link> · {db.quotations.find((q) => q.id === v.quotation_id)?.status}</div>}
 
@@ -138,6 +141,12 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
               <button className="btn sm" style={{ marginTop: 6 }} onClick={() => setMeas([...meas, newMeasure(v.service_codes.find((c) => c !== 'GLASS_EXT' && c !== 'GLASS_INT'))])}>+ Add measurement</button>
             </div>
             <Field label="Notes / findings"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Condition, access, hazards, what the client agreed to" /></Field>
+            {needSig && <div className="card" style={{ padding: 12 }}>
+              <b>Contact person's signature</b> <span className="small muted">— shows the ocular visit took place</span>
+              <Field label="Contact person (printed name)" required><input value={vname} onChange={(e) => setVname(e.target.value)} /></Field>
+              <SignaturePad value={vsig} onChange={setVsig} />
+              <div className="small muted" style={{ marginTop: 6 }}>Ask {v.contact_person || 'the contact person'} to sign with a finger or stylus. The date and time are recorded when you tap Mark visit completed.</div>
+            </div>}
             <div className="row"><button className="btn primary lg" onClick={save}>Mark visit completed</button><button className="btn lg" onClick={() => setRec(false)}>Cancel</button></div>
           </div>
         )}
