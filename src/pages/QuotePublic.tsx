@@ -58,8 +58,9 @@ export default function QuotePublic() {
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
   return (
-    <div style={{ maxWidth: 820, margin: '0 auto', padding: '16px 14px 40px', paddingTop: 'max(16px, env(safe-area-inset-top))' }}>
-      <div className="row between no-print" style={{ marginBottom: 12 }}><span className="muted small">Quotation</span><span className="row" style={{ gap: 6 }}><button className="btn sm" onClick={() => window.print()}>Print</button><button className="btn primary sm" onClick={() => void download()}>Download PDF</button></span></div>
+    <div className="pubpage">
+      <div className="pubbar no-print"><span className="muted small">Quotation</span><span className="row" style={{ gap: 6 }}><button className="btn sm" onClick={() => window.print()}>Print</button><button className="btn primary sm" onClick={() => void download()}>Download PDF</button></span></div>
+      <div className="pubsheet">
       <div className="joc">
         <div className="joc-head">
           <div className="row" style={{ gap: 12, alignItems: 'center' }}><img src={LOGO_SMALL_URL} alt="TopMop" width={54} height={54} /><div><b className="joc-co">{b.company.name}</b><div className="small">{b.company.tagline}</div><div className="small">{b.company.address}</div><div className="small">{b.company.phone} · {b.company.email}</div></div></div>
@@ -82,7 +83,7 @@ export default function QuotePublic() {
         {q.disclaimer?.trim() && <><div className="joc-k">Service disclaimer</div>{q.disclaimer.trim().split(/\n\s*\n/).map((p, i) => <p key={i} className="small" style={{ marginTop: 2 }}>{p}</p>)}</>}
       </div>
 
-      <div className="card no-print" style={{ marginTop: 16, padding: 16 }}>
+      <div className="pubsign no-print">
         {signed ? <>
           <div className="alert info"><b>Accepted and signed.</b> Thank you{q.client_sig_name ? `, ${q.client_sig_name}` : ''}. {b.company.name} has received your acceptance{q.client_sig_at ? ` (${fmtDateTime(q.client_sig_at)})` : ''} and will contact you to schedule the service.</div>
           <img src={q.client_sig} alt="Your signature" style={{ background: '#fff', borderRadius: 8, maxWidth: 320, marginTop: 10, border: '1px solid var(--line)' }} />
@@ -97,6 +98,7 @@ export default function QuotePublic() {
             {err && <div className="alert warn" style={{ marginTop: 10 }}>{err}</div>}
             <button className="btn primary lg" style={{ marginTop: 12, width: '100%' }} disabled={busy} onClick={() => void accept()}>{busy ? 'Sending…' : 'Accept and sign'}</button>
           </>}
+      </div>
       </div>
     </div>
   );

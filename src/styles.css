@@ -730,3 +730,14 @@ body.dark .joc .joc-final td { background: #0b2545; color: #fff; }
 body.dark .joc .joc-k { color: #5b6b80; } body.dark .joc .small { color: #5b6b80; } body.dark .joc .joc-head .small { color: #b7cde4; }
 body.dark .joc a { color: #0a5b64; }
 body.dark .joc .alert.warn { background: #fdf3dc; border-color: #efd28f; color: #6d4708; } body.dark .joc .alert.info { background: #dff4f6; border-color: #b6e1e5; color: #0a5b64; }
+
+/* pages the client opens from a link (quotation, Job Order): a clean sheet on a soft background, with proper margins */
+.pubpage { min-height: 100vh; background: #e9eef4; padding: max(20px, env(safe-area-inset-top)) 16px 48px; }
+.pubbar { max-width: 880px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #5b6b80; font-size: 13px; }
+.pubsheet { max-width: 880px; margin: 0 auto; background: #fff; color: #14243a; border-radius: 12px; box-shadow: 0 8px 30px rgba(11,37,69,.14); padding: 36px 44px 40px; }
+.pubsheet .joc { padding: 0; }
+.pubsign { margin-top: 28px; padding-top: 24px; border-top: 2px solid #22C1C3; }
+.pubsign label, .pubsign .field > label { color: #14243a; }
+@media (max-width: 700px) { .pubpage { padding: 14px 10px 36px; } .pubsheet { padding: 18px 16px 24px; border-radius: 10px; } }
+@media print { .pubpage { background: #fff; padding: 0; } .pubsheet { box-shadow: none; padding: 0; } .pubbar, .pubsign { display: none !important; } }
+.pubsheet .jl-row { padding-right: 12px; padding-left: 12px; }

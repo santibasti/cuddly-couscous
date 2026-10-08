@@ -31,12 +31,12 @@ export default function JobOrderPublic() {
     a.href = URL.createObjectURL(blob); a.download = jobOrderFilename(o); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
   };
   return (
-    <div style={{ maxWidth: 820, margin: '0 auto', padding: '16px 14px 40px', paddingTop: 'max(16px, env(safe-area-inset-top))' }}>
+    <div className="pubpage">
       {o === undefined && <p className="muted">Loading…</p>}
       {o === null && <div className="alert warn"><b>This link is not available.</b> It may have expired, or the Job Order was not sent yet. Please contact us for a new link.{setup && <div className="small" style={{ marginTop: 6 }}>Technical detail for the TopMop administrator: {setup}. Run the latest database update (supabase db push, migration 0021).</div>}</div>}
       {o && <>
-        <div className="row between no-print" style={{ marginBottom: 12 }}><span className="muted small">Job Order Confirmation</span><span className="row" style={{ gap: 6 }}><button className="btn sm" onClick={() => window.print()}>Print</button><button className="btn primary sm" onClick={download}>Download PDF</button></span></div>
-        <JobOrderDocument order={o} />
+        <div className="pubbar no-print"><span className="muted small">Job Order Confirmation</span><span className="row" style={{ gap: 6 }}><button className="btn sm" onClick={() => window.print()}>Print</button><button className="btn primary sm" onClick={download}>Download PDF</button></span></div>
+        <div className="pubsheet"><JobOrderDocument order={o} /></div>
       </>}
     </div>
   );
