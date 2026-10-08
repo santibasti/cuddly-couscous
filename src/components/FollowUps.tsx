@@ -77,7 +77,7 @@ export function IntervalModal({ clientId, onClose }: { clientId?: string; onClos
         {!clientId && <>
           <Field label="Applies to"><select {...f.bind('scope')}><option value="service">A service type</option><option value="client">One client</option></select></Field>
           {f.v.scope === 'service'
-            ? <Field label="Service type"><select {...f.bind('service_code')}>{db.services.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></Field>
+            ? <Field label="Service type"><select {...f.bind('service_code')}>{live(db.services).map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></Field>
             : <Field label="Client"><select {...f.bind('client_id')}><option value="">Choose…</option>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>}
         </>}
         <Field label="First follow-up (months after last service)"><input type="number" min={1} max={36} {...f.bind('short_months')} /></Field>

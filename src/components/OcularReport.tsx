@@ -1,6 +1,6 @@
 // Ocular report: the estimator's recommendation + the client's signed acknowledgement of the findings.
 import { useState } from 'react';
-import { useAuth } from '@/lib/store';
+import { live, useAuth } from '@/lib/store';
 import { Badge, Field, SignaturePad, ask, attempt } from '@/components/ui';
 import { reopenOcularReport, saveOcularReport, signOcularReport } from '@/lib/ocular';
 import { ocularReportPdf } from '@/lib/export';
@@ -25,7 +25,7 @@ export function OcularReport({ visit }: { visit: OcularVisit }) {
       <div className="form-grid" style={{ marginTop: 8 }}>
         <Field label="Surface and site condition" className="full"><textarea rows={2} disabled={!canEdit} value={f.report_surface} onChange={(e) => setF({ ...f, report_surface: e.target.value })} placeholder="e.g. Heavy hard-water spots on 3rd–5th floor glass; light dust on the rest" /></Field>
         <Field label="Hazards, safety and access requirements" className="full"><textarea rows={2} disabled={!canEdit} value={f.report_hazards} onChange={(e) => setF({ ...f, report_hazards: e.target.value })} placeholder="e.g. Work at height from roof anchors; barricade the sidewalk; client to provide water" /></Field>
-        <div className="full"><div className="small muted" style={{ fontWeight: 600, marginBottom: 4 }}>Recommended service</div><div className="row" style={{ flexWrap: 'wrap', gap: 10 }}>{db.services.filter((s) => !s.deleted_at).map((s) => <label key={s.code} className="check"><input type="checkbox" disabled={!canEdit} checked={f.report_services.includes(s.code)} onChange={() => toggle(s.code)} /> {s.name}</label>)}</div></div>
+        <div className="full"><div className="small muted" style={{ fontWeight: 600, marginBottom: 4 }}>Recommended service</div><div className="row" style={{ flexWrap: 'wrap', gap: 10 }}>{live(db.services).filter((s) => !s.deleted_at).map((s) => <label key={s.code} className="check"><input type="checkbox" disabled={!canEdit} checked={f.report_services.includes(s.code)} onChange={() => toggle(s.code)} /> {s.name}</label>)}</div></div>
         <Field label="Estimated working days"><input type="number" min={1} disabled={!canEdit} value={f.report_days} onChange={(e) => setF({ ...f, report_days: Math.max(1, Math.round(Number(e.target.value) || 1)) })} /></Field>
         <Field label="Recommended crew"><input disabled={!canEdit} value={f.report_crew} onChange={(e) => setF({ ...f, report_crew: e.target.value })} placeholder="6-7" /></Field>
         <Field label="Recommendation / notes to the client" className="full"><textarea rows={3} disabled={!canEdit} value={f.report_recommendation} onChange={(e) => setF({ ...f, report_recommendation: e.target.value })} placeholder="What we recommend and why" /></Field>

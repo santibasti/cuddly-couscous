@@ -25,7 +25,7 @@ function InquiryForm({ onClose }: { onClose: () => void }) {
         <Field label="Service site"><select {...f.bind('site_id')}><option value="">—</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
         <Field label="Source"><input {...f.bind('source')} /></Field>
         <Field label="Ocular visit date"><input type="date" {...f.bind('ocular_date')} /></Field>
-        <div className="full"><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Services requested</div><div className="row">{db.services.map((s) => <label key={s.code} className="check"><input type="checkbox" checked={f.v.service_codes.includes(s.code)} onChange={() => toggle(s.code)} />{s.name}</label>)}</div></div>
+        <div className="full"><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Services requested</div><div className="row">{live(db.services).map((s) => <label key={s.code} className="check"><input type="checkbox" checked={f.v.service_codes.includes(s.code)} onChange={() => toggle(s.code)} />{s.name}</label>)}</div></div>
         <Field label="Details" className="full"><textarea {...f.bind('details')} /></Field>
       </div>
     </Modal>

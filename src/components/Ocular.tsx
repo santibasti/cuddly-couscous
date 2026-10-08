@@ -52,7 +52,7 @@ export function OcularFormModal({ initial, start, onClose }: { initial?: OcularV
           <Field label="Contact mobile"><input inputMode="tel" value={mobile} onChange={(e) => setMobile(e.target.value)} /></Field>
           <Field label="Service location" required className="full"><input value={location} onChange={(e) => setLocation(e.target.value)} /></Field>
         </div>
-        <Field label="Requested service type" required><div className="chips" role="group" aria-label="Services">{db.services.map((s) => <button key={s.code} type="button" className={codes.includes(s.code) ? 'on' : ''} onClick={() => setCodes(codes.includes(s.code) ? codes.filter((c) => c !== s.code) : [...codes, s.code])}>{s.name}</button>)}</div></Field>
+        <Field label="Requested service type" required><div className="chips" role="group" aria-label="Services">{live(db.services).map((s) => <button key={s.code} type="button" className={codes.includes(s.code) ? 'on' : ''} onClick={() => setCodes(codes.includes(s.code) ? codes.filter((c) => c !== s.code) : [...codes, s.code])}>{s.name}</button>)}</div></Field>
         <div className="form-grid">
           <Field label="Proposed date" required><input type="date" min={today()} value={day} onChange={(e) => setDay(e.target.value)} /></Field>
           <Field label="Proposed time" required><input type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} /></Field>

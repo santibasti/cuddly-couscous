@@ -122,7 +122,7 @@ export default function QuoteEditor() {
         <Card title="Line items">
           {!readOnly && (
             <div className="filterbar" style={{ marginTop: 0 }}>
-              <Field label="Add from price list"><select value={svc} onChange={(e) => { const c = e.target.value as ServiceCode; setSvc(c); const d = db.services.find((s) => s.code === c)!; setQty(d.package_qty ?? Math.max(d.minimum_qty, 1)); }}>{db.services.map((s) => <option key={s.code} value={s.code}>{s.name}{s.custom_quote ? ' (custom)' : ''}</option>)}</select></Field>
+              <Field label="Add from price list"><select value={svc} onChange={(e) => { const c = e.target.value as ServiceCode; setSvc(c); const d = db.services.find((s) => s.code === c)!; setQty(d.package_qty ?? Math.max(d.minimum_qty, 1)); }}>{live(db.services).map((s) => <option key={s.code} value={s.code}>{s.name}{s.custom_quote ? ' (custom)' : ''}</option>)}</select></Field>
               <Field label={`Quantity (${def.unit}s)`}><input type="number" min="1" value={qty} onChange={(e) => setQty(+e.target.value)} /></Field>
               <button className="btn navy" onClick={() => addPriced(svc, qty)}><Icon name="plus" />Add with pricing rules</button>
               {(svc === 'GLASS_EXT' || svc === 'GLASS_INT') && <button className="btn" onClick={() => setCalc(true)}>Panel counter…</button>}

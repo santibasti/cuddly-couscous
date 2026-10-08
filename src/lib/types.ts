@@ -85,7 +85,8 @@ export interface Complaint extends Base {
 /* ---------- Services & pricing ---------- */
 export type ServiceCode =
   | 'GLASS_EXT' | 'GLASS_INT' | 'ROOF' | 'WALL' | 'SOLAR' | 'ACP' | 'FLOOR'
-  | 'CEILING' | 'GUTTER' | 'OTHER';
+  | 'CEILING' | 'GUTTER' | 'OTHER'
+  | (string & {});   // services added in Admin → Service pricing get their own code
 
 export interface ServiceDef extends Base {
   code: ServiceCode;

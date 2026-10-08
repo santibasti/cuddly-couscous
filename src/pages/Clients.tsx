@@ -156,7 +156,7 @@ export default function Clients() {
         />
         {more && (
           <div className="filterbar" style={{ margin: 12 }}>
-            <label className="f"><span>Last service type</span><select value={q.service} onChange={(e) => set('service', e.target.value)}><option value="">Any</option>{db.services.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></label>
+            <label className="f"><span>Last service type</span><select value={q.service} onChange={(e) => set('service', e.target.value)}><option value="">Any</option>{live(db.services).map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></label>
             <label className="f"><span>Last service from</span><input type="date" value={q.from} onChange={(e) => set('from', e.target.value)} /></label>
             <label className="f"><span>Last service to</span><input type="date" value={q.to} onChange={(e) => set('to', e.target.value)} /></label>
             <label className="f"><span>Location contains</span><input value={q.loc} placeholder="e.g. Makati" onChange={(e) => set('loc', e.target.value)} /></label>

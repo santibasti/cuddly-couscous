@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAuth } from '@/lib/store';
+import { live, useAuth } from '@/lib/store';
 import { Badge, Field, Modal, SignaturePad, attempt, ask } from '@/components/ui';
 import { DraftBar, PresetChips, Stepper } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
@@ -89,7 +89,7 @@ export function VariationModal({ wf, job, initial, onClose }: { wf?: JobWorkflow
         <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Description</th><th>Service</th><th className="num">Qty</th><th>Unit</th><th className="num">Rate</th><th className="num">Discount</th><th /></tr></thead><tbody>
           {f.items.map((i, k) => (
             <tr key={k}><td><input value={i.description} onChange={(e) => setItem(k, { description: e.target.value })} aria-label="Description" /></td>
-              <td><select value={i.service_code} onChange={(e) => setItem(k, { service_code: e.target.value as QuoteItem['service_code'] })}>{db.services.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></td>
+              <td><select value={i.service_code} onChange={(e) => setItem(k, { service_code: e.target.value as QuoteItem['service_code'] })}>{live(db.services).map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></td>
               <td className="num"><Stepper label="Qty" min={0} value={i.qty} onChange={(v) => setItem(k, { qty: v ?? 0 })} /></td><td><input value={i.unit} onChange={(e) => setItem(k, { unit: e.target.value })} style={{ width: 70 }} /></td>
               <td className="num"><input type="number" inputMode="decimal" min="0" step="any" value={i.rate || ''} onChange={(e) => setItem(k, { rate: +e.target.value })} style={{ width: 120 }} aria-label="Rate" /></td><td className="num"><input type="number" min="0" disabled={!can('discount.approve')} title={can('discount.approve') ? undefined : 'Only the Owner / Admin can apply a discount'} value={i.discount || ''} onChange={(e) => setItem(k, { discount: +e.target.value })} style={{ width: 80 }} /></td>
               <td><button className="btn sm danger" onClick={() => setF({ ...f, items: f.items.filter((_, x) => x !== k) })}>✕</button></td></tr>

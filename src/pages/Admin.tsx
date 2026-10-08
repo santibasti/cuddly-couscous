@@ -1,7 +1,7 @@
 import { DEFAULT_DISCLAIMER, DEFAULT_INTRO, DEFAULT_METHODOLOGY } from '@/lib/quote-text';
 import { CLOUD } from '@/lib/cloud';
 import { useState } from 'react';
-import { store, useAuth } from '@/lib/store';
+import { live, store, useAuth } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Tabs, attempt, ask, useObj, toast } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { DEFAULT_ACCESS, PERMISSIONS, ROLE_LABEL } from '@/lib/rbac';
@@ -78,19 +78,50 @@ function Rates({ s }: { s: Settings }) {
   );
 }
 
+const PROTECTED_SERVICES = ['GLASS_EXT', 'GLASS_INT', 'OTHER'];   // the glass package, panel counting and blank quotation lines depend on these
+const slugCode = (name: string) => 'SVC_' + (name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 14) || 'NEW') + '_' + Math.random().toString(36).slice(2, 5).toUpperCase();
+
 function Pricing() {
   const { db } = useAuth();
-  const [rows, setRows] = useState<ServiceDef[]>(() => clone(db.services));
+  const [rows, setRows] = useState<ServiceDef[]>(() => clone(live(db.services)));
+  const [added, setAdded] = useState<Partial<ServiceDef>[]>([]);
   const set = (i: number, p: Partial<ServiceDef>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...p } : r)));
-  const save = () => attempt(() => { store.require('admin.settings'); rows.forEach((r) => { const cur = db.services.find((s) => s.id === r.id)!; if (JSON.stringify(cur) !== JSON.stringify(r)) store.update('services', r.id, r, 'update', `Pricing updated: ${r.name}`); }); }, 'Pricing saved');
+  const setNew = (i: number, p: Partial<ServiceDef>) => setAdded(added.map((r, k) => (k === i ? { ...r, ...p } : r)));
+  const blank = (): Partial<ServiceDef> => ({ name: '', unit: 'sqm', rate: 0, minimum_qty: 1, custom_quote: false, est_hours_per_unit: 0.25 });
+  const nameTaken = (name: string, exceptId?: string) => rows.some((r) => r.id !== exceptId && r.name.trim().toLowerCase() === name.trim().toLowerCase()) || added.filter((x) => x.name?.trim().toLowerCase() === name.trim().toLowerCase()).length > 1;
+  const save = () => attempt(() => {
+    store.require('admin.settings');
+    for (const r of rows) if (!r.name.trim()) throw new Error('Every service needs a name.');
+    for (const r of added) { if (!r.name?.trim()) throw new Error('Give the new service a name (or remove its row).'); if (nameTaken(r.name)) throw new Error(`"${r.name}" is already in the price list.`); }
+    for (const r of rows) { const cur = db.services.find((x) => x.id === r.id); if (cur && JSON.stringify(cur) !== JSON.stringify(r)) store.update('services', r.id, { ...r, name: r.name.trim() }, 'update', `Pricing updated: ${r.name}`); }
+    for (const r of added) store.insert('services', { code: slugCode(r.name!), name: r.name!.trim(), unit: r.unit?.trim() || 'lot', rate: r.rate ?? 0, minimum_qty: r.minimum_qty ?? 1, custom_quote: !!r.custom_quote, est_hours_per_unit: r.est_hours_per_unit ?? 0.25 } as never, `Service added: ${r.name}`);
+    setAdded([]); setRows(clone(live(store.getDB().services)));
+  }, 'Pricing saved');
+  const del = async (r: ServiceDef) => {
+    const used = db.quotations.filter((q) => q.items.some((i) => i.service_code === r.code)).length + db.jobs.filter((j) => j.service_codes.includes(r.code)).length;
+    const why = await ask(`Delete “${r.name}”?`, used ? `Used in ${used} existing quotation(s) / job(s) — they keep their wording. It disappears from the price list and the pickers. Reason` : 'Reason (optional)', { required: false, okLabel: 'Delete' });
+    if (why === null || why === undefined) return;
+    if (attempt(() => { store.require('admin.settings'); store.remove('services', r.id); }, 'Service deleted — restore it from the Recycle bin if needed')) setRows(rows.filter((x) => x.id !== r.id));
+  };
+  const num = (v: number | undefined, on: (n: number) => void, w = 90) => <input type="number" min="0" step="any" value={v ?? 0} onChange={(e) => on(+e.target.value)} style={{ width: w }} />;
   return (
-    <Card title="Service pricing defaults (Admin-editable)" actions={<button className="btn primary" onClick={save}>Save pricing</button>}>
-      <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Service</th><th>Unit</th><th>Rate (₱)</th><th>Minimum qty</th><th>Package price (₱)</th><th>Package covers</th><th>Excess rate (₱)</th><th>Custom quote</th></tr></thead><tbody>
-        {rows.map((r, i) => <tr key={r.id}><td><b>{r.name}</b></td><td><input value={r.unit} onChange={(e) => set(i, { unit: e.target.value })} style={{ width: 70 }} /></td><td><input type="number" value={r.rate} onChange={(e) => set(i, { rate: +e.target.value })} style={{ width: 100 }} /></td><td><input type="number" value={r.minimum_qty} onChange={(e) => set(i, { minimum_qty: +e.target.value })} style={{ width: 80 }} /></td>
-          <td>{r.code === 'GLASS_EXT' ? <input type="number" value={r.package_price ?? 0} onChange={(e) => set(i, { package_price: +e.target.value })} style={{ width: 100 }} /> : '—'}</td><td>{r.code === 'GLASS_EXT' ? <input type="number" value={r.package_qty ?? 0} onChange={(e) => set(i, { package_qty: +e.target.value })} style={{ width: 80 }} /> : '—'}</td><td>{r.code === 'GLASS_EXT' ? <input type="number" value={r.excess_rate ?? 0} onChange={(e) => set(i, { excess_rate: +e.target.value })} style={{ width: 90 }} /> : '—'}</td>
-          <td><input type="checkbox" checked={r.custom_quote} onChange={(e) => set(i, { custom_quote: e.target.checked })} /></td></tr>)}
+    <Card title="Service pricing (Admin-editable)" actions={<span className="row" style={{ gap: 6 }}><button className="btn" onClick={() => setAdded([...added, blank()])}>+ Add service</button><button className="btn primary" onClick={save}>Save pricing</button></span>}>
+      <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Service</th><th>Unit</th><th>Rate (₱)</th><th>Minimum qty</th><th>Hours / unit</th><th>Custom quote</th><th /></tr></thead><tbody>
+        {rows.flatMap((r, i) => [<tr key={r.id}>
+          <td><input value={r.name} onChange={(e) => set(i, { name: e.target.value })} style={{ minWidth: 190 }} aria-label="Service name" /><div className="small muted">{r.code}</div></td>
+          <td><input value={r.unit} onChange={(e) => set(i, { unit: e.target.value })} style={{ width: 70 }} aria-label="Unit" /></td>
+          <td>{num(r.rate, (n) => set(i, { rate: n }), 100)}</td><td>{num(r.minimum_qty, (n) => set(i, { minimum_qty: n }), 80)}</td><td>{num(r.est_hours_per_unit, (n) => set(i, { est_hours_per_unit: n }), 70)}</td>
+          <td><input type="checkbox" checked={r.custom_quote} onChange={(e) => set(i, { custom_quote: e.target.checked })} aria-label="Custom quote" /></td>
+          <td>{PROTECTED_SERVICES.includes(r.code) ? <span className="small muted" title="Used by the glass package, panel counting and blank quotation lines — edit it, but it cannot be deleted">core</span> : <button className="btn sm danger" onClick={() => void del(r)}>Delete</button>}</td></tr>,
+        ...(r.code === 'GLASS_EXT' ? [<tr key={r.id + 'p'}><td colSpan={7} style={{ background: 'rgba(34,193,195,.07)' }}><span className="small muted">Starter package: </span>price ₱ {num(r.package_price, (n) => set(i, { package_price: n }), 100)} covers {num(r.package_qty, (n) => set(i, { package_qty: n }), 70)} panels · excess ₱ {num(r.excess_rate, (n) => set(i, { excess_rate: n }), 90)} per panel</td></tr>] : [])])}
+        {added.map((r, i) => <tr key={'n' + i} style={{ background: 'var(--teal-bg, rgba(34,193,195,.08))' }}>
+          <td><input autoFocus value={r.name ?? ''} onChange={(e) => setNew(i, { name: e.target.value })} placeholder="New service name" style={{ minWidth: 190 }} aria-label="New service name" /><div className="small muted">new</div></td>
+          <td><input value={r.unit ?? ''} onChange={(e) => setNew(i, { unit: e.target.value })} style={{ width: 70 }} aria-label="Unit" /></td>
+          <td>{num(r.rate, (n) => setNew(i, { rate: n }), 100)}</td><td>{num(r.minimum_qty, (n) => setNew(i, { minimum_qty: n }), 80)}</td><td>{num(r.est_hours_per_unit, (n) => setNew(i, { est_hours_per_unit: n }), 70)}</td>
+          <td><input type="checkbox" checked={!!r.custom_quote} onChange={(e) => setNew(i, { custom_quote: e.target.checked })} aria-label="Custom quote" /></td>
+          <td><button className="btn sm" onClick={() => setAdded(added.filter((_, k) => k !== i))}>Remove</button></td></tr>)}
       </tbody></table></div>
-      <p className="small muted">Defaults: Glass starter package ₱4,799 up to 31 panels, ₱140 per excess panel; Roof ₱145/sqm (min 100 sqm); Wall/Floor ₱125/sqm (min 50 sqm); Solar ₱245/panel (min 20 panels). Services marked “custom quote” have no standard rate — set the rate per quotation.</p>
+      <p className="small muted">Click <b>Save pricing</b> after any change. Rate × quantity prices a line; the minimum quantity is the least billed. Tick “custom quote” when there is no standard rate (set it per quotation). Deleting a service never changes old quotations, jobs or invoices — it only removes it from the price list and the pickers (restore from the Recycle bin). Glass starter package: ₱4,799 up to 31 panels, ₱140 per excess panel.</p>
     </Card>
   );
 }
@@ -116,7 +147,7 @@ export default function Admin() {
   const [detail, setDetail] = useState<AuditLog | null>(null);
   const [tbl, setTbl] = useState(''); const [act, setAct] = useState('');
   const bin: { table: TableName; id: string; label: string; at: string; by?: string | null }[] = [];
-  for (const t of ['clients', 'sites', 'jobs', 'employees', 'items', 'assets', 'quotations', 'invoices', 'expenses', 'users'] as TableName[]) for (const r of db[t] as unknown as Record<string, unknown>[]) if (r.deleted_at) bin.push({ table: t, id: String(r.id), label: String(r.number ?? r.name ?? r.full_name ?? r.code ?? r.payee ?? r.id), at: String(r.deleted_at), by: r.deleted_by as string });
+  for (const t of ['clients', 'sites', 'jobs', 'employees', 'items', 'assets', 'quotations', 'invoices', 'expenses', 'users', 'services'] as TableName[]) for (const r of db[t] as unknown as Record<string, unknown>[]) if (r.deleted_at) bin.push({ table: t, id: String(r.id), label: String(r.number ?? r.name ?? r.full_name ?? r.code ?? r.payee ?? r.id), at: String(r.deleted_at), by: r.deleted_by as string });
   const uname = (id?: string | null) => db.users.find((u) => u.id === id)?.name ?? id ?? '—';
   const logs = db.audit.filter((a) => (!tbl || a.table === tbl) && (!act || a.action === act));
   return (
