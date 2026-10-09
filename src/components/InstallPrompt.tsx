@@ -11,24 +11,54 @@ export const isStandalone = () => typeof window !== 'undefined' && (window.match
 export const isIOS = () => typeof navigator !== 'undefined' && (/iphone|ipad|ipod/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
 const dismissedRecently = () => { try { const t = Number(localStorage.getItem(KEY)); return !!t && Date.now() - t < DAYS * 86400000; } catch { return false; } };
 
+/* The browser fires `beforeinstallprompt` once, early (often on the login page) — keep it at module level so it is never missed. */
+let deferred: InstallEvent | null = null;
+let installed = false;
+const subs = new Set<() => void>();
+const notify = () => subs.forEach((f) => f());
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferred = e as InstallEvent; notify(); });
+  window.addEventListener('appinstalled', () => { deferred = null; installed = true; notify(); });
+}
+function useDeferred() {
+  const [, tick] = useState(0);
+  useEffect(() => { const f = () => tick((n) => n + 1); subs.add(f); return () => { subs.delete(f); }; }, []);
+  return { ev: deferred, installed: installed || isStandalone() };
+}
+
+/** Always-available "Install app" button (sidebar / login). Uses the native prompt when the browser offers it, otherwise shows the browser-specific steps. */
+export function InstallButton({ className = 'btn sm block' }: { className?: string }) {
+  const { ev, installed: done } = useDeferred();
+  const [help, setHelp] = useState(false);
+  if (done) return null;
+  const go = async () => {
+    if (!ev) { setHelp((v) => !v); return; }
+    await ev.prompt(); await ev.userChoice.catch(() => undefined); deferred = null; notify();
+  };
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+  const how = isIOS() ? <>Tap the <b>Share</b> button in Safari, then <b>Add to Home Screen</b>.</>
+    : /firefox/i.test(ua) ? <>Firefox on a computer cannot install web apps. Open TopMop in <b>Chrome</b> or <b>Edge</b>, or on a phone use the menu → <b>Install</b>.</>
+    : <>In Chrome or Edge, open the browser menu (⋮) and choose <b>Install TopMop</b> / <b>Add to Home screen</b>, or click the install icon at the right of the address bar. If it is not listed, reload this page once (Ctrl+Shift+R) and use the HTTPS address.</>;
+  return (
+    <div>
+      <button className={className} onClick={go} style={{ marginTop: 8 }}><Icon name="download" /><span className="lbl">Install app</span></button>
+      {help && !ev && <div className="small" style={{ marginTop: 6 }}>{how}</div>}
+    </div>
+  );
+}
+
 export function InstallPrompt() {
-  const [ev, setEv] = useState<InstallEvent | null>(null);
-  const [hidden, setHidden] = useState(() => isStandalone() || dismissedRecently());
+  const { ev, installed: done } = useDeferred();
+  const [hidden, setHidden] = useState(() => dismissedRecently());
   const [steps, setSteps] = useState(false);
-  useEffect(() => {
-    const onPrompt = (e: Event) => { e.preventDefault(); setEv(e as InstallEvent); };
-    const onInstalled = () => { setEv(null); setHidden(true); };
-    window.addEventListener('beforeinstallprompt', onPrompt); window.addEventListener('appinstalled', onInstalled);
-    return () => { window.removeEventListener('beforeinstallprompt', onPrompt); window.removeEventListener('appinstalled', onInstalled); };
-  }, []);
   const dismiss = () => { setHidden(true); try { localStorage.setItem(KEY, String(Date.now())); } catch { /* noop */ } };
   const ios = isIOS();
-  if (hidden || (!ev && !ios)) return null;
+  if (done || hidden || (!ev && !ios)) return null;
   const install = async () => {
     if (!ev) return;
     await ev.prompt();
     const r = await ev.userChoice.catch(() => ({ outcome: 'dismissed' as const }));
-    setEv(null); if (r.outcome === 'accepted') setHidden(true); else dismiss();
+    deferred = null; notify(); if (r.outcome === 'accepted') setHidden(true); else dismiss();
   };
   return (
     <div className="installbar no-print" role="region" aria-label="Install TopMop">

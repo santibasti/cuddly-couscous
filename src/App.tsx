@@ -6,7 +6,7 @@ import { ROLE_LABEL, ROUTE_ACCESS } from '@/lib/rbac';
 import { runAutomations } from '@/lib/actions';
 import { Icon, Overlays, Badge, toast } from '@/components/ui';
 import { SyncBadge } from '@/components/touch';
-import { InstallPrompt, UpdateBanner } from '@/components/InstallPrompt';
+import { InstallPrompt, InstallButton, UpdateBanner } from '@/components/InstallPrompt';
 import { confirmLeave } from '@/lib/sync';
 import { getTheme, setTheme } from '@/lib/theme';
 import { Logo } from '@/components/Logo';
@@ -112,6 +112,7 @@ function Shell() {
         <div className="side-foot">
           <div className="lbl"><div style={{ color: '#fff', fontWeight: 600 }}>{user.name}</div>
           <div>{ROLE_LABEL[user.role]}</div></div>
+          <InstallButton />
           <button className="btn sm block" title="Sign out" aria-label="Sign out" style={{ marginTop: 10 }} onClick={() => { if (!confirmLeave()) return; store.logout(); nav('/login'); }}><Icon name="logout" /><span className="lbl">Sign out</span></button>
         </div>
       </aside>

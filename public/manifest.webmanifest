@@ -1,5 +1,5 @@
 {
-  "id": "./",
+  "id": "/",
   "name": "TopMop Operations",
   "short_name": "TopMop",
   "description": "Field operations for TopMop Window Cleaning Solutions Corp. \u2014 jobs, checklists, attendance and reports.",
@@ -9,8 +9,8 @@
     "business",
     "productivity"
   ],
-  "start_url": "./#/dashboard",
-  "scope": "./",
+  "start_url": "/#/dashboard",
+  "scope": "/",
   "display": "standalone",
   "display_override": [
     "standalone",
@@ -22,19 +22,19 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icon-512.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icon-maskable-512.png",
+      "src": "/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -43,15 +43,15 @@
   "shortcuts": [
     {
       "name": "Jobs",
-      "url": "./#/jobs"
+      "url": "/#/jobs"
     },
     {
       "name": "Attendance",
-      "url": "./#/attendance"
+      "url": "/#/attendance"
     },
     {
       "name": "Equipment",
-      "url": "./#/assets"
+      "url": "/#/assets"
     }
   ]
 }

@@ -1,3 +1,4 @@
+import { InstallButton } from '@/components/InstallPrompt';
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { store, useAuth } from '@/lib/store';
@@ -36,6 +37,7 @@ export default function Login() {
           <Field label="Password"><input type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="••••••••" required /></Field>
           <button className="btn primary lg" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
         </form>
+        <InstallButton />
         {!CLOUD && (
         <div className="alert info" style={{ marginTop: 18 }}>
           <b>Demo mode.</b> Data lives in this browser. All demo accounts use password <code>topmop123</code>.
