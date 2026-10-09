@@ -21,3 +21,16 @@ describe('extra work added ahead of time', () => {
     if (mine) expect(() => W.createVariation(mine.id, input)).toThrow(/started|workflow/i);   // a Team Leader raises extra work once work has started
   });
 });
+
+describe('crew copy of a Job Order', () => {
+  it('has no prices, totals or payment terms but keeps the schedule and place', async () => {
+    const C = await import('./joborder-core');
+    await store.login('ops@topmop.ph', 'topmop123');
+    const job = db().jobs.find((j) => j.status === 'Confirmed' && db().quotations.some((q) => q.id === j.quotation_id && q.status === 'Approved'))!;
+    const full = C.buildContent(db(), job);
+    expect(full.total).toBeGreaterThan(0); expect(full.items.length).toBeGreaterThan(0);
+    const crew = C.stripForCrew(full);
+    expect(crew).toMatchObject({ crew_copy: true, items: [], additions: [], discounts: [], subtotal: 0, vat: 0, total: 0, payment_terms: '', payment_status: '' });
+    expect(crew.service_date).toBe(full.service_date); expect(crew.location.address).toBe(full.location.address); expect(crew.team).toEqual(full.team);
+  });
+});

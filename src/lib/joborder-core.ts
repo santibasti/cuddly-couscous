@@ -106,3 +106,8 @@ export function planJobOrders(db: DB, only?: string): OrderStep[] {
   return out;
 }
 export const orderLabel = (o: Pick<JobOrder, 'number' | 'version'>) => (o.version > 1 ? `${o.number} · Rev ${o.version}` : o.number);
+
+/** The crew's copy of a Job Order: everything except prices, totals and payment terms. (The database does the same for real accounts — see crew_job_order().) */
+export const stripForCrew = (c: JobOrderContent): JobOrderContent => ({ ...c, items: [], additions: [], discounts: [], subtotal: 0, vat_label: '', vat: 0, total: 0, payment_terms: '', payment_status: '', crew_copy: true });
+/** What the database returns to crew (price keys are simply absent) → the full shape with empty prices. */
+export const crewContentFromServer = (c: Partial<JobOrderContent>): JobOrderContent => stripForCrew(c as JobOrderContent);

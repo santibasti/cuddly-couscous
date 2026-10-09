@@ -830,6 +830,8 @@ export interface JobOrderContent {
   access_notes: string[];
   /** set when the order cannot be sent yet (e.g. no approved quotation is linked) */
   blocker?: string;
+  /** the copy handed to the crew: prices, totals and payment terms are removed (they are empty here) */
+  crew_copy?: boolean;
 }
 export interface JobOrder extends Base {
   number: string;                 // JO-2026-0001 (the same number for every version of one order)

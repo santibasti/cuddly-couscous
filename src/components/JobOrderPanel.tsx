@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Modal, attempt, useObj } from '@/components/ui';
 import { Fold } from '@/components/Fold';
+import { useCrewJobOrder } from '@/pages/CrewJobOrderPage';
 import { JobOrderDocument } from '@/components/JobOrderDocument';
 import { SEND_VIA, logJobOrderEvent, markJobOrderSent, resendJobOrder, syncJobOrders } from '@/lib/joborders';
 import { ORDER_JOB_STATUSES, headOrder, ordersOf, orderLabel } from '@/lib/joborder-core';
@@ -39,6 +40,18 @@ function SendModal({ order, resend, onClose }: { order: JobOrder; resend: boolea
   );
 }
 
+/** Assigned crew: the Job Order without prices, once it has been sent to the client. */
+function CrewJoCard({ job }: { job: Job }) {
+  const nav = useNavigate(); const o = useCrewJobOrder(job.id);
+  if (!o) return null;
+  return (
+    <Card title="Job Order Confirmation" actions={<Badge tone="green">Crew copy</Badge>}>
+      <div className="small muted" style={{ marginBottom: 10 }}>{orderLabel(o)} — date, address, contact person, service and what to prepare, without prices. Show it to the building security or the client if the Team Leader is not with you.</div>
+      <button className="btn primary lg" onClick={() => nav(`/job-order/crew/${job.id}`)}>Show Job Order</button>
+    </Card>
+  );
+}
+
 export function JobOrderPanel({ job, fold = false }: { job: Job; fold?: boolean }) {
   const { db, can, user } = useAuth();
   const nav = useNavigate(); const setPreview = (o: JobOrder) => nav(`/job-order/${o.id}`);
@@ -50,6 +63,9 @@ export function JobOrderPanel({ job, fold = false }: { job: Job; fold?: boolean 
   if (!can('joborders.manage') && !can('jobs.all')) {
     // Team Leader on site: show the Job Order to the building security or the client (read-only)
     const mineOnJob = !!user?.employee_id && (job.leader_id === user.employee_id || job.crew_ids.includes(user.employee_id));
+    if (mineOnJob && can('dispatch.view') && !can('dispatch.run')) {
+      return <CrewJoCard job={job} />;
+    }
     if (!can('dispatch.run') || !mineOnJob || !head) return null;
     return (
       <Card title="Job Order Confirmation" actions={<Badge tone={TONE[head.status]}>{head.status}</Badge>}>

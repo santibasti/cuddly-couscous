@@ -44,7 +44,7 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
   const section = (title: string) => { need(20); y += 2; txt(title.toUpperCase(), M, y, { size: 10, bold: true, color: NAVY }); doc.setFillColor(...CYAN); doc.rect(M, y + 1.6, 14, 0.9, 'F'); y += 7; };
   const accentCard = (x: number, w: number, h: number) => { doc.setFillColor(...SOFT); doc.roundedRect(x, y, w, h, 2, 2, 'F'); doc.setFillColor(...CYAN); doc.rect(x, y + 2, 1.2, h - 4, 'F'); };
 
-  const stamp = o.status === 'Superseded' ? 'SUPERSEDED - a newer version of this Job Order has been issued. Please use the latest version.' : o.status === 'Draft' || o.status === 'Revised' ? 'DRAFT - not yet sent to the client' : '';
+  const stamp = c.crew_copy && o.status !== 'Superseded' && o.status !== 'Draft' && o.status !== 'Revised' ? 'CREW COPY - prices and payment terms are not shown.' : o.status === 'Superseded' ? 'SUPERSEDED - a newer version of this Job Order has been issued. Please use the latest version.' : o.status === 'Draft' || o.status === 'Revised' ? 'DRAFT - not yet sent to the client' : '';
   if (stamp) { doc.setFillColor(...(o.status === 'Superseded' ? [253, 235, 234] as RGB : [255, 243, 214] as RGB)); doc.roundedRect(M, y - 4, CW, 8, 1.5, 1.5, 'F'); txt(stamp, W / 2, y + 1.2, { size: 9.3, bold: true, color: o.status === 'Superseded' ? [180, 35, 24] : [150, 95, 10], align: 'center' }); y += 11; }
   txt('This document confirms your scheduled service. It is not an invoice, an official receipt or a new quotation.', M, y, { size: 9, color: MUTED, max: CW }); y += 7;
 
@@ -85,9 +85,10 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
     });
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
   };
-  itemTable('Approved services', c.items);
-  for (const a of c.additions) itemTable(`Approved additional work ${a.number}${a.reason ? ` - ${a.reason}` : ''}`, a.items);
+  if (!c.crew_copy) itemTable('Approved services', c.items);
+  if (!c.crew_copy) for (const a of c.additions) itemTable(`Approved additional work ${a.number}${a.reason ? ` - ${a.reason}` : ''}`, a.items);
 
+  if (!c.crew_copy) {
   // ---- totals ----
   const trows: [string, string][] = [...c.discounts.map((d) => [d.label, `- ${pm(d.amount)}`] as [string, string]), ['Subtotal (before VAT)', pm(c.subtotal)], [c.vat_label, pm(c.vat)]];
   need(trows.length * 5.6 + 20); const bx = W - M - 86;
@@ -101,6 +102,8 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
   const terms = c.payment_terms.trim().split(/\s+(?=\d{1,2}\.\s)/);
   const [first, ...rest] = terms; para(first, M, CW, 9.6, 4.7); for (const t of rest) para(t, M + 3, CW - 3, 9.2, 4.4, MUTED);
   y += 1.5; need(9); doc.setFillColor(...(/paid/i.test(c.payment_status) && !/no payment|not paid/i.test(c.payment_status) ? [227, 244, 232] as RGB : [255, 243, 214] as RGB)); const sl = lines(c.payment_status, CW - 10, 9.6); const sh = sl.length * 4.6 + 4.5; doc.roundedRect(M, y, CW, sh, 2, 2, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.6); doc.setTextColor(...INK); let k = y + 5.4; for (const l of sl) { doc.text(l, M + 5, k); k += 4.6; } y += sh + 3;
+
+  }
 
   // ---- team ----
   section('Your team');
