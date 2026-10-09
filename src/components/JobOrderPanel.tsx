@@ -45,8 +45,8 @@ function CrewJoCard({ job }: { job: Job }) {
   const nav = useNavigate(); const o = useCrewJobOrder(job.id);
   if (!o) return null;
   return (
-    <Card title="Job Order Confirmation" actions={<Badge tone="green">Crew copy</Badge>}>
-      <div className="small muted" style={{ marginBottom: 10 }}>{orderLabel(o)} — date, address, contact person, service and what to prepare, without prices. Show it to the building security or the client if the Team Leader is not with you.</div>
+    <Card title="Job Order Confirmation">
+      <div className="small muted" style={{ marginBottom: 10 }}>{orderLabel(o)} — the date, address, contact person, service and what to prepare. Show it to the building security or the client when you arrive.</div>
       <button className="btn primary lg" onClick={() => nav(`/job-order/crew/${job.id}`)}>Show Job Order</button>
     </Card>
   );

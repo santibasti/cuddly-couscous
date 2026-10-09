@@ -20,7 +20,6 @@ export function JobOrderDocument({ order }: { order: View }) {
       </div>
       {order.status === 'Superseded' && <div className="pd-banner bad">SUPERSEDED — a newer version of this Job Order has been issued. Please use the latest version.</div>}
       {(order.status === 'Draft' || order.status === 'Revised') && <div className="pd-banner">DRAFT — not yet sent to the client</div>}
-      {c.crew_copy && <div className="pd-banner" style={{ background: '#dff4f6', color: '#0a5b64' }}>CREW COPY — prices and payment terms are not shown</div>}
       <p className="pd-lead">This document confirms your scheduled service. It is not an invoice, an official receipt or a new quotation.</p>
 
       <div className="pd-two">

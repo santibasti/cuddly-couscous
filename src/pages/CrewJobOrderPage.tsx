@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
 import { CLOUD, supabase } from '@/lib/cloud';
-import { Badge, attempt } from '@/components/ui';
+import { attempt } from '@/components/ui';
 import { JobOrderDocument } from '@/components/JobOrderDocument';
 import { crewContentFromServer, headOrder, orderLabel, stripForCrew } from '@/lib/joborder-core';
 import { buildJobOrderPdf, jobOrderFilename } from '@/lib/joborderpdf';
@@ -37,7 +37,7 @@ export default function CrewJobOrderPage() {
     <div className="jopage">
       <div className="jopage-bar">
         <button className="btn" onClick={() => (job ? nav(`/jobs/${job.id}`) : nav(-1))}>← Back to job{job ? ` ${job.number}` : ''}</button>
-        <div className="grow">{o && <><b>{orderLabel(o)}</b> <Badge>Crew copy</Badge></>}</div>
+        <div className="grow">{o && <b>{orderLabel(o)}</b>}</div>
         {o && <button className="btn primary" onClick={() => attempt(download)}>Download PDF</button>}
       </div>
       {o === undefined && <p className="muted">Loading…</p>}

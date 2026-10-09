@@ -44,7 +44,7 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
   const section = (title: string) => { need(20); y += 2; txt(title.toUpperCase(), M, y, { size: 10, bold: true, color: NAVY }); doc.setFillColor(...CYAN); doc.rect(M, y + 1.6, 14, 0.9, 'F'); y += 7; };
   const accentCard = (x: number, w: number, h: number) => { doc.setFillColor(...SOFT); doc.roundedRect(x, y, w, h, 2, 2, 'F'); doc.setFillColor(...CYAN); doc.rect(x, y + 2, 1.2, h - 4, 'F'); };
 
-  const stamp = c.crew_copy && o.status !== 'Superseded' && o.status !== 'Draft' && o.status !== 'Revised' ? 'CREW COPY - prices and payment terms are not shown.' : o.status === 'Superseded' ? 'SUPERSEDED - a newer version of this Job Order has been issued. Please use the latest version.' : o.status === 'Draft' || o.status === 'Revised' ? 'DRAFT - not yet sent to the client' : '';
+  const stamp = o.status === 'Superseded' ? 'SUPERSEDED - a newer version of this Job Order has been issued. Please use the latest version.' : o.status === 'Draft' || o.status === 'Revised' ? 'DRAFT - not yet sent to the client' : '';
   if (stamp) { doc.setFillColor(...(o.status === 'Superseded' ? [253, 235, 234] as RGB : [255, 243, 214] as RGB)); doc.roundedRect(M, y - 4, CW, 8, 1.5, 1.5, 'F'); txt(stamp, W / 2, y + 1.2, { size: 9.3, bold: true, color: o.status === 'Superseded' ? [180, 35, 24] : [150, 95, 10], align: 'center' }); y += 11; }
   txt('This document confirms your scheduled service. It is not an invoice, an official receipt or a new quotation.', M, y, { size: 9, color: MUTED, max: CW }); y += 7;
 
