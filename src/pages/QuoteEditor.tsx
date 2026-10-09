@@ -130,19 +130,19 @@ export default function QuoteEditor() {
             </div>
           )}
           {note && <div className="alert info" style={{ marginBottom: 10 }}>{note}</div>}
-          <div className="tbl-wrap">
-            <table className="tbl">
-              <thead><tr><th>Description</th><th style={{ width: 90 }}>Qty</th><th style={{ width: 100 }}>Unit</th><th style={{ width: 120 }}>Unit rate (₱)</th><th style={{ width: 110 }}>Discount (₱)</th><th className="num" style={{ width: 130 }}>Amount</th><th /></tr></thead>
+          <div className="qlines-wrap">
+            <table className="tbl qlines">
+              <thead><tr><th>Description</th><th style={{ width: 120 }}>Qty</th><th style={{ width: 120 }}>Unit</th><th style={{ width: 140 }}>Unit rate (₱)</th><th style={{ width: 130 }}>Discount (₱)</th><th className="num" style={{ width: 130 }}>Amount</th><th style={{ width: 44 }} /></tr></thead>
               <tbody>
                 {v.items.map((it, i) => (
                   <tr key={i}>
-                    <td><input disabled={readOnly} value={it.description} onChange={(e) => updItem(i, { description: e.target.value })} aria-label="Description" /></td>
-                    <td><input type="number" min="0" disabled={readOnly} value={it.qty} onChange={(e) => updItem(i, { qty: +e.target.value })} aria-label="Quantity" /></td>
-                    <td><input disabled={readOnly} value={it.unit} onChange={(e) => updItem(i, { unit: e.target.value })} aria-label="Unit" /></td>
-                    <td><input type="number" min="0" step="0.01" disabled={readOnly} value={it.rate} onChange={(e) => updItem(i, { rate: +e.target.value })} aria-label="Rate" /></td>
-                    <td><input type="number" min="0" step="0.01" disabled={readOnly || !can('discount.approve')} title={can('discount.approve') ? undefined : 'Only the Owner / Admin can apply a discount'} value={it.discount} onChange={(e) => updItem(i, { discount: +e.target.value })} aria-label="Discount" /></td>
-                    <td className="num">{money(it.qty * it.rate - it.discount)}</td>
-                    <td>{!readOnly && <button className="icon-btn" onClick={() => setItems(v.items.filter((_, k) => k !== i))} aria-label="Remove line"><Icon name="trash" /></button>}</td>
+                    <td data-label="Description" className="ql-desc"><input disabled={readOnly} value={it.description} onChange={(e) => updItem(i, { description: e.target.value })} aria-label="Description" /></td>
+                    <td data-label="Qty"><input type="number" inputMode="decimal" min="0" disabled={readOnly} value={it.qty} onChange={(e) => updItem(i, { qty: +e.target.value })} aria-label="Quantity" /></td>
+                    <td data-label="Unit"><input disabled={readOnly} value={it.unit} onChange={(e) => updItem(i, { unit: e.target.value })} aria-label="Unit" /></td>
+                    <td data-label="Unit rate (₱)"><input type="number" inputMode="decimal" min="0" step="0.01" disabled={readOnly} value={it.rate} onChange={(e) => updItem(i, { rate: +e.target.value })} aria-label="Rate" /></td>
+                    <td data-label="Discount (₱)"><input type="number" inputMode="decimal" min="0" step="0.01" disabled={readOnly || !can('discount.approve')} title={can('discount.approve') ? undefined : 'Only the Owner / Admin can apply a discount'} value={it.discount} onChange={(e) => updItem(i, { discount: +e.target.value })} aria-label="Discount" /></td>
+                    <td className="num ql-amt" data-label="Amount">{money(it.qty * it.rate - it.discount)}</td>
+                    <td className="ql-x">{!readOnly && <button className="icon-btn" onClick={() => setItems(v.items.filter((_, k) => k !== i))} aria-label="Remove line"><Icon name="trash" /></button>}</td>
                   </tr>
                 ))}
                 {!v.items.length && <tr><td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 24 }}>No line items yet — add services using TopMop's pricing rules above.</td></tr>}

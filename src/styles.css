@@ -803,3 +803,19 @@ body.dark .crpaper .pbk { background: #f1f6f9; border-color: #dde6ee; color: #14
 body.dark .crpaper .btn:not(.primary):not(.navy):not(.danger) { background: #fff; color: #14243a; border-color: #c9d4e0; }
 body.dark .crpaper .card { background: #fff; border-color: #dde4ec; color: #14243a; } body.dark .crpaper .kv dt { color: #5b6b80; } body.dark .crpaper .kv dd { color: #14243a; }
 body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small { color: #14243a; } body.dark .crpaper .muted { color: #5b6b80; }
+
+/* quotation line items: roomy Qty / Unit fields; on tablets and phones each line becomes a labelled card so every value can be seen */
+.qlines input { min-width: 0; width: 100%; }
+.qlines td[data-label="Qty"] input, .qlines td[data-label="Unit"] input { text-align: center; font-weight: 600; }
+@media (max-width: 1000px) {
+  .qlines, .qlines tbody, .qlines tr, .qlines td { display: block; width: auto; }
+  .qlines thead { display: none; }
+  .qlines tbody tr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 12px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); position: relative; }
+  .qlines tbody td { padding: 0; border: 0; }
+  .qlines tbody td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+  .qlines .ql-desc { grid-column: 1 / -1; padding-right: 34px; }
+  .qlines tbody td input { min-height: 46px; font-size: 16px; }
+  .qlines .ql-amt { grid-column: 1 / 2; align-self: end; text-align: left; font-size: 17px; font-weight: 800; }
+  .qlines .ql-x { position: absolute; top: 8px; right: 8px; }
+  .qlines tbody tr:has(td[colspan]) { display: block; border: 0; }
+}
