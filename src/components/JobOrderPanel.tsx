@@ -43,7 +43,8 @@ function SendModal({ order, resend, onClose }: { order: JobOrder; resend: boolea
 /** Assigned crew: the Job Order without prices, once it has been sent to the client. */
 function CrewJoCard({ job }: { job: Job }) {
   const nav = useNavigate(); const o = useCrewJobOrder(job.id);
-  if (!o) return null;
+  if (o === undefined) return <Card title="Job Order Confirmation"><p className="muted small" style={{ margin: 0 }}>Loading…</p></Card>;
+  if (!o) return <Card title="Job Order Confirmation"><p className="muted small" style={{ margin: 0 }}>Your Job Order will appear here as soon as Admin / Operations confirm it with the client. Check again later, or ask the office.</p></Card>;
   return (
     <Card title="Job Order Confirmation">
       <div className="small muted" style={{ marginBottom: 10 }}>{orderLabel(o)} — the date, address, contact person, service and what to prepare. Show it to the building security or the client when you arrive.</div>
@@ -63,10 +64,9 @@ export function JobOrderPanel({ job, fold = false }: { job: Job; fold?: boolean 
   if (!can('joborders.manage') && !can('jobs.all')) {
     // Team Leader on site: show the Job Order to the building security or the client (read-only)
     const mineOnJob = !!user?.employee_id && (job.leader_id === user.employee_id || job.crew_ids.includes(user.employee_id));
-    if (mineOnJob && can('dispatch.view') && !can('dispatch.run')) {
-      return <CrewJoCard job={job} />;
-    }
-    if (!can('dispatch.run') || !mineOnJob || !head) return null;
+    if (mineOnJob && !can('dispatch.run')) return <CrewJoCard job={job} />;
+    if (!mineOnJob) return null;
+    if (!head) return <Card title="Job Order Confirmation"><p className="muted small" style={{ margin: 0 }}>The Job Order has not been created yet. Ask Admin / Operations.</p></Card>;
     return (
       <Card title="Job Order Confirmation" actions={<Badge tone={TONE[head.status]}>{head.status}</Badge>}>
         <div className="small muted" style={{ marginBottom: 10 }}>{orderLabel(head)} · {head.content.service_types.join(', ')}. Show this to the building security or the client when you arrive at the site.</div>
