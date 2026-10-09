@@ -32,10 +32,13 @@ export default function JobDetail() {
   const [bjOpen, setBjOpen] = useState(false);
   const [inc, setInc] = useState(false);
   const [tab, setTab] = useState<'workflow' | 'details'>('workflow');
-  const wide = useMedia('(min-width: 1200px) and (orientation: landscape)');
+  const wideScreen = useMedia('(min-width: 1200px) and (orientation: landscape)');
   const j = db.jobs.find((x) => x.id === id);
   if (!j || j.deleted_at) return <div className="alert warn">Job not found. <Link to="/jobs">Back to jobs</Link></div>;
   const myEmp = user?.employee_id;
+  // plain crew (no price access): no workflow, no prices — just the job details and their copy of the Job Order
+  const crewView = !(can('dispatch.run') || can('sales.view') || can('invoices.view') || can('jobs.all'));
+  const wide = wideScreen && !crewView;
   if (!can('jobs.all') && !(myEmp && (j.leader_id === myEmp || j.crew_ids.includes(myEmp)))) return <div className="alert warn">This job is not assigned to you.</div>;
 
   const client = db.clients.find((c) => c.id === j.client_id);   // may be unreadable for crew accounts
@@ -71,12 +74,12 @@ export default function JobDetail() {
       {bjOpen && <CreateBackJobModal origin={j} onClose={() => setBjOpen(false)} />}
       <BackJobSection job={j} />
       <FollowUpBanner jobId={j.id} />
-      {(hasVars || fc.discount > 0) && <div className="alert info" style={{ marginBottom: 12 }}>Contract value: original {money(fc.originalNet)}{hasVars ? ` + approved variations ${money(fc.variationsNet)}` : ''}{fc.discount > 0 ? ` − discount granted ${money(fc.discountNet)}` : ''} = <b>{money(fc.payableNet)}</b> (ex-VAT). The original quotation is unchanged.{fc.discount > 0 && ' Discount approved by TopMop management and reflected in the final agreed amount.'}</div>}
+      {!crewView && (hasVars || fc.discount > 0) && <div className="alert info" style={{ marginBottom: 12 }}>Contract value: original {money(fc.originalNet)}{hasVars ? ` + approved variations ${money(fc.variationsNet)}` : ''}{fc.discount > 0 ? ` − discount granted ${money(fc.discountNet)}` : ''} = <b>{money(fc.payableNet)}</b> (ex-VAT). The original quotation is unchanged.{fc.discount > 0 && ' Discount approved by TopMop management and reflected in the final agreed amount.'}</div>}
       <div style={{ marginBottom: 14 }}><JobOrderPanel job={j} fold={!!db.workflows.find((w) => w.job_id === j.id && !w.deleted_at)?.disp_at || ['Closed', 'Cancelled'].includes(j.status)} /></div>
-      {!wide && <Tabs tabs={[{ id: 'workflow' as const, label: 'Workflow' }, { id: 'details' as const, label: 'Job details' }]} value={tab} onChange={setTab} />}
-      {(wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><WorkflowPanel job={j} above={(step) => <div style={{ marginBottom: 14 }}><ServicePriceCard job={j} step={step} /></div>} onDetails={() => { setTab('details'); window.scrollTo({ top: 0 }); }} /></div>}
-      {(wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><JobExpensesPanel job={j} /></div>}
-      {(wide || tab === 'details') && <div className="grid g2">
+      {!wide && !crewView && <Tabs tabs={[{ id: 'workflow' as const, label: 'Workflow' }, { id: 'details' as const, label: 'Job details' }]} value={tab} onChange={setTab} />}
+      {!crewView && (wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><WorkflowPanel job={j} above={(step) => <div style={{ marginBottom: 14 }}><ServicePriceCard job={j} step={step} /></div>} onDetails={() => { setTab('details'); window.scrollTo({ top: 0 }); }} /></div>}
+      {!crewView && (wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><JobExpensesPanel job={j} /></div>}
+      {(wide || crewView || tab === 'details') && <div className="grid g2">
         <div className="stack">
           <Card title="Scope of work"><p style={{ marginTop: 0 }}>{j.scope || '—'}</p><div className="row">{j.service_codes.map((c) => <Badge key={c} tone="teal">{db.services.find((s) => s.code === c)?.name}</Badge>)}</div></Card>
           <Card title="Site & contact">
