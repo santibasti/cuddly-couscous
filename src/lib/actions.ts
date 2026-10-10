@@ -5,7 +5,7 @@ import type { DB, ExpenseCategory,
   Payment, Quotation, QuoteStatus, StockTx,
 } from './types';
 import {
-  appliedDiscount, backJobStatusFor, paymentPlanLabel, buildPayrollLines, computeTimes, currentRequest, docTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
+  appliedDiscount, backJobStatusFor, paymentPlanLabel, buildPayrollLines, computeTimes, currentRequest, docTotals, variationTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
 import { copyQuoteImages } from './quoteimages';
 import { syncFollowUps } from './followups';
@@ -898,15 +898,15 @@ export function runAutomations() {
   const recent = (iso?: string) => !!iso && Date.parse(iso) > Date.now() - 7 * 86400000;
   for (const q of d.quotations.filter((x) => !x.deleted_at && (recent(x.client_sig_at) || (x.status === 'Approved' && recent(x.decided_at))))) {
     const c = d.clients.find((x) => x.id === q.client_id);
-    add(`quote-signed:${q.id}`, 'sales', 'Quotation approved', `${q.number} · ${c?.name ?? 'client'} ${q.client_sig_at ? `— signed by ${q.client_sig_name ?? 'the client'}` : 'was approved'}.`, 'info', `/sales/quote/${q.id}`, ['owner'], true);
+    add(`quote-signed:${q.id}`, 'sales', 'Quotation approved', `${q.number} · ${c?.name ?? 'client'} · ${money(docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).total)} ${q.client_sig_at ? `— signed by ${q.client_sig_name ?? 'the client'}` : 'was approved'}.`, 'info', `/sales/quote/${q.id}`, ['owner'], true);
   }
   for (const v of d.variations.filter((x) => !x.deleted_at && x.status === 'Approved' && recent(x.signed_at ?? x.decided_at))) {
     const j = d.jobs.find((x) => x.id === v.job_id);
-    add(`variation-approved:${v.id}`, 'job', 'Additional scope approved', `${v.number} · ${j?.number}: the client approved the additional work${v.client_name ? ` (${v.client_name})` : ''}.`, 'info', `/jobs/${v.job_id}`, ['owner'], true);
+    add(`variation-approved:${v.id}`, 'job', 'Additional scope approved', `${v.number} · ${j?.number}: the client approved ${money(variationTotals(v).total)} of additional work${v.client_name ? ` (${v.client_name})` : ''}.`, 'info', `/jobs/${v.job_id}`, ['owner'], true);
   }
   for (const w of d.workflows.filter((x) => !x.deleted_at && x.conf_mode === 'approval' && recent(x.conf_at))) {
     const j = d.jobs.find((x) => x.id === w.job_id);
-    add(`conforme-signed:${w.id}`, 'job', 'Client signed on site', `${j?.number} · ${d.clients.find((c) => c.id === j?.client_id)?.name ?? ''}: scope / final quote signed${w.conf_name ? ` by ${w.conf_name}` : ''}.`, 'info', `/jobs/${w.job_id}`, ['owner'], true);
+    add(`conforme-signed:${w.id}`, 'job', 'Client signed on site', `${j?.number} · ${d.clients.find((c) => c.id === j?.client_id)?.name ?? ''}: scope / final quote signed${w.conf_final_total != null ? ` — final total ${money(w.conf_final_total)}` : ''}${w.conf_name ? ` by ${w.conf_name}` : ''}.`, 'info', `/jobs/${w.job_id}`, ['owner'], true);
   }
   for (const r of d.discount_requests.filter((x) => !x.deleted_at && x.status === 'Pending Admin Approval')) {
     const j = d.jobs.find((x) => x.id === r.job_id);
