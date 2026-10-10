@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { VariationModal } from '@/components/workflow/VariationStep';
+import { quoteShowsAmounts, RATES_NOTE } from '@/lib/quote-text';
 import { docTotals, finalContract, variationTotals } from '@/lib/business';
 import { Badge, Card } from '@/components/ui';
 import { Fold } from '@/components/Fold';
@@ -23,10 +24,13 @@ export function usePriceView(job: Job) {
   const fc = finalContract(db, job);
   const qt = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
   const waitingTotal = waiting.reduce((n, v) => n + variationTotals(v).total, 0);
-  return { q, approved, waiting, fc, qt, waitingTotal };
+  const rates = !!q && !quoteShowsAmounts(q); // no ocular visit: only the agreed rates are shown, the final amount follows the count on site
+  return { q, approved, waiting, fc, qt, waitingTotal, rates };
 }
 
-const Lines = ({ items }: { items: QuoteItem[] }) => (
+const Lines = ({ items, rates }: { items: QuoteItem[]; rates?: boolean }) => rates ? (
+  <ul className="list" style={{ margin: 0 }}>{items.map((i, k) => <li key={k}><span>{i.description}</span><b className="mono">{money(i.rate)} / {i.unit}</b></li>)}</ul>
+) : (
   <ul className="list" style={{ margin: 0 }}>{items.map((i, k) => <li key={k}><span>{i.description}<div className="small muted">{i.qty.toLocaleString('en-PH')} {i.unit} × {money(i.rate)}{i.discount ? ` − ${money(i.discount)}` : ''}</div></span><b className="mono">{money(lineAmt(i))}</b></li>)}</ul>
 );
 
@@ -35,7 +39,7 @@ const Lines = ({ items }: { items: QuoteItem[] }) => (
 export function ServicePriceCard({ job, step = -1 }: { job: Job; step?: number }) {
   const ok = useCanSeePrice(); const { can } = useAuth(); const [add, setAdd] = useState(false);
   const canAdd = can('jobs.edit') && can('dispatch.run') && ['Confirmed', 'Dispatch Checklist Pending', 'Dispatched', 'On Site', 'In Progress'].includes(job.status);
-  const { q, approved, waiting, fc, qt, waitingTotal } = usePriceView(job);
+  const { q, approved, waiting, fc, qt, waitingTotal, rates } = usePriceView(job);
   if (!ok || step === 3) return null;
   if (!q && !approved.length && !waiting.length) return <Card title="Service & price"><div className="small muted">No approved quotation is linked to this booking yet.</div></Card>;
   const body = (
@@ -43,30 +47,32 @@ export function ServicePriceCard({ job, step = -1 }: { job: Job; step?: number }
       {q && <>
         <div className="row between" style={{ marginBottom: 4 }}><b>Quotation {q.number}</b><Badge tone="green">{q.status}</Badge></div>
         {q.scope && <div className="small" style={{ marginBottom: 6 }}>{q.scope}</div>}
-        <Lines items={q.items} />
-        {qt && <div className="small" style={{ marginTop: 6, display: 'grid', gap: 2 }}>
+        <Lines items={q.items} rates={rates} />
+        {rates && <div className="small muted" style={{ marginTop: 6 }}>{RATES_NOTE}</div>}
+        {qt && !rates && <div className="small" style={{ marginTop: 6, display: 'grid', gap: 2 }}>
           {qt.discount > 0 && <div className="row between"><span className="muted">Discount</span><span>− {money(qt.discount)}</span></div>}
           {q.vat_mode !== 'none' && <div className="row between"><span className="muted">VAT {q.vat_rate}%{q.vat_mode === 'inclusive' ? ' (included)' : ''}</span><span>{money(qt.vat)}</span></div>}
           <div className="row between"><b>Quotation total</b><b>{money(qt.total)}</b></div></div>}
         {q.payment_option && <div className="small muted" style={{ marginTop: 4 }}>Payment: {q.payment_option === 'completion' ? 'upon job completion' : `net ${q.payment_option.replace('net_', '')} days`}</div>}
       </>}
-      {approved.map((v) => <div key={v.id} style={{ marginTop: 12 }}><div className="row between"><b>Additional work {v.number}</b><Badge tone="green">Approved by client</Badge></div>{v.reason && <div className="small muted">{v.reason}</div>}<Lines items={v.items} /><div className="row between small" style={{ marginTop: 4 }}><span className="muted">Total incl. VAT</span><b>{money(variationTotals(v).total)}</b></div></div>)}
-      {waiting.map((v) => <div key={v.id} className="alert warn" style={{ marginTop: 12 }}><div className="row between"><b>Additional work {v.number}</b><Badge tone="amber">Waiting for the client's OK</Badge></div>{v.reason && <div className="small">{v.reason}</div>}<Lines items={v.items} /><div className="row between small" style={{ marginTop: 4 }}><span>Total incl. VAT</span><b>{money(variationTotals(v).total)}</b></div><div className="small muted">The Team Leader gets the client's signature on site, in the Scope Approval step.</div></div>)}
+      {approved.map((v) => <div key={v.id} style={{ marginTop: 12 }}><div className="row between"><b>Additional work {v.number}</b><Badge tone="green">Approved by client</Badge></div>{v.reason && <div className="small muted">{v.reason}</div>}<Lines items={v.items} rates={rates} />{!rates && <div className="row between small" style={{ marginTop: 4 }}><span className="muted">Total incl. VAT</span><b>{money(variationTotals(v).total)}</b></div>}</div>)}
+      {waiting.map((v) => <div key={v.id} className="alert warn" style={{ marginTop: 12 }}><div className="row between"><b>Additional work {v.number}</b><Badge tone="amber">Waiting for the client's OK</Badge></div>{v.reason && <div className="small">{v.reason}</div>}<Lines items={v.items} rates={rates} />{!rates && <div className="row between small" style={{ marginTop: 4 }}><span>Total incl. VAT</span><b>{money(variationTotals(v).total)}</b></div>}<div className="small muted">The Team Leader gets the client's signature on site, in the Scope Approval step.</div></div>)}
       {canAdd && <div style={{ marginTop: 10 }}><button className="btn sm navy" onClick={() => setAdd(true)}>+ Add extra work to this booking</button><span className="small muted"> — shows here for the Team Leader; the client approves it on site</span></div>}
       {add && <VariationModal job={job} onClose={() => setAdd(false)} />}
-      <div className="alert info" style={{ marginTop: 12, marginBottom: 0 }}>
+      {!rates && <div className="alert info" style={{ marginTop: 12, marginBottom: 0 }}>
         <div className="row between"><span>Agreed contract value</span><b>{money(fc.payableTotal)}</b></div>
         {waiting.length > 0 && <div className="row between"><span>If the client also approves the additional work</span><b>{money(fc.payableTotal + waitingTotal)}</b></div>}
         {fc.discount > 0 && <div className="small">Includes an approved management discount of {money(fc.discount)}.</div>}
-      </div>
+      </div>}
     </Card>
   );
-  return step >= 4 ? <Fold title="Service & price" hint={<>{money(fc.payableTotal)} · tap to see the lines</>}>{body}</Fold> : body;
+  return step >= 4 ? <Fold title="Service & price" hint={rates ? 'Agreed rates · tap to see them' : <>{money(fc.payableTotal)} · tap to see the lines</>}>{body}</Fold> : body;
 }
 
 /** One-line version for the confirmation banner. */
 export function PriceLine({ job }: { job: Job }) {
-  const ok = useCanSeePrice(); const { fc, waiting, waitingTotal, q } = usePriceView(job);
+  const ok = useCanSeePrice(); const { fc, waiting, waitingTotal, q, rates } = usePriceView(job);
   if (!ok || (!q && !fc.payableTotal)) return null;
+  if (rates) return <>Agreed rates only (quotation {q!.number}) — the final amount follows the count on site</>;
   return <><b>{money(fc.payableTotal)}</b> incl. VAT{q ? ` (quotation ${q.number})` : ''}{waiting.length > 0 && <span style={{ color: 'var(--amber)' }}> · +{money(waitingTotal)} additional work waiting for the client</span>}</>;
 }
