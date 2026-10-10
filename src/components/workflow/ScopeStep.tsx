@@ -29,7 +29,10 @@ export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolea
   const quoted = quotedPanels(db, q);
   const cp = countPanels([{ w: calc.w, h: calc.h, qty: calc.qty, grouped: calc.grouped }], db.settings.glass_group_size);
   const dirty = JSON.stringify(rows) !== JSON.stringify(wf.panels);
-  const numIn = (r: PanelRow, k: 'external' | 'internal') => <Stepper label={`${k} panels ${r.area} ${r.side}`} disabled={!editable} value={r[k]} onChange={(v) => set(r.id, { [k]: v ?? 0 })} />;
+  const [open, setOpen] = useState(false);
+  const canEdit = editable; editable = false; // the table below is the summary; counting happens in the counter window
+  const finish = () => { if (!dirty || attempt(() => savePanels(wf.id, rows), 'Panel count saved')) { dr.markSaved(); setOpen(false); } };
+  const numIn = (r: PanelRow, k: 'external' | 'internal') => <Stepper label={`${k} panels ${r.area} ${r.side}`} value={r[k]} onChange={(v) => set(r.id, { [k]: v ?? 0 })} />;
   return (
     <div className="stack" style={{ gap: 8 }}>
       <div className="row between"><b>Glass panel count</b>{quoted > 0 && <span className="small muted">Quoted: {quoted} panels{t.total > quoted && <> · counted {t.total} (<b>{t.total - quoted} more</b>)</>}</span>}</div>
@@ -48,22 +51,53 @@ export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolea
         ))}
         {!rows.length && <tr><td colSpan={8} className="muted">No areas counted yet.</td></tr>}
       </tbody><tfoot><tr><th colSpan={2}>Total</th><th className="num" data-label="External">{t.external}</th><th className="num" data-label="Internal">{t.internal}</th><th className="num" data-label="Total">{t.total}</th><th colSpan={3}>{t.additional > 0 && <Badge tone="amber">{t.additional} additional panels</Badge>}</th></tr></tfoot></table></div>
-      {editable && (
-        <>
-          <div className="row"><button className="btn sm" onClick={() => setRows([...rows, newRow()])}>+ Add area</button>{dirty && <button className="btn sm primary" onClick={() => { if (attempt(() => savePanels(wf.id, rows), 'Panel count saved')) dr.markSaved(); }}>Save panel count</button>}{dirty && <span className="small" style={{ color: 'var(--amber)' }}>Unsaved panel changes</span>}</div>
-          <details><summary className="small" style={{ cursor: 'pointer' }}>Count by window size</summary>
-            <div className="form-grid" style={{ marginTop: 8 }}>
-              <Field label="Width (m)"><Stepper label="Width in metres" step={0.1} min={0.1} unit="m" value={calc.w} onChange={(v) => setCalc({ ...calc, w: v ?? 1 })} /></Field>
-              <Field label="Height (m)"><Stepper label="Height in metres" step={0.1} min={0.1} unit="m" value={calc.h} onChange={(v) => setCalc({ ...calc, h: v ?? 1 })} /></Field>
-              <Field label="How many windows"><Stepper label="Number of windows" min={1} value={calc.qty} onChange={(v) => setCalc({ ...calc, qty: v ?? 1 })} /></Field>
-              <Field label="Small sections to group"><label className="check"><input type="checkbox" checked={calc.grouped} onChange={(e) => setCalc({ ...calc, grouped: e.target.checked })} />Group (≤ 0.5 m² each, {db.settings.glass_group_size} = 1 panel)</label></Field>
-              <Field label="Add to row"><select value={calc.row} onChange={(e) => setCalc({ ...calc, row: e.target.value })}><option value="">New row</option>{rows.map((r) => <option key={r.id} value={r.id}>{r.area} · {r.side}</option>)}</select></Field>
-              <Field label="Side counted"><select value={calc.kind} onChange={(e) => setCalc({ ...calc, kind: e.target.value as 'external' | 'internal' })}><option value="external">External</option><option value="internal">Internal</option></select></Field>
-            </div>
-            <div className="row" style={{ marginTop: 6 }}><Badge tone="teal">= {cp.panels} panel{cp.panels === 1 ? '' : 's'}</Badge><span className="small muted">{cp.detail[0]?.label}</span>
-              <button className="btn sm" onClick={() => { if (calc.row) set(calc.row, { [calc.kind]: (rows.find((r) => r.id === calc.row)![calc.kind] || 0) + cp.panels }); else setRows([...rows, { ...newRow(), [calc.kind]: cp.panels }]); }}>Add to count</button></div>
-          </details>
-        </>
+      {canEdit && (
+        <div className="row" style={{ flexWrap: 'wrap' }}>
+          <button className="btn primary" onClick={() => setOpen(true)}>{rows.length ? 'Open panel counter' : 'Start counting panels'}</button>
+          {dirty && <button className="btn" onClick={() => { if (attempt(() => savePanels(wf.id, rows), 'Panel count saved')) dr.markSaved(); }}>Save panel count</button>}
+          {dirty && <span className="small" style={{ color: 'var(--amber)' }}>Unsaved panel changes</span>}
+        </div>
+      )}
+      {open && (
+        <div className="pcwin" role="dialog" aria-modal="true" aria-label="Panel counter">
+          <div className="pcwin-h">
+            <div style={{ flex: 1, minWidth: 0 }}><b>Count glass panels</b><div className="small muted">{quoted > 0 ? `Quoted: ${quoted} panels` : 'Add each area, side and the number of panels'}</div></div>
+            <button className="btn" onClick={() => setOpen(false)}>Close</button>
+          </div>
+          <div className="pcwin-b">
+            <div className="small muted">Up to 2 m × 1 m = 1 panel · larger = 2 panels · small sections may be grouped into 1. Totals are automatic.</div>
+            {rows.map((r, n) => (
+              <div key={r.id} className="pcrow">
+                <div className="pcrow-h"><b>Area {n + 1}</b><span className="pcrow-t">{rowPanels(r)} panel{rowPanels(r) === 1 ? '' : 's'}</span><button className="btn sm danger" onClick={() => setRows(rows.filter((x) => x.id !== r.id))} aria-label="Remove area">Remove</button></div>
+                <div className="pcrow-g">
+                  <Field label="Area / Floor"><select value={r.area} onChange={(e) => set(r.id, { area: e.target.value })}>{PANEL_AREAS.map((a) => <option key={a}>{a}</option>)}</select></Field>
+                  <Field label="Side / Location"><select value={r.side} onChange={(e) => set(r.id, { side: e.target.value })}>{PANEL_SIDES.map((a) => <option key={a}>{a}</option>)}</select></Field>
+                  <Field label="External panels">{numIn(r, 'external')}</Field>
+                  <Field label="Internal panels">{numIn(r, 'internal')}</Field>
+                  <Field label="Notes"><input value={r.notes ?? ''} onChange={(e) => set(r.id, { notes: e.target.value })} placeholder="Optional" /></Field>
+                  <Field label="Extra work"><label className="check" title="Beyond the quoted scope — can be added to a variation"><input type="checkbox" checked={!!r.additional} onChange={(e) => set(r.id, { additional: e.target.checked })} />Beyond the quoted scope</label></Field>
+                </div>
+              </div>
+            ))}
+            <button className="btn primary lg" onClick={() => setRows([...rows, { ...newRow(), area: rows[rows.length - 1]?.area ?? '1st Floor' }])}>+ Add area</button>
+            <details><summary className="small" style={{ cursor: 'pointer' }}>Count by window size</summary>
+              <div className="form-grid" style={{ marginTop: 8 }}>
+                <Field label="Width (m)"><Stepper label="Width in metres" step={0.1} min={0.1} unit="m" value={calc.w} onChange={(v) => setCalc({ ...calc, w: v ?? 1 })} /></Field>
+                <Field label="Height (m)"><Stepper label="Height in metres" step={0.1} min={0.1} unit="m" value={calc.h} onChange={(v) => setCalc({ ...calc, h: v ?? 1 })} /></Field>
+                <Field label="How many windows"><Stepper label="Number of windows" min={1} value={calc.qty} onChange={(v) => setCalc({ ...calc, qty: v ?? 1 })} /></Field>
+                <Field label="Small sections to group"><label className="check"><input type="checkbox" checked={calc.grouped} onChange={(e) => setCalc({ ...calc, grouped: e.target.checked })} />Group (≤ 0.5 m² each, {db.settings.glass_group_size} = 1 panel)</label></Field>
+                <Field label="Add to row"><select value={calc.row} onChange={(e) => setCalc({ ...calc, row: e.target.value })}><option value="">New row</option>{rows.map((r) => <option key={r.id} value={r.id}>{r.area} · {r.side}</option>)}</select></Field>
+                <Field label="Side counted"><select value={calc.kind} onChange={(e) => setCalc({ ...calc, kind: e.target.value as 'external' | 'internal' })}><option value="external">External</option><option value="internal">Internal</option></select></Field>
+              </div>
+              <div className="row" style={{ marginTop: 6 }}><Badge tone="teal">= {cp.panels} panel{cp.panels === 1 ? '' : 's'}</Badge><span className="small muted">{cp.detail[0]?.label}</span>
+                <button className="btn sm" onClick={() => { if (calc.row) set(calc.row, { [calc.kind]: (rows.find((r) => r.id === calc.row)![calc.kind] || 0) + cp.panels }); else setRows([...rows, { ...newRow(), [calc.kind]: cp.panels }]); }}>Add to count</button></div>
+            </details>
+          </div>
+          <div className="pcwin-f">
+            <div className="pcwin-sum"><span>External <b>{t.external}</b></span><span>Internal <b>{t.internal}</b></span><span>Total <b className="big">{t.total}</b></span>{quoted > 0 && <span className="small muted">{t.total > quoted ? `${t.total - quoted} more than quoted` : t.total < quoted ? `${quoted - t.total} to go` : 'matches the quote'}</span>}</div>
+            <button className="btn primary lg" onClick={finish}>Finish counting</button>
+          </div>
+        </div>
       )}
     </div>
   );
