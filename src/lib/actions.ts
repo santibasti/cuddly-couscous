@@ -894,9 +894,23 @@ export function runAutomations() {
     const j = d.jobs.find((x) => x.id === fb.job_id);
     add(`fb-follow:${fb.id}`, 'job', 'Follow-Up Required: client not satisfied', `${j?.number} · ${d.clients.find((c) => c.id === fb.client_id)?.name}: ${fb.issue_category}${fb.comment ? ` — “${fb.comment}”` : ''}. The job cannot be closed until you acknowledge it.`, 'critical', `/jobs/${fb.job_id}`, ['owner']);
   }
+  // the Owner hears about every client signature and every crew discount request (in-app here; WhatsApp / SMS is sent by the database — migration 0044)
+  const recent = (iso?: string) => !!iso && Date.parse(iso) > Date.now() - 7 * 86400000;
+  for (const q of d.quotations.filter((x) => !x.deleted_at && (recent(x.client_sig_at) || (x.status === 'Approved' && recent(x.decided_at))))) {
+    const c = d.clients.find((x) => x.id === q.client_id);
+    add(`quote-signed:${q.id}`, 'sales', 'Quotation approved', `${q.number} · ${c?.name ?? 'client'} ${q.client_sig_at ? `— signed by ${q.client_sig_name ?? 'the client'}` : 'was approved'}.`, 'info', `/sales/quote/${q.id}`, ['owner'], true);
+  }
+  for (const v of d.variations.filter((x) => !x.deleted_at && x.status === 'Approved' && recent(x.signed_at ?? x.decided_at))) {
+    const j = d.jobs.find((x) => x.id === v.job_id);
+    add(`variation-approved:${v.id}`, 'job', 'Additional scope approved', `${v.number} · ${j?.number}: the client approved the additional work${v.client_name ? ` (${v.client_name})` : ''}.`, 'info', `/jobs/${v.job_id}`, ['owner'], true);
+  }
+  for (const w of d.workflows.filter((x) => !x.deleted_at && x.conf_mode === 'approval' && recent(x.conf_at))) {
+    const j = d.jobs.find((x) => x.id === w.job_id);
+    add(`conforme-signed:${w.id}`, 'job', 'Client signed on site', `${j?.number} · ${d.clients.find((c) => c.id === j?.client_id)?.name ?? ''}: scope / final quote signed${w.conf_name ? ` by ${w.conf_name}` : ''}.`, 'info', `/jobs/${w.job_id}`, ['owner'], true);
+  }
   for (const r of d.discount_requests.filter((x) => !x.deleted_at && x.status === 'Pending Admin Approval')) {
     const j = d.jobs.find((x) => x.id === r.job_id);
-    add(`disc-pend:${r.id}`, 'job', 'Discount request awaiting approval', `${r.number} · ${j?.number}: ${money(r.requested_amount)} off ${money(r.base_total)} — ${r.reason}. The client cannot sign the final bill until it is decided.`, 'warn', `/jobs/${r.job_id}`, ['owner']);
+    add(`disc-pend:${r.id}`, 'job', 'Discount request awaiting approval', `${r.number} · ${j?.number}: ${money(r.requested_amount)} off ${money(r.base_total)} — ${r.reason}. The client cannot sign the final bill until it is decided.`, 'warn', `/jobs/${r.job_id}`, ['owner'], true);
   }
   for (const r of d.discount_requests.filter((x) => !x.deleted_at && x.status === 'Approved')) {
     const j = d.jobs.find((x) => x.id === r.job_id);

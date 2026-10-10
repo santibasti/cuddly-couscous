@@ -101,3 +101,16 @@ attendance but not their own.
 (ids like `cl-0007`; rows you created have long random ids) in one transaction. It keeps logins, your own records, company settings and document counters,
 the service price list, branches, storage locations, holidays, maintenance checklist templates, and the inventory / equipment names as a starting list
 (their stock movements, checkouts and maintenance history are cleared). Run it once in the Supabase SQL editor, after the preview.
+
+## Owner alerts by WhatsApp / SMS (quotation signed, scope approved, discount requested)
+
+The database records these events itself (migration `0044`, table `alert_outbox`), so they are sent even when nobody has the app open. The `send-alerts` Edge Function delivers them through Twilio.
+
+1. Create a Twilio account; enable the WhatsApp sandbox or a WhatsApp sender, and/or buy an SMS-capable number.
+2. Set the secrets (use your own values):
+   `supabase secrets set TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_WHATSAPP_FROM=whatsapp:+14155238886 ALERT_WHATSAPP_TO=+639XXXXXXXXX TWILIO_SMS_FROM=+1XXXXXXXXXX ALERT_SMS_TO=+639XXXXXXXXX WEBHOOK_SECRET=<random text>`
+   (WhatsApp, SMS or both — a pair is needed for each channel you want.)
+3. `supabase functions deploy send-alerts --no-verify-jwt`
+4. Dashboard → Database → Webhooks → create: table `alert_outbox`, event `Insert`, type *Supabase Edge Function* → `send-alerts`, add HTTP header `x-webhook-secret: <the same text>`.
+
+Failed sends are kept in `alert_outbox` (`error`, `attempts`) and retried the next time the function runs.
