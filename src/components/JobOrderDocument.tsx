@@ -38,14 +38,13 @@ export function JobOrderDocument({ order }: { order: View }) {
       <div className="pd-tech"><b>{DEFAULT_TECHNOLOGY}</b><span>Pre-Rinse › Deep Cleaning › Final Rinse · Water-Fed Pole, deionized water</span></div>
       <div className="pd-k">Approved scope of work</div><p className="pd-scope">{c.scope || 'As per the approved quotation.'}</p>
 
-      {!c.crew_copy && c.items.length > 0 && <LineItems rows={c.items} title="Approved services" />}
-      {!c.crew_copy && c.additions.map((a) => <div key={a.number} style={{ marginTop: 12 }}><div className="pd-k">Approved additional work {a.number}{a.reason ? ` — ${a.reason}` : ''}</div><LineItems rows={a.items} title="Additional work" /></div>)}
-      {!c.crew_copy && <div className="pd-tot">
-        {c.discounts.map((d, i) => <div className="row" key={i}><span>{d.label}</span><span>− {money(d.amount)}</span></div>)}
-        <div className="row"><span>Subtotal (before VAT)</span><span>{money(c.subtotal)}</span></div>
-        <div className="row"><span>{c.vat_label}</span><span>{money(c.vat)}</span></div>
-        <div className="fin"><span>FINAL APPROVED TOTAL</span><span>{money(c.total)}</span></div>
-      </div>}
+      {!c.crew_copy && c.price_mode !== 'none' && <>
+        {c.items.length > 0 && <LineItems rows={c.items} title="Approved services" ratesOnly />}
+        {c.additions.map((a) => <div key={a.number} style={{ marginTop: 12 }}><div className="pd-k">Approved additional work {a.number}{a.reason ? ` — ${a.reason}` : ''}</div><LineItems rows={a.items} title="Additional work" ratesOnly /></div>)}
+        {c.discounts.map((d, i) => <div className="small" key={i} style={{ marginTop: 6 }}>{d.label} applies to the final amount.</div>)}
+        <div className="pd-pay" style={{ marginTop: 10 }}>The final amount is based on the actual work counted and completed on the day of service, at the approved rates above. Any additional work needs your approval on site.</div>
+      </>}
+      {!c.crew_copy && c.price_mode === 'none' && <div className="pd-pay" style={{ marginTop: 10 }}>The price for this service was agreed in your approved quotation after our ocular visit.</div>}
 
       {!c.crew_copy && <><div className="pd-h">Payment terms and status</div>
       <TermsList text={c.payment_terms} />

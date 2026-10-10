@@ -3,7 +3,21 @@ import { money } from '@/lib/util';
 
 export interface Line { description: string; qty: number; unit: string; rate: number; amount: number }
 
-export function LineItems({ rows, title = 'Description' }: { rows: Line[]; title?: string }) {
+export function LineItems({ rows, title = 'Description', ratesOnly = false }: { rows: Line[]; title?: string; ratesOnly?: boolean }) {
+  if (ratesOnly) {
+    return (
+      <div className="jl jl-rates">
+        <div className="jl-head"><span>{title}</span><span>Unit</span><span>Approved rate</span></div>
+        {rows.map((r, i) => (
+          <div className="jl-row" key={i}>
+            <div className="jl-desc">{r.description}</div>
+            <div className="jl-u">per {r.unit}</div>
+            <div className="jl-amt">{money(r.rate)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="jl">
       <div className="jl-head"><span>{title}</span><span>Qty / unit</span><span>Rate</span><span>Amount</span></div>

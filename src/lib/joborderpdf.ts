@@ -71,32 +71,28 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
   txt('Pre-Rinse  >  Deep Cleaning  >  Final Rinse  |  Water-Fed Pole, deionized water', W - M - 5, y + 6.8, { size: 8.2, color: PALE, align: 'right' }); y += 15;
   txt('APPROVED SCOPE OF WORK', M, y, { size: 7.5, bold: true, color: MUTED }); y += 4.8; para(c.scope || 'As per the approved quotation.', M, CW, 9.8, 4.8); y += 3;
 
-  // ---- priced services ----
+  // ---- approved rates (quantities are counted on site) ----
   const itemTable = (title: string, rows: { description: string; qty: number; unit: string; rate: number; amount: number }[]) => {
     if (!rows.length) return; need(30);
     autoTable(doc, {
       startY: y, margin: { left: M, right: M }, theme: 'plain',
-      head: [[title, 'Qty / unit', 'Rate', 'Amount']],
-      body: rows.map((r) => [clean(r.description), `${r.qty.toLocaleString('en-PH')} ${r.unit}`, pm(r.rate), pm(r.amount)]),
+      head: [[title, 'Unit', 'Approved rate']],
+      body: rows.map((r) => [clean(r.description), `per ${r.unit}`, pm(r.rate)]),
       styles: { fontSize: 9.5, cellPadding: { top: 2.6, bottom: 2.6, left: 2.5, right: 2.5 }, textColor: INK, lineColor: [221, 228, 236], lineWidth: { bottom: 0.2 } },
       headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 8.5, lineWidth: 0 }, alternateRowStyles: { fillColor: [248, 250, 252] },
-      columnStyles: { 1: { halign: 'right', cellWidth: 30 }, 2: { halign: 'right', cellWidth: 32 }, 3: { halign: 'right', cellWidth: 34, fontStyle: 'bold' } },
+      columnStyles: { 1: { halign: 'right', cellWidth: 34 }, 2: { halign: 'right', cellWidth: 40, fontStyle: 'bold' } },
       didParseCell: (d) => { if (d.section === 'head' && d.column.index > 0) d.cell.styles.halign = 'right'; },
     });
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
   };
-  if (!c.crew_copy) itemTable('Approved services', c.items);
-  if (!c.crew_copy) for (const a of c.additions) itemTable(`Approved additional work ${a.number}${a.reason ? ` - ${a.reason}` : ''}`, a.items);
+  if (!c.crew_copy && c.price_mode !== 'none') {
+    itemTable('Approved services', c.items);
+    for (const a of c.additions) itemTable(`Approved additional work ${a.number}${a.reason ? ` - ${a.reason}` : ''}`, a.items);
+    for (const d of c.discounts) { need(7); para(`${d.label} applies to the final amount.`, M, CW, 9, 4.4, MUTED); }
+    need(14); para('The final amount is based on the actual work counted and completed on the day of service, at the approved rates above. Any additional work needs your approval on site.', M, CW, 9.2, 4.5, MUTED); y += 3;
+  } else if (!c.crew_copy) { need(10); para('The price for this service was agreed in your approved quotation after our ocular visit.', M, CW, 9.2, 4.5, MUTED); y += 3; }
 
   if (!c.crew_copy) {
-  // ---- totals ----
-  const trows: [string, string][] = [...c.discounts.map((d) => [d.label, `- ${pm(d.amount)}`] as [string, string]), ['Subtotal (before VAT)', pm(c.subtotal)], [c.vat_label, pm(c.vat)]];
-  need(trows.length * 5.6 + 20); const bx = W - M - 86;
-  doc.setFillColor(...SOFT); doc.roundedRect(bx, y, 86, trows.length * 5.6 + 3, 2, 2, 'F');
-  let ty = y + 5.5; for (const [l, v] of trows) { txt(l, bx + 4, ty, { size: 9.5, color: MUTED }); txt(v, bx + 82, ty, { size: 9.5, align: 'right' }); ty += 5.6; }
-  doc.setFillColor(...NAVY); doc.roundedRect(bx, ty - 1.5, 86, 10, 2, 2, 'F'); txt('FINAL APPROVED TOTAL', bx + 4, ty + 5, { size: 9.5, bold: true, color: WHITE }); txt(pm(c.total), bx + 82, ty + 5, { size: 11, bold: true, color: WHITE, align: 'right' });
-  y = ty + 15;
-
   // ---- payment ----
   need(52); section('Payment terms and status');
   const terms = c.payment_terms.trim().split(/\s+(?=\d{1,2}\.\s)/);

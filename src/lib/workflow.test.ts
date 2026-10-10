@@ -1249,7 +1249,8 @@ describe('Job Order Confirmation', () => {
     expect(c.total).toBe(B.finalQuoteSummary(db(), db().jobs.find((j) => j.id === a.job.id)!).finalTotal);
     expect(c.items.map((i) => [i.description, i.qty, i.rate])).toEqual(a.q.items.map((i) => [i.description, i.qty, i.rate]));
     expect(c.scope).toBe(a.q.scope);
-    expect(Object.keys(c).sort()).toEqual(['access_notes', 'additions', 'arrival_from', 'arrival_to', 'blocker', 'booking_date', 'client', 'client_address', 'company', 'disclaimer', 'discounts', 'duration_hours', 'items', 'location', 'payment_status', 'payment_terms', 'scope', 'service_date', 'service_types', 'subtotal', 'team', 'total', 'vat', 'vat_label'].filter((k) => k in c).sort());
+    expect(Object.keys(c).sort()).toEqual(['access_notes', 'additions', 'arrival_from', 'arrival_to', 'blocker', 'booking_date', 'client', 'client_address', 'company', 'disclaimer', 'discounts', 'duration_hours', 'items', 'location', 'payment_status', 'payment_terms', 'price_mode', 'scope', 'service_date', 'service_types', 'subtotal', 'team', 'total', 'vat', 'vat_label'].filter((k) => k in c).sort());
+    expect(c.price_mode).toBe('rates');
     const text = JSON.stringify(c);
     for (const secret of ['estimated_cost', 'contract_amount', 'hourly', 'payroll', 'margin', 'profit', 'checklist', 'equipment_condition_notes', 'damage_report', 'findings']) expect(text).not.toContain(secret);
     expect(c.team.leader).toBeTruthy();

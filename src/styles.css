@@ -835,3 +835,6 @@ body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small {
 .pcwin-sum { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
 .pcwin-sum .big { font-size: 22px; }
 @media (max-width: 480px) { .pcrow-g { grid-template-columns: 1fr; } .pcwin-f .btn { width: 100%; } }
+.pd .jl-rates .jl-head, .pd .jl-rates .jl-row { grid-template-columns: minmax(0, 1fr) 120px 150px; }
+.pd .jl-u { text-align: right; color: #3b4a5f; }
+@media (max-width: 640px) { .pd .jl-u { text-align: left; font-size: 12.5px; color: var(--pd-mut); } }

@@ -833,6 +833,8 @@ export interface JobOrderContent {
   blocker?: string;
   /** the copy handed to the crew: prices, totals and payment terms are removed (they are empty here) */
   crew_copy?: boolean;
+  /** 'rates' = approved rates only, quantities are counted on site (default); 'none' = no prices (ocular-based quotation: the exact quote is already agreed) */
+  price_mode?: 'rates' | 'none';
 }
 export interface JobOrder extends Base {
   number: string;                 // JO-2026-0001 (the same number for every version of one order)
