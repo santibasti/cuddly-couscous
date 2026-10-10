@@ -59,7 +59,7 @@ export function buildContent(db: DB, job: Job): JobOrderContent {
     payment_terms: terms, payment_status,
     team: { leader, crew },
     access_notes: [site?.access_instructions, c?.access_instructions].map((x) => (x ?? '').trim()).filter((x, i, a) => x && a.indexOf(x) === i),
-    price_mode: approvedQ?.ocular_visit_id ? 'none' : 'rates',
+    price_mode: (approvedQ?.ocular_done ?? !!approvedQ?.ocular_visit_id) ? 'none' : 'rates',
     blocker: approvedQ ? undefined : 'No approved quotation is linked to this booking. Link the approved quotation before sending.',
   };
 }

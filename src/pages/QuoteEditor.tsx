@@ -190,6 +190,9 @@ export default function QuoteEditor() {
           <Field label="Service disclaimer" hint="Printed on the quotation. Edit it for this client, or reset to the company default." className="full"><textarea rows={8} style={{ width: '100%' }} disabled={readOnly} value={v.disclaimer ?? ''} onChange={(e) => f.set('disclaimer', e.target.value)} /></Field>
           {!readOnly && <button type="button" className="btn sm" onClick={() => f.set('disclaimer', defaultDisclaimer(db.settings))}>Reset to company default</button>}
         </Card>
+        <Card title="Ocular visit" actions={<span className="small muted">Decides what the Job Order shows for service and price</span>}>
+          <Field label="Was an ocular visit already done for this quotation?" hint="Yes: the exact price is already agreed, so the Job Order shows no amounts. No: the Job Order shows the agreed rates only (the final amount depends on the actual count on site)."><select disabled={readOnly} value={(v.ocular_done ?? !!v.ocular_visit_id) ? 'yes' : 'no'} onChange={(e) => f.set('ocular_done', e.target.value === 'yes')}><option value="no">No — show the agreed rates</option><option value="yes">Yes — do not show amounts</option></select></Field>
+        </Card>
         <Card title="Payment terms" actions={<span className="small muted">Printed on the quotation and carried to the Job Order and invoice due date</span>}>
           <Field label="Client pays"><select disabled={readOnly} value={v.payment_option ?? ''} onChange={(e) => f.set('payment_option', e.target.value || undefined)}><option value="">— not specified (company default) —</option>{PAYMENT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
         </Card>

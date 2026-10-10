@@ -147,6 +147,8 @@ export interface Quotation extends Base {
   terms: string;
   /** 'completion' (payable when the job is done) or 'net_30' etc. (days after the invoice date); absent on older quotations */
   payment_option?: string;
+  /** an ocular visit was done before this quotation (yes = the Job Order shows no prices; no = it shows the approved rates). Unset: follows ocular_visit_id */
+  ocular_done?: boolean;
   /** manpower, duration and disclaimer shown on the quotation (absent on quotations made before they existed) */
   crew_size?: string; safety_officer?: boolean; work_days?: number; disclaimer?: string; intro?: string; methodology?: string;
   status: QuoteStatus;
