@@ -54,6 +54,10 @@ export function durationText(q: Q): string | null {
 }
 
 /** How the client pays: on completion of the job, or net N days after the invoice date. Chosen on each quotation. */
+/** Ocular done: the exact price is agreed, so the quotation shows amounts. Not done: only the agreed rates are shown (the final amount depends on the count on site). */
+export const quoteShowsAmounts = (q: { ocular_done?: boolean; ocular_visit_id?: string }) => q.ocular_done ?? !!q.ocular_visit_id;
+export const RATES_NOTE = 'The final amount is based on the actual work counted and completed on the day of service, at the agreed rates above.';
+
 export const PAYMENT_OPTIONS = [
   { value: 'completion', label: 'Upon job completion' },
   { value: 'net_7', label: 'Net 7 days' }, { value: 'net_15', label: 'Net 15 days' }, { value: 'net_30', label: 'Net 30 days' },

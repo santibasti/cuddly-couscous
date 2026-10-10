@@ -2,7 +2,7 @@
 // Used for the page the client opens from the share link and for the preview inside the app.
 import { LOGO_SMALL_URL } from '@/lib/logo';
 import { docTotals } from '@/lib/business';
-import { DEFAULT_DISCLAIMER, DEFAULT_INTRO, DEFAULT_METHODOLOGY, DEFAULT_TECHNOLOGY, durationText, manpowerText, paymentLabel, paymentSentence, parseMethodology } from '@/lib/quote-text';
+import { DEFAULT_DISCLAIMER, DEFAULT_INTRO, DEFAULT_METHODOLOGY, DEFAULT_TECHNOLOGY, durationText, manpowerText, quoteShowsAmounts, RATES_NOTE, paymentLabel, paymentSentence, parseMethodology } from '@/lib/quote-text';
 import { fmtDate, money } from '@/lib/util';
 import { LineItems, TermsList } from './LineItems';
 import type { Quotation, Settings } from '@/lib/types';
@@ -18,6 +18,7 @@ export function QuotationDocument({ b }: { b: QuoteBundle }) {
   const method = parseMethodology(q.methodology?.trim() || b.defaults?.methodology?.trim() || DEFAULT_METHODOLOGY);
   const disclaimer = q.disclaimer?.trim() || b.defaults?.disclaimer?.trim() || '';
   const manpower = manpowerText(q); const duration = durationText(q);
+  const amounts = quoteShowsAmounts(q);
   const pay = paymentSentence(q.payment_option);
   const hello = b.client.contact_person?.trim();
   return (
@@ -38,13 +39,14 @@ export function QuotationDocument({ b }: { b: QuoteBundle }) {
 
       <div className="pd-h">Scope of work</div>
       <p className="pd-scope">{q.scope}</p>
-      <LineItems rows={q.items.map((r) => ({ description: r.description, qty: r.qty, unit: r.unit, rate: r.rate, amount: r.qty * r.rate - r.discount }))} title="Services" />
-      <div className="pd-tot">
+      <LineItems rows={q.items.map((r) => ({ description: r.description, qty: r.qty, unit: r.unit, rate: r.rate, amount: r.qty * r.rate - r.discount }))} title="Services" ratesOnly={!amounts} rateLabel="Agreed rate" />
+      {!amounts && <div className="pd-pay" style={{ marginTop: 10 }}>{RATES_NOTE}{t.discount > 0 ? ' The agreed discount applies to the final amount.' : ''}</div>}
+      {amounts && <div className="pd-tot">
         <div className="row"><span>Subtotal</span><span>{money(t.gross)}</span></div>
         {t.discount > 0 && <div className="row"><span>Discount</span><span>− {money(t.discount)}</span></div>}
         {q.vat_mode !== 'none' && <div className="row"><span>VAT {q.vat_rate}%{q.vat_mode === 'inclusive' ? ' (included)' : ''}</span><span>{money(t.vat)}</span></div>}
         <div className="fin"><span>TOTAL</span><span>{money(t.total)}</span></div>
-      </div>
+      </div>}
 
       <div className="pd-h">Our cleaning system methodology</div>
       <div className="pd-tech"><b>{DEFAULT_TECHNOLOGY}</b><span>Water-Fed Pole · Deionized Water Technology · No harsh chemicals</span></div>

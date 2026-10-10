@@ -1,5 +1,5 @@
 import { logoDataUrl } from './logo';
-import { DEFAULT_TECHNOLOGY, defaultIntro, defaultMethodology, durationText, paymentLabel, paymentSentence, manpowerText, parseMethodology } from './quote-text';
+import { DEFAULT_TECHNOLOGY, defaultIntro, defaultMethodology, durationText, quoteShowsAmounts, RATES_NOTE, paymentLabel, paymentSentence, manpowerText, parseMethodology } from './quote-text';
 import type { DB, Invoice, OcularVisit, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
 import { quoteImagesOf } from './quoteimages';
 import { paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, packagePanels, panelTotals, rowPanels, variationTotals } from './business';
@@ -245,17 +245,19 @@ export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?:
   // ---- scope and price ----
   section('Scope of work'); para(q.scope || '-', M, CW, 9.5, 4.8); y += 2;
   need(60);
+  const amounts = quoteShowsAmounts(q);
   autoTable(doc, {
-    startY: y, head: [['#', 'Description', 'Qty', 'Unit', 'Unit rate', 'Discount', 'Amount']],
-    body: q.items.map((i, n) => [n + 1, clean(i.description), i.qty.toLocaleString('en-PH'), i.unit, pm(i.rate), i.discount ? pm(i.discount) : '-', pm(i.qty * i.rate - i.discount)]),
+    startY: y, head: [amounts ? ['#', 'Description', 'Qty', 'Unit', 'Unit rate', 'Discount', 'Amount'] : ['#', 'Description', 'Unit', 'Agreed rate']],
+    body: q.items.map((i, n) => amounts ? [n + 1, clean(i.description), i.qty.toLocaleString('en-PH'), i.unit, pm(i.rate), i.discount ? pm(i.discount) : '-', pm(i.qty * i.rate - i.discount)] : [n + 1, clean(i.description), `per ${i.unit}`, pm(i.rate)]),
     theme: 'plain', margin: { left: M, right: M },
     styles: { fontSize: 9, cellPadding: { top: 2.6, bottom: 2.6, left: 2.5, right: 2.5 }, textColor: INK, lineColor: [221, 228, 236], lineWidth: { bottom: 0.2 } },
     headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 8.5, lineWidth: 0 },
     alternateRowStyles: { fillColor: [248, 250, 252] },
-    columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 2: { cellWidth: 16, halign: 'right' }, 3: { cellWidth: 16 }, 4: { cellWidth: 29, halign: 'right' }, 5: { cellWidth: 24, halign: 'right' }, 6: { cellWidth: 31, halign: 'right', fontStyle: 'bold' } },
-    didParseCell: (d) => { if (d.section === 'head' && [2, 4, 5, 6].includes(d.column.index)) d.cell.styles.halign = 'right'; if (d.section === 'head' && d.column.index === 0) d.cell.styles.halign = 'center'; },
+    columnStyles: amounts ? { 0: { cellWidth: 8, halign: 'center' }, 2: { cellWidth: 16, halign: 'right' }, 3: { cellWidth: 16 }, 4: { cellWidth: 29, halign: 'right' }, 5: { cellWidth: 24, halign: 'right' }, 6: { cellWidth: 31, halign: 'right', fontStyle: 'bold' } } : { 0: { cellWidth: 8, halign: 'center' }, 2: { cellWidth: 34, halign: 'right' }, 3: { cellWidth: 40, halign: 'right', fontStyle: 'bold' } },
+    didParseCell: (d) => { if (d.section === 'head' && (amounts ? [2, 4, 5, 6] : [2, 3]).includes(d.column.index)) d.cell.styles.halign = 'right'; if (d.section === 'head' && d.column.index === 0) d.cell.styles.halign = 'center'; },
   });
   y = ymax(doc) + 5;
+  if (!amounts) { need(14); para(RATES_NOTE + (q.discount > 0 ? ' The agreed discount applies to the final amount.' : ''), M, CW, 9.2, 4.5, MUTED); y += 4; } else {
   const t = docTotals(q.items, q.discount, q.vat_mode, q.vat_rate);
   const rows: [string, string][] = [['Subtotal', pm(t.gross)]];
   if (t.discount > 0.005) rows.push(['Discount', '- ' + pm(t.discount)]);
@@ -267,6 +269,7 @@ export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?:
   doc.setFillColor(...NAVY); doc.roundedRect(bx, ty - 2.5, 82, 10, 2, 2, 'F'); setText(11, true, [255, 255, 255]); doc.text('TOTAL', bx + 4, ty + 3.8); doc.text(pm(t.total), bx + 78, ty + 3.8, { align: 'right' });
   y = ty + 14;
   if (q.vat_mode === 'none') { setText(8, false, MUTED); doc.text('Prices are not subject to VAT.', M, y - 5); }
+  }
 
   // ---- methodology ----
   const mth = parseMethodology(q.methodology?.trim() || defaultMethodology(db.settings));
