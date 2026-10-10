@@ -7,7 +7,7 @@ import { DraftBar, PresetChips, Stepper, Toggle } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { confirmLeave } from '@/lib/sync';
 import { getGeo } from '@/lib/geo';
-import { ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, currentRequest, discountBlock, jobRequests, categoryLabel, finalQuoteSummary, lineTotals, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
+import { ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, currentRequest, discountBlock, jobRequests, categoryLabel, finalQuoteSummary, lineTotals, packagePanels, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
 import { DISCOUNT_NOTICE, DeclineJobModal } from './DiscountPanel';
 import { approveFinalQuote, billBase, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
 import { conformePdf } from '@/lib/export';
@@ -82,7 +82,7 @@ function PremiumSummary({ sm, pendingLabel }: { sm: ReturnType<typeof finalQuote
 export function PanelBreakdown({ wf, job }: { wf: JobWorkflow; job: Job }) {
   const { db } = useAuth();
   const q = db.quotations.find((x) => x.id === job.quotation_id);
-  const b = panelBreakdown(db, q, wf.panels);
+  const b = panelBreakdown(db, q, wf.panels, packagePanels(db, job, wf));
   const cell = (k: string, v: number, tone?: string) => <div className={`pbk ${tone ?? ''}`}><span>{k}</span><b>{v}</b></div>;
   return <div className="pbks" aria-label="Panel breakdown">{cell('Original panels', b.original)}{cell('Additional panels', b.additional, b.additional ? 'warn' : '')}{cell('External', b.external)}{cell('Internal', b.internal)}{cell('Total counted', b.total, 'navy')}</div>;
 }
@@ -97,7 +97,7 @@ export function AdditionalWork({ wf, job, run, onPresent }: { wf: JobWorkflow; j
   const [depNote, setDepNote] = useState(wf.conf_deposit_note ?? '');
   const [edit, setEdit] = useState<{ idx: number | null; line?: QuoteItem } | null>(null);
   const dr = useDraft(`d:${wf.id}:conf:extra`, { items, deposit, depNote }, (d) => { setItems(d.items); setDeposit(d.deposit); setDepNote(d.depNote); }, run && !wf.conf_at);
-  const resolved = useMemo(() => resolveReviewItems(db, wf.panels, items), [db, wf.panels, items]);
+  const resolved = useMemo(() => resolveReviewItems(db, wf.panels, items, packagePanels(db, job, wf)), [db, wf, job, items]);
   const sm = finalQuoteSummary(db, job, { pending: { items: resolved, ...vat }, deposit });
   const save = () => { const ok = attempt(() => saveFinalReview(wf.id, { items, deposit, deposit_note: depNote }), 'Additional work saved'); if (ok) dr.markSaved(); return !!ok; };
   const present = () => { if (save()) onPresent(); };
@@ -127,7 +127,7 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
   const canDiscount = can('discount.approve');
   const q = db.quotations.find((x) => x.id === job.quotation_id);
   const vat = reviewVat(job);
-  const pb = panelBreakdown(db, q, wf.panels);
+  const pb = panelBreakdown(db, q, wf.panels, packagePanels(db, job, wf));
   const [cat, setCat] = useState<AdditionalCategory>(initial?.category ?? (pb.additional > 0 ? 'glass' : 'solar'));
   const def = categoryDefaults(db.services, cat);
   const known = (UNIT_OPTIONS as readonly string[]).includes(initial?.unit ?? '');
@@ -143,7 +143,7 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
   const pickCat = (k: AdditionalCategory) => { const d = categoryDefaults(db.services, k); setCat(k); setRate(d.rate); setUnitSel(d.unit); setLinked(k === 'glass'); };
   const unit = unitSel === 'custom' ? customUnit.trim() : unitSel;
   const line: QuoteItem = { service_code: ADDITIONAL_CATEGORIES.find((c) => c.key === cat)!.code, category: cat, description: desc, qty: qty ?? 0, entered_qty: qty ?? 0, unit, rate, discount: disc, note: note.trim() || undefined, linked_panels: cat === 'glass' && linked };
-  const [res] = resolveReviewItems(db, wf.panels, [line]);
+  const [res] = resolveReviewItems(db, wf.panels, [line], packagePanels(db, job, wf));
   const t = lineTotals(res, vat.vat_mode, vat.vat_rate);
   const minApplied = def.min > 0 && (res.entered_qty ?? 0) > 0 && res.qty > (res.entered_qty ?? 0);
   const close = () => { if (dr.dirty && !confirmLeave()) return; onClose(); };
@@ -161,8 +161,9 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
           <div className="card" style={{ padding: 12 }}>
             <div className="row between"><b>Panel-counting table</b><Toggle checked={linked} onChange={setLinked}>Use the counted additional panels</Toggle></div>
             <PanelBreakdown wf={wf} job={job} />
-            {linked && pb.additional === 0 && <div className="alert warn" style={{ marginTop: 8 }}>No rows are marked “Extra” in the panel table. Mark the panels beyond the quoted scope, or turn the switch off to type a quantity.</div>}
-            {linked && pb.additional > 0 && <div className="small muted" style={{ marginTop: 6 }}>Additional rows: {wf.panels.filter((p) => p.additional).map((p) => `${p.area} ${p.side} (${rowPanels(p)})`).join(', ')}</div>}
+            {linked && pb.additional === 0 && <div className="alert warn" style={{ marginTop: 8 }}>No panels beyond the starter package. Set the starter package in the panel counter, mark rows “Extra”, or turn the switch off to type a quantity.</div>}
+            {linked && pb.additional > 0 && pb.auto && <div className="small muted" style={{ marginTop: 6 }}>{pb.total} counted − {pb.original} in the starter package = {pb.additional} additional</div>}
+            {linked && pb.additional > 0 && !pb.auto && <div className="small muted" style={{ marginTop: 6 }}>Additional rows: {wf.panels.filter((p) => p.additional).map((p) => `${p.area} ${p.side} (${rowPanels(p)})`).join(', ')}</div>}
           </div>
         )}
         <div className="form-grid">
@@ -192,10 +193,10 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
   const { draft, history } = useReview(job);
   const vat = reviewVat(job);
   const signed = !!wf.conf_at;
-  const pendingItems = useMemo(() => (draft && !signed ? resolveReviewItems(db, wf.panels, draft.items) : []), [db, wf.panels, draft, signed]);
+  const pendingItems = useMemo(() => (draft && !signed ? resolveReviewItems(db, wf.panels, draft.items, packagePanels(db, job, wf)) : []), [db, wf, job, draft, signed]);
   const approved = db.variations.filter((v) => v.job_id === job.id && v.status === 'Approved' && !v.deleted_at);
   const sm = finalQuoteSummary(db, job, { pending: pendingItems.length ? { items: pendingItems, ...vat } : undefined, deposit: wf.conf_deposit });
-  const pb = panelBreakdown(db, q, wf.panels);
+  const pb = panelBreakdown(db, q, wf.panels, packagePanels(db, job, wf));
   const hasAdds = pendingItems.length > 0;
   const revision = !!draft?.revision_open;
   const block = signed ? undefined : discountBlock(db, job, wf, billBase(job).base);

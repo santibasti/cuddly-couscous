@@ -6,7 +6,7 @@ import { store, RuleError } from './store';
 import type {
   ClientFeedback, ConfirmMethod, ContainerCondition, PaymentConfirmation, DB, DiscountKind, DiscountRequest, FuelLevel, IncidentReport, IncidentType, IssueCategory, SatisfactionRating, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
 } from './types';
-import { isDone, ISSUE_CATEGORIES, RATING_STARS_FROM_QUESTIONS, needsFollowUp, openFollowUp, buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, resolveReviewItems, round2Safe, scopeRoute, variationTotals } from './business';
+import { isDone, ISSUE_CATEGORIES, RATING_STARS_FROM_QUESTIONS, needsFollowUp, openFollowUp, buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, packagePanels, resolveReviewItems, rowPanels, round2Safe, scopeRoute, variationTotals } from './business';
 import { syncFollowUps } from './followups';
 import { jobSavedHooks, settleConfirmation, syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { nowLocal, today } from './util';
@@ -188,13 +188,14 @@ export function arriveAtSite(id: string, f: CheckInForm) {
 }
 
 /* ================= Step 4: Scope Approval ================= */
-export function savePanels(id: string, panels: PanelRow[]) {
+export function savePanels(id: string, panels: PanelRow[], pkg?: number | null) {
   const wf = getWf(id); const job = jobOf(wf);
   needRun(job);
   if (wf.closed_at) fail('The job is closed.');
   if (!wf.arr_at) fail('Check in at the site first.');
+  if (pkg != null && !(pkg >= 0)) fail('Starter package panels cannot be negative.');
   if (panels.some((p) => p.external < 0 || p.internal < 0 || !Number.isFinite(p.external + p.internal))) fail('Panel counts cannot be negative.');
-  return store.update('workflows', id, { panels } as never, 'update', `${job.number}: panel count updated (${sumBy(panels, (p) => p.external + p.internal)} panels)`);
+  return store.update('workflows', id, (pkg === undefined ? { panels } : { panels, package_panels: pkg ?? undefined }) as never, 'update', `${job.number}: panel count updated (${sumBy(panels, (p) => p.external + p.internal)} panels)`);
 }
 const hasGlass = (job: Job) => job.service_codes.some((c) => c === 'GLASS_EXT' || c === 'GLASS_INT');
 
@@ -245,17 +246,17 @@ export function saveFinalReview(id: string, f: FinalReviewInput) {
     if (it.discount > 0 && !store.can('discount.approve')) fail('Only the Owner / Admin can apply a discount. Submit a Discount Request instead.');
     if (it.rate < 0) fail('Unit rate cannot be negative.');
   }
-  const items = resolveReviewItems(db(), wf.panels, f.items);
+  const items = resolveReviewItems(db(), wf.panels, f.items, packagePanels(db(), job, wf));
   for (const it of items) {
     if (!it.description.trim()) fail('Describe the area or work for every additional line.');
-    if (!(it.qty > 0)) fail(it.linked_panels ? 'No additional panels are marked in the panel-counting table. Tick “Extra” on the rows beyond the quoted scope.' : `Enter a quantity for ${it.description}.`);
+    if (!(it.qty > 0)) fail(it.linked_panels ? 'No additional panels are marked in the panel-counting table. Set the starter package panels, or tick “Extra” on the rows beyond the quoted scope.' : `Enter a quantity for ${it.description}.`);
     if (it.discount > it.qty * it.rate + 0.005) fail(`The discount on ${it.description} is more than the line amount.`);
   }
   const vat = reviewVat(job);
   const deposit = Math.max(0, f.deposit ?? 0);
   const sum_ = finalQuoteSummary(db(), job, { pending: { items, ...vat }, deposit });
   if (deposit > sum_.finalTotal + 0.005) fail('The deposit / prior payment is more than the final total.');
-  const glass = wf.panels.filter((p) => p.additional).map((p) => p.id);
+  const glass = wf.panels.filter((p) => (packagePanels(db(), job, wf) !== undefined ? rowPanels(p) > 0 : p.additional)).map((p) => p.id);
   const cur = reviewDraft(job.id);
   const patch = { items, discount: 0, ...vat, panel_row_ids: items.some((i) => i.linked_panels) ? glass : [], reason: items.length ? `Additional work requested / identified at site: ${items.map((i) => i.note?.trim() || i.description).join('; ')}`.slice(0, 480) : 'Additional work (none)', revision_open: false };
   if (cur) store.update('variations', cur.id, patch as never, 'update', `${cur.number}: additional work ${cur.revision_open ? 're-presented after revision request' : 'updated'} (${items.length} line(s))`);
@@ -301,7 +302,7 @@ export function approveFinalQuote(id: string, f: { name: string; signature?: str
   const now = new Date().toISOString();
   let variationId: string | undefined;
   if (v && v.items.length) {
-    const items = resolveReviewItems(db(), wf.panels, v.items);
+    const items = resolveReviewItems(db(), wf.panels, v.items, packagePanels(db(), job, wf));
     if (items.some((i) => !(i.qty > 0))) fail('An additional line has no quantity. Update the additional work first.');
     store.update('variations', v.id, { items, status: 'Approved', client_name: f.name.trim(), client_signature: f.signature, signed_at: now, decided_at: now, decided_by: uidNow(), sign_lat: f.lat, sign_lng: f.lng, sign_gps_note: f.gps_note, sign_device: f.device } as never, 'approve', `${v.number}: additional work approved by ${f.name.trim()} — change order`);
     variationId = v.id;
@@ -598,7 +599,7 @@ export function billBase(job: Job): { original: number; additional: number; base
   const wf = workflowFor(job.id);
   const draft = reviewDraft(job.id);
   const vat = reviewVat(job);
-  const pending = draft && draft.items.length && !wf?.conf_at ? { items: resolveReviewItems(db(), wf?.panels ?? [], draft.items), ...vat } : undefined;
+  const pending = draft && draft.items.length && !wf?.conf_at ? { items: resolveReviewItems(db(), wf?.panels ?? [], draft.items, packagePanels(db(), job, wf)), ...vat } : undefined;
   const sm = finalQuoteSummary(db(), job, { pending });
   return { original: sm.originalTotal, additional: sm.additionalTotal, base: sm.subtotal };
 }

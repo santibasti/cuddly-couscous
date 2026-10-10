@@ -20,22 +20,27 @@ const newRow = (): PanelRow => ({ id: uid(), area: '1st Floor', side: 'Front', e
 export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolean }) {
   const { db } = useAuth();
   const [rows, setRows] = useState<PanelRow[]>(wf.panels);
-  const dr = useDraft(`d:${wf.id}:conf:panels`, rows, (d) => setRows(d), editable);
-  useEffect(() => { if (!dr.dirty) setRows(wf.panels); }, [wf.panels]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [pkg, setPkg] = useState<number | undefined>(wf.package_panels);
+  const dr = useDraft(`d:${wf.id}:conf:panels2`, { rows, pkg }, (d) => { setRows(d.rows); setPkg(d.pkg); }, editable);
+  useEffect(() => { if (!dr.dirty) { setRows(wf.panels); setPkg(wf.package_panels); } }, [wf.panels, wf.package_panels]); // eslint-disable-line react-hooks/exhaustive-deps
   const [calc, setCalc] = useState({ w: 2, h: 1, qty: 1, grouped: false, kind: 'external' as 'external' | 'internal', row: '' });
   const t = panelTotals(rows);
   const set = (id: string, p: Partial<PanelRow>) => setRows((a) => a.map((r) => (r.id === id ? { ...r, ...p } : r)));
   const q = db.quotations.find((x) => x.id === wf.conf_quotation_id) ?? db.quotations.find((x) => x.id === db.jobs.find((j) => j.id === wf.job_id)?.quotation_id);
-  const quoted = quotedPanels(db, q);
+  const job = db.jobs.find((j) => j.id === wf.job_id);
+  const fromQuote = quotedPanels(db, q);
+  const quoted = pkg ?? fromQuote;
+  const auto = pkg !== undefined || (fromQuote > 0 && !rows.some((r) => r.additional));
+  const extra = auto ? Math.max(0, t.total - quoted) : t.additional;
   const cp = countPanels([{ w: calc.w, h: calc.h, qty: calc.qty, grouped: calc.grouped }], db.settings.glass_group_size);
-  const dirty = JSON.stringify(rows) !== JSON.stringify(wf.panels);
+  const dirty = JSON.stringify(rows) !== JSON.stringify(wf.panels) || (pkg ?? undefined) !== wf.package_panels;
   const [open, setOpen] = useState(false);
   const canEdit = editable; editable = false; // the table below is the summary; counting happens in the counter window
-  const finish = () => { if (!dirty || attempt(() => savePanels(wf.id, rows), 'Panel count saved')) { dr.markSaved(); setOpen(false); } };
+  const finish = () => { if (!dirty || attempt(() => savePanels(wf.id, rows, pkg), 'Panel count saved')) { dr.markSaved(); setOpen(false); } };
   const numIn = (r: PanelRow, k: 'external' | 'internal') => <Stepper label={`${k} panels ${r.area} ${r.side}`} value={r[k]} onChange={(v) => set(r.id, { [k]: v ?? 0 })} />;
   return (
     <div className="stack" style={{ gap: 8 }}>
-      <div className="row between"><b>Glass panel count</b>{quoted > 0 && <span className="small muted">Quoted: {quoted} panels{t.total > quoted && <> · counted {t.total} (<b>{t.total - quoted} more</b>)</>}</span>}</div>
+      <div className="row between"><b>Glass panel count</b>{(auto || extra > 0) && <span className="small muted">{auto ? `Starter package: ${quoted} panels` : 'No starter package set'}{extra > 0 && <> · counted {t.total} (<b>{extra} additional</b>)</>}</span>}</div>
       <div className="small muted">Up to 2 m × 1 m = 1 panel · larger than 2 m × 1 m = 2 panels · smaller standard windows still count as 1 · small sections may be grouped into 1.</div>
       <div className="pcount-wrap"><table className="tbl pcount"><colgroup><col style={{ width: '17%' }} /><col style={{ width: '17%' }} /><col style={{ width: '15%' }} /><col style={{ width: '15%' }} /><col style={{ width: '7%' }} /><col />{editable && <col style={{ width: '8%' }} />}{editable && <col style={{ width: '5%' }} />}</colgroup><thead><tr><th>Area / Floor</th><th>Side / Location</th><th className="num">External</th><th className="num">Internal</th><th className="num">Total</th><th>Notes</th>{editable && <th>Extra</th>}{editable && <th />}</tr></thead><tbody>
         {rows.map((r) => (
@@ -54,17 +59,24 @@ export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolea
       {canEdit && (
         <div className="row" style={{ flexWrap: 'wrap' }}>
           <button className="btn primary" onClick={() => setOpen(true)}>{rows.length ? 'Open panel counter' : 'Start counting panels'}</button>
-          {dirty && <button className="btn" onClick={() => { if (attempt(() => savePanels(wf.id, rows), 'Panel count saved')) dr.markSaved(); }}>Save panel count</button>}
+          {dirty && <button className="btn" onClick={() => { if (attempt(() => savePanels(wf.id, rows, pkg), 'Panel count saved')) dr.markSaved(); }}>Save panel count</button>}
           {dirty && <span className="small" style={{ color: 'var(--amber)' }}>Unsaved panel changes</span>}
         </div>
       )}
       {open && (
         <div className="pcwin" role="dialog" aria-modal="true" aria-label="Panel counter">
           <div className="pcwin-h">
-            <div style={{ flex: 1, minWidth: 0 }}><b>Count glass panels</b><div className="small muted">{quoted > 0 ? `Quoted: ${quoted} panels` : 'Add each area, side and the number of panels'}</div></div>
+            <div style={{ flex: 1, minWidth: 0 }}><b>Count glass panels</b><div className="small muted">Add each area, side and the number of panels</div></div>
             <button className="btn" onClick={() => setOpen(false)}>Close</button>
           </div>
           <div className="pcwin-b">
+            <div className="pcrow pkgbox">
+              <div className="pcrow-g">
+                <Field label="Starter package panels" hint={fromQuote > 0 ?  `The quotation covers ${fromQuote} panels.` : 'Set it and the panels counted beyond it become the additional work automatically.'}><Stepper label="Starter package panels" min={0} value={quoted} onChange={(v) => setPkg(v ?? 0)} /></Field>
+                <div><div className="small muted">Counted</div><b style={{ fontSize: 20 }}>{t.total}</b> <span className="small muted">of {quoted} in package</span><div style={{ marginTop: 4 }}>{extra > 0 ? <Badge tone="amber">{extra} additional panel{extra === 1 ? '' : 's'}</Badge> : <Badge tone="teal">within the package</Badge>}</div></div>
+              </div>
+              {fromQuote > 0 && quoted !== fromQuote && <button className="btn sm" onClick={() => setPkg(fromQuote)}>Use the quotation ({fromQuote})</button>}
+            </div>
             <div className="small muted">Up to 2 m × 1 m = 1 panel · larger = 2 panels · small sections may be grouped into 1. Totals are automatic.</div>
             {rows.map((r, n) => (
               <div key={r.id} className="pcrow">
@@ -75,7 +87,7 @@ export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolea
                   <Field label="External panels">{numIn(r, 'external')}</Field>
                   <Field label="Internal panels">{numIn(r, 'internal')}</Field>
                   <Field label="Notes"><input value={r.notes ?? ''} onChange={(e) => set(r.id, { notes: e.target.value })} placeholder="Optional" /></Field>
-                  <Field label="Extra work"><label className="check" title="Beyond the quoted scope — can be added to a variation"><input type="checkbox" checked={!!r.additional} onChange={(e) => set(r.id, { additional: e.target.checked })} />Beyond the quoted scope</label></Field>
+                  {!auto && <Field label="Extra work"><label className="check" title="Beyond the quoted scope — can be added to a variation"><input type="checkbox" checked={!!r.additional} onChange={(e) => set(r.id, { additional: e.target.checked })} />Beyond the quoted scope</label></Field>}
                 </div>
               </div>
             ))}
@@ -94,7 +106,7 @@ export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolea
             </details>
           </div>
           <div className="pcwin-f">
-            <div className="pcwin-sum"><span>External <b>{t.external}</b></span><span>Internal <b>{t.internal}</b></span><span>Total <b className="big">{t.total}</b></span>{quoted > 0 && <span className="small muted">{t.total > quoted ? `${t.total - quoted} more than quoted` : t.total < quoted ? `${quoted - t.total} to go` : 'matches the quote'}</span>}</div>
+            <div className="pcwin-sum"><span>External <b>{t.external}</b></span><span>Internal <b>{t.internal}</b></span><span>Total <b className="big">{t.total}</b></span><span className="small muted">{extra > 0 ? `${extra} additional beyond the package` : auto && t.total < quoted ? `${quoted - t.total} to go in the package` : 'no additional panels'}</span></div>
             <button className="btn primary lg" onClick={finish}>Finish counting</button>
           </div>
         </div>

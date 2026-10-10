@@ -254,6 +254,16 @@ describe('panel counting & variations', () => {
     expect(B.lineTotals(s, 'exclusive', 12)).toMatchObject({ amount: 4900, vat: 588, total: 5488 });
   });
 
+  it('starter package panels: the panels counted beyond it are the additional work', () => {
+    const panels = [{ id: 'a', area: '1st Floor', side: 'Front', external: 20, internal: 6 }, { id: 'b', area: '2nd Floor', side: 'Back', external: 4, internal: 0 }];
+    const bd = B.panelBreakdown(db(), undefined, panels, 24);
+    expect(bd).toMatchObject({ original: 24, total: 30, additional: 6, auto: true });
+    expect(bd.additionalExternal + bd.additionalInternal).toBe(6);
+    expect(B.panelBreakdown(db(), undefined, panels, 40).additional).toBe(0);
+    const [g] = B.resolveReviewItems(db(), panels, [{ service_code: 'GLASS_EXT', category: 'glass', description: '', qty: 0, entered_qty: 0, unit: 'panel', rate: 140, discount: 0, linked_panels: true }], 24);
+    expect(g.qty).toBe(6);
+  });
+
   it('only an Operations Manager / Admin may change a default rate or give a discount', async () => {
     await as('owner@topmop.ph');
     const lead = db().users.find((u) => u.email === 'leader@topmop.ph')!.employee_id!;

@@ -632,23 +632,36 @@ export function categoryDefaults(services: ServiceDef[], key: AdditionalCategory
 }
 
 /** Original / additional / external / internal / total panels from the panel-counting table. */
-export function panelBreakdown(d: Pick<DB, 'services'>, q: Quotation | undefined, panels: PanelRow[]) {
+export function panelBreakdown(d: Pick<DB, 'services'>, q: Quotation | undefined, panels: PanelRow[], pkg?: number) {
   const t = panelTotals(panels);
+  const auto = pkg !== undefined;
+  if (auto) {
+    const additional = Math.max(0, t.total - pkg);
+    const ext = t.total > 0 ? Math.round((additional * t.external) / t.total) : 0;
+    return { original: pkg, additional, additionalExternal: ext, additionalInternal: additional - ext, external: t.external, internal: t.internal, total: t.total, auto };
+  }
   const add = panels.filter((p) => p.additional);
-  return { original: quotedPanels(d, q), additional: sum(add, rowPanels), additionalExternal: sum(add, (p) => p.external || 0), additionalInternal: sum(add, (p) => p.internal || 0), external: t.external, internal: t.internal, total: t.total };
+  return { original: quotedPanels(d, q), additional: sum(add, rowPanels), additionalExternal: sum(add, (p) => p.external || 0), additionalInternal: sum(add, (p) => p.internal || 0), external: t.external, internal: t.internal, total: t.total, auto };
+}
+/** Starter package panels: the Team Leader's setting, else what the quotation covers; undefined = none known (rows marked "Extra" are used instead). */
+export function packagePanels(d: Pick<DB, 'services' | 'quotations'>, job: Pick<Job, 'quotation_id'>, wf?: Pick<JobWorkflow, 'package_panels' | 'panels'>): number | undefined {
+  if (typeof wf?.package_panels === 'number') return wf.package_panels;
+  if (wf?.panels.some((p) => p.additional)) return undefined; // rows marked "Extra" by hand keep working
+  const n = quotedPanels(d, d.quotations.find((x) => x.id === job.quotation_id));
+  return n > 0 ? n : undefined;
 }
 
 /** Normalises additional-work lines: glass lines follow the panel table, minimum quantities are applied. */
-export function resolveReviewItems(d: Pick<DB, 'services'>, panels: PanelRow[], items: QuoteItem[]): QuoteItem[] {
+export function resolveReviewItems(d: Pick<DB, 'services'>, panels: PanelRow[], items: QuoteItem[], pkg?: number): QuoteItem[] {
   return items.map((it) => {
     if (!it.category) return it;
     const def = categoryDefaults(d.services, it.category);
     let entered = it.entered_qty ?? it.qty;
     let description = it.description;
     if (it.category === 'glass' && it.linked_panels) {
-      const b = panelBreakdown(d, undefined, panels);
+      const b = panelBreakdown(d, undefined, panels, pkg);
       entered = b.additional;
-      const areas = [...new Set(panels.filter((p) => p.additional).map((p) => `${p.area} ${p.side}`))].join(', ');
+      const areas = b.auto ? '' : [...new Set(panels.filter((p) => p.additional).map((p) => `${p.area} ${p.side}`))].join(', ');
       if (!description.trim() || description.startsWith('Additional glass panels –')) description = `Additional glass panels – ${b.additionalExternal} external, ${b.additionalInternal} internal${areas ? ` (${areas})` : ''}`;
     }
     const qty = def.min > 0 && entered > 0 ? Math.max(entered, def.min) : entered;

@@ -2,7 +2,7 @@ import { logoDataUrl } from './logo';
 import { DEFAULT_TECHNOLOGY, defaultIntro, defaultMethodology, durationText, paymentLabel, paymentSentence, manpowerText, parseMethodology } from './quote-text';
 import type { DB, Invoice, OcularVisit, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
 import { quoteImagesOf } from './quoteimages';
-import { paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, panelTotals, rowPanels, variationTotals } from './business';
+import { paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, packagePanels, panelTotals, rowPanels, variationTotals } from './business';
 import { fmtDate, fmtDateTime, nowLocal, round2, sum } from './util';
 import { store } from './store';
 
@@ -536,7 +536,7 @@ export async function conformePdf(db: DB, j: Job, opts: { includeImages?: boolea
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); y = wrapText(doc, q?.scope ?? j.scope, 12, y, 186) + 3;
   if (q) y = itemsTable(doc, autoTable, y, q.items, q.vat_mode, q.vat_rate, q.discount) + 3;
   if (wf?.panels.length) {
-    const pt = panelTotals(wf.panels); const pb = panelBreakdown(db, q, wf.panels);
+    const pt = panelTotals(wf.panels); const pb = panelBreakdown(db, q, wf.panels, packagePanels(db, j, wf));
     autoTable(doc, { startY: y, head: [['Area / floor', 'Side', 'External', 'Internal', 'Total', 'Notes']], body: wf.panels.map((p) => [p.area, p.side, p.external, p.internal, rowPanels(p), clean(`${p.additional ? '[additional] ' : ''}${p.notes ?? ''}`)]), foot: [['Total', '', pt.external, pt.internal, pt.total, '']], ...tableStyle, footStyles: { fillColor: [234, 239, 244], textColor: NAVY, fontStyle: 'bold' }, margin: { left: 12, right: 12 } });
     y = ymax(doc) + 3; doc.setFontSize(9); doc.text(`Panels: ${pb.original} in original quotation, ${pb.additional} additional, ${pb.external} external, ${pb.internal} internal, ${pb.total} counted in total.`, 12, y); y += 7;
   }
