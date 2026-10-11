@@ -174,3 +174,11 @@
 .ring-label { font-size: .84rem; } .ring-sub { font-size: .78rem; } .site-list li { font-size: .86rem; } .map-note { font-size: .8rem; }
 .legend { font-size: .8rem; } .legend small, .legend-unit { font-size: .74rem; } .ch-axis { font-size: 12px; } .aging-key { font-size: .8rem; } .aging-h { font-size: .84rem; }
 .tbl-view { font-size: .86rem; } .ch-tip span { font-size: .84rem; } .ch-tip small { font-size: .74rem; }
+
+/* Phones: keep the dashboard short; map and job table behind a button */
+.dash-expand { display: none; }
+@media (max-width: 759px) {
+  .js .dash-expand { display: block; width: 100%; padding: 13px 16px; border-radius: 12px; border: 1px solid rgba(143, 176, 255, .4); background: rgba(61, 123, 255, .14); color: #dbe6ff; font: inherit; font-weight: 600; font-size: .92rem; cursor: pointer; }
+  .js .dash-expand:hover { background: rgba(61, 123, 255, .24); }
+  .js .app-full:not(.is-expanded) .span-map, .js .app-full:not(.is-expanded) .span-table { display: none; }
+}

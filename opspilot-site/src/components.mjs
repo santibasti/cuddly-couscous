@@ -77,7 +77,7 @@ export const ticker = () => `
 </section>`;
 
 export const problems = () => `
-<section class="section" id="problems" aria-labelledby="problems-title">
+<section class="section theme-light" id="problems" aria-labelledby="problems-title">
   <div class="container">
     ${sectionHead('Sound familiar?', 'Daily operations shouldn’t live in five different places.', 'These are common patterns in growing businesses. Each one maps to a practical capability in the system.', true).replace('<h2>', '<h2 id="problems-title">')}
     <div class="problem-list">
@@ -92,7 +92,7 @@ export const problems = () => `
 </section>`;
 
 export const solutions = (withHead = true) => `
-<section class="section section-tint" id="solutions" aria-label="Solution modules">
+<section class="section theme-light" id="solutions" aria-label="Solution modules">
   <div class="container">
     ${withHead ? sectionHead('Solutions', 'Modules that fit together.', 'Start with the module that matters most. Add others as your needs grow; they share the same records.', true) : ''}
     <div class="card-grid bento">
@@ -102,7 +102,7 @@ export const solutions = (withHead = true) => `
         <span class="card-ico">${icon(s.icon, 26)}</span>
         <div class="b${i}-copy"><h3>${s.title}</h3>
         <p>${s.text}</p>
-        <ul class="card-points">${s.points.map((t) => `<li>${icon('check', 16)}<span>${t}</span></li>`).join('')}</ul></div>
+        <details class="card-more"><summary>What’s included</summary><ul class="card-points">${s.points.map((t) => `<li>${icon('check', 16)}<span>${t}</span></li>`).join('')}</ul></details></div>
         <a class="card-link" href="contact.html">Ask about this ${icon('arrow', 16)}</a>
       </article>`).join('')}
     </div>
@@ -208,13 +208,14 @@ const workCard = (p) => `
       </article>`;
 
 export const workGroups = () => `
-<section class="section" id="work" aria-label="Projects and concept prototypes">
+<section class="section theme-light" id="work" aria-label="Projects and concept prototypes">
   <div class="container">
     <h2 class="work-group-h reveal"><span>Projects</span></h2>
     <div class="work-grid">${c.projects.filter((p) => p.group === 'project').map(workCard).join('')}
     </div>
     <h2 class="work-group-h reveal"><span>Concept prototypes</span><small>Built with sample data to show what is possible</small></h2>
-    <div class="work-grid work-grid-3">${c.projects.filter((p) => p.group === 'concept').map(workCard).join('')}
+    <p class="strip-hint" aria-hidden="true">Swipe to browse →</p>
+    <div class="work-grid work-grid-3 work-strip" tabindex="0" role="region" aria-label="Concept prototypes, scroll sideways to browse">${c.projects.filter((p) => p.group === 'concept').map(workCard).join('')}
     </div>
   </div>
 </section>`;
@@ -223,14 +224,15 @@ export const workTeaser = () => `
 <section class="section" id="work" aria-labelledby="work-title">
   <div class="container">
     ${sectionHead('Our Work', 'Projects, described plainly.', 'Two projects we are building or demonstrating. Previews are illustrative, not screenshots, and neither is presented as a client deployment.', true).replace('<h2>', '<h2 id="work-title">')}
-    <div class="work-grid">${c.projects.filter((p) => p.group === 'project').map(workCard).join('')}
+    <p class="strip-hint" aria-hidden="true">Swipe to browse →</p>
+    <div class="work-grid work-strip" tabindex="0" role="region" aria-label="Projects, scroll sideways to browse">${c.projects.filter((p) => p.group === 'project').map(workCard).join('')}
     </div>
     <p class="more-link reveal">${button('See all projects and concepts', 'work.html', 'primary')}</p>
   </div>
 </section>`;
 
 export const process = () => `
-<section class="section section-tint" id="process" aria-labelledby="process-title">
+<section class="section theme-light" id="process" aria-labelledby="process-title">
   <div class="container">
     ${sectionHead('Implementation process', 'From first conversation to launch.', 'A clear path with agreed scope at every stage.', true).replace('<h2>', '<h2 id="process-title">')}
     <ol class="steps">
@@ -252,7 +254,7 @@ const meetCard = (config) => `
       </div>`;
 
 export const aboutBody = (config) => `
-<section class="section" id="about" aria-label="About OpsPilot">
+<section class="section theme-light" id="about" aria-label="About OpsPilot">
   <div class="container about-grid">
     <div class="reveal">
       <p class="lead">OpsPilot builds custom business systems for Philippine MSMEs. We focus on everyday workflows (who worked where, what equipment went out, what was billed and what has been paid) and on systems that your staff can actually use.</p>
@@ -277,7 +279,7 @@ export const engagement = () => `
 </section>`;
 
 export const scopeBuilder = () => `
-<section class="section" id="scope" aria-labelledby="scope-title">
+<section class="section theme-light" id="scope" aria-labelledby="scope-title">
   <div class="container">
     ${sectionHead('Scope builder', 'Outline the system you have in mind.', 'Pick your business type and the modules that matter most. You will get a scope outline to send with your inquiry. No prices are shown; a quotation follows the consultation.', true).replace('<h2>', '<h2 id="scope-title">')}
     <noscript><p class="noscript-note">The scope builder needs JavaScript. You can still describe your workflow in the contact form below.</p></noscript>
@@ -324,7 +326,7 @@ export const scopeBuilder = () => `
 </section>`;
 
 export const faq = () => `
-<section class="section section-tint" id="faq" aria-labelledby="faq-title">
+<section class="section theme-light" id="faq" aria-labelledby="faq-title">
   <div class="container faq-wrap">
     ${sectionHead('FAQ', 'Common questions', '', true).replace('<h2>', '<h2 id="faq-title">')}
     <div class="faq-list reveal">
@@ -436,7 +438,7 @@ export const solutionsOverview = () => `
 </section>`;
 
 export const industriesOverview = () => `
-<section class="section" id="industries" aria-labelledby="industries-title">
+<section class="section theme-light" id="industries" aria-labelledby="industries-title">
   <div class="container">
     ${sectionHead('Industries', 'One approach, adapted to how you operate.', 'The building blocks stay the same; the screens, fields and reports are configured for your kind of business.', true).replace('<h2>', '<h2 id="industries-title">')}
     <div class="industry-grid">
@@ -456,7 +458,7 @@ const moduleNames = (ids) => ids.map((n) => c.solutions[n].title);
 const presetFor = { 'service-contractors': 0, 'driving-ranges': 1, 'car-washes': 2 };
 
 export const industryDetails = () => c.industries.map((ind, i) => `
-<section class="section${i % 2 ? ' section-tint' : ''}" id="${ind.id}" aria-labelledby="${ind.id}-title">
+<section class="section${i % 2 ? ' section-tint' : ' theme-light'}" id="${ind.id}" aria-labelledby="${ind.id}-title">
   <div class="container split${i % 2 ? ' split-rev' : ''}">
     <div class="split-copy reveal">
       <span class="card-ico card-ico-blue">${icon(ind.icon, 26)}</span>

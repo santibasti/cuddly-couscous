@@ -198,4 +198,15 @@
       else if (e.key === 'Escape') hide();
     });
   });
+
+  // Phone collapsing: checklists open on wide screens and closed on phones; dashboard map/table behind a button.
+  const wide = matchMedia('(min-width: 700px)');
+  const syncMore = () => document.querySelectorAll('.card-more').forEach((d) => { d.open = wide.matches; });
+  syncMore(); wide.addEventListener('change', syncMore);
+  const ex = $('.dash-expand');
+  if (ex) ex.addEventListener('click', () => {
+    const on = ex.closest('.app').classList.toggle('is-expanded');
+    ex.setAttribute('aria-expanded', String(on));
+    ex.textContent = on ? 'Hide map and job table' : 'Show map and job table';
+  });
 })();

@@ -194,5 +194,6 @@ export const fullDashboard = () => `
       ${panel('Job status', table(jobs), 'span-table')}
       ${panel(`${icon('alert', 18)} Items needing attention`, `<ul class="attention">${attention.map((a) => `<li><span class="att-ico">${icon(a.icon, 20)}</span><div><span class="att-tag">${a.tag}</span><strong>${a.title}</strong><span class="att-text">${a.text}</span></div></li>`).join('')}</ul>`, 'span-attn')}
     </div>
+    <button type="button" class="dash-expand" aria-expanded="false">Show map and job table</button>
   </div>
 </div>`;
