@@ -9,7 +9,7 @@ import { confirmLeave } from '@/lib/sync';
 import { getGeo } from '@/lib/geo';
 import { ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, currentRequest, discountBlock, jobRequests, categoryLabel, finalQuoteSummary, lineTotals, packagePanels, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
 import { DISCOUNT_NOTICE, DeclineJobModal } from './DiscountPanel';
-import { approveFinalQuote, billBase, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
+import { applyDiscount, approveFinalQuote, billBase, decideDiscount, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
 import { conformePdf } from '@/lib/export';
 import { IncludeImagesToggle, QuoteImageGallery } from '@/components/QuoteImages';
 import { fmtDateTime, fmtStamp, money } from '@/lib/util';
@@ -217,7 +217,7 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
 
 /* ---------------- client-facing Final Quote Review ---------------- */
 export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: Job; run: boolean; onClose: () => void }) {
-  const { db } = useAuth();
+  const { db, can } = useAuth();
   const q = db.quotations.find((x) => x.id === (wf.conf_quotation_id ?? job.quotation_id));
   const client = db.clients.find((c) => c.id === job.client_id); const site = db.sites.find((s) => s.id === job.site_id);
   const { draft, history } = useReview(job);
@@ -230,6 +230,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
   const hasAdds = pendingItems.length > 0;
   const revision = !!draft?.revision_open;
   const block = signed ? undefined : discountBlock(db, job, wf, billBase(job).base);
+  const discReq = currentRequest(db, job.id); const canApproveDisc = can('discount.approve');
   const currentRejected = !currentRequest(db, job.id) && jobRequests(db, job.id).some((r) => r.status === 'Rejected');
   const [mode, setMode] = useState<'approve' | 'decline' | 'revise' | null>(null);
   const [declining, setDeclining] = useState(false);
@@ -290,7 +291,16 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
               {hasAdds && <button className="btn lg" onClick={() => setMode('decline')}>Decline Additional Work</button>}
               {hasAdds && <button className="btn lg" onClick={() => setMode('revise')}>Request Revision</button>}
             </>}
-            {block && !mode && <div className="alert warn">This quotation is being finalized by TopMop management. The client can sign as soon as it is ready.</div>}
+            {block && !mode && <div className="alert warn">
+              This quotation is being finalized by TopMop management. The client can sign as soon as it is ready.
+              <details style={{ marginTop: 8 }}><summary className="small" style={{ cursor: 'pointer' }}>For TopMop staff — why and what to do</summary>
+              <div className="small" style={{ marginTop: 6 }}>{block}</div>
+              <div className="row" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+                {discReq?.status === 'Approved' && <button className="btn primary" onClick={() => attempt(() => applyDiscount(discReq.id), 'Discount applied — the client can now sign the revised amount')}>Apply discount to the final bill</button>}
+                {discReq?.status === 'Applied' && canApproveDisc && <button className="btn primary" onClick={() => attempt(() => decideDiscount(discReq.id, { approve: true, note: 'Re-approved on the revised total' }), 'Discount re-approved on the revised total')}>Re-approve the discount on this total</button>}
+                {discReq?.status === 'Pending Admin Approval' && !canApproveDisc && <span className="small">Ask the Owner / Admin to approve it.</span>}
+              </div></details>
+            </div>}
             {currentRejected && !mode && run && <button className="btn danger lg" onClick={() => setDeclining(true)}>Client declines the job</button>}
             {revision && !mode && <div className="small muted">Present the updated additional work again before the client can sign.</div>}
             {mode === 'approve' && (
