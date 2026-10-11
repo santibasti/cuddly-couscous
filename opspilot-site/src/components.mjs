@@ -529,25 +529,52 @@ export const industryBanner = (id, config = {}) => {
   return `<div class="il-banner"><svg class="il" viewBox="0 0 640 280" role="img" aria-label="${ill.label}">${ill.svg}</svg></div>`;
 };
 
-export const storyIllustration = () => `
+export const storyIllustration = () => {
+  const F = 'font-family="system-ui,Segoe UI,Arial,sans-serif"';
+  const paths = ['M338 145C402 145 420 185 448 196', 'M338 211C396 211 418 203 448 200', 'M338 297C400 297 420 231 450 206'];
+  const kpi = (x, y, label, v, count, money) => `<rect x="${x}" y="${y}" width="88" height="52" rx="10" fill="#12234a" stroke="#2c4a92"/><text x="${x + 9}" y="${y + 18}" fill="#a5b4d6" ${F} font-size="10">${label}</text><text x="${x + 9}" y="${y + 41}" fill="#fff" ${F} font-size="${v.length > 6 ? 13 : 16}" font-weight="800"${count ? ` data-count="${count}"${money ? ' data-money="1"' : ''}` : ''}>${v}</text>`;
+  const chip = (w, y, label, fill, stroke, text) => `<rect x="${912 - w}" y="${y + 3}" width="${w}" height="14" rx="7" fill="${fill}" stroke="${stroke}"/><text x="${912 - w / 2}" y="${y + 13}" text-anchor="middle" fill="${text}" ${F} font-size="9" font-weight="700">${label}</text>`;
+  const row = (y, label, ch) => `<rect x="640" y="${y}" width="280" height="20" rx="6" fill="#12234a"/><text x="650" y="${y + 14}" fill="#fff" ${F} font-size="10.5" font-weight="600">${label}</text>${ch}`;
+  const toast = (delay, text) => `<g class="il-toast" style="animation-delay:${delay}s"><rect x="676" y="4" width="264" height="28" rx="14" fill="#0b1733" stroke="#b6f23a"/><circle cx="694" cy="18" r="5" class="il-lime"/><text x="708" y="22" fill="#fff" ${F} font-size="11" font-weight="600">${text}</text></g>`;
+  return `
 <figure class="story reveal">
   <div class="story-art">
-    <svg class="il" viewBox="0 0 960 330" role="img" aria-label="Illustration: scattered notebooks, spreadsheets, receipts and chat messages converge into one OpsPilot system shown as a dashboard (sample data).">
-      <g transform="rotate(-7 115 150)"><rect class="il-fill" x="58" y="82" width="116" height="146" rx="8"/><g class="il-line il-thin"><path d="M80 112h72M80 134h72M80 156h56M80 178h64"/></g>${[0, 1, 2, 3, 4].map((i) => `<circle class="il-solid il-stroke" cx="58" cy="${100 + i * 28}" r="4"/>`).join('')}</g>
-      <g transform="rotate(5 252 130)"><rect class="il-fill" x="188" y="66" width="130" height="104" rx="8"/><g class="il-line il-thin"><path d="M188 92h130M188 118h130M188 144h130M231 66v104M274 66v104"/></g><rect class="il-lime" x="192" y="70" width="36" height="18" rx="3" opacity=".85"/></g>
-      <g transform="rotate(-3 150 270)"><path class="il-fill" d="M98 214h92v96l-8-6-8 6-8-6-8 6-8-6-8 6-8-6-8 6-8-6z"/><g class="il-line il-thin"><path d="M110 236h60M110 254h44M110 272h52"/></g></g>
-      <g transform="rotate(8 304 236)"><rect x="268" y="204" width="68" height="66" rx="4" fill="#ffd98a"/><g stroke="#8a5a00" stroke-width="2" stroke-linecap="round" opacity=".6"><path d="M280 226h42M280 242h34M280 258h24"/></g></g>
-      <path class="il-fill" d="M214 214h62a10 10 0 0 1 10 10v22a10 10 0 0 1-10 10h-36l-14 14v-14h-12a10 10 0 0 1-10-10v-22a10 10 0 0 1 10-10z" transform="translate(-10 50)"/>
-      <g class="il-line il-dash"><path d="M338 110C402 110 420 150 448 162"/><path d="M338 176C396 176 418 168 448 166"/><path d="M338 262C400 262 420 196 450 172"/></g>
-      <g transform="translate(494 166)"><circle r="56" fill="none" stroke="#2f6bff" stroke-width="7" class="il-glow-blue"/><path d="M0 -30l16 48-16-11-16 11z" fill="#fff"/><circle cx="0" cy="-72" r="7" class="il-lime il-glow"/></g>
-      <path class="il-limeline il-glow" d="M556 166h52"/><path class="il-limeline il-glow" d="M600 156l12 10-12 10"/>
-      <rect x="628" y="46" width="310" height="238" rx="18" fill="#0b1733" stroke="#4d73d8" stroke-width="2"/>
-      <text x="650" y="80" fill="#fff" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="17" font-weight="700">Operations overview</text>
-      <text x="650" y="100" fill="#a5b4d6" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="12">Illustrative · Sample data</text>
-      ${[['Jobs today', '18'], ['Crew', '42 / 46'], ['Sales', '₱186,400']].map(([l, v], i) => `<rect x="${650 + i * 96}" y="114" width="88" height="56" rx="10" fill="#12234a" stroke="#2c4a92"/><text x="${660 + i * 96}" y="134" fill="#a5b4d6" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="11">${l}</text><text x="${660 + i * 96}" y="156" fill="#fff" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="${v.length > 6 ? 12.5 : 17}" font-weight="800">${v}</text>`).join('')}
-      <path d="M650 252C690 226 710 244 750 222S820 232 850 206 900 214 918 196" fill="none" stroke="#12a594" stroke-width="3" stroke-linecap="round"/>
-      <path d="M650 262C700 240 730 258 770 236S830 246 860 222 900 228 918 214" fill="none" stroke="#3d7bff" stroke-width="2" stroke-dasharray="6 5" stroke-linecap="round"/>
+    <svg class="il" viewBox="0 0 960 400" role="img" aria-label="Animated illustration: scattered notebooks, spreadsheets, receipts and chat messages flow into one OpsPilot system, shown as an operations dashboard with sample data.">
+      <g transform="translate(0 35)">
+        <g class="il-bob" style="--d:0s"><g transform="rotate(-7 115 150)"><rect class="il-fill" x="58" y="82" width="116" height="146" rx="8"/><g class="il-line il-thin"><path d="M80 112h72M80 134h72M80 156h56M80 178h64"/></g>${[0, 1, 2, 3, 4].map((i) => `<circle class="il-solid il-stroke" cx="58" cy="${100 + i * 28}" r="4"/>`).join('')}</g></g>
+        <g class="il-bob" style="--d:-1.2s"><g transform="rotate(5 252 130)"><rect class="il-fill" x="188" y="66" width="130" height="104" rx="8"/><g class="il-line il-thin"><path d="M188 92h130M188 118h130M188 144h130M231 66v104M274 66v104"/></g><rect class="il-lime" x="192" y="70" width="36" height="18" rx="3" opacity=".85"/></g></g>
+        <g class="il-bob" style="--d:-2.4s"><g transform="rotate(-3 150 270)"><path class="il-fill" d="M98 214h92v96l-8-6-8 6-8-6-8 6-8-6-8 6-8-6-8 6-8-6z"/><g class="il-line il-thin"><path d="M110 236h60M110 254h44M110 272h52"/></g></g></g>
+        <g class="il-bob" style="--d:-3.2s"><g transform="rotate(8 304 236)"><rect x="268" y="204" width="68" height="66" rx="4" fill="#ffd98a"/><g stroke="#8a5a00" stroke-width="2" stroke-linecap="round" opacity=".6"><path d="M280 226h42M280 242h34M280 258h24"/></g></g></g>
+        <g class="il-bob" style="--d:-4s"><path class="il-fill" d="M214 214h62a10 10 0 0 1 10 10v22a10 10 0 0 1-10 10h-36l-14 14v-14h-12a10 10 0 0 1-10-10v-22a10 10 0 0 1 10-10z" transform="translate(-10 50)"/></g>
+      </g>
+      <g class="il-line il-dash il-flow">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>
+      ${paths.map((d, i) => `<circle class="il-packet" r="4.5" style="offset-path:path('${d}');animation-delay:${-i * 1.05}s"/>`).join('')}
+      <g transform="translate(494 200)">
+        <circle class="il-pulse" r="56" fill="none" stroke="#2f6bff" stroke-width="3"/>
+        <circle class="il-spin" r="70" fill="none" stroke="#6f9bff" stroke-width="1.5" stroke-dasharray="3 9" opacity=".6"/>
+        <circle r="56" fill="none" stroke="#2f6bff" stroke-width="7" class="il-glow-blue"/>
+        <path d="M0 -30l16 48-16-11-16 11z" fill="#fff"/>
+        <g class="il-orbit"><circle cx="0" cy="-72" r="7" class="il-lime il-glow"/></g>
+      </g>
+      <path class="il-limeline il-glow il-dash il-flow" d="M556 200h46"/><path class="il-limeline il-glow" d="M598 190l12 10-12 10"/>
+      <rect x="620" y="22" width="324" height="356" rx="18" fill="#0b1733" stroke="#4d73d8" stroke-width="2"/>
+      <text x="640" y="56" fill="#fff" ${F} font-size="16" font-weight="700">Operations overview</text>
+      <text x="640" y="74" fill="#a5b4d6" ${F} font-size="10.5">Illustrative dashboard</text>
+      <rect x="836" y="42" width="84" height="22" rx="11" fill="rgba(255,196,61,.12)" stroke="rgba(255,196,61,.5)"/><text x="878" y="57" text-anchor="middle" fill="#ffe6a3" ${F} font-size="9.5" font-weight="700">SAMPLE DATA</text>
+      ${kpi(640, 88, 'Jobs today', '18', 18)}${kpi(736, 88, 'Crew present', '42 / 46')}${kpi(832, 88, 'Equipment out', '31', 31)}
+      ${kpi(640, 148, 'Sales', '₱186,400', 186400, true)}${kpi(736, 148, 'Payments', '₱142,750', 142750, true)}${kpi(832, 148, 'Balances', '₱318,900', 318900, true)}
+      <rect x="640" y="210" width="280" height="82" rx="10" fill="#12234a"/>
+      <text x="652" y="227" fill="#a5b4d6" ${F} font-size="10">Billed vs collected · 8 weeks</text>
+      <path d="M652 280C680 274 700 276 724 266S772 262 796 252 850 256 876 244 900 246 908 240V288H652z" fill="rgba(18,165,148,.18)"/>
+      <path class="il-draw" pathLength="1" d="M652 280C680 274 700 276 724 266S772 262 796 252 850 256 876 244 900 246 908 240" fill="none" stroke="#12a594" stroke-width="2.5" stroke-linecap="round"/>
+      <path class="il-draw il-late" pathLength="1" d="M652 286C690 278 710 280 740 272S790 266 812 258 862 262 888 252 904 254 908 250" fill="none" stroke="#3d7bff" stroke-width="1.8" stroke-dasharray="5 4" stroke-linecap="round"/>
+      <circle class="il-end" cx="908" cy="240" r="3.5" fill="#12a594"/>
+      ${row(300, 'J-1042 · Sample Office Tower', chip(68, 300, 'In progress', 'rgba(61,123,255,.25)', '#6f9bff', '#aac4ff'))}
+      ${row(324, 'J-1040 · Sample Café', chip(104, 324, 'Awaiting sign-off', 'rgba(255,196,61,.15)', 'rgba(255,196,61,.6)', '#ffd98a'))}
+      ${row(348, 'J-1038 · Sample School', chip(68, 348, 'Completed', 'rgba(60,207,130,.15)', 'rgba(60,207,130,.6)', '#86e8ae'))}
+      ${toast(0, 'Payment recorded · ₱12,400 · sample')}${toast(4, 'Equipment returned · Crew B · sample')}
     </svg>
   </div>
   <figcaption class="story-cap"><span><b>Today</b> Notebooks, spreadsheets, receipts and chat messages</span><span class="story-arrow" aria-hidden="true">→</span><span><b>With OpsPilot</b> One clear system your staff can use</span></figcaption>
 </figure>`;
+};

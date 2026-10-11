@@ -209,4 +209,10 @@
     ex.setAttribute('aria-expanded', String(on));
     ex.textContent = on ? 'Hide map and job table' : 'Show map and job table';
   });
+
+  // Story illustration: run its animations only while it is on screen (saves battery on phones).
+  const story = $('.story');
+  if (story && 'IntersectionObserver' in window) {
+    new IntersectionObserver(([en]) => story.classList.toggle('is-live', en.isIntersecting), { rootMargin: '80px' }).observe(story);
+  }
 })();
