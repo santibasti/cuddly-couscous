@@ -201,7 +201,7 @@ const hasGlass = (job: Job) => job.service_codes.some((c) => c === 'GLASS_EXT' |
 
 /** Owner / Admin: bill a quotation line by the quantity measured on site (the agreed rate stays; the line leaves the quotation total until it is measured). */
 export function setQuoteLineMeasured(quotationId: string, index: number, measure: boolean) {
-  store.require('admin.settings');
+  if (!canEditRates()) fail('Only an Operations Manager or Admin can change how a quotation line is billed.');
   const q = db().quotations.find((x) => x.id === quotationId); if (!q) fail('Quotation not found.');
   const it = q!.items[index]; if (!it) fail('Line not found.');
   if (measure && (it.service_code === 'GLASS_EXT' || it.service_code === 'GLASS_INT')) fail('Glass panels are counted in the panel counter, not measured.');
