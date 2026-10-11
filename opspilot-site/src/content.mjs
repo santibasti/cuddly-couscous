@@ -149,6 +149,9 @@ export const businessTypes = [
   'Cleaning / maintenance contractor',
   'Golf driving range / recreation facility',
   'Car wash',
+  'Clinic / dental practice',
+  'Bus / taxi / van fleet',
+  'Salon / laundry / repair shop',
   'Other MSME',
 ];
 
@@ -157,7 +160,32 @@ export const scopeTypes = [
   { id: 'contractor', label: 'Service contractor', hint: 'Cleaning, maintenance, crews', formType: 0, modules: [0, 1, 2, 3, 4, 5] },
   { id: 'range', label: 'Driving range', hint: 'Bays, tabs, café', formType: 1, modules: [1, 2, 5, 6] },
   { id: 'carwash', label: 'Car wash', hint: 'Job queue, supplies, sales', formType: 2, modules: [1, 2, 5, 6] },
-  { id: 'other', label: 'Other MSME', hint: 'Staff, stock, bookings', formType: 3, modules: [] },
+  { id: 'clinic', label: 'Clinic or dental', hint: 'Appointments, supplies, billing', formType: 3, modules: [0, 1, 2, 5, 6] },
+  { id: 'fleet', label: 'Bus, taxi or van fleet', hint: 'Vehicles, drivers, collections', formType: 4, modules: [0, 1, 2, 5, 6] },
+  { id: 'shop', label: 'Salon, laundry or repair', hint: 'Jobs, stock, sales', formType: 5, modules: [1, 2, 4, 5, 6] },
+  { id: 'other', label: 'Other MSME', hint: 'Staff, stock, bookings', formType: 6, modules: [] },
+];
+
+// More industries (shown as compact cards). `modules` are indexes into `solutions`.
+export const moreIndustries = [
+  { id: 'clinics', icon: 'cross', title: 'Clinics', sub: 'General and specialty clinics', modules: [0, 1, 2, 5, 6],
+    items: ['Appointment schedule by doctor and room', 'Staff duty schedules and attendance', 'Clinic supplies and equipment stock', 'Billing, payments and balances', 'Daily and monthly summaries'],
+    note: 'Patient clinical records are sensitive and are a separate scope, discussed case by case.' },
+  { id: 'dental', icon: 'tooth', title: 'Dental practices', sub: 'Dental clinics and chairs', modules: [0, 1, 2, 5, 6],
+    items: ['Chair and appointment scheduling', 'Dentist and assistant schedules', 'Dental supplies and instrument tracking', 'Treatment billing, payments and balances', 'Daily collection summary'],
+    note: 'Patient clinical records are sensitive and are a separate scope, discussed case by case.' },
+  { id: 'tourist-buses', icon: 'bus', title: 'Tourist bus fleets', sub: 'Charters, tours and transfers', modules: [0, 1, 2, 3, 5, 6],
+    items: ['Trip and charter bookings with vehicle and driver assignment', 'Driver and conductor attendance', 'Quotations and approved itinerary changes', 'Fuel, toll and maintenance expenses per vehicle', 'Billing, deposits and collections'],
+    note: 'Records are entered by your team. Live vehicle tracking is not part of the system.' },
+  { id: 'taxi-fleets', icon: 'taxi', title: 'Taxi and van fleets', sub: 'Taxis, vans and shuttles', modules: [0, 1, 2, 5, 6],
+    items: ['Vehicle and driver assignment by shift', 'Daily boundary or rental collection and remittance', 'Maintenance and repair schedule per vehicle', 'Driver attendance records', 'Fleet summary by vehicle and driver'],
+    note: 'Records are entered by your team. Live vehicle tracking is not part of the system.' },
+  { id: 'salons', icon: 'scissors', title: 'Salons and spas', sub: 'Salons, barbershops and spas', modules: [0, 1, 2, 5, 6],
+    items: ['Appointments by stylist or therapist', 'Staff schedules and attendance', 'Product stock and usage', 'Service sales and payments', 'Daily sales report'] },
+  { id: 'laundry', icon: 'laundry', title: 'Laundry shops', sub: 'Laundry and dry cleaning', modules: [1, 2, 5, 6],
+    items: ['Job queue by stage: received, washing, ready', 'Customer claim and pickup records', 'Detergent and supplies stock', 'Payments and unpaid balances', 'Daily sales'] },
+  { id: 'auto-repair', icon: 'gear', title: 'Auto repair shops', sub: 'Service and repair garages', modules: [1, 2, 3, 4, 5, 6],
+    items: ['Job orders by bay and mechanic', 'Quotations and approved additional work', 'Parts and supplies stock', 'Service reports with customer sign-off', 'Billing and collections'] },
 ];
 
 export const scopeNotes = [

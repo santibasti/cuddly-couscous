@@ -857,3 +857,26 @@ option { background: #0b1733; color: #fff; }
 .il-banner .il { padding-top: 34px; }
 .il-chips { right: 112px; }
 .il-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+/* ===== More industries ===== */
+.also { margin-top: 34px; text-align: center; }
+.also-h { font-family: var(--mono); font-size: .76rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: 12px; }
+.also-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.also-list a { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px; border: 1px solid #c4d4fa; background: #fff; color: #1b45b8; font-weight: 600; font-size: .92rem; text-decoration: none; box-shadow: 0 1px 2px rgba(10, 22, 48, .05); transition: transform .15s, border-color .15s, box-shadow .15s; }
+.also-list a:hover { transform: translateY(-2px); border-color: #2563ff; box-shadow: 0 8px 20px rgba(37, 99, 255, .18); }
+.also-list .icon { color: #2563ff; }
+.more-grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); }
+.more-card { display: flex; flex-direction: column; gap: 4px; padding: 26px; border-radius: var(--radius); background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--card-shadow); scroll-margin-top: 100px; transition: border-color .2s, box-shadow .2s; }
+.more-card:hover { border-color: rgba(125, 165, 255, .5); }
+.more-card .card-ico { margin-bottom: 14px; }
+.more-card h3 { font-size: 1.3rem; }
+.more-card .ticks { margin: 14px 0 16px; gap: 8px; }
+.more-card .ticks li { font-size: .94rem; }
+.more-card .tags { margin: 0 0 14px; }
+.more-card .tags li { font-size: .74rem; }
+.more-note { display: flex; gap: 9px; align-items: flex-start; margin: 2px 0 14px; padding: 10px 12px; border-radius: 10px; background: rgba(255, 196, 61, .1); border: 1px solid rgba(255, 196, 61, .35); color: #ffe6a3; font-size: .84rem; line-height: 1.4; }
+.more-note .icon { flex: none; margin-top: 2px; color: #ffc43d; }
+.more-card .card-link { margin-top: auto; padding-top: 6px; }
+.choice-4 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+@media (min-width: 640px) { .choice-4 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } }
+.theme-light .scope-summary h3 { color: #fff; }

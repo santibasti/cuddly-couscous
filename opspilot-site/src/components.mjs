@@ -53,7 +53,7 @@ export const hero = () => `
       <dl class="facts">
         <div><dt>${c.solutions.length}</dt><dd>Core modules</dd></div>
         <div><dt>${c.steps.length}</dt><dd>Implementation steps</dd></div>
-        <div><dt>${c.industries.length}</dt><dd>Industry setups</dd></div>
+        <div><dt>${c.industries.length + c.moreIndustries.length}</dt><dd>Industry examples</dd></div>
         <div><dt>1</dt><dd>Shared set of records</dd></div>
       </dl>
     </div>
@@ -453,10 +453,14 @@ export const industriesOverview = (config = {}) => `
         <a class="card-link" href="industries.html#${i.id}">See how it fits ${icon('arrow', 16)}</a>
       </article>`).join('')}
     </div>
+    <div class="also reveal"><p class="also-h">Also configured for</p>
+      <ul class="also-list">${c.moreIndustries.map((m) => `<li><a href="industries.html#${m.id}">${icon(m.icon, 16)}${m.title}</a></li>`).join('')}<li><a href="industries.html#other">${icon('plus', 16)}and more</a></li></ul>
+    </div>
   </div>
 </section>`;
 
-const moduleNames = (ids) => ids.map((n) => c.solutions[n].title);
+const chipNames = ['Attendance & payroll prep', 'Inventory & equipment', 'Bookings & crews', 'Quotations', 'Service reports', 'Billing & collections', 'Dashboards'];
+const moduleNames = (ids) => ids.map((n) => chipNames[n]);
 const presetFor = { 'service-contractors': 0, 'driving-ranges': 1, 'car-washes': 2 };
 
 export const industryDetails = () => c.industries.map((ind, i) => `
@@ -597,3 +601,23 @@ export const storyIllustration = () => {
   <figcaption class="story-cap"><span><b>Today</b> Notebooks, spreadsheets, receipts and chat messages</span><span class="story-arrow" aria-hidden="true">→</span><span><b>With OpsPilot</b> One clear system your staff can use</span></figcaption>
 </figure>`;
 };
+
+
+export const moreIndustries = () => `
+<section class="section section-tint" id="more-industries" aria-labelledby="more-title">
+  <div class="container">
+    ${sectionHead('More industries', 'The same building blocks, set up for your business.', 'These are examples of how the existing modules can be configured. Each setup is agreed in writing before work begins.', true).replace('<h2>', '<h2 id="more-title">')}
+    <div class="more-grid">
+      ${c.moreIndustries.map((m) => `
+      <article class="more-card reveal" id="${m.id}">
+        <span class="card-ico card-ico-blue">${icon(m.icon, 26)}</span>
+        <h3>${m.title}</h3>
+        <p class="industry-sub">${m.sub}</p>
+        <ul class="ticks">${m.items.map((t) => `<li>${icon('check', 18)}<span>${t}</span></li>`).join('')}</ul>
+        <ul class="tags">${moduleNames(m.modules).map((t) => `<li>${t}</li>`).join('')}</ul>
+        ${m.note ? `<p class="more-note">${icon('shield', 16)}<span>${m.note}</span></p>` : ''}
+        <a class="card-link" href="contact.html">Ask about this ${icon('arrow', 16)}</a>
+      </article>`).join('')}
+    </div>
+  </div>
+</section>`;
