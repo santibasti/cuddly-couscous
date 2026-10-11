@@ -605,15 +605,21 @@ export const storyIllustration = () => {
 };
 
 
+const showcaseList = () => {
+  const preset = { 'service-contractors': 'contractor', 'driving-ranges': 'range', 'car-washes': 'carwash' };
+  const first = c.industries.map((i) => ({ id: i.id, icon: i.icon, title: i.title, sub: i.sub, items: i.items, modules: c.scopeTypes.find((t) => t.id === preset[i.id]).modules }));
+  return [...first, ...c.moreIndustries];
+};
+
 export const moreIndustries = () => `
 <section class="section section-tint" id="more-industries" aria-labelledby="more-title">
   <div class="container">
-    ${sectionHead('More industries', 'See it set up for your business.', 'Pick an industry to see an example dashboard. These show how the existing modules can be configured; each setup is agreed in writing before work begins.', true).replace('<h2>', '<h2 id="more-title">')}
+    ${sectionHead('Pick your industry', 'See it set up for your business.', 'Choose an industry to see an example dashboard. These show how the existing modules can be configured; each setup is agreed in writing before work begins.', true).replace('<h2>', '<h2 id="more-title">')}
     <div class="ind-tabs" role="tablist" aria-label="More industries">
-      ${c.moreIndustries.map((m, i) => `<button type="button" class="ind-tab${i === 0 ? ' is-active' : ''}" role="tab" id="tab-${m.id}" aria-controls="${m.id}" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">${icon(m.icon, 18)}<span>${m.title}</span></button>`).join('')}
+      ${showcaseList().map((m, i) => `<button type="button" class="ind-tab${i === 0 ? ' is-active' : ''}" role="tab" id="tab-${m.id}" aria-controls="${m.id}" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">${icon(m.icon, 18)}<span>${m.title}</span></button>`).join('')}
     </div>
     <div class="ind-panels">
-      ${c.moreIndustries.map((m, i) => `
+      ${showcaseList().map((m, i) => `
       <article class="ind-panel${i === 0 ? ' is-active' : ''}" id="${m.id}" role="tabpanel" aria-labelledby="tab-${m.id}" tabindex="0">
         <div class="ind-top">
           <div class="ind-info">

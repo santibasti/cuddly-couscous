@@ -71,7 +71,30 @@ const attention = (items) => `<ul class="attention ind-att">${items.map(([tag, t
 
 const panel = (title, body, cls) => `<section class="dash-panel ${cls}"><div class="dash-h-row"><h3 class="dash-h">${title}</h3></div>${body}</section>`;
 
-const render = (d) => `
+
+// ---------- extra panels: breakdown + recent activity (SAMPLE DATA) ----------
+const mixPanel = (title, rows) => `
+<ul class="mix" role="img" aria-label="${title}, sample data: ${rows.map(([l, v]) => `${l} ${v}%`).join(', ')}">
+  ${rows.map(([l, v], i) => `<li><span>${l}</span><span class="mix-bar"><i style="--w:${v}%;--d:${(i * 0.12).toFixed(2)}s"></i></span><b>${v}%</b></li>`).join('')}
+</ul>`;
+const feedPanel = (items) => `
+<ol class="feed">
+  ${items.map(([t, text], i) => `<li style="--d:${(i * 0.12).toFixed(2)}s"><time>${t}</time><span>${text}</span></li>`).join('')}
+</ol>`;
+const extras = {
+  'service-contractors': { mix: ['Revenue by service', [['Janitorial', 46], ['Building maintenance', 28], ['Deep cleaning', 16], ['Other jobs', 10]]], feed: [['9:42 AM', 'Crew A checked in · Sample Office Tower'], ['10:15 AM', 'Equipment issued · Floor polisher #3 · Crew A'], ['11:20 AM', 'Service report signed off · Sample School'], ['12:05 PM', 'Payment recorded · ₱28,500 · Sample Warehouse']] },
+  'driving-ranges': { mix: ['Sales mix', [['Range buckets', 64], ['Food', 21], ['Beverages', 15]]], feed: [['1:05 PM', 'Bay 4 checked out · ₱420'], ['1:12 PM', 'Bucket ×2 added · Bay 6'], ['1:20 PM', 'Café order ready · Bay 2'], ['1:31 PM', 'Bay 5 reserved for 3:00 PM']] },
+  'car-washes': { mix: ['Sales by service', [['Full wash', 44], ['Exterior wash', 26], ['Wax and polish', 18], ['Interior clean', 12]]], feed: [['12:40 PM', 'Bay 2 started · Full wash'], ['12:52 PM', 'Paid ₱450 · Sample Pickup'], ['1:03 PM', 'Low stock flagged · Wax'], ['1:15 PM', 'Bay 1 ready · Sample Sedan']] },
+  clinics: { mix: ['Billing by visit type', [['Consultation', 48], ['Follow-up', 27], ['Procedures', 17], ['Other', 8]]], feed: [['9:05 AM', 'Appointment completed · Doctor B'], ['10:30 AM', 'Payment recorded · ₱1,200'], ['11:15 AM', 'Supplies reorder flagged · Gloves'], ['12:02 PM', 'Appointment confirmed · tomorrow 9:00 AM']] },
+  dental: { mix: ['Billing by treatment', [['Cleaning', 30], ['Fillings', 26], ['Check-ups', 24], ['Other treatments', 20]]], feed: [['12:50 PM', 'Chair 4 ready'], ['1:10 PM', 'Payment recorded · ₱3,500'], ['1:25 PM', 'Appointment confirmed · Dentist C'], ['1:40 PM', 'Sterilization batch started · 12 sets']] },
+  'tourist-buses': { mix: ['Billed by trip type', [['Day tours', 40], ['Airport and hotel transfers', 30], ['Multi-day charters', 22], ['Other', 8]]], feed: [['10:20 AM', 'Trip completed · Bus 11'], ['11:00 AM', 'Deposit recorded · ₱15,000 · T-118'], ['12:30 PM', 'Bus 05 boarding · Subic'], ['1:10 PM', 'Maintenance logged · Bus 09']] },
+  'taxi-fleets': { mix: ['Collected by vehicle type', [['Taxis', 62], ['Vans', 28], ['Shuttles', 10]]], feed: [['6:05 AM', 'Shift started · Van 12'], ['2:10 PM', 'Remittance recorded · Taxi 01'], ['2:25 PM', 'Short remittance flagged · Taxi 04'], ['2:40 PM', 'Service reminder · Taxi 04']] },
+  salons: { mix: ['Sales by service', [['Hair', 52], ['Color', 22], ['Nails', 14], ['Products', 12]]], feed: [['12:30 PM', 'Appointment booked · Stylist C'], ['12:45 PM', 'Payment recorded · ₱1,800'], ['1:00 PM', 'Checked in · Color · Stylist C'], ['1:15 PM', 'Low stock flagged · Developer']] },
+  laundry: { mix: ['Sales by service', [['Wash and fold', 54], ['Dry cleaning', 20], ['Ironing', 18], ['Bedding', 8]]], feed: [['11:05 AM', 'Ticket #L-2064 ready'], ['11:40 AM', 'Payment recorded · ₱450'], ['12:10 PM', 'Pickup reminder queued · 5 tickets'], ['12:50 PM', 'Detergent stock updated · 72%']] },
+  'auto-repair': { mix: ['Revenue by job type', [['Maintenance', 38], ['Repairs', 34], ['Parts', 20], ['Diagnostics', 8]]], feed: [['9:30 AM', 'Quote approved · J-3305'], ['11:10 AM', 'Parts arrived · J-3309'], ['12:20 PM', 'Payment recorded · ₱6,400'], ['1:05 PM', 'Vehicle ready · J-3299']] },
+};
+
+const render = (d, x) => `
 <div class="app app-ind ind-dash" role="group" aria-label="Illustrative ${d.name} dashboard with sample data">
   <div class="app-main">
     <div class="app-top">
@@ -85,6 +108,8 @@ const render = (d) => `
       ${panel(d.special.title, d.special.html, 'ind-special')}
       ${panel(d.table.title, table(d.table.cols, d.table.rows), 'ind-table')}
       ${panel(`${icon('alert', 18)} Items needing attention`, attention(d.attn), 'ind-attn')}
+      ${panel(x.mix[0], mixPanel(x.mix[0], x.mix[1]), 'ind-mix')}
+      ${panel('Recent activity', feedPanel(x.feed), 'ind-feed')}
     </div>
   </div>
 </div>`;
@@ -194,4 +219,4 @@ const data = {
   },
 };
 
-export const industryDashboard = (id) => render(data[id]);
+export const industryDashboard = (id) => render(data[id], extras[id]);
