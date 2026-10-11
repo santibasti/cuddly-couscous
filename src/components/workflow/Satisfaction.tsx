@@ -15,7 +15,7 @@ const TONE: Record<SatisfactionRating, string> = { 1: 'bad', 2: 'mid', 3: 'good'
  * three 1–5 questions (large buttons), then the overall smiley, then an optional comment.
  * A Not Satisfied answer or any 1–2 rating needs an issue category from the Team Leader and creates an Admin follow-up.
  */
-export function SatisfactionCheck({ value, onChange, disabled }: { value: Partial<SatisfactionInput>; onChange: (v: Partial<SatisfactionInput>) => void; disabled?: boolean }) {
+export function SatisfactionCheck({ value, onChange, disabled, clientMode }: { value: Partial<SatisfactionInput>; onChange: (v: Partial<SatisfactionInput>) => void; disabled?: boolean; clientMode?: boolean }) {
   const r = value.rating;
   const answered = SAT_QUESTIONS.every((q) => !!value[q.key]);
   const low = needsFollowUp(value);
@@ -50,7 +50,7 @@ export function SatisfactionCheck({ value, onChange, disabled }: { value: Partia
       {answered && r && (
         <div className="stack" style={{ marginTop: 12 }}>
           <Field label="Additional comment (optional)"><input disabled={disabled} value={value.comment ?? ''} onChange={(e) => onChange({ ...value, comment: e.target.value })} /></Field>
-          {low && (
+          {low && !clientMode && (
             <div className="alert err">
               <b>Team Leader: choose the issue</b> (the client was not satisfied or gave a rating of 1–2 — the Owner / Admin is notified and a follow-up is created)
               <div className="chips" role="group" aria-label="Issue category">{ISSUE_CATEGORIES.map((c) => <button key={c} type="button" disabled={disabled} className={value.issue_category === c ? 'on' : ''} onClick={() => onChange({ ...value, issue_category: c as IssueCategory })}>{c}</button>)}</div>
@@ -58,6 +58,15 @@ export function SatisfactionCheck({ value, onChange, disabled }: { value: Partia
           )}
         </div>
       )}
+    </div>
+  );
+}
+/** Team Leader only: the issue category that goes with a low rating (the client is not shown this). */
+export function IssuePicker({ value, onChange }: { value: Partial<SatisfactionInput>; onChange: (v: Partial<SatisfactionInput>) => void }) {
+  return (
+    <div className="alert err">
+      <b>Team Leader: choose the issue</b> (the client was not satisfied — the Owner / Admin is notified and a follow-up is created)
+      <div className="chips" role="group" aria-label="Issue category">{ISSUE_CATEGORIES.map((c) => <button key={c} type="button" className={value.issue_category === c ? 'on' : ''} onClick={() => onChange({ ...value, issue_category: c as IssueCategory })}>{c}</button>)}</div>
     </div>
   );
 }

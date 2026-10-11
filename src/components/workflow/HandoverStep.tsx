@@ -4,13 +4,15 @@ import { Badge, Field, SignaturePad, attempt } from '@/components/ui';
 import { DraftBar, PresetChips } from '@/components/touch';
 import { Confirm } from './shared';
 import { billBase, signServiceReport, type SatisfactionInput } from '@/lib/workflow';
-import { SatisfactionCheck, FeedbackSummary, satisfactionComplete } from './Satisfaction';
+import { SatisfactionCheck, IssuePicker, FeedbackSummary, satisfactionComplete } from './Satisfaction';
 import { PaymentMethodConfirm } from './PaymentMethodConfirm';
 import { FinalSummary } from './FinalQuote';
-import { discountBlock, finalQuoteSummary } from '@/lib/business';
+import { discountBlock, finalQuoteSummary, needsFollowUp } from '@/lib/business';
 import { useDraft } from '@/lib/useDraft';
 import { PRESETS } from '@/lib/presets';
 import { fmtDateTime } from '@/lib/util';
+import { SAT_QUESTIONS } from '@/lib/business';
+const SAT_REQ = (s: Partial<SatisfactionInput>) => SAT_QUESTIONS.every((q) => !!s[q.key]);
 import { serviceReportPdf } from '@/lib/export';
 import type { Job, JobWorkflow } from '@/lib/types';
 
@@ -27,6 +29,7 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
   const autoScope = `${q?.scope ?? job.scope}${adds.length ? `\nAdditional work (approved): ${adds.flatMap((v) => v.items.map((i) => `${i.description} (${i.qty} ${i.unit})`)).join('; ')}` : ''}`;
   const [f, setF] = useState({ scope: autoScope, findings: '', recs: '', limits: '', complimentary: '', client_name: wf.conf_name ?? site?.contact_person ?? '', tm_name: emp(job.leader_id) !== '—' ? emp(job.leader_id) : user?.name ?? '' });
   const [sat, setSat] = useState<Partial<SatisfactionInput>>({});
+  const [stage, setStage] = useState<null | 'rate' | 'tl' | 'sign'>(null);
   const [csig, setCsig] = useState<string>(); const [tsig, setTsig] = useState<string>(); const [ok, setOk] = useState(false);
   const dr = useDraft(`d:${wf.id}:rep`, { f, csig, tsig, sat }, (d) => { setF(d.f); setCsig(d.csig); setTsig(d.tsig); setSat(d.sat ?? {}); }, run && !signed);
   if (signed) {
@@ -69,10 +72,40 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
         <div className="form-grid" style={{ marginTop: 8 }}>
           <Field label="Complimentary services"><input disabled={!run} value={f.complimentary} onChange={(e) => setF({ ...f, complimentary: e.target.value })} /></Field>
         </div></details>
-      <SatisfactionCheck value={sat} onChange={setSat} disabled={!run} />
-      {run && <div className="form-grid"><div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad value={csig} onChange={setCsig} /></div><div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>TopMop team leader signature</div><SignaturePad value={tsig} onChange={setTsig} /></div></div>}
+      {run && <div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>TopMop team leader signature</div><SignaturePad value={tsig} onChange={setTsig} /></div>}
       {run && <Confirm checked={ok} onChange={setOk}>The work and findings above were reviewed with the client.</Confirm>}
-      {run && <button className="btn primary lg" disabled={!ok || !!block || !satisfactionComplete(sat)} onClick={() => attempt(() => signServiceReport(wf.id, { ...f, client_sig: csig, tm_sig: tsig, satisfaction: sat as SatisfactionInput }), 'Handover signed — Work Completed')}>Sign &amp; complete handover</button>}
+      {run && <div className="alert info">Next: hand the tablet to the client. They will answer a short rating on its own page, then review the final bill and sign.</div>}
+      {run && <button className="btn primary lg" disabled={!ok || !!block || !tsig || !f.scope.trim() || !f.findings.trim() || !f.recs.trim() || !f.limits.trim() || !f.client_name.trim()} onClick={() => setStage('rate')}>Hand tablet to the client →</button>}
+      {stage && (
+        <div className="pcwin clientpage" role="dialog" aria-modal="true" aria-label="Client">
+          <div className="pcwin-h"><div style={{ flex: 1 }}><b>TopMop Window Cleaning Solutions Corp.</b><div className="small muted">{job.number} · {site?.name}</div></div><button className="btn" onClick={() => setStage(null)}>← Team Leader</button></div>
+          <div className="pcwin-b">
+            {stage === 'rate' && <>
+              <h2 style={{ margin: '4px 0' }}>How was our service today?</h2>
+              <div className="muted">Thank you for choosing TopMop. It takes less than a minute.</div>
+              <SatisfactionCheck value={sat} onChange={setSat} clientMode />
+            </>}
+            {stage === 'tl' && <>
+              <h2 style={{ margin: '4px 0' }}>Thank you for your feedback</h2>
+              <div className="muted">Please hand the tablet back to the Team Leader for a moment.</div>
+              <IssuePicker value={sat} onChange={setSat} />
+            </>}
+            {stage === 'sign' && <>
+              <h2 style={{ margin: '4px 0' }}>Please review and sign</h2>
+              <div className="card" style={{ padding: 12 }}><div className="small muted">Work completed</div><div style={{ whiteSpace: 'pre-wrap' }}>{f.scope}</div>{f.findings && <><div className="small muted" style={{ marginTop: 8 }}>Findings</div><div style={{ whiteSpace: 'pre-wrap' }}>{f.findings}</div></>}</div>
+              <div className="card" style={{ padding: 12 }}><div className="small muted" style={{ marginBottom: 6 }}>Final bill</div><FinalSummary sm={sm} /></div>
+              <Field label="Your name" required><input value={f.client_name} onChange={(e) => setF({ ...f, client_name: e.target.value })} /></Field>
+              <div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Your signature</div><SignaturePad value={csig} onChange={setCsig} /></div>
+            </>}
+          </div>
+          <div className="pcwin-f">
+            <span className="small muted">{stage === 'rate' ? 'Step 1 of 2 · Your rating' : stage === 'tl' ? 'Team Leader' : 'Step 2 of 2 · Review & sign'}</span>
+            {stage === 'rate' && <button className="btn primary lg" disabled={!sat.rating || !SAT_REQ(sat)} onClick={() => setStage(needsFollowUp(sat) && !sat.issue_category ? 'tl' : 'sign')}>Continue →</button>}
+            {stage === 'tl' && <button className="btn primary lg" disabled={!sat.issue_category} onClick={() => setStage('sign')}>Hand back to the client →</button>}
+            {stage === 'sign' && <button className="btn primary lg" disabled={!csig || !f.client_name.trim() || !satisfactionComplete(sat)} onClick={() => { if (attempt(() => signServiceReport(wf.id, { ...f, client_sig: csig, tm_sig: tsig, satisfaction: sat as SatisfactionInput }), 'Handover signed — Work Completed')) setStage(null); }}>Sign &amp; complete</button>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
