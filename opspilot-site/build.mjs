@@ -15,7 +15,7 @@ const pages = [
     file: 'index.html', nav: 'index.html',
     title: 'OpsPilot | Custom Business Systems for Philippine MSMEs',
     description: brandDescription,
-    body: () => [ui.hero(), ui.ticker(), ui.problems(), ui.solutionsOverview(), ui.industriesOverview(), ui.workTeaser(), ui.process(), ui.ctaBand()],
+    body: () => [ui.hero(), ui.ticker(), ui.problems(), ui.solutionsOverview(), ui.industriesOverview(config), ui.workTeaser(), ui.process(), ui.ctaBand()],
   },
   {
     file: 'solutions.html', nav: 'solutions.html',

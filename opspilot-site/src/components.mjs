@@ -80,6 +80,7 @@ export const problems = () => `
 <section class="section theme-light" id="problems" aria-labelledby="problems-title">
   <div class="container">
     ${sectionHead('Sound familiar?', 'Daily operations shouldn’t live in five different places.', 'These are common patterns in growing businesses. Each one maps to a practical capability in the system.', true).replace('<h2>', '<h2 id="problems-title">')}
+    ${storyIllustration()}
     <div class="problem-list">
       ${c.problems.map((p) => `
       <article class="problem reveal">
@@ -437,13 +438,14 @@ export const solutionsOverview = () => `
   </div>
 </section>`;
 
-export const industriesOverview = () => `
+export const industriesOverview = (config = {}) => `
 <section class="section theme-light" id="industries" aria-labelledby="industries-title">
   <div class="container">
     ${sectionHead('Industries', 'One approach, adapted to how you operate.', 'The building blocks stay the same; the screens, fields and reports are configured for your kind of business.', true).replace('<h2>', '<h2 id="industries-title">')}
     <div class="industry-grid">
       ${c.industries.map((i) => `
       <article class="industry reveal">
+        ${industryBanner(i.id, config)}
         <span class="card-ico card-ico-blue">${icon(i.icon, 26)}</span>
         <h3>${i.title}</h3>
         <p class="industry-sub">${i.sub}</p>
@@ -483,3 +485,69 @@ export const otherIndustries = () => `
     <div class="btn-row center-row">${button('Describe your workflow', 'contact.html', 'primary')}</div>
   </div>
 </section>`;
+
+
+// ---------- Brand illustrations (original, code-drawn; line-art on navy) ----------
+const star = (cx, cy, r) => `<path class="il-lime il-glow" d="M${cx} ${cy - r}Q${cx} ${cy} ${cx + r} ${cy}Q${cx} ${cy} ${cx} ${cy + r}Q${cx} ${cy} ${cx - r} ${cy}Q${cx} ${cy} ${cx} ${cy - r}z"/>`;
+const windows = (x, y, cols, rows, gx, gy) => Array.from({ length: cols * rows }, (_, i) => `<path d="M${x + (i % cols) * gx} ${y + Math.floor(i / cols) * gy}h10"/>`).join('');
+
+const illustrations = {
+  'service-contractors': { label: 'Illustration: a crew cart heading to an office building, with a job checklist and location pin', svg: `
+    <path class="il-line il-thin" d="M20 250H620"/>
+    <rect class="il-fill" x="400" y="62" width="120" height="188" rx="4"/><rect class="il-fill" x="340" y="132" width="60" height="118" rx="4"/><rect class="il-fill" x="520" y="112" width="70" height="138" rx="4"/>
+    <g class="il-line il-thin">${windows(416, 90, 3, 6, 36, 26)}${windows(352, 156, 2, 4, 26, 26)}${windows(534, 134, 2, 4, 28, 26)}</g>
+    <path class="il-limeline il-glow" d="M460 18c-10 0-17 7-17 16 0 12 17 28 17 28s17-16 17-28c0-9-7-16-17-16z"/><circle class="il-lime" cx="460" cy="34" r="5"/>
+    <path class="il-line il-dash" d="M214 222C270 180 330 180 392 224"/>
+    <rect class="il-fill" x="70" y="192" width="140" height="34" rx="8"/><circle class="il-fill" cx="98" cy="238" r="12"/><circle class="il-fill" cx="184" cy="238" r="12"/>
+    <path class="il-line" d="M70 192L50 150H36"/><path class="il-fill" d="M92 192l8-32h40l8 32z"/><rect class="il-fill" x="154" y="164" width="14" height="28" rx="3"/>
+    <path class="il-line" d="M176 192L204 98"/><path class="il-fill" d="M190 90l26 8-7 24-27-8z"/>
+    <rect class="il-fill" x="226" y="46" width="108" height="88" rx="10"/>
+    ${[0, 1, 2].map((i) => `<path class="il-limeline" d="M244 ${74 + i * 23}l5 5 9-10"/><path class="il-line il-thin" d="M270 ${76 + i * 23}h50"/>`).join('')}
+    ${star(600, 70, 9)}${star(60, 90, 7)}` },
+  'driving-ranges': { label: 'Illustration: driving range bays with a ball flying toward a flag on target rings, and a coffee cup', svg: `
+    <path class="il-line il-thin" d="M20 192H620"/><g class="il-line il-thin"><path d="M320 192L120 272M320 192V272M320 192L520 272"/></g>
+    <ellipse class="il-fill" cx="472" cy="228" rx="104" ry="28"/><ellipse class="il-line" cx="472" cy="228" rx="66" ry="18"/><ellipse class="il-line" cx="472" cy="228" rx="28" ry="8"/>
+    <path class="il-line" d="M472 228V118"/><path class="il-lime il-glow" d="M472 118l42 15-42 15z"/>
+    <path class="il-limeline il-dash il-glow" d="M158 234C226 36 410 28 466 214"/><circle class="il-lime il-glow" cx="158" cy="234" r="7"/><path class="il-line" d="M158 241v10"/>
+    ${[0, 1, 2].map((i) => `<path class="il-fill" d="M${22 + i * 42} 252v-52l19-12 19 12v52z"/><path class="il-line il-thin" d="M${32 + i * 42} 252v-30h18v30"/>`).join('')}
+    <path class="il-fill" d="M548 66h38v28a13 13 0 0 1-13 13h-12a13 13 0 0 1-13-13z"/><path class="il-line" d="M586 72h6a7 7 0 0 1 0 15h-6"/><path class="il-line il-thin" d="M560 56c-5-7 5-9 0-17M574 56c-5-7 5-9 0-17"/>
+    ${star(300, 70, 8)}${star(600, 160, 6)}` },
+  'car-washes': { label: 'Illustration: a car passing through a wash bay with spray nozzles, bubbles and sparkles', svg: `
+    <path class="il-line il-thin" d="M20 252H620"/>
+    <rect class="il-fill" x="112" y="56" width="22" height="196" rx="4"/><rect class="il-fill" x="506" y="56" width="22" height="196" rx="4"/><rect class="il-fill" x="112" y="56" width="416" height="28" rx="9"/>
+    ${[196, 258, 320, 382, 444].map((x) => `<circle class="il-lime" cx="${x}" cy="90" r="4"/><path class="il-line il-dash il-thin" d="M${x} 98v60"/><ellipse class="il-fill" cx="${x - 8}" cy="176" rx="3" ry="5"/><ellipse class="il-fill" cx="${x + 9}" cy="166" rx="3" ry="5"/>`).join('')}
+    <path class="il-fill" d="M180 240v-28q0-14 16-20l46-14q18-28 58-28h46q36 0 52 30l32 12q18 6 18 20v28z"/><path class="il-line" d="M256 176q16-20 46-20h42l26 28H252z"/><path class="il-line il-thin" d="M312 160v24"/>
+    <circle class="il-fill" cx="232" cy="242" r="23"/><circle class="il-line" cx="232" cy="242" r="9"/><circle class="il-fill" cx="404" cy="242" r="23"/><circle class="il-line" cx="404" cy="242" r="9"/>
+    <g class="il-line il-thin"><circle cx="158" cy="206" r="9"/><circle cx="170" cy="230" r="5"/><circle cx="470" cy="214" r="7"/><circle cx="484" cy="188" r="10"/><circle cx="148" cy="170" r="5"/></g>
+    ${star(300, 146, 10)}${star(430, 132, 7)}${star(560, 100, 8)}` },
+};
+
+export const industryBanner = (id, config = {}) => {
+  const photo = (config.images || {})[id];
+  const ill = illustrations[id];
+  if (photo) return `<div class="il-banner il-banner-photo"><img src="${photo}" alt="Illustrative image: ${ill.label.replace('Illustration: ', '')}" width="640" height="280" loading="lazy"></div>`;
+  return `<div class="il-banner"><svg class="il" viewBox="0 0 640 280" role="img" aria-label="${ill.label}">${ill.svg}</svg></div>`;
+};
+
+export const storyIllustration = () => `
+<figure class="story reveal">
+  <div class="story-art">
+    <svg class="il" viewBox="0 0 960 330" role="img" aria-label="Illustration: scattered notebooks, spreadsheets, receipts and chat messages converge into one OpsPilot system shown as a dashboard (sample data).">
+      <g transform="rotate(-7 115 150)"><rect class="il-fill" x="58" y="82" width="116" height="146" rx="8"/><g class="il-line il-thin"><path d="M80 112h72M80 134h72M80 156h56M80 178h64"/></g>${[0, 1, 2, 3, 4].map((i) => `<circle class="il-solid il-stroke" cx="58" cy="${100 + i * 28}" r="4"/>`).join('')}</g>
+      <g transform="rotate(5 252 130)"><rect class="il-fill" x="188" y="66" width="130" height="104" rx="8"/><g class="il-line il-thin"><path d="M188 92h130M188 118h130M188 144h130M231 66v104M274 66v104"/></g><rect class="il-lime" x="192" y="70" width="36" height="18" rx="3" opacity=".85"/></g>
+      <g transform="rotate(-3 150 270)"><path class="il-fill" d="M98 214h92v96l-8-6-8 6-8-6-8 6-8-6-8 6-8-6-8 6-8-6z"/><g class="il-line il-thin"><path d="M110 236h60M110 254h44M110 272h52"/></g></g>
+      <g transform="rotate(8 304 236)"><rect x="268" y="204" width="68" height="66" rx="4" fill="#ffd98a"/><g stroke="#8a5a00" stroke-width="2" stroke-linecap="round" opacity=".6"><path d="M280 226h42M280 242h34M280 258h24"/></g></g>
+      <path class="il-fill" d="M214 214h62a10 10 0 0 1 10 10v22a10 10 0 0 1-10 10h-36l-14 14v-14h-12a10 10 0 0 1-10-10v-22a10 10 0 0 1 10-10z" transform="translate(-10 50)"/>
+      <g class="il-line il-dash"><path d="M338 110C402 110 420 150 448 162"/><path d="M338 176C396 176 418 168 448 166"/><path d="M338 262C400 262 420 196 450 172"/></g>
+      <g transform="translate(494 166)"><circle r="56" fill="none" stroke="#2f6bff" stroke-width="7" class="il-glow-blue"/><path d="M0 -30l16 48-16-11-16 11z" fill="#fff"/><circle cx="0" cy="-72" r="7" class="il-lime il-glow"/></g>
+      <path class="il-limeline il-glow" d="M556 166h52"/><path class="il-limeline il-glow" d="M600 156l12 10-12 10"/>
+      <rect x="628" y="46" width="310" height="238" rx="18" fill="#0b1733" stroke="#4d73d8" stroke-width="2"/>
+      <text x="650" y="80" fill="#fff" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="17" font-weight="700">Operations overview</text>
+      <text x="650" y="100" fill="#a5b4d6" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="12">Illustrative · Sample data</text>
+      ${[['Jobs today', '18'], ['Crew', '42 / 46'], ['Sales', '₱186,400']].map(([l, v], i) => `<rect x="${650 + i * 96}" y="114" width="88" height="56" rx="10" fill="#12234a" stroke="#2c4a92"/><text x="${660 + i * 96}" y="134" fill="#a5b4d6" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="11">${l}</text><text x="${660 + i * 96}" y="156" fill="#fff" font-family="system-ui,Segoe UI,Arial,sans-serif" font-size="${v.length > 6 ? 12.5 : 17}" font-weight="800">${v}</text>`).join('')}
+      <path d="M650 252C690 226 710 244 750 222S820 232 850 206 900 214 918 196" fill="none" stroke="#12a594" stroke-width="3" stroke-linecap="round"/>
+      <path d="M650 262C700 240 730 258 770 236S830 246 860 222 900 228 918 214" fill="none" stroke="#3d7bff" stroke-width="2" stroke-dasharray="6 5" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <figcaption class="story-cap"><span><b>Today</b> Notebooks, spreadsheets, receipts and chat messages</span><span class="story-arrow" aria-hidden="true">→</span><span><b>With OpsPilot</b> One clear system your staff can use</span></figcaption>
+</figure>`;
