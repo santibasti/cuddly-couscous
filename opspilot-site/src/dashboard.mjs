@@ -42,7 +42,7 @@ const attention = [
 ];
 
 // ---------- Sparkline ----------
-const spark = (vals) => {
+export const spark = (vals) => {
   const w = 84, h = 28, min = Math.min(...vals), max = Math.max(...vals);
   const pts = vals.map((v, i) => [(i / (vals.length - 1)) * w, h - 3 - ((v - min) / (max - min || 1)) * (h - 8)]);
   const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
@@ -51,7 +51,7 @@ const spark = (vals) => {
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true" focusable="false"><defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3d7bff" stop-opacity=".45"/><stop offset="1" stop-color="#3d7bff" stop-opacity="0"/></linearGradient></defs><path d="${line} L${w},${h} L0,${h} Z" fill="url(#${id})"/><path class="spark-line" d="${line}" pathLength="1"/><circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="2.6" class="spark-dot"/></svg>`;
 };
 
-const kpiTile = (k) => `
+export const kpiTile = (k) => `
 <div class="kpi">
   <div class="kpi-head"><p class="kpi-label">${k.label}</p></div>
   <p class="kpi-value"${k.count ? ` data-count="${k.count}"${k.money ? ' data-money="1"' : ''}` : ''}>${k.value}</p>
@@ -70,34 +70,36 @@ const smooth = (pts) => {
   return d;
 };
 
-const chart = (compact = false) => {
+export const areaChart = ({ labels, a, b, max, nameA = 'Billed', nameB = 'Collected', pre = '₱', suf = 'k', note = '₱ thousands · sample data', noun = 'Week', compact = false, tableView = true, what = 'Billed versus collected' }) => {
   const id = `ch${++uid}`;
-  const W = 640, H = compact ? 200 : 260, L = 40, R = 14, T = 14, B = 28, max = 300;
-  const n = weeks.labels.length, step = (W - L - R) / (n - 1), plotH = H - T - B;
+  const W = 640, H = compact ? 200 : 260, L = 40, R = 14, T = 14, B = 28;
+  const n = labels.length, step = (W - L - R) / (n - 1), plotH = H - T - B;
   const x = (i) => L + i * step, y = (v) => T + plotH - (v / max) * plotH;
-  const bp = weeks.billed.map((v, i) => [x(i), y(v)]), pp = weeks.paid.map((v, i) => [x(i), y(v)]);
-  const grid = [0, 100, 200, 300].map((v) => `<line class="ch-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="ch-axis" x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join('');
-  const xl = weeks.labels.map((l, i) => `<text class="ch-axis" x="${x(i)}" y="${H - 8}" text-anchor="middle">${l}</text>`).join('');
+  const bp = a.map((v, i) => [x(i), y(v)]), pp = b.map((v, i) => [x(i), y(v)]);
+  const grid = [0, 1, 2, 3].map((k) => Math.round((max * k) / 3)).map((v) => `<line class="ch-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="ch-axis" x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join('');
+  const xl = labels.map((l, i) => `<text class="ch-axis" x="${x(i)}" y="${H - 8}" text-anchor="middle">${l}</text>`).join('');
   const area = `${smooth(pp)} L${x(n - 1)},${T + plotH} L${x(0)},${T + plotH} Z`;
-  const meta = JSON.stringify({ labels: weeks.labels, billed: weeks.billed, paid: weeks.paid, W, H, L, R, T, B, max });
-  const desc = `Sample data, ₱ thousands per week. Billed: ${weeks.billed.join(', ')}. Collected: ${weeks.paid.join(', ')}.`;
+  const meta = JSON.stringify({ labels, billed: a, paid: b, W, H, L, R, T, B, max, n1: nameA, n2: nameB, pre, suf });
+  const desc = `Sample data. ${nameA}: ${a.join(', ')}. ${nameB}: ${b.join(', ')}.`;
   return `
-<div class="chart" data-chart='${meta}' tabindex="0" role="group" aria-label="Weekly billed versus collected, sample data. Use left and right arrow keys to read each week.">
+<div class="chart" data-chart='${meta}' tabindex="0" role="group" aria-label="${what}, sample data. Use left and right arrow keys to read each point.">
   <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Line chart. ${desc}">
     <defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#12a594" stop-opacity=".42"/><stop offset="1" stop-color="#12a594" stop-opacity="0"/></linearGradient></defs>
     ${grid}${xl}
     <path class="ch-area" d="${area}" fill="url(#${id})"/>
     <path class="ch-billed" d="${smooth(bp)}"/>
     <path class="ch-paid" d="${smooth(pp)}" pathLength="1"/>
-    <circle class="ch-end ch-end-b" cx="${x(n - 1)}" cy="${y(weeks.billed[n - 1])}" r="4.5"/>
-    <circle class="ch-end ch-end-p" cx="${x(n - 1)}" cy="${y(weeks.paid[n - 1])}" r="4.5"/>
+    <circle class="ch-end ch-end-b" cx="${x(n - 1)}" cy="${y(a[n - 1])}" r="4.5"/>
+    <circle class="ch-end ch-end-p" cx="${x(n - 1)}" cy="${y(b[n - 1])}" r="4.5"/>
     <g class="ch-hover" hidden><line class="ch-cross" y1="${T}" y2="${T + plotH}"/><circle class="ch-hot ch-hot-b" r="5"/><circle class="ch-hot ch-hot-p" r="5"/></g>
   </svg>
   <div class="ch-tip" hidden role="status"></div>
 </div>
-<ul class="legend"><li><i class="sw sw-billed"></i>Billed <small>(dashed)</small></li><li><i class="sw sw-paid"></i>Collected</li><li class="legend-unit">₱ thousands · sample data</li></ul>
-${compact ? '' : `<details class="tbl-view"><summary>View chart data as a table</summary><div class="table-wrap"><table class="dash-table"><caption class="sr-only">Billed and collected per week, ₱ thousands, sample data</caption><thead><tr><th scope="col">Week</th><th scope="col" class="num">Billed</th><th scope="col" class="num">Collected</th></tr></thead><tbody>${weeks.labels.map((l, i) => `<tr><th scope="row">${l}</th><td class="num">${weeks.billed[i]}</td><td class="num">${weeks.paid[i]}</td></tr>`).join('')}</tbody></table></div></details>`}`;
+<ul class="legend"><li><i class="sw sw-billed"></i>${nameA} <small>(dashed)</small></li><li><i class="sw sw-paid"></i>${nameB}</li><li class="legend-unit">${note}</li></ul>
+${compact || !tableView ? '' : `<details class="tbl-view"><summary>View chart data as a table</summary><div class="table-wrap"><table class="dash-table"><caption class="sr-only">${nameA} and ${nameB}, sample data</caption><thead><tr><th scope="col">${noun}</th><th scope="col" class="num">${nameA}</th><th scope="col" class="num">${nameB}</th></tr></thead><tbody>${labels.map((l, i) => `<tr><th scope="row">${l}</th><td class="num">${a[i]}</td><td class="num">${b[i]}</td></tr>`).join('')}</tbody></table></div></details>`}`;
 };
+
+const chart = (compact = false) => areaChart({ labels: weeks.labels, a: weeks.billed, b: weeks.paid, max: 300, compact });
 
 // ---------- Gauge rings ----------
 const ring = (pct, big, label) => `

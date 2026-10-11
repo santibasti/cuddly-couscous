@@ -162,7 +162,7 @@
     const co = new IntersectionObserver((es) => es.forEach((en) => {
       if (en.isIntersecting) { countUp(en.target); co.unobserve(en.target); }
     }), { threshold: 0.6 });
-    document.querySelectorAll('[data-count]').forEach((el) => co.observe(el));
+    document.querySelectorAll('[data-count]').forEach((el) => { if (!el.closest('.ind-panel')) co.observe(el); });
   }
 
   // Interactive area chart: pointer + keyboard crosshair with tooltip (sample data).
@@ -182,7 +182,8 @@
       g.hidden = false; tip.hidden = false;
       const pct = Math.max(14, Math.min(86, (x / m.W) * 100));
       tip.style.left = pct + '%';
-      tip.innerHTML = `<b>${m.labels[idx]}</b><span><i style="background:#3d7bff"></i>Billed<em>₱${m.billed[idx]}k</em></span><span><i style="background:#12a594"></i>Collected<em>₱${m.paid[idx]}k</em></span><small>Sample data</small>`;
+      const pre = m.pre ?? '₱', suf = m.suf ?? 'k';
+      tip.innerHTML = `<b>${m.labels[idx]}</b><span><i style="background:#3d7bff"></i>${m.n1 || 'Billed'}<em>${pre}${m.billed[idx]}${suf}</em></span><span><i style="background:#12a594"></i>${m.n2 || 'Collected'}<em>${pre}${m.paid[idx]}${suf}</em></span><small>Sample data</small>`;
     };
     const hide = () => { g.hidden = true; tip.hidden = true; };
     svg.addEventListener('pointermove', (e) => {
@@ -213,6 +214,40 @@
   // Story illustration: run its animations only while it is on screen (saves battery on phones).
   if ('IntersectionObserver' in window) {
     const live = new IntersectionObserver((es) => es.forEach((en) => en.target.classList.toggle('is-live', en.isIntersecting)), { rootMargin: '80px' });
-    document.querySelectorAll('.story, .il-banner').forEach((el) => live.observe(el));
+    document.querySelectorAll('.story, .il-banner, .ind-dash').forEach((el) => live.observe(el));
+  }
+
+  // Industry showcase tabs (without JavaScript every panel is simply shown, stacked).
+  const tablist = $('.ind-tabs');
+  if (tablist) {
+    const tabs = [...tablist.querySelectorAll('.ind-tab')];
+    const panels = [...document.querySelectorAll('.ind-panel')];
+    const played = new Set();
+    let onScreen = false;
+    const play = (panel) => { if (reduced || played.has(panel.id)) return; played.add(panel.id); panel.querySelectorAll('[data-count]').forEach(countUp); };
+    const maybePlay = () => { const cur = panels.find((p) => p.classList.contains('is-active')); if (cur && onScreen) play(cur); };
+    const select = (id, { focus = false, scroll = false, push = true } = {}) => {
+      const tab = tabs.find((t) => t.getAttribute('aria-controls') === id);
+      if (!tab) return;
+      tabs.forEach((t) => { const on = t === tab; t.classList.toggle('is-active', on); t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; });
+      panels.forEach((p) => p.classList.toggle('is-active', p.id === id));
+      played.delete(id);
+      if (focus) tab.focus();
+      if (push) history.replaceState(null, '', '#' + id);
+      if (scroll) $('#more-industries').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
+      maybePlay();
+    };
+    tabs.forEach((t) => t.addEventListener('click', () => select(t.getAttribute('aria-controls'))));
+    tablist.addEventListener('keydown', (e) => {
+      const i = tabs.indexOf(document.activeElement);
+      if (i < 0) return;
+      const j = { ArrowRight: (i + 1) % tabs.length, ArrowLeft: (i - 1 + tabs.length) % tabs.length, Home: 0, End: tabs.length - 1 }[e.key];
+      if (j !== undefined) { e.preventDefault(); select(tabs[j].getAttribute('aria-controls'), { focus: true }); }
+    });
+    const showFromHash = () => { const id = decodeURIComponent(location.hash.slice(1)); if (id && panels.some((p) => p.id === id)) select(id, { scroll: true, push: false }); };
+    if ('IntersectionObserver' in window) new IntersectionObserver(([en]) => { onScreen = en.isIntersecting; maybePlay(); }, { threshold: 0.15 }).observe($('.ind-panels'));
+    else { onScreen = true; maybePlay(); }
+    showFromHash();
+    addEventListener('hashchange', showFromHash);
   }
 })();

@@ -2,6 +2,7 @@
 import { icon, logoMark } from './icons.mjs';
 import * as c from './content.mjs';
 import { heroDashboard, fullDashboard } from './dashboard.mjs';
+import { industryDashboard } from './industry-dashboards.mjs';
 
 const telHref = (m) => 'tel:+63' + m.replace(/\D/g, '').replace(/^0/, '');
 const prettyMobile = (m) => m.replace(/\D/g, '').replace(/^(\d{4})(\d{3})(\d{4})$/, '$1 $2 $3');
@@ -606,17 +607,26 @@ export const storyIllustration = () => {
 export const moreIndustries = () => `
 <section class="section section-tint" id="more-industries" aria-labelledby="more-title">
   <div class="container">
-    ${sectionHead('More industries', 'The same building blocks, set up for your business.', 'These are examples of how the existing modules can be configured. Each setup is agreed in writing before work begins.', true).replace('<h2>', '<h2 id="more-title">')}
-    <div class="more-grid">
-      ${c.moreIndustries.map((m) => `
-      <article class="more-card reveal" id="${m.id}">
-        <span class="card-ico card-ico-blue">${icon(m.icon, 26)}</span>
-        <h3>${m.title}</h3>
-        <p class="industry-sub">${m.sub}</p>
-        <ul class="ticks">${m.items.map((t) => `<li>${icon('check', 18)}<span>${t}</span></li>`).join('')}</ul>
-        <ul class="tags">${moduleNames(m.modules).map((t) => `<li>${t}</li>`).join('')}</ul>
-        ${m.note ? `<p class="more-note">${icon('shield', 16)}<span>${m.note}</span></p>` : ''}
-        <a class="card-link" href="contact.html">Ask about this ${icon('arrow', 16)}</a>
+    ${sectionHead('More industries', 'See it set up for your business.', 'Pick an industry to see an example dashboard. These show how the existing modules can be configured; each setup is agreed in writing before work begins.', true).replace('<h2>', '<h2 id="more-title">')}
+    <div class="ind-tabs" role="tablist" aria-label="More industries">
+      ${c.moreIndustries.map((m, i) => `<button type="button" class="ind-tab${i === 0 ? ' is-active' : ''}" role="tab" id="tab-${m.id}" aria-controls="${m.id}" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">${icon(m.icon, 18)}<span>${m.title}</span></button>`).join('')}
+    </div>
+    <div class="ind-panels">
+      ${c.moreIndustries.map((m, i) => `
+      <article class="ind-panel${i === 0 ? ' is-active' : ''}" id="${m.id}" role="tabpanel" aria-labelledby="tab-${m.id}" tabindex="0">
+        <div class="ind-top">
+          <div class="ind-info">
+            <span class="card-ico card-ico-blue">${icon(m.icon, 26)}</span>
+            <div><h3>${m.title}</h3><p class="industry-sub">${m.sub}</p></div>
+          </div>
+          <ul class="ticks ind-ticks">${m.items.map((t) => `<li>${icon('check', 18)}<span>${t}</span></li>`).join('')}</ul>
+          <div class="ind-side">
+            <ul class="tags">${moduleNames(m.modules).map((t) => `<li>${t}</li>`).join('')}</ul>
+            ${m.note ? `<p class="more-note">${icon('shield', 16)}<span>${m.note}</span></p>` : ''}
+            <div class="btn-row">${button('Ask about this', 'contact.html', 'primary')}</div>
+          </div>
+        </div>
+        ${industryDashboard(m.id)}
       </article>`).join('')}
     </div>
   </div>

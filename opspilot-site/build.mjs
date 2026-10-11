@@ -113,7 +113,7 @@ ${ui.footer(config)}
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 for (const pg of pages) await writeFile(join(dist, pg.file), render(pg));
-await writeFile(join(dist, 'styles.css'), (await readFile(join(root, 'src/styles.css'), 'utf8')) + '\n' + (await readFile(join(root, 'src/dashboard.css'), 'utf8')));
+await writeFile(join(dist, 'styles.css'), (await readFile(join(root, 'src/styles.css'), 'utf8')) + '\n' + (await readFile(join(root, 'src/dashboard.css'), 'utf8')) + '\n' + (await readFile(join(root, 'src/industry.css'), 'utf8')));
 const scopeData = JSON.stringify({ types: scopeTypes, modules: solutions.map((m) => m.title), businessTypes, notes: (await import('./src/content.mjs')).scopeNotes });
 await writeFile(join(dist, 'main.js'), `window.OPSPILOT_SCOPE = ${scopeData};\n` + await readFile(join(root, 'src/main.js'), 'utf8'));
 await cp(join(root, 'public'), dist, { recursive: true });
