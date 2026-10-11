@@ -121,7 +121,7 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
   const t = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
   const client = db.clients.find((c) => c.id === job.client_id); const site = db.sites.find((s) => s.id === job.site_id);
   const signed = !!wf.conf_at;
-  const canMeasure = !signed && !wf.start_at && can('admin.settings') || can('dispatch.approve');
+  const canMeasure = !signed && !wf.start_at && can('admin.settings') || can('dispatch.approve') || run;
   const route = scopeRoute(db, job, wf);
   const recurring = route === 'recurring';
   const glass = job.service_codes.some((c) => c === 'GLASS_EXT' || c === 'GLASS_INT');
