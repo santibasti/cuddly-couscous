@@ -360,7 +360,7 @@ export const contact = (config) => `
       <p class="eyebrow eyebrow-dark">Contact</p>
       <h1 id="contact-title">Let’s simplify your daily operations.</h1>
       <p class="lead lead-dark">Tell us which workflow is giving you the most trouble. We will follow up to arrange a demo or workflow consultation.</p>
-      <p class="contact-person"><span>Contact person</span><strong>${config.contactPerson}</strong></p>
+      ${config.showRepresentativeName ? `<p class="contact-person"><span>Contact person</span><strong>${config.contactPerson}</strong></p>` : ''}
       ${contactDetails(config)}
       ${contactActions(config)}
     </div>

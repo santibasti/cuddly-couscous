@@ -1,5 +1,5 @@
 {
-  "contactPerson": "Jig Narciso",
+  "contactPerson": "",
   "email": "info@opspilot.ph",
   "mobile": "09193185860",
   "address": "BGC, Taguig",
@@ -20,5 +20,5 @@
   },
   "_notes3": "images: optional photo/AI image per industry card on the home page, e.g. \"service-contractors\": \"img/contractors.jpg\" (file placed in public/img/, 1280x560 recommended). Empty = the built-in illustration is used. See IMAGE-PROMPTS.md.",
   "showRepresentativeName": false,
-  "_notes4": "showRepresentativeName: false shows 'Your OpsPilot representative' on the About page card; set true to show contactPerson there instead. The Contact page always lists the contact person."
+  "_notes4": "showRepresentativeName: false (default) keeps any personal name off the site. To show a named contact, set contactPerson (e.g. \"Full Name\") and showRepresentativeName to true; the name then appears on the About card and the Contact page."
 }

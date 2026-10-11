@@ -56,7 +56,7 @@ const pages = [
   {
     file: 'contact.html', nav: 'contact.html',
     title: 'Contact | OpsPilot',
-    description: 'Request a demo or workflow consultation with OpsPilot. Contact Jig Narciso at info@opspilot.ph or 0919 318 5860, BGC, Taguig.',
+    description: 'Request a demo or workflow consultation with OpsPilot. Reach us at info@opspilot.ph or 0919 318 5860, BGC, Taguig.',
     body: () => [ui.contact(config), ui.faq()],
   },
   {
