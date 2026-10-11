@@ -129,6 +129,8 @@ export interface QuoteItem {
   entered_qty?: number;      // what was counted / entered; qty is the billable quantity (minimum applied)
   linked_panels?: boolean;   // glass: quantity comes from the panel-counting table
   note?: string;             // reason for the additional work
+  from_measure?: number;     // additional-work line: the quotation line (index) whose quantity was measured on site
+  measure?: boolean;         // quotation line: the rate is agreed, the quantity is measured on site and billed in the final bill (not part of the quotation total)
   negotiated?: boolean;      // price customised with the client (Owner / Admin only)
   custom_min?: number;       // negotiated minimum quantity (0 = no minimum); overrides the price-list minimum
 }

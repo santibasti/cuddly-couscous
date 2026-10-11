@@ -133,7 +133,7 @@ function itemsTable(doc: Doc, autoTable: Awaited<ReturnType<typeof newPdf>>['aut
   const t = docTotals(items, discount, mode, rate);
   autoTable(doc, {
     startY: y, head: [['#', 'Description', 'Qty', 'Unit', 'Unit Rate', 'Discount', 'Amount']],
-    body: items.map((i, n) => [n + 1, clean(i.description), i.qty.toLocaleString('en-PH'), i.unit, pm(i.rate), i.discount ? pm(i.discount) : '—', pm(i.qty * i.rate - i.discount)]),
+    body: items.map((i, n) => i.measure ? [n + 1, clean(i.description), '-', `per ${i.unit}`, pm(i.rate), '—', 'To be measured'] : [n + 1, clean(i.description), i.qty.toLocaleString('en-PH'), i.unit, pm(i.rate), i.discount ? pm(i.discount) : '—', pm(i.qty * i.rate - i.discount)]),
     columnStyles: { 0: { cellWidth: 8 }, 2: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' } }, ...tableStyle, margin: { left: 12, right: 12 },
   });
   const endY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
@@ -248,7 +248,7 @@ export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?:
   const amounts = quoteShowsAmounts(q);
   autoTable(doc, {
     startY: y, head: [amounts ? ['#', 'Description', 'Qty', 'Unit', 'Unit rate', 'Discount', 'Amount'] : ['#', 'Description', 'Unit', 'Agreed rate']],
-    body: q.items.map((i, n) => amounts ? [n + 1, clean(i.description), i.qty.toLocaleString('en-PH'), i.unit, pm(i.rate), i.discount ? pm(i.discount) : '-', pm(i.qty * i.rate - i.discount)] : [n + 1, clean(i.description), `per ${i.unit}`, pm(i.rate)]),
+    body: q.items.map((i, n) => amounts ? (i.measure ? [n + 1, clean(i.description), '-', `per ${i.unit}`, pm(i.rate), '-', 'To be measured'] : [n + 1, clean(i.description), i.qty.toLocaleString('en-PH'), i.unit, pm(i.rate), i.discount ? pm(i.discount) : '-', pm(i.qty * i.rate - i.discount)]) : [n + 1, clean(i.description), `per ${i.unit}`, pm(i.rate)]),
     theme: 'plain', margin: { left: M, right: M },
     styles: { fontSize: 9, cellPadding: { top: 2.6, bottom: 2.6, left: 2.5, right: 2.5 }, textColor: INK, lineColor: [221, 228, 236], lineWidth: { bottom: 0.2 } },
     headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 8.5, lineWidth: 0 },

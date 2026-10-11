@@ -1,7 +1,7 @@
 // Priced lines for the client-facing documents: a navy header bar and aligned columns on a computer; stacked rows on a phone.
 import { money } from '@/lib/util';
 
-export interface Line { description: string; qty: number; unit: string; rate: number; amount: number }
+export interface Line { description: string; qty: number; unit: string; rate: number; amount: number; measure?: boolean }
 
 export function LineItems({ rows, title = 'Description', ratesOnly = false, rateLabel = 'Approved rate' }: { rows: Line[]; title?: string; ratesOnly?: boolean; rateLabel?: string }) {
   if (ratesOnly) {
@@ -24,9 +24,9 @@ export function LineItems({ rows, title = 'Description', ratesOnly = false, rate
       {rows.map((r, i) => (
         <div className="jl-row" key={i}>
           <div className="jl-desc">{r.description}</div>
-          <div className="jl-q">{r.qty.toLocaleString('en-PH')} {r.unit}</div>
+          <div className="jl-q">{r.measure ? `per ${r.unit}` : `${r.qty.toLocaleString('en-PH')} ${r.unit}`}</div>
           <div className="jl-r">{money(r.rate)}</div>
-          <div className="jl-amt">{money(r.amount)}</div>
+          <div className="jl-amt">{r.measure ? <span style={{ fontWeight: 600, fontSize: '.85em' }}>To be measured</span> : money(r.amount)}</div>
         </div>
       ))}
     </div>

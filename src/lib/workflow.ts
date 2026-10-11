@@ -199,6 +199,16 @@ export function savePanels(id: string, panels: PanelRow[], pkg?: number | null) 
 }
 const hasGlass = (job: Job) => job.service_codes.some((c) => c === 'GLASS_EXT' || c === 'GLASS_INT');
 
+/** Owner / Admin: bill a quotation line by the quantity measured on site (the agreed rate stays; the line leaves the quotation total until it is measured). */
+export function setQuoteLineMeasured(quotationId: string, index: number, measure: boolean) {
+  store.require('admin.settings');
+  const q = db().quotations.find((x) => x.id === quotationId); if (!q) fail('Quotation not found.');
+  const it = q!.items[index]; if (!it) fail('Line not found.');
+  if (measure && (it.service_code === 'GLASS_EXT' || it.service_code === 'GLASS_INT')) fail('Glass panels are counted in the panel counter, not measured.');
+  const items = q!.items.map((x, k) => (k === index ? { ...x, measure: measure || undefined } : x));
+  store.update('quotations', quotationId, { items } as never, 'update', `${q!.number}: “${it.description}” ${measure ? 'will be billed by site measurement (rate kept)' : 'billed as quoted'}`);
+}
+
 /** Recurring job whose scope changed (or a new scope): switches between "Scope Confirmed – No Changes" and the signed conforme. */
 export function setScopeChanged(id: string, changed: boolean) {
   const wf = getWf(id); const job = jobOf(wf);
@@ -241,7 +251,7 @@ export function saveFinalReview(id: string, f: FinalReviewInput) {
     if (!it.category) fail('Choose a service category for every additional line.');
     if (!it.unit.trim()) fail('Choose a unit of measure for every additional line.');
     const def = categoryDefaults(db().services, it.category!);
-    if (it.category !== 'other' && Math.abs(it.rate - def.rate) > 0.004 && !authorised) fail(`The price list rate (${def.rate} per ${def.unit}) for ${it.description || 'this line'} can only be changed by an Operations Manager or Admin.`);
+    if (it.category !== 'other' && it.from_measure === undefined && Math.abs(it.rate - def.rate) > 0.004 && !authorised) fail(`The price list rate (${def.rate} per ${def.unit}) for ${it.description || 'this line'} can only be changed by an Operations Manager or Admin.`);
     if (it.negotiated && !authorised) fail('Only an Operations Manager or Admin can customize the price of a line.');
     if (it.custom_min !== undefined && !(it.custom_min >= 0)) fail('The minimum quantity cannot be negative.');
     if (it.discount < 0) fail('Discount cannot be negative.');
@@ -296,6 +306,8 @@ export function approveFinalQuote(id: string, f: { name: string; signature?: str
   const v = reviewDraft(job.id);
   if (v?.revision_open) fail('The client asked for a revision. Update the additional work and present it again before signing.');
   if ((!isRecurringJob(db(), job) || wf.scope_changed) && hasGlass(job) && !wf.panels.length) fail('Count the glass panels (floor, side, external, internal) before the client signs.');
+  const mq = db().quotations.find((x) => x.id === (wf.conf_quotation_id ?? job.quotation_id));
+  for (const [idx, it] of (mq?.items ?? []).entries()) if (it.measure && !(v?.items ?? []).some((x) => x.from_measure === idx && x.qty > 0)) fail(`Enter the measured quantity for “${it.description}” in the additional work first — it is billed from the site measurement.`);
   if (!f.confirmed) fail('Confirm that the quotation and any additional work were reviewed with the client on site.');
   if (!f.name.trim()) fail('Enter the client name.');
   if (!f.signature) fail('Capture the client signature.');

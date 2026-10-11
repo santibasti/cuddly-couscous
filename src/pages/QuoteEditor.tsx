@@ -136,12 +136,12 @@ export default function QuoteEditor() {
               <tbody>
                 {v.items.map((it, i) => (
                   <tr key={i}>
-                    <td data-label="Description" className="ql-desc"><input disabled={readOnly} value={it.description} onChange={(e) => updItem(i, { description: e.target.value })} aria-label="Description" /></td>
+                    <td data-label="Description" className="ql-desc"><input disabled={readOnly} value={it.description} onChange={(e) => updItem(i, { description: e.target.value })} aria-label="Description" />{!readOnly && it.service_code !== 'GLASS_EXT' && it.service_code !== 'GLASS_INT' && <label className="check small" title="The rate is agreed; the crew measures on site and the final bill uses the measured quantity. This line then adds nothing to the quotation total."><input type="checkbox" checked={!!it.measure} onChange={(e) => updItem(i, { measure: e.target.checked || undefined })} />Bill by site measurement</label>}</td>
                     <td data-label="Qty"><input type="number" inputMode="decimal" min="0" disabled={readOnly} value={it.qty} onChange={(e) => updItem(i, { qty: +e.target.value })} aria-label="Quantity" /></td>
                     <td data-label="Unit"><input disabled={readOnly} value={it.unit} onChange={(e) => updItem(i, { unit: e.target.value })} aria-label="Unit" /></td>
                     <td data-label="Unit rate (₱)"><input type="number" inputMode="decimal" min="0" step="0.01" disabled={readOnly} value={it.rate} onChange={(e) => updItem(i, { rate: +e.target.value })} aria-label="Rate" /></td>
                     <td data-label="Discount (₱)"><input type="number" inputMode="decimal" min="0" step="0.01" disabled={readOnly || !can('discount.approve')} title={can('discount.approve') ? undefined : 'Only the Owner / Admin can apply a discount'} value={it.discount} onChange={(e) => updItem(i, { discount: +e.target.value })} aria-label="Discount" /></td>
-                    <td className="num ql-amt" data-label="Amount">{money(it.qty * it.rate - it.discount)}</td>
+                    <td className="num ql-amt" data-label="Amount">{it.measure ? <span className="small muted">To be measured</span> : money(it.qty * it.rate - it.discount)}</td>
                     <td className="ql-x">{!readOnly && <button className="icon-btn" onClick={() => setItems(v.items.filter((_, k) => k !== i))} aria-label="Remove line"><Icon name="trash" /></button>}</td>
                   </tr>
                 ))}

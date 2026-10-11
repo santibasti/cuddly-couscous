@@ -39,7 +39,7 @@ export function QuotationDocument({ b }: { b: QuoteBundle }) {
 
       <div className="pd-h">Scope of work</div>
       <p className="pd-scope">{q.scope}</p>
-      <LineItems rows={q.items.map((r) => ({ description: r.description, qty: r.qty, unit: r.unit, rate: r.rate, amount: r.qty * r.rate - r.discount }))} title="Services" ratesOnly={!amounts} rateLabel="Agreed rate" />
+      <LineItems rows={q.items.map((r) => ({ description: r.description, qty: r.qty, unit: r.unit, rate: r.rate, amount: r.qty * r.rate - r.discount, measure: r.measure }))} title="Services" ratesOnly={!amounts} rateLabel="Agreed rate" />
       {!amounts && <div className="pd-pay" style={{ marginTop: 10 }}>{RATES_NOTE}{t.discount > 0 ? ' The agreed discount applies to the final amount.' : ''}</div>}
       {amounts && <div className="pd-tot">
         <div className="row"><span>Subtotal</span><span>{money(t.gross)}</span></div>

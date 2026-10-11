@@ -88,6 +88,7 @@ export function PanelBreakdown({ wf, job }: { wf: JobWorkflow; job: Job }) {
 }
 
 /* ---------------- Team Leader / Admin: prepare additional work ---------------- */
+const MEASURE_CATEGORY: Record<string, AdditionalCategory> = { WALL: 'wall', FLOOR: 'floor', ROOF: 'roof', SOLAR: 'solar' };
 export function AdditionalWork({ wf, job, run, onPresent }: { wf: JobWorkflow; job: Job; run: boolean; onPresent: () => void }) {
   const { db } = useAuth();
   const { draft, history } = useReview(job);
@@ -96,6 +97,8 @@ export function AdditionalWork({ wf, job, run, onPresent }: { wf: JobWorkflow; j
   const [deposit, setDeposit] = useState<number | undefined>(wf.conf_deposit);
   const [depNote, setDepNote] = useState(wf.conf_deposit_note ?? '');
   const [edit, setEdit] = useState<{ idx: number | null; line?: QuoteItem } | null>(null);
+  const quote = db.quotations.find((x) => x.id === (wf.conf_quotation_id ?? job.quotation_id));
+  const measureLines = (quote?.items ?? []).map((it, idx) => ({ it, idx })).filter((x) => x.it.measure);
   const dr = useDraft(`d:${wf.id}:conf:extra`, { items, deposit, depNote }, (d) => { setItems(d.items); setDeposit(d.deposit); setDepNote(d.depNote); }, run && !wf.conf_at);
   const resolved = useMemo(() => resolveReviewItems(db, wf.panels, items, packagePanels(db, job, wf)), [db, wf, job, items]);
   const sm = finalQuoteSummary(db, job, { pending: { items: resolved, ...vat }, deposit });
@@ -105,6 +108,19 @@ export function AdditionalWork({ wf, job, run, onPresent }: { wf: JobWorkflow; j
     <div className="stack">
       <div className="row between"><div><b>Additional work (optional)</b><div className="small muted">Work requested or found on site. It is only billed if the client approves and signs.</div></div>{run && <button className="btn navy" onClick={() => setEdit({ idx: null })}>+ Add additional work</button>}</div>
       {run && <DraftBar d={dr} />}
+      {measureLines.map(({ it, idx }) => {
+        const done = items.findIndex((x) => x.from_measure === idx);
+        return (
+          <div key={idx} className={`alert ${done >= 0 ? 'info' : 'warn'}`}>
+            <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
+              <span><b>Measure on site:</b> {it.description} — agreed rate {money(it.rate)} per {it.unit}. {done >= 0 ? <>Measured: <b>{items[done].entered_qty ?? items[done].qty} {items[done].unit}</b> (billed in the final bill).</> : 'Enter the measured quantity — this line is billed from the measurement, not the quotation.'}</span>
+              {run && (done >= 0
+                ? <button className="btn sm" onClick={() => setEdit({ idx: done, line: items[done] })}>Change measurement</button>
+                : <button className="btn sm primary" onClick={() => setEdit({ idx: null, line: { service_code: it.service_code, category: MEASURE_CATEGORY[it.service_code] ?? 'other', description: `${it.description} – measured on site`, qty: 0, unit: it.unit, rate: it.rate, discount: 0, from_measure: idx } })}>Enter measured quantity</button>)}
+            </div>
+          </div>
+        );
+      })}
       {draft?.revision_open && <div className="alert warn"><b>The client asked for a revision:</b> “{draft.revision_note}”. Update the lines below, then present the final quote again.</div>}
       {resolved.length ? <QuoteLines items={resolved} mode={vat.vat_mode} rate={vat.vat_rate} /> : <div className="muted">No additional work. The original quotation is the final bill.</div>}
       {run && resolved.length > 0 && <div className="row">{items.map((it, k) => <span key={k} className="row" style={{ gap: 6 }}><button className="btn sm" onClick={() => setEdit({ idx: k, line: it })}>Edit line {k + 1}</button><button className="btn sm danger" onClick={() => setItems(items.filter((_, x) => x !== k))}>Remove {k + 1}</button></span>)}</div>}
@@ -144,7 +160,7 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
   const dr = useDraft(`d:${wf.id}:conf:line:${initial ? 'edit' : 'new'}`, { cat, unitSel, customUnit, desc, qty, linked, rate, disc, note, custom, cmin }, (d) => { setCustom(!!d.custom); setCmin(d.cmin); setCat(d.cat); setUnitSel(d.unitSel); setCustomUnit(d.customUnit); setDesc(d.desc); setQty(d.qty); setLinked(d.linked); setRate(d.rate); setDisc(d.disc); setNote(d.note); });
   const pickCat = (k: AdditionalCategory) => { const d = categoryDefaults(db.services, k); setCat(k); setRate(d.rate); setUnitSel(d.unit); setLinked(k === 'glass'); };
   const unit = unitSel === 'custom' ? customUnit.trim() : unitSel;
-  const line: QuoteItem = { service_code: ADDITIONAL_CATEGORIES.find((c) => c.key === cat)!.code, category: cat, description: desc, qty: qty ?? 0, entered_qty: qty ?? 0, unit, rate, discount: disc, note: note.trim() || undefined, linked_panels: cat === 'glass' && linked, ...(custom && authorised ? { negotiated: true, custom_min: cmin ?? def.min } : {}) };
+  const line: QuoteItem = { service_code: ADDITIONAL_CATEGORIES.find((c) => c.key === cat)!.code, category: cat, description: desc, qty: qty ?? 0, entered_qty: qty ?? 0, unit, rate, discount: disc, note: note.trim() || undefined, linked_panels: cat === 'glass' && linked, ...(custom && authorised ? { negotiated: true, custom_min: cmin ?? def.min } : {}), ...(initial?.from_measure !== undefined ? { from_measure: initial.from_measure } : {}) };
   const effMin = custom && authorised ? (cmin ?? def.min) : def.min;
   const [res] = resolveReviewItems(db, wf.panels, [line], packagePanels(db, job, wf));
   const t = lineTotals(res, vat.vat_mode, vat.vat_rate);
@@ -241,7 +257,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
 
         <div className="pd-h">1 · Original scope of work <span className="pd-small" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>— approved quotation, unchanged</span></div>
         <p className="pd-scope">{q?.scope ?? job.scope}</p>
-        {q && <LineItems title="Services" rows={q.items.map((i) => ({ description: i.description, qty: i.qty, unit: i.unit, rate: i.rate, amount: i.qty * i.rate - i.discount }))} />}
+        {q && <LineItems title="Services" rows={q.items.map((i) => ({ description: i.description, qty: i.qty, unit: i.unit, rate: i.rate, amount: i.qty * i.rate - i.discount, measure: i.measure }))} />}
         {q && <QuoteImageGallery target={{ quotation_id: q.id }} items={q.items} client />}
         {wf.panels.length > 0 && <div style={{ marginTop: 8 }}><div className="small muted">Glass panels counted on site</div><div className="pbks"><div className="pbk"><span>Original</span><b>{pb.original}</b></div><div className={`pbk ${pb.additional ? 'warn' : ''}`}><span>Additional</span><b>{pb.additional}</b></div><div className="pbk"><span>External</span><b>{pb.external}</b></div><div className="pbk"><span>Internal</span><b>{pb.internal}</b></div><div className="pbk navy"><span>Total</span><b>{pb.total}</b></div></div></div>}
 

@@ -98,9 +98,12 @@ export function priceService(s: ServiceDef, qty: number): PriceResult {
 
 /* ============ Quotation / invoice totals ============ */
 export interface Totals { gross: number; lineDiscount: number; discount: number; net: number; vat: number; total: number }
+/** A line billed by site measurement carries only its agreed rate: it adds nothing to the quotation total. */
+export const lineAmount = (i: Pick<QuoteItem, 'qty' | 'rate' | 'discount' | 'measure'>) => (i.measure ? 0 : i.qty * i.rate - (i.discount || 0));
 export function docTotals(items: QuoteItem[], discount: number, mode: 'exclusive' | 'inclusive' | 'none', vatRate: number): Totals {
-  const gross = sum(items, (i) => i.qty * i.rate);
-  const lineDiscount = sum(items, (i) => i.discount || 0);
+  const billed = items.filter((i) => !i.measure);
+  const gross = sum(billed, (i) => i.qty * i.rate);
+  const lineDiscount = sum(billed, (i) => i.discount || 0);
   const after = Math.max(0, gross - lineDiscount - (discount || 0));
   const r = vatRate / 100;
   let net = after, vat = 0, total = after;

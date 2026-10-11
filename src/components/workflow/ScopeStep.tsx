@@ -8,7 +8,7 @@ import { QuoteImageGallery } from '@/components/QuoteImages';
 import { DeclineJobModal, DiscountSection } from './DiscountPanel';
 import { DraftBar, Stepper } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
-import { PANEL_AREAS, PANEL_SIDES, confirmScopeNoChanges, savePanels, setScopeChanged } from '@/lib/workflow';
+import { PANEL_AREAS, PANEL_SIDES, confirmScopeNoChanges, savePanels, setQuoteLineMeasured, setScopeChanged } from '@/lib/workflow';
 import { countPanels, docTotals, scopeRoute, panelTotals, quotedPanels, rowPanels } from '@/lib/business';
 import { fmtDateTime, money, uid } from '@/lib/util';
 import { conformePdf } from '@/lib/export';
@@ -116,11 +116,12 @@ export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolea
 }
 
 export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
-  const { db } = useAuth();
+  const { db, can } = useAuth();
   const q = db.quotations.find((x) => x.id === (wf.conf_quotation_id ?? job.quotation_id));
   const t = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
   const client = db.clients.find((c) => c.id === job.client_id); const site = db.sites.find((s) => s.id === job.site_id);
   const signed = !!wf.conf_at;
+  const canMeasure = !signed && !wf.start_at && can('admin.settings');
   const route = scopeRoute(db, job, wf);
   const recurring = route === 'recurring';
   const glass = job.service_codes.some((c) => c === 'GLASS_EXT' || c === 'GLASS_INT');
@@ -143,7 +144,7 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
         <dl className="kv"><dt>Client / site</dt><dd>{client?.name ?? ''}{client ? ' · ' : ''}{site?.name}</dd><dt>Scope</dt><dd>{q?.scope ?? job.scope}</dd></dl>
         {q && t ? (
           <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Description</th><th className="num">Qty</th><th>Unit</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead><tbody>
-            {q.items.map((i, k) => <tr key={k}><td>{i.description}</td><td className="num">{i.qty}</td><td>{i.unit}</td><td className="num">{money(i.rate)}</td><td className="num">{money(i.qty * i.rate - i.discount)}</td></tr>)}
+            {q.items.map((i, k) => <tr key={k}><td>{i.description}{canMeasure && i.service_code !== 'GLASS_EXT' && i.service_code !== 'GLASS_INT' && <label className="check small" style={{ display: 'flex', marginTop: 4 }} title="The rate stays agreed; the quantity is measured on site and billed in the final bill. This line then adds nothing to the quotation total."><input type="checkbox" checked={!!i.measure} onChange={(e) => attempt(() => setQuoteLineMeasured(q!.id, k, e.target.checked), e.target.checked ? 'Line will be billed by site measurement' : 'Line billed as quoted')} />Bill by site measurement</label>}</td><td className="num">{i.measure ? '—' : i.qty}</td><td>{i.measure ? `per ${i.unit}` : i.unit}</td><td className="num">{money(i.rate)}</td><td className="num">{i.measure ? <span className="muted">To be measured</span> : money(i.qty * i.rate - i.discount)}</td></tr>)}
           </tbody><tfoot>
             <tr><td colSpan={4} className="num">Subtotal</td><td className="num">{money(t.gross)}</td></tr>
             {t.discount > 0 && <tr><td colSpan={4} className="num">Discount (in the approved quotation)</td><td className="num">- {money(t.discount)}</td></tr>}

@@ -31,7 +31,7 @@ export function usePriceView(job: Job) {
 const Lines = ({ items, rates }: { items: QuoteItem[]; rates?: boolean }) => rates ? (
   <ul className="list" style={{ margin: 0 }}>{items.map((i, k) => <li key={k}><span>{i.description}</span><b className="mono">{money(i.rate)} / {i.unit}</b></li>)}</ul>
 ) : (
-  <ul className="list" style={{ margin: 0 }}>{items.map((i, k) => <li key={k}><span>{i.description}<div className="small muted">{i.qty.toLocaleString('en-PH')} {i.unit} × {money(i.rate)}{i.discount ? ` − ${money(i.discount)}` : ''}</div></span><b className="mono">{money(lineAmt(i))}</b></li>)}</ul>
+  <ul className="list" style={{ margin: 0 }}>{items.map((i, k) => <li key={k}><span>{i.description}<div className="small muted">{i.measure ? `${money(i.rate)} per ${i.unit} — measured on site` : <>{i.qty.toLocaleString('en-PH')} {i.unit} × {money(i.rate)}{i.discount ? ` − ${money(i.discount)}` : ''}</>}</div></span><b className="mono">{i.measure ? 'To be measured' : money(lineAmt(i))}</b></li>)}</ul>
 );
 
 /** `step` = the workflow step on screen (0-6, -1 before the workflow starts). The full card shows before Scope Approval; Scope Approval already

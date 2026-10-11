@@ -262,6 +262,13 @@ describe('panel counting & variations', () => {
     expect(B.resolveReviewItems({ services: sv }, [], [{ ...line, negotiated: true, custom_min: 30 }])[0].qty).toBe(30);
   });
 
+  it('a line billed by site measurement carries only its rate: nothing in the quotation total until it is measured', () => {
+    const items = [{ service_code: 'GLASS_EXT', description: 'Package', qty: 1, unit: 'package', rate: 5799, discount: 0 }, { service_code: 'WALL', description: 'Wall', qty: 50, unit: 'sqm', rate: 125, discount: 0, measure: true }];
+    expect(B.docTotals(items, 0, 'none', 0).total).toBe(5799);
+    expect(B.docTotals(items.map((i) => ({ ...i, measure: undefined })), 0, 'none', 0).total).toBe(12049);
+    expect(B.lineAmount(items[1])).toBe(0);
+  });
+
   it('starter package panels: the panels counted beyond it are the additional work', () => {
     const panels = [{ id: 'a', area: '1st Floor', side: 'Front', external: 20, internal: 6 }, { id: 'b', area: '2nd Floor', side: 'Back', external: 4, internal: 0 }];
     const bd = B.panelBreakdown(db(), undefined, panels, 24);
