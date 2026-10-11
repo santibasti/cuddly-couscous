@@ -18,5 +18,7 @@
     "driving-ranges": "",
     "car-washes": ""
   },
-  "_notes3": "images: optional photo/AI image per industry card on the home page, e.g. \"service-contractors\": \"img/contractors.jpg\" (file placed in public/img/, 1280x560 recommended). Empty = the built-in illustration is used. See IMAGE-PROMPTS.md."
+  "_notes3": "images: optional photo/AI image per industry card on the home page, e.g. \"service-contractors\": \"img/contractors.jpg\" (file placed in public/img/, 1280x560 recommended). Empty = the built-in illustration is used. See IMAGE-PROMPTS.md.",
+  "showRepresentativeName": false,
+  "_notes4": "showRepresentativeName: false shows 'Your OpsPilot representative' on the About page card; set true to show contactPerson there instead. The Contact page always lists the contact person."
 }

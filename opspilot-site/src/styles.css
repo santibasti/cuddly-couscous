@@ -789,3 +789,5 @@ option { background: #0b1733; color: #fff; }
 @media (max-width: 699px) { .page-hero::before { width: 360px; height: 360px; margin-top: -160px; right: -160px; } .page-hero::after { display: none; } }
 @media (prefers-reduced-motion: reduce) { .page-hero::before, .page-hero::after, .il-limeline.il-dash { animation: none !important; } }
 @media (max-width: 699px) { .story-cap { flex-direction: column; } .story-arrow { transform: rotate(90deg); line-height: 1; } }
+.meet-kicker { font-family: var(--mono); font-size: .74rem; letter-spacing: .12em; text-transform: uppercase; color: #1b45b8; font-weight: 700; margin-bottom: 4px; }
+.meet-initials { color: var(--navy); }

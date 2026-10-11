@@ -249,8 +249,8 @@ export const process = () => `
 
 const meetCard = (config) => `
       <div class="meet">
-        ${config.photo ? `<img class="meet-photo" src="${config.photo}" alt="${config.contactPerson}" width="72" height="72" loading="lazy">` : `<span class="meet-photo meet-initials" aria-hidden="true">${config.contactPerson.split(' ').map((w) => w[0]).join('').slice(0, 2)}</span>`}
-        <div><strong>${config.contactPerson}</strong><span>Your contact for demos and workflow consultations</span>
+        ${config.photo ? `<img class="meet-photo" src="${config.photo}" alt="Our representative" width="72" height="72" loading="lazy">` : `<span class="meet-photo meet-initials" aria-hidden="true">${icon('users', 32)}</span>`}
+        <div><p class="meet-kicker">Meet our representative</p><strong>${config.showRepresentativeName ? config.contactPerson : 'Your OpsPilot representative'}</strong><span>Here to arrange your demo or workflow consultation</span>
           <p class="meet-links"><a href="mailto:${config.email}">${config.email}</a><a href="${telHref(config.mobile)}">${prettyMobile(config.mobile)}</a></p></div>
       </div>`;
 
