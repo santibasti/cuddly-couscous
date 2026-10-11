@@ -139,13 +139,16 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
   const [rate, setRate] = useState<number>(initial?.rate ?? def.rate);
   const [disc, setDisc] = useState<number>(initial?.discount ?? 0);
   const [note, setNote] = useState(initial?.note ?? '');
-  const dr = useDraft(`d:${wf.id}:conf:line:${initial ? 'edit' : 'new'}`, { cat, unitSel, customUnit, desc, qty, linked, rate, disc, note }, (d) => { setCat(d.cat); setUnitSel(d.unitSel); setCustomUnit(d.customUnit); setDesc(d.desc); setQty(d.qty); setLinked(d.linked); setRate(d.rate); setDisc(d.disc); setNote(d.note); });
+  const [custom, setCustom] = useState(!!initial?.negotiated);
+  const [cmin, setCmin] = useState<number | undefined>(initial?.custom_min);
+  const dr = useDraft(`d:${wf.id}:conf:line:${initial ? 'edit' : 'new'}`, { cat, unitSel, customUnit, desc, qty, linked, rate, disc, note, custom, cmin }, (d) => { setCustom(!!d.custom); setCmin(d.cmin); setCat(d.cat); setUnitSel(d.unitSel); setCustomUnit(d.customUnit); setDesc(d.desc); setQty(d.qty); setLinked(d.linked); setRate(d.rate); setDisc(d.disc); setNote(d.note); });
   const pickCat = (k: AdditionalCategory) => { const d = categoryDefaults(db.services, k); setCat(k); setRate(d.rate); setUnitSel(d.unit); setLinked(k === 'glass'); };
   const unit = unitSel === 'custom' ? customUnit.trim() : unitSel;
-  const line: QuoteItem = { service_code: ADDITIONAL_CATEGORIES.find((c) => c.key === cat)!.code, category: cat, description: desc, qty: qty ?? 0, entered_qty: qty ?? 0, unit, rate, discount: disc, note: note.trim() || undefined, linked_panels: cat === 'glass' && linked };
+  const line: QuoteItem = { service_code: ADDITIONAL_CATEGORIES.find((c) => c.key === cat)!.code, category: cat, description: desc, qty: qty ?? 0, entered_qty: qty ?? 0, unit, rate, discount: disc, note: note.trim() || undefined, linked_panels: cat === 'glass' && linked, ...(custom && authorised ? { negotiated: true, custom_min: cmin ?? def.min } : {}) };
+  const effMin = custom && authorised ? (cmin ?? def.min) : def.min;
   const [res] = resolveReviewItems(db, wf.panels, [line], packagePanels(db, job, wf));
   const t = lineTotals(res, vat.vat_mode, vat.vat_rate);
-  const minApplied = def.min > 0 && (res.entered_qty ?? 0) > 0 && res.qty > (res.entered_qty ?? 0);
+  const minApplied = effMin > 0 && (res.entered_qty ?? 0) > 0 && res.qty > (res.entered_qty ?? 0);
   const close = () => { if (dr.dirty && !confirmLeave()) return; onClose(); };
   const ok = () => {
     if (!desc.trim() && !(cat === 'glass' && linked)) return attempt(() => { throw new Error('Describe the area or work.'); });
@@ -173,7 +176,17 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
           <Field label="Unit rate (₱)" hint={authorised ? `Price-list default ${money(def.rate)}${def.min ? `, minimum ${def.min} ${def.unit}` : ''}` : `Price-list rate ${money(def.rate)}${def.min ? `, minimum ${def.min} ${def.unit}` : ''} — only an Operations Manager / Admin can change it`}><input type="number" inputMode="decimal" min="0" disabled={!authorised && cat !== 'other'} value={rate || ''} onChange={(e) => setRate(+e.target.value)} /></Field>
           {canDiscount && <Field label="Line discount (₱)" hint="Owner / Admin only. Team Leaders use the Discount Request instead."><input type="number" inputMode="decimal" min="0" value={disc || ''} onChange={(e) => setDisc(Math.max(0, +e.target.value))} /></Field>}
         </div>
-        {minApplied && <div className="alert info">Minimum of {def.min} {def.unit} applies — counted {res.entered_qty}, billed {res.qty}.</div>}
+        {authorised && cat !== 'other' && (
+          <div className="card" style={{ padding: 12 }}>
+            <div className="row between"><div><b>Customize price</b><div className="small muted">For a negotiated deal (for example when the client takes other services). Sets the rate and the minimum for this line only — the price list is not changed.</div></div><Toggle checked={custom} onChange={(v) => { setCustom(v); if (v && cmin === undefined) setCmin(def.min); if (!v) { setRate(def.rate); setCmin(undefined); } }}>Negotiated</Toggle></div>
+            {custom && <div className="form-grid" style={{ marginTop: 8 }}>
+              <Field label="Agreed rate (₱)"><input type="number" inputMode="decimal" min="0" value={rate || ''} onChange={(e) => setRate(Math.max(0, +e.target.value))} /></Field>
+              <Field label={`Minimum quantity (${unit || def.unit})`} hint={`Price list: ${def.min || 'none'}. Enter 0 for no minimum.`}><Stepper label="Minimum quantity" min={0} step={1} value={cmin} onChange={(v) => setCmin(v ?? 0)} /></Field>
+              <div className="full small muted">Tip: for one agreed price, use unit “lot”, quantity 1 and put the agreed price as the rate.</div>
+            </div>}
+          </div>
+        )}
+        {minApplied && <div className="alert info">Minimum of {effMin} {unit || def.unit} applies — counted {res.entered_qty}, billed {res.qty}.</div>}
         <div className="finalsum card" style={{ padding: 12 }}>
           <div className="row between"><span>Line amount ({res.qty} × {money(rate)}{disc ? ` − ${money(disc)}` : ''})</span><b>{money(t.amount)}</b></div>
           <div className="row between"><span>VAT {vat.vat_mode === 'none' ? '(none)' : `${vat.vat_rate}%${vat.vat_mode === 'inclusive' ? ' included' : ''}`}</span><b>{money(t.vat)}</b></div>

@@ -254,6 +254,14 @@ describe('panel counting & variations', () => {
     expect(B.lineTotals(s, 'exclusive', 12)).toMatchObject({ amount: 4900, vat: 588, total: 5488 });
   });
 
+  it('a negotiated line can waive the price-list minimum', () => {
+    const sv = db().services;
+    const line = { service_code: 'WALL_FLOOR', category: 'wall' as const, description: 'Wall', qty: 25, entered_qty: 25, unit: 'sqm', rate: 100, discount: 0 };
+    expect(B.resolveReviewItems({ services: sv }, [], [line])[0].qty).toBe(50);
+    expect(B.resolveReviewItems({ services: sv }, [], [{ ...line, negotiated: true, custom_min: 0 }])[0].qty).toBe(25);
+    expect(B.resolveReviewItems({ services: sv }, [], [{ ...line, negotiated: true, custom_min: 30 }])[0].qty).toBe(30);
+  });
+
   it('starter package panels: the panels counted beyond it are the additional work', () => {
     const panels = [{ id: 'a', area: '1st Floor', side: 'Front', external: 20, internal: 6 }, { id: 'b', area: '2nd Floor', side: 'Back', external: 4, internal: 0 }];
     const bd = B.panelBreakdown(db(), undefined, panels, 24);

@@ -129,6 +129,8 @@ export interface QuoteItem {
   entered_qty?: number;      // what was counted / entered; qty is the billable quantity (minimum applied)
   linked_panels?: boolean;   // glass: quantity comes from the panel-counting table
   note?: string;             // reason for the additional work
+  negotiated?: boolean;      // price customised with the client (Owner / Admin only)
+  custom_min?: number;       // negotiated minimum quantity (0 = no minimum); overrides the price-list minimum
 }
 export interface Quotation extends Base {
   number: string;

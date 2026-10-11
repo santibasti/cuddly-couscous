@@ -664,7 +664,8 @@ export function resolveReviewItems(d: Pick<DB, 'services'>, panels: PanelRow[], 
       const areas = b.auto ? '' : [...new Set(panels.filter((p) => p.additional).map((p) => `${p.area} ${p.side}`))].join(', ');
       if (!description.trim() || description.startsWith('Additional glass panels –')) description = `Additional glass panels – ${b.additionalExternal} external, ${b.additionalInternal} internal${areas ? ` (${areas})` : ''}`;
     }
-    const qty = def.min > 0 && entered > 0 ? Math.max(entered, def.min) : entered;
+    const min = it.negotiated && it.custom_min !== undefined ? it.custom_min : def.min;
+    const qty = min > 0 && entered > 0 ? Math.max(entered, min) : entered;
     return { ...it, description, entered_qty: entered, qty };
   });
 }
