@@ -67,7 +67,7 @@ function Rates({ s }: { s: Settings }) {
       </div></Card>
       <Card title="Notifications & reminders"><div className="form-grid">
         <div className="full row">{(['email', 'sms', 'whatsapp'] as const).map((c) => <label key={c} className="check"><input type="checkbox" checked={draft.channels[c]} onChange={(e) => setDraft({ ...draft, channels: { ...draft.channels, [c]: e.target.checked } })} />Queue {c === 'sms' ? 'SMS' : c === 'whatsapp' ? 'WhatsApp' : 'email'} for critical alerts</label>)}</div>
-        <div className="full small muted">In-app alerts are always on. Owner alerts (client signed, scope approved, discount requested) go to WhatsApp / SMS through the send-alerts Edge Function — see supabase/README.md for the 4-step setup.</div>
+        <div className="full small muted">In-app alerts are always on. Owner alerts (client signed, scope approved, discount requested) go to your phone by SMS (Semaphore) through the send-alerts Edge Function — see supabase/README.md for the 4-step setup.</div>
         {(['quote_expiry', 'doc_expiry', 'chemical_expiry', 'invoice_due', 'maintenance'] as const).map((k) => n(draft.reminder_days[k], (v) => setDraft({ ...draft, reminder_days: { ...draft.reminder_days, [k]: v } }), `${{ quote_expiry: 'Quotation expiry', doc_expiry: 'Document / certification expiry', chemical_expiry: 'Chemical / PPE expiry', invoice_due: 'Invoice due', maintenance: 'Maintenance due' }[k]} — days before`))}
       </div></Card>
       <Card title="Company profile (printed on PDFs)"><div className="form-grid">
