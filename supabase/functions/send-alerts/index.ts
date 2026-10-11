@@ -4,7 +4,7 @@
 //   SEMAPHORE_API_KEY   your Semaphore API key
 //   ALERT_SMS_TO        the owner's mobile, e.g. 09171234567 (several numbers: separate with commas)
 // Optional: SEMAPHORE_SENDER (an approved sender name; default is Semaphore's shared sender), APP_URL (default https://cuddly-couscous-one.vercel.app),
-//           WEBHOOK_SECRET (the webhook must then send it as header x-webhook-secret).
+//           WEBHOOK_SECRET (if set, the caller must send it as header x-webhook-secret — leave it unset when migration 0046 calls the function).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
