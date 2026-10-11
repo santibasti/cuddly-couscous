@@ -5,7 +5,7 @@ import { live, store, useAuth } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Tabs, attempt, ask, useObj, toast } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { DEFAULT_ACCESS, PERMISSIONS, ROLE_LABEL } from '@/lib/rbac';
-import { clone, fmtStamp, sha256 } from '@/lib/util';
+import { clone, fmtStamp, sha256, uid } from '@/lib/util';
 import type { AuditLog, Role, ServiceDef, Settings, StatutoryRate, TableName, UserAccount } from '@/lib/types';
 
 const ROLES = Object.keys(ROLE_LABEL) as Role[];
@@ -121,7 +121,17 @@ function Pricing() {
           <td>{num(r.rate, (n) => set(i, { rate: n }), 100)}</td><td>{num(r.minimum_qty, (n) => set(i, { minimum_qty: n }), 80)}</td><td>{num(r.est_hours_per_unit, (n) => set(i, { est_hours_per_unit: n }), 70)}</td>
           <td><input type="checkbox" checked={r.custom_quote} onChange={(e) => set(i, { custom_quote: e.target.checked })} aria-label="Custom quote" /></td>
           <td>{PROTECTED_SERVICES.includes(r.code) ? <span className="small muted" title="Used by the glass package, panel counting and blank quotation lines — edit it, but it cannot be deleted">core</span> : <button className="btn sm danger" onClick={() => void del(r)}>Delete</button>}</td></tr>,
-        ...(r.code === 'GLASS_EXT' ? [<tr key={r.id + 'p'}><td colSpan={7} style={{ background: 'rgba(34,193,195,.07)' }}><span className="small muted">Starter package: </span>price ₱ {num(r.package_price, (n) => set(i, { package_price: n }), 100)} covers {num(r.package_qty, (n) => set(i, { package_qty: n }), 70)} panels · excess ₱ {num(r.excess_rate, (n) => set(i, { excess_rate: n }), 90)} per panel</td></tr>] : [])])}
+        ...(r.code === 'GLASS_EXT' ? [<tr key={r.id + 'p'}><td colSpan={7} style={{ background: 'rgba(34,193,195,.07)' }}><span className="small muted">Starter package: </span>price ₱ {num(r.package_price, (n) => set(i, { package_price: n }), 100)} covers {num(r.package_qty, (n) => set(i, { package_qty: n }), 70)} panels · excess ₱ {num(r.excess_rate, (n) => set(i, { excess_rate: n }), 90)} per panel</td></tr>,
+          <tr key={r.id + 'pk'}><td colSpan={7} style={{ background: 'rgba(34,193,195,.04)' }}>
+            <div className="small muted" style={{ marginBottom: 6 }}>More glass packages — the sales team picks one when making a quotation (price for N panels, with its own excess rate).</div>
+            {(r.packages ?? []).map((pk, k) => <div key={pk.id} className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+              <span className="small muted">price ₱</span>{num(pk.price, (n) => set(i, { packages: (r.packages ?? []).map((x, j) => (j === k ? { ...x, price: n } : x)) }), 100)}
+              <span className="small muted">for</span>{num(pk.qty, (n) => set(i, { packages: (r.packages ?? []).map((x, j) => (j === k ? { ...x, qty: n } : x)) }), 70)}
+              <span className="small muted">panels · excess ₱</span>{num(pk.excess_rate, (n) => set(i, { packages: (r.packages ?? []).map((x, j) => (j === k ? { ...x, excess_rate: n } : x)) }), 90)}<span className="small muted">per panel</span>
+              <button className="btn sm danger" onClick={() => set(i, { packages: (r.packages ?? []).filter((_, j) => j !== k) })} aria-label="Remove package">Remove</button>
+            </div>)}
+            <button className="btn sm" onClick={() => set(i, { packages: [...(r.packages ?? []), { id: uid(), price: 0, qty: 41, excess_rate: r.excess_rate ?? r.rate }] })}>+ Add package</button>
+          </td></tr>] : [])])}
         {added.map((r, i) => <tr key={'n' + i} style={{ background: 'var(--teal-bg, rgba(34,193,195,.08))' }}>
           <td><input autoFocus value={r.name ?? ''} onChange={(e) => setNew(i, { name: e.target.value })} placeholder="New service name" style={{ minWidth: 190 }} aria-label="New service name" /><div className="small muted">new</div></td>
           <td><input value={r.unit ?? ''} onChange={(e) => setNew(i, { unit: e.target.value })} style={{ width: 70 }} aria-label="Unit" /></td>

@@ -65,12 +65,15 @@ export default function QuoteEditor() {
   const t = docTotals(v.items, discountPesos, v.vat_mode, v.vat_rate);
   const ov = v.ocular_visit_id ? db.ocular_visits.find((o) => o.id === v.ocular_visit_id) : undefined;
   const def = db.services.find((s) => s.code === svc)!;
+  const pkgOptions = svc === 'GLASS_EXT' ? [...(def.package_price && def.package_qty ? [{ id: 'default', price: def.package_price, qty: def.package_qty, excess_rate: def.excess_rate ?? def.rate }] : []), ...(def.packages ?? [])] : [];
+  const [pkgId, setPkgId] = useState('');
+  const pkg = pkgOptions.find((p) => p.id === (pkgId || pkgOptions[0]?.id));
 
   const setItems = (items: QuoteItem[]) => f.set('items', items);
   const updItem = (i: number, p: Partial<QuoteItem>) => setItems(v.items.map((x, k) => (k === i ? { ...x, ...p } : x)));
-  const addPriced = (code: ServiceCode, q: number) => {
+  const addPriced = (code: ServiceCode, q: number, pkg?: { price: number; qty: number; excess_rate: number }) => {
     const d = db.services.find((s) => s.code === code)!;
-    const r = priceService(d, q);
+    const r = priceService(d, q, pkg);
     setItems([...v.items, ...r.lines]); setNote(r.note);
     if (!v.scope) f.set('scope', `${d.name} at ${(db.sites.find((s) => s.id === v.site_id)?.name ?? client?.name ?? 'site').replace(/\.+$/, '')}.`);
   };
@@ -123,8 +126,9 @@ export default function QuoteEditor() {
           {!readOnly && (
             <div className="filterbar" style={{ marginTop: 0 }}>
               <Field label="Add from price list"><select value={svc} onChange={(e) => { const c = e.target.value as ServiceCode; setSvc(c); const d = db.services.find((s) => s.code === c)!; setQty(d.package_qty ?? Math.max(d.minimum_qty, 1)); }}>{live(db.services).map((s) => <option key={s.code} value={s.code}>{s.name}{s.custom_quote ? ' (custom)' : ''}</option>)}</select></Field>
+              {pkgOptions.length > 0 && <Field label="Glass package"><select value={pkg?.id ?? ''} onChange={(e) => { setPkgId(e.target.value); const p = pkgOptions.find((x) => x.id === e.target.value); if (p) setQty(p.qty); }}>{pkgOptions.map((p) => <option key={p.id} value={p.id}>{money(p.price)} for {p.qty} panels · {money(p.excess_rate)}/panel in excess of {p.qty}</option>)}</select></Field>}
               <Field label={`Quantity (${def.unit}s)`}><input type="number" min="1" value={qty} onChange={(e) => setQty(+e.target.value)} /></Field>
-              <button className="btn navy" onClick={() => addPriced(svc, qty)}><Icon name="plus" />Add with pricing rules</button>
+              <button className="btn navy" onClick={() => addPriced(svc, qty, pkg)}><Icon name="plus" />Add with pricing rules</button>
               {(svc === 'GLASS_EXT' || svc === 'GLASS_INT') && <button className="btn" onClick={() => setCalc(true)}>Panel counter…</button>}
               <button className="btn" onClick={() => setItems([...v.items, { service_code: 'OTHER', description: '', qty: 1, unit: 'lot', rate: 0, discount: 0 }])}>Blank line</button>
             </div>
@@ -207,7 +211,7 @@ export default function QuoteEditor() {
         </div>
       </div>
       {newSite && <SiteForm clientId={v.client_id} onClose={() => setNewSite(false)} onSaved={(st) => f.set('site_id', st.id)} />}
-      {calc && <PanelCalc onClose={() => setCalc(false)} onAdd={(p) => { setQty(p); addPriced('GLASS_EXT', p); setCalc(false); }} />}
+      {calc && <PanelCalc onClose={() => setCalc(false)} onAdd={(p) => { setQty(p); addPriced('GLASS_EXT', p, pkg); setCalc(false); }} />}
     </>
   );
 }

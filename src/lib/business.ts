@@ -75,17 +75,18 @@ export function countPanels(rows: GlassRow[], groupSize: number): { panels: numb
 export interface PriceResult { lines: QuoteItem[]; billableQty: number; note: string }
 
 /** Apply TopMop's default pricing rules for one service and quantity. Returns quotation line(s). */
-export function priceService(s: ServiceDef, qty: number): PriceResult {
+export function priceService(s: ServiceDef, qty: number, pkg?: { price: number; qty: number; excess_rate: number }): PriceResult {
   if (s.custom_quote) {
     return { lines: [{ service_code: s.code, description: s.name, qty, unit: s.unit, rate: s.rate, discount: 0 }], billableQty: qty, note: 'Custom-quoted service – set the rate manually.' };
   }
-  if (s.package_price && s.package_qty) {
+  const p = pkg ?? (s.package_price && s.package_qty ? { price: s.package_price, qty: s.package_qty, excess_rate: s.excess_rate ?? s.rate } : undefined);
+  if (p) {
     const lines: QuoteItem[] = [{
-      service_code: s.code, description: `${s.name} – Starter Package (up to ${s.package_qty} panels)`,
-      qty: 1, unit: 'package', rate: s.package_price, discount: 0,
+      service_code: s.code, description: `${s.name} – Starter Package (up to ${p.qty} panels)`,
+      qty: 1, unit: 'package', rate: p.price, discount: 0, package_qty: p.qty,
     }];
-    const excess = Math.max(0, qty - s.package_qty);
-    if (excess > 0) lines.push({ service_code: s.code, description: `Excess panels beyond ${s.package_qty}`, qty: excess, unit: 'panel', rate: s.excess_rate ?? s.rate, discount: 0 });
+    const excess = Math.max(0, qty - p.qty);
+    if (excess > 0) lines.push({ service_code: s.code, description: `Excess panels beyond ${p.qty}`, qty: excess, unit: 'panel', rate: p.excess_rate, discount: 0 });
     return { lines, billableQty: qty, note: `${qty} panels: package + ${excess} excess.` };
   }
   const billable = Math.max(qty, s.minimum_qty);
@@ -592,7 +593,7 @@ export function quotedPanels(d: Pick<DB, 'services'>, q?: Quotation): number {
   if (!q) return 0;
   return sum(q.items.filter((i) => i.service_code === 'GLASS_EXT' || i.service_code === 'GLASS_INT'), (i) => {
     const sv = d.services.find((s) => s.code === i.service_code);
-    return i.unit === 'package' ? i.qty * (sv?.package_qty ?? 0) : i.unit === 'panel' ? i.qty : 0;
+    return i.unit === 'package' ? i.qty * (i.package_qty ?? sv?.package_qty ?? 0) : i.unit === 'panel' ? i.qty : 0;
   });
 }
 export const variationTotals = (v: Pick<Variation, 'items' | 'discount' | 'vat_mode' | 'vat_rate'>) => docTotals(v.items, v.discount, v.vat_mode, v.vat_rate);

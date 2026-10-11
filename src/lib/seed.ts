@@ -78,7 +78,7 @@ export function seedDB(): DB {
     ...base('sv'), code, name, unit, rate, minimum_qty: min, custom_quote: false, est_hours_per_unit: 0.25, ...extra,
   });
   const services: ServiceDef[] = [
-    svc('GLASS_EXT', 'Exterior Glass / Window Cleaning', 'panel', 140, 1, { package_price: 4799, package_qty: 31, excess_rate: 140, est_hours_per_unit: 0.35 }),
+    svc('GLASS_EXT', 'Exterior Glass / Window Cleaning', 'panel', 140, 1, { package_price: 4799, package_qty: 31, excess_rate: 140, est_hours_per_unit: 0.35, packages: [{ id: 'pk-5700-41', price: 5700, qty: 41, excess_rate: 140 }, { id: 'pk-6799-41', price: 6799, qty: 41, excess_rate: 140 }, { id: 'pk-7799-41', price: 7799, qty: 41, excess_rate: 140 }, { id: 'pk-12799-51', price: 12799, qty: 51, excess_rate: 140 }] }),
     svc('GLASS_INT', 'Interior Glass Cleaning', 'panel', 0, 1, { custom_quote: true }),
     svc('ROOF', 'Roof Cleaning', 'sqm', 145, 100, { est_hours_per_unit: 0.06 }),
     svc('WALL', 'Wall / Floor Cleaning', 'sqm', 125, 50, { est_hours_per_unit: 0.05 }),

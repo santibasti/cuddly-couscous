@@ -88,6 +88,7 @@ export type ServiceCode =
   | 'CEILING' | 'GUTTER' | 'OTHER'
   | (string & {});   // services added in Admin → Service pricing get their own code
 
+export interface GlassPackage { id: string; price: number; qty: number; excess_rate: number }
 export interface ServiceDef extends Base {
   code: ServiceCode;
   name: string;
@@ -97,6 +98,7 @@ export interface ServiceDef extends Base {
   package_price?: number; // glass starter package
   package_qty?: number;   // panels covered by the package
   excess_rate?: number;   // per panel beyond the package
+  packages?: GlassPackage[]; // further glass packages the sales team can pick (price for N panels, excess per panel)
   custom_quote: boolean;  // no standard rate – priced per quotation
   est_hours_per_unit: number;
 }
@@ -131,6 +133,7 @@ export interface QuoteItem {
   note?: string;             // reason for the additional work
   from_measure?: number;     // additional-work line: the quotation line (index) whose quantity was measured on site
   measure?: boolean;         // quotation line: the rate is agreed, the quantity is measured on site and billed in the final bill (not part of the quotation total)
+  package_qty?: number;      // glass package line: how many panels the package covers
   negotiated?: boolean;      // price customised with the client (Owner / Admin only)
   custom_min?: number;       // negotiated minimum quantity (0 = no minimum); overrides the price-list minimum
 }

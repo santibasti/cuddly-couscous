@@ -269,6 +269,15 @@ describe('panel counting & variations', () => {
     expect(B.lineAmount(items[1])).toBe(0);
   });
 
+  it('several glass packages: the picked package sets the price, the panels it covers and the excess rate', () => {
+    const sv = db().services.find((x) => x.code === 'GLASS_EXT')!;
+    expect((sv.packages ?? []).map((p) => [p.price, p.qty])).toEqual([[5700, 41], [6799, 41], [7799, 41], [12799, 51]]);
+    const r = B.priceService(sv, 55, sv.packages![3]);
+    expect(r.lines.map((l) => [l.unit, l.qty, l.rate])).toEqual([['package', 1, 12799], ['panel', 4, 140]]);
+    expect(B.quotedPanels({ services: db().services }, { items: r.lines } as never)).toBe(55);
+    expect(B.priceService(sv, 31).lines[0].rate).toBe(4799);
+  });
+
   it('starter package panels: the panels counted beyond it are the additional work', () => {
     const panels = [{ id: 'a', area: '1st Floor', side: 'Front', external: 20, internal: 6 }, { id: 'b', area: '2nd Floor', side: 'Back', external: 4, internal: 0 }];
     const bd = B.panelBreakdown(db(), undefined, panels, 24);
