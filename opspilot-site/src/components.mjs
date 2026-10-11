@@ -487,46 +487,65 @@ export const otherIndustries = () => `
 </section>`;
 
 
-// ---------- Brand illustrations (original, code-drawn; line-art on navy) ----------
-const star = (cx, cy, r) => `<path class="il-lime il-glow" d="M${cx} ${cy - r}Q${cx} ${cy} ${cx + r} ${cy}Q${cx} ${cy} ${cx} ${cy + r}Q${cx} ${cy} ${cx - r} ${cy}Q${cx} ${cy} ${cx} ${cy - r}z"/>`;
-const windows = (x, y, cols, rows, gx, gy) => Array.from({ length: cols * rows }, (_, i) => `<path d="M${x + (i % cols) * gx} ${y + Math.floor(i / cols) * gy}h10"/>`).join('');
+// ---------- Brand illustrations (original, code-drawn; line-art on navy, animated) ----------
+const star = (cx, cy, r) => `<path class="il-lime il-glow il-twinkle" style="animation-delay:${((cx * 7) % 30) / 10}s" d="M${cx} ${cy - r}Q${cx} ${cy} ${cx + r} ${cy}Q${cx} ${cy} ${cx} ${cy + r}Q${cx} ${cy} ${cx - r} ${cy}Q${cx} ${cy} ${cx} ${cy - r}z"/>`;
+const windows = (x, y, cols, rows, gx, gy) => Array.from({ length: cols * rows }, (_, i) => `<path${i % 3 === 0 ? ` class="il-twinkle" style="animation-delay:${(i * 0.7) % 3}s;stroke-width:2.4"` : ''} d="M${x + (i % cols) * gx} ${y + Math.floor(i / cols) * gy}h10"/>`).join('');
 
 const illustrations = {
-  'service-contractors': { label: 'Illustration: a crew cart heading to an office building, with a job checklist and location pin', svg: `
+  'service-contractors': {
+    label: 'Animated illustration: a crew cart driving toward an office building while a job checklist ticks off, with sample figures',
+    chips: ['Crew A · 4/4 on site', 'Equipment back · Crew B'],
+    stats: [['Jobs today', '18'], ['Crew present', '42 / 46'], ['Equipment out', '31']],
+    svg: `
     <path class="il-line il-thin" d="M20 250H620"/>
     <rect class="il-fill" x="400" y="62" width="120" height="188" rx="4"/><rect class="il-fill" x="340" y="132" width="60" height="118" rx="4"/><rect class="il-fill" x="520" y="112" width="70" height="138" rx="4"/>
     <g class="il-line il-thin">${windows(416, 90, 3, 6, 36, 26)}${windows(352, 156, 2, 4, 26, 26)}${windows(534, 134, 2, 4, 28, 26)}</g>
-    <path class="il-limeline il-glow" d="M460 18c-10 0-17 7-17 16 0 12 17 28 17 28s17-16 17-28c0-9-7-16-17-16z"/><circle class="il-lime" cx="460" cy="34" r="5"/>
-    <path class="il-line il-dash" d="M214 222C270 180 330 180 392 224"/>
-    <rect class="il-fill" x="70" y="192" width="140" height="34" rx="8"/><circle class="il-fill" cx="98" cy="238" r="12"/><circle class="il-fill" cx="184" cy="238" r="12"/>
+    <g class="il-bob" style="--d:0s"><path class="il-limeline il-glow" d="M460 18c-10 0-17 7-17 16 0 12 17 28 17 28s17-16 17-28c0-9-7-16-17-16z"/><circle class="il-lime" cx="460" cy="34" r="5"/></g><ellipse class="il-ping" cx="460" cy="68" rx="10" ry="4"/>
+    <path class="il-line il-dash il-flow" d="M214 222C270 180 330 180 392 224"/>
+    <g class="il-drive"><rect class="il-fill" x="70" y="192" width="140" height="34" rx="8"/><circle class="il-fill" cx="98" cy="238" r="12"/><circle class="il-fill" cx="184" cy="238" r="12"/>
     <path class="il-line" d="M70 192L50 150H36"/><path class="il-fill" d="M92 192l8-32h40l8 32z"/><rect class="il-fill" x="154" y="164" width="14" height="28" rx="3"/>
-    <path class="il-line" d="M176 192L204 98"/><path class="il-fill" d="M190 90l26 8-7 24-27-8z"/>
+    <path class="il-line" d="M176 192L204 98"/><path class="il-fill" d="M190 90l26 8-7 24-27-8z"/></g>
     <rect class="il-fill" x="226" y="46" width="108" height="88" rx="10"/>
-    ${[0, 1, 2].map((i) => `<path class="il-limeline" d="M244 ${74 + i * 23}l5 5 9-10"/><path class="il-line il-thin" d="M270 ${76 + i * 23}h50"/>`).join('')}
+    ${[0, 1, 2].map((i) => `<path class="il-limeline il-check" pathLength="1" style="animation-delay:${i * 0.9}s" d="M244 ${74 + i * 23}l5 5 9-10"/><path class="il-line il-thin" d="M270 ${76 + i * 23}h50"/>`).join('')}
     ${star(600, 70, 9)}${star(60, 90, 7)}` },
-  'driving-ranges': { label: 'Illustration: driving range bays with a ball flying toward a flag on target rings, and a coffee cup', svg: `
+  'driving-ranges': {
+    label: 'Animated illustration: a golf ball flying from a covered bay toward a flag on target rings, with a steaming coffee cup, and sample figures',
+    chips: ['Bay 4 · Tab ₱420', 'Bucket ×2 · Bay 4'],
+    stats: [['Bays open', '5 of 8'], ['Open tabs', '3'], ['Café orders', '12']],
+    svg: `
     <path class="il-line il-thin" d="M20 192H620"/><g class="il-line il-thin"><path d="M320 192L120 272M320 192V272M320 192L520 272"/></g>
-    <ellipse class="il-fill" cx="472" cy="228" rx="104" ry="28"/><ellipse class="il-line" cx="472" cy="228" rx="66" ry="18"/><ellipse class="il-line" cx="472" cy="228" rx="28" ry="8"/>
-    <path class="il-line" d="M472 228V118"/><path class="il-lime il-glow" d="M472 118l42 15-42 15z"/>
-    <path class="il-limeline il-dash il-glow" d="M158 234C226 36 410 28 466 214"/><circle class="il-lime il-glow" cx="158" cy="234" r="7"/><path class="il-line" d="M158 241v10"/>
-    ${[0, 1, 2].map((i) => `<path class="il-fill" d="M${22 + i * 42} 252v-52l19-12 19 12v52z"/><path class="il-line il-thin" d="M${32 + i * 42} 252v-30h18v30"/>`).join('')}
-    <path class="il-fill" d="M548 66h38v28a13 13 0 0 1-13 13h-12a13 13 0 0 1-13-13z"/><path class="il-line" d="M586 72h6a7 7 0 0 1 0 15h-6"/><path class="il-line il-thin" d="M560 56c-5-7 5-9 0-17M574 56c-5-7 5-9 0-17"/>
+    <ellipse class="il-fill" cx="472" cy="228" rx="104" ry="28"/><ellipse class="il-line" cx="472" cy="228" rx="66" ry="18"/><ellipse class="il-line il-ring" cx="472" cy="228" rx="28" ry="8"/>
+    <path class="il-line" d="M472 228V118"/><path class="il-lime il-glow il-wave" d="M472 118l42 15-42 15z"/>
+    <path class="il-limeline il-dash il-flow il-glow" d="M158 234C226 36 410 28 466 214"/><circle class="il-lime il-glow" cx="158" cy="234" r="7"/><circle class="il-ball" r="7" style="offset-path:path('M158 234C226 36 410 28 466 214')"/><path class="il-line" d="M158 241v10"/>
+    ${[0, 1, 2].map((i) => `<path class="il-fill" d="M${22 + i * 42} 252v-52l19-12 19 12v52z"/><path class="il-line il-thin" d="M${32 + i * 42} 252v-30h18v30"/><circle class="il-lime il-twinkle" style="animation-delay:${i * 0.8}s" cx="${41 + i * 42}" cy="206" r="2.8"/>`).join('')}
+    <path class="il-fill" d="M548 66h38v28a13 13 0 0 1-13 13h-12a13 13 0 0 1-13-13z"/><path class="il-line" d="M586 72h6a7 7 0 0 1 0 15h-6"/><path class="il-line il-thin il-steam" d="M560 56c-5-7 5-9 0-17"/><path class="il-line il-thin il-steam" style="animation-delay:-1.2s" d="M574 56c-5-7 5-9 0-17"/>
     ${star(300, 70, 8)}${star(600, 160, 6)}` },
-  'car-washes': { label: 'Illustration: a car passing through a wash bay with spray nozzles, bubbles and sparkles', svg: `
+  'car-washes': {
+    label: 'Animated illustration: a car rolling through a wash bay with falling spray, rising bubbles and sparkles, with sample figures',
+    chips: ['Bay 2 · Full wash', 'Paid ₱450 · Pickup'],
+    stats: [['Vehicles today', '24'], ['Sales', '₱18,600'], ['In queue', '3']],
+    svg: `
     <path class="il-line il-thin" d="M20 252H620"/>
+    <g class="il-pass">
+      <path class="il-fill" d="M180 240v-28q0-14 16-20l46-14q18-28 58-28h46q36 0 52 30l32 12q18 6 18 20v28z"/><path class="il-line" d="M256 176q16-20 46-20h42l26 28H252z"/><path class="il-line il-thin" d="M312 160v24"/>
+      <circle class="il-fill" cx="232" cy="242" r="23"/><circle class="il-line" cx="232" cy="242" r="9"/><circle class="il-fill" cx="404" cy="242" r="23"/><circle class="il-line" cx="404" cy="242" r="9"/>
+    </g>
     <rect class="il-fill" x="112" y="56" width="22" height="196" rx="4"/><rect class="il-fill" x="506" y="56" width="22" height="196" rx="4"/><rect class="il-fill" x="112" y="56" width="416" height="28" rx="9"/>
-    ${[196, 258, 320, 382, 444].map((x) => `<circle class="il-lime" cx="${x}" cy="90" r="4"/><path class="il-line il-dash il-thin" d="M${x} 98v60"/><ellipse class="il-fill" cx="${x - 8}" cy="176" rx="3" ry="5"/><ellipse class="il-fill" cx="${x + 9}" cy="166" rx="3" ry="5"/>`).join('')}
-    <path class="il-fill" d="M180 240v-28q0-14 16-20l46-14q18-28 58-28h46q36 0 52 30l32 12q18 6 18 20v28z"/><path class="il-line" d="M256 176q16-20 46-20h42l26 28H252z"/><path class="il-line il-thin" d="M312 160v24"/>
-    <circle class="il-fill" cx="232" cy="242" r="23"/><circle class="il-line" cx="232" cy="242" r="9"/><circle class="il-fill" cx="404" cy="242" r="23"/><circle class="il-line" cx="404" cy="242" r="9"/>
-    <g class="il-line il-thin"><circle cx="158" cy="206" r="9"/><circle cx="170" cy="230" r="5"/><circle cx="470" cy="214" r="7"/><circle cx="484" cy="188" r="10"/><circle cx="148" cy="170" r="5"/></g>
+    ${[196, 258, 320, 382, 444].map((x, i) => `<circle class="il-lime" cx="${x}" cy="90" r="4"/><path class="il-line il-dash il-thin il-flow" d="M${x} 98v60"/><ellipse class="il-fill il-drop" style="animation-delay:${-i * 0.22}s" cx="${x - 7}" cy="150" rx="3" ry="5"/><ellipse class="il-fill il-drop" style="animation-delay:${-i * 0.22 - 0.55}s" cx="${x + 8}" cy="150" rx="3" ry="5"/>`).join('')}
+    <g class="il-line il-thin">${[[158, 206, 9], [170, 230, 5], [470, 214, 7], [484, 188, 10], [148, 170, 5]].map(([x, y, r], i) => `<circle class="il-rise" style="animation-delay:${-i * 0.8}s" cx="${x}" cy="${y}" r="${r}"/>`).join('')}</g>
     ${star(300, 146, 10)}${star(430, 132, 7)}${star(560, 100, 8)}` },
 };
 
 export const industryBanner = (id, config = {}) => {
   const photo = (config.images || {})[id];
   const ill = illustrations[id];
-  if (photo) return `<div class="il-banner il-banner-photo"><img src="${photo}" alt="Illustrative image: ${ill.label.replace('Illustration: ', '')}" width="640" height="280" loading="lazy"></div>`;
-  return `<div class="il-banner"><svg class="il" viewBox="0 0 640 280" role="img" aria-label="${ill.label}">${ill.svg}</svg></div>`;
+  if (photo) return `<div class="il-banner il-banner-photo"><img src="${photo}" alt="Illustrative image: ${ill.label.replace(/^(Animated )?[Ii]llustration: /, '')}" width="640" height="280" loading="lazy"></div>`;
+  return `<div class="il-banner">
+    <span class="il-sample">Sample data</span>
+    <div class="il-chips" aria-hidden="true">${ill.chips.map((c, i) => `<span class="il-chip" style="animation-delay:${i * 4}s"><i></i>${c}</span>`).join('')}</div>
+    <svg class="il" viewBox="0 0 640 280" role="img" aria-label="${ill.label}">${ill.svg}</svg>
+    <div class="il-stats">${ill.stats.map(([l, v]) => `<div><small>${l}</small><b>${v}</b></div>`).join('')}</div>
+  </div>`;
 };
 
 export const storyIllustration = () => {

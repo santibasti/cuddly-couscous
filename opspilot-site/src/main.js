@@ -211,8 +211,8 @@
   });
 
   // Story illustration: run its animations only while it is on screen (saves battery on phones).
-  const story = $('.story');
-  if (story && 'IntersectionObserver' in window) {
-    new IntersectionObserver(([en]) => story.classList.toggle('is-live', en.isIntersecting), { rootMargin: '80px' }).observe(story);
+  if ('IntersectionObserver' in window) {
+    const live = new IntersectionObserver((es) => es.forEach((en) => en.target.classList.toggle('is-live', en.isIntersecting)), { rootMargin: '80px' });
+    document.querySelectorAll('.story, .il-banner').forEach((el) => live.observe(el));
   }
 })();
