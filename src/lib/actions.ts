@@ -904,6 +904,11 @@ export function runAutomations() {
     const j = d.jobs.find((x) => x.id === v.job_id);
     add(`variation-approved:${v.id}`, 'job', 'Additional scope approved', `${v.number} · ${j?.number}: the client approved ${money(variationTotals(v).total)} of additional work${v.client_name ? ` (${v.client_name})` : ''}.`, 'info', `/jobs/${v.job_id}`, ['owner'], true);
   }
+  for (const v of d.variations.filter((x) => !x.deleted_at && x.status !== 'Rejected' && x.items.some((i) => i.negotiated))) {
+    const j = d.jobs.find((x) => x.id === v.job_id);
+    const lines = v.items.filter((i) => i.negotiated).map((i) => `${i.description} at ${money(i.rate)}/${i.unit}${i.custom_min !== undefined ? ` (minimum ${i.custom_min})` : ''}`).join('; ');
+    if (j && !['Closed', 'Cancelled'].includes(j.status)) add(`negotiated:${v.id}`, 'job', 'Negotiated price on site', `${v.number} · ${j.number}: ${lines}.`, 'warn', `/jobs/${v.job_id}`, ['owner']);
+  }
   for (const w of d.workflows.filter((x) => !x.deleted_at && x.conf_mode === 'approval' && recent(x.conf_at))) {
     const j = d.jobs.find((x) => x.id === w.job_id);
     add(`conforme-signed:${w.id}`, 'job', 'Client signed on site', `${j?.number} · ${d.clients.find((c) => c.id === j?.client_id)?.name ?? ''}: scope / final quote signed${w.conf_final_total != null ? ` — final total ${money(w.conf_final_total)}` : ''}${w.conf_name ? ` by ${w.conf_name}` : ''}.`, 'info', `/jobs/${w.job_id}`, ['owner'], true);

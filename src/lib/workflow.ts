@@ -254,8 +254,8 @@ export function saveFinalReview(id: string, f: FinalReviewInput) {
     if (!it.category) fail('Choose a service category for every additional line.');
     if (!it.unit.trim()) fail('Choose a unit of measure for every additional line.');
     const def = categoryDefaults(db().services, it.category!);
-    if (it.category !== 'other' && it.from_measure === undefined && Math.abs(it.rate - def.rate) > 0.004 && !authorised) fail(`The price list rate (${def.rate} per ${def.unit}) for ${it.description || 'this line'} can only be changed by an Operations Manager or Admin.`);
-    if (it.negotiated && !authorised) fail('Only an Operations Manager or Admin can customize the price of a line.');
+    if (it.category !== 'other' && it.from_measure === undefined && !it.negotiated && Math.abs(it.rate - def.rate) > 0.004 && !authorised) fail(`The price list rate (${def.rate} per ${def.unit}) for ${it.description || 'this line'} can only be changed by an Operations Manager or Admin.`);
+    if (it.negotiated && !authorised && !store.can('dispatch.run')) fail('Only the Team Leader on the job, an Operations Manager or an Admin can customize the price of a line.');
     if (it.custom_min !== undefined && !(it.custom_min >= 0)) fail('The minimum quantity cannot be negative.');
     if (it.discount < 0) fail('Discount cannot be negative.');
     if (it.discount > 0 && !store.can('discount.approve')) fail('Only the Owner / Admin can apply a discount. Submit a Discount Request instead.');
