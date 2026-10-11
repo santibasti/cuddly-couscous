@@ -35,5 +35,5 @@ The build output is plain static files in `dist/`, so any static host works. Set
 
 **After the domain is live**
 1. Set `siteUrl` in `site.config.json` (e.g. `https://opspilot.ph`) and redeploy: adds canonical tags, `sitemap.xml` and the sitemap line in `robots.txt`.
-2. Connect the contact form: set `formEndpoint` (Formspree, Basin, Getform or your own API) and redeploy. Until then the site tells visitors the form is not connected and shows the email and mobile number instead.
+2. Connect the contact form (see "Contact form" above) so submissions reach you directly; until then the form hands the request to the visitor's email app.
 3. Fill in `officeHours` when confirmed.
