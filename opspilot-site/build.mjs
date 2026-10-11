@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile, cp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as ui from './src/components.mjs';
 import { scopeTypes, solutions, businessTypes } from './src/content.mjs';
+import { industryPages, industryOrder } from './src/industry-pages.mjs';
 
 const root = import.meta.dirname;
 const dist = join(root, 'dist');
@@ -32,7 +33,7 @@ const pages = [
     description: 'How OpsPilot adapts to service contractors, driving ranges, car washes, clinics and dental practices, tourist bus and taxi fleets, salons, laundry and auto repair shops.',
     body: () => [
       ui.pageHero('Industries', 'One approach, adapted to how you operate.', 'The building blocks stay the same; the screens, fields and reports are configured for your kind of business.'),
-      ui.industryDetails(), ui.moreIndustries(), ui.otherIndustries(), ui.ctaBand(),
+      ui.moreIndustries(), ui.otherIndustries(), ui.ctaBand(),
     ],
   },
   {
@@ -59,6 +60,15 @@ const pages = [
     description: 'Request a demo or workflow consultation with OpsPilot. Reach us at info@opspilot.ph or 0919 318 5860, BGC, Taguig.',
     body: () => [ui.contact(config), ui.faq()],
   },
+  ...industryOrder.map((id) => ({
+    file: `${id}.html`, nav: 'industries.html',
+    title: industryPages[id].title, description: industryPages[id].desc,
+    body: () => ui.industryPageBody(id),
+    jsonld: (site) => [
+      { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: industryPages[id].faqs.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })) },
+      ...(site ? [{ '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [['Home', `${site}/`], ['Industries', `${site}/industries.html`], [industryPages[id].short, `${site}/${id}.html`]].map(([name, item], i) => ({ '@type': 'ListItem', position: i + 1, name, item })) }] : []),
+    ],
+  })),
   {
     file: 'privacy.html', nav: '',
     title: 'Privacy notice | OpsPilot',
@@ -94,6 +104,7 @@ ${pg.noindex ? '<meta name="robots" content="noindex">' : ''}
 ${site && !pg.noindex ? `<link rel="canonical" href="${site}/${pg.file === 'index.html' ? '' : pg.file}">\n<meta property="og:url" content="${site}/${pg.file === 'index.html' ? '' : pg.file}">` : ''}
 ${site ? `<meta property="og:image" content="${site}/og.png">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n<meta name="twitter:card" content="summary_large_image">` : ''}
 ${pg.file === 'index.html' ? `<script type="application/ld+json">${jsonLd}</script>` : ''}
+${(pg.jsonld ? pg.jsonld(site) : []).map((j) => `<script type="application/ld+json">${JSON.stringify(j)}</script>`).join('\n')}
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 <script>document.documentElement.classList.add('js')</script>

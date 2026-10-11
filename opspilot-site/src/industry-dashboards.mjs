@@ -71,7 +71,30 @@ const attention = (items) => `<ul class="attention ind-att">${items.map(([tag, t
 
 const panel = (title, body, cls) => `<section class="dash-panel ${cls}"><div class="dash-h-row"><h3 class="dash-h">${title}</h3></div>${body}</section>`;
 
-const render = (d) => `
+
+// ---------- extra panels: breakdown + recent activity (SAMPLE DATA) ----------
+const mixPanel = (title, rows) => `
+<ul class="mix" role="img" aria-label="${title}, sample data: ${rows.map(([l, v]) => `${l} ${v}%`).join(', ')}">
+  ${rows.map(([l, v], i) => `<li><span>${l}</span><span class="mix-bar"><i style="--w:${v}%;--d:${(i * 0.12).toFixed(2)}s"></i></span><b>${v}%</b></li>`).join('')}
+</ul>`;
+const feedPanel = (items) => `
+<ol class="feed">
+  ${items.map(([t, text], i) => `<li style="--d:${(i * 0.12).toFixed(2)}s"><time>${t}</time><span>${text}</span></li>`).join('')}
+</ol>`;
+const extras = {
+  'service-contractors': { mix: ['Revenue by service', [['Janitorial', 46], ['Building maintenance', 28], ['Deep cleaning', 16], ['Other jobs', 10]]], feed: [['9:42 AM', 'Crew A checked in · Sample Office Tower'], ['10:15 AM', 'Equipment issued · Floor polisher #3 · Crew A'], ['11:20 AM', 'Service report signed off · Sample School'], ['12:05 PM', 'Payment recorded · ₱28,500 · Sample Warehouse']] },
+  'driving-ranges': { mix: ['Sales mix', [['Range buckets', 64], ['Food', 21], ['Beverages', 15]]], feed: [['1:05 PM', 'Bay 4 checked out · ₱420'], ['1:12 PM', 'Bucket ×2 added · Bay 6'], ['1:20 PM', 'Café order ready · Bay 2'], ['1:31 PM', 'Bay 5 reserved for 3:00 PM']] },
+  'car-washes': { mix: ['Sales by service', [['Full wash', 44], ['Exterior wash', 26], ['Wax and polish', 18], ['Interior clean', 12]]], feed: [['12:40 PM', 'Bay 2 started · Full wash'], ['12:52 PM', 'Paid ₱450 · Sample Pickup'], ['1:03 PM', 'Low stock flagged · Wax'], ['1:15 PM', 'Bay 1 ready · Sample Sedan']] },
+  clinics: { mix: ['Billing by visit type', [['Consultation', 48], ['Follow-up', 27], ['Procedures', 17], ['Other', 8]]], feed: [['9:05 AM', 'Appointment completed · Doctor B'], ['10:30 AM', 'Payment recorded · ₱1,200'], ['11:15 AM', 'Supplies reorder flagged · Gloves'], ['12:02 PM', 'Appointment confirmed · tomorrow 9:00 AM']] },
+  dental: { mix: ['Billing by treatment', [['Cleaning', 30], ['Fillings', 26], ['Check-ups', 24], ['Other treatments', 20]]], feed: [['12:50 PM', 'Chair 4 ready'], ['1:10 PM', 'Payment recorded · ₱3,500'], ['1:25 PM', 'Appointment confirmed · Dentist C'], ['1:40 PM', 'Sterilization batch started · 12 sets']] },
+  'tourist-buses': { mix: ['Billed by trip type', [['Day tours', 40], ['Airport and hotel transfers', 30], ['Multi-day charters', 22], ['Other', 8]]], feed: [['10:20 AM', 'Trip completed · Bus 11'], ['11:00 AM', 'Deposit recorded · ₱15,000 · T-118'], ['12:30 PM', 'Bus 05 boarding · Subic'], ['1:10 PM', 'Maintenance logged · Bus 09']] },
+  'taxi-fleets': { mix: ['Collected by vehicle type', [['Taxis', 62], ['Vans', 28], ['Shuttles', 10]]], feed: [['6:05 AM', 'Shift started · Van 12'], ['2:10 PM', 'Remittance recorded · Taxi 01'], ['2:25 PM', 'Short remittance flagged · Taxi 04'], ['2:40 PM', 'Service reminder · Taxi 04']] },
+  salons: { mix: ['Sales by service', [['Hair', 52], ['Color', 22], ['Nails', 14], ['Products', 12]]], feed: [['12:30 PM', 'Appointment booked · Stylist C'], ['12:45 PM', 'Payment recorded · ₱1,800'], ['1:00 PM', 'Checked in · Color · Stylist C'], ['1:15 PM', 'Low stock flagged · Developer']] },
+  laundry: { mix: ['Sales by service', [['Wash and fold', 54], ['Dry cleaning', 20], ['Ironing', 18], ['Bedding', 8]]], feed: [['11:05 AM', 'Ticket #L-2064 ready'], ['11:40 AM', 'Payment recorded · ₱450'], ['12:10 PM', 'Pickup reminder queued · 5 tickets'], ['12:50 PM', 'Detergent stock updated · 72%']] },
+  'auto-repair': { mix: ['Revenue by job type', [['Maintenance', 38], ['Repairs', 34], ['Parts', 20], ['Diagnostics', 8]]], feed: [['9:30 AM', 'Quote approved · J-3305'], ['11:10 AM', 'Parts arrived · J-3309'], ['12:20 PM', 'Payment recorded · ₱6,400'], ['1:05 PM', 'Vehicle ready · J-3299']] },
+};
+
+const render = (d, x) => `
 <div class="app app-ind ind-dash" role="group" aria-label="Illustrative ${d.name} dashboard with sample data">
   <div class="app-main">
     <div class="app-top">
@@ -85,12 +108,45 @@ const render = (d) => `
       ${panel(d.special.title, d.special.html, 'ind-special')}
       ${panel(d.table.title, table(d.table.cols, d.table.rows), 'ind-table')}
       ${panel(`${icon('alert', 18)} Items needing attention`, attention(d.attn), 'ind-attn')}
+      ${panel(x.mix[0], mixPanel(x.mix[0], x.mix[1]), 'ind-mix')}
+      ${panel('Recent activity', feedPanel(x.feed), 'ind-feed')}
     </div>
   </div>
 </div>`;
 
 // ---------- sample data per industry ----------
 const data = {
+  'service-contractors': {
+    name: 'cleaning and maintenance contractor', title: 'Contractor operations', sub: 'Today · all sites',
+    toasts: ['Crew A checked in · Sample Office Tower · sample', 'Equipment returned · Crew B · sample', 'Service report signed off · sample'],
+    kpis: [k('Jobs today', '18', '12 in progress', [9, 11, 10, 13, 12, 15, 14, 18], 18), k('Crew present', '42 / 46', '4 awaiting verification', [38, 40, 41, 39, 43, 42, 44, 42]), k('Equipment out', '31', '3 past return date', [22, 25, 24, 28, 27, 30, 29, 31], 31),
+      k('Recorded sales', peso(186400), 'Today', [120, 150, 138, 170, 160, 182, 175, 186], 186400, true), k('Payments recorded', peso(142750), 'Today', [90, 110, 120, 118, 130, 128, 140, 143], 142750, true), k('Outstanding', peso(318900), '9 open bills', [290, 300, 310, 305, 322, 315, 320, 319], 318900, true)],
+    chart: { title: 'Billed vs collected · 8 weeks', labels: wk, a: [210, 185, 240, 220, 260, 235, 280, 250], b: [160, 175, 190, 205, 215, 220, 230, 245], max: 300, note: '₱ thousands · sample data', noun: 'Week' },
+    special: { title: 'Crews on site', html: fleet([['Crew A', 'Sample Office Tower', 65, P, 'On site', 'Finishes 4:30 PM'], ['Crew B', 'Sample Café', 90, W, 'Awaiting sign-off', 'Report pending'], ['Crew C', 'Sample Warehouse', 0, S, 'Scheduled', 'Starts 1:00 PM'], ['Crew D', 'Sample School', 100, D, 'Completed', 'Done 11:20 AM']]) },
+    table: { title: 'Job status', cols: [['Job'], ['Client', 'hide-sm'], ['Crew', 'hide-sm'], ['Status']], rows: [['J-1042', 'Sample Office Tower', 'Crew A', [P, 'In progress']], ['J-1043', 'Sample Warehouse', 'Crew C', [S, 'Scheduled']], ['J-1040', 'Sample Café', 'Crew B', [W, 'Awaiting sign-off']], ['J-1038', 'Sample School', 'Crew D', [D, 'Completed']], ['J-1036', 'Sample Clinic', 'Crew E', [D, 'Completed']]] },
+    attn: [['Overdue', 'Equipment past return date', '3 items issued to Crew B and Crew D', 'box'], ['Unbilled', 'Added work not yet billed', 'J-1042 has an approved change not on the bill', 'quote'], ['Past due', 'Balances past due date', '3 bills are past their due date', 'wallet'], ['To verify', 'Attendance to verify', '4 crew entries awaiting supervisor check', 'users']],
+  },
+  'driving-ranges': {
+    name: 'driving range', title: 'Driving range operations', sub: 'Today · 8 bays and café',
+    toasts: ['Bay 4 checked out · ₱420 · sample', 'Bucket ×2 added · Bay 6 · sample', 'Café order ready · Bay 2 · sample'],
+    kpis: [k('Bays open', '5 of 8', '3 in use', [3, 4, 4, 6, 5, 5, 6, 5]), k('Open player tabs', '3', 'to check out', [2, 3, 3, 4, 3, 2, 3, 3], 3), k('Buckets sold', '164', 'Today', [60, 85, 100, 120, 135, 148, 158, 164], 164),
+      k('Café orders', '12', 'Today', [4, 6, 7, 9, 10, 11, 12, 12], 12), k('Sales today', peso(38200), 'Range and café', [18, 22, 26, 30, 33, 36, 37, 38.2], 38200, true), k('Open tabs value', peso(2860), '3 tabs', [1.2, 1.8, 2.2, 3, 2.6, 2.4, 3, 2.86], 2860, true)],
+    chart: { title: 'Daily sales · this week vs last', labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], a: [22, 25, 24, 30, 36, 52, 48], b: [24, 27, 26, 33, 41, 58, 53], max: 60, nameA: 'Last week', nameB: 'This week', note: '₱ thousands per day · sample data', noun: 'Day' },
+    special: { title: 'Bay board', html: bays([['Bay 1', 'Sample player', '2 buckets', 60, P, 'In use'], ['Bay 2', 'Sample player', 'café order', 25, P, 'In use'], ['Bay 3', 'Open bay', '—', 0, D, 'Available'], ['Bay 4', 'Sample player', 'checkout', 100, W, 'Checking out'], ['Bay 5', 'Reserved', '3:00 PM', 0, S, 'Reserved'], ['Bay 6', 'Open bay', '—', 0, D, 'Available']]) },
+    table: { title: 'Player tabs', cols: [['Tab'], ['Player', 'hide-sm'], ['Bay'], ['Status']], rows: [['T-2041', 'Player A', 'Bay 4', [W, '₱420 · Checkout']], ['T-2042', 'Player B', 'Bay 1', [P, '₱300 · Open']], ['T-2043', 'Player C', 'Bay 2', [P, '₱620 · Open']], ['T-2039', 'Player D', 'Bay 6', [D, 'Paid']], ['T-2038', 'Player E', 'Bay 3', [D, 'Paid']]] },
+    attn: [['Open tabs', '3 tabs not yet checked out', '₱2,860 open', 'wallet'], ['Reserved', 'Bay 5 reserved at 3:00 PM', 'Keep it free', 'calendar'], ['Stock', 'Café stock low', 'Iced tea and bottled water', 'box'], ['Shift', 'Shift report due at closing', 'Totals are ready', 'clock']],
+  },
+  'car-washes': {
+    name: 'car wash', title: 'Car wash operations', sub: 'Today · 3 bays',
+    toasts: ['Bay 2 started · Full wash · sample', 'Paid ₱450 · Pickup · sample', 'Low stock flagged · wax · sample'],
+    kpis: [k('Vehicles today', '24', '9 still to come', [10, 13, 15, 18, 20, 22, 23, 24], 24), k('In queue', '3', 'waiting', [1, 2, 4, 3, 2, 3, 4, 3], 3), k('Sales today', peso(18600), 'Cash and e-wallet', [6, 9, 11, 13, 15, 16, 18, 18.6], 18600, true),
+      k('Average wash', '28 min', 'bay time', [34, 32, 31, 30, 29, 29, 28, 28]), k('Supplies low', '2', 'items', [1, 1, 2, 1, 2, 2, 2, 2], 2), k('Unpaid', peso(1250), '2 vehicles', [0.5, 0.9, 1.3, 1.1, 1.4, 1.2, 1.3, 1.25], 1250, true)],
+    chart: { title: 'Daily sales · this week vs last', labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], a: [12, 13, 12, 15, 17, 24, 22], b: [13, 14, 13, 17, 19, 27, 25], max: 30, nameA: 'Last week', nameB: 'This week', note: '₱ thousands per day · sample data', noun: 'Day' },
+    special: { title: 'Job queue', html: pipeline([['Waiting', 3, ['#C-118', '#C-119']], ['Washing', 3, ['#C-114', '#C-115']], ['Drying', 2, ['#C-110', '#C-111']], ['Ready', 5, ['#C-104', '#C-105']]], '#C-121') },
+    table: { title: 'Service records', cols: [['Job'], ['Vehicle', 'hide-sm'], ['Service'], ['Status']], rows: [['C-115', 'Sample Sedan', 'Full wash', [P, 'Washing']], ['C-114', 'Sample SUV', 'Wash and wax', [P, 'Washing']], ['C-111', 'Sample Pickup', 'Interior clean', [W, 'Drying']], ['C-105', 'Sample Hatchback', 'Exterior wash', [D, 'Ready']], ['C-104', 'Sample Van', 'Full wash', [D, 'Paid']]] },
+    attn: [['Low stock', 'Wax and shampoo low', 'Reorder suggested', 'box'], ['Unpaid', '2 vehicles unpaid', '₱1,250 to collect', 'wallet'], ['Queue', '3 vehicles waiting', 'Bay 3 opens in 6 minutes', 'clock'], ['Ready', '5 vehicles ready', 'Notify owners', 'users']],
+  },
+
   clinics: {
     name: 'clinic', title: 'Clinic operations', sub: 'Today · all rooms',
     toasts: ['Appointment completed · Doctor B · sample', 'Payment recorded · ₱1,200 · sample', 'Supplies reorder flagged · sample'],
@@ -163,4 +219,4 @@ const data = {
   },
 };
 
-export const industryDashboard = (id) => render(data[id]);
+export const industryDashboard = (id) => render(data[id], extras[id]);

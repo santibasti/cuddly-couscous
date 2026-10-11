@@ -3,6 +3,7 @@ import { icon, logoMark } from './icons.mjs';
 import * as c from './content.mjs';
 import { heroDashboard, fullDashboard } from './dashboard.mjs';
 import { industryDashboard } from './industry-dashboards.mjs';
+import { industryPages, industryOrder, related } from './industry-pages.mjs';
 
 const telHref = (m) => 'tel:+63' + m.replace(/\D/g, '').replace(/^0/, '');
 const prettyMobile = (m) => m.replace(/\D/g, '').replace(/^(\d{4})(\d{3})(\d{4})$/, '$1 $2 $3');
@@ -451,11 +452,11 @@ export const industriesOverview = (config = {}) => `
         <h3>${i.title}</h3>
         <p class="industry-sub">${i.sub}</p>
         <ul class="ticks">${i.items.slice(0, 3).map((t) => `<li>${icon('check', 18)}<span>${t}</span></li>`).join('')}</ul>
-        <a class="card-link" href="industries.html#${i.id}">See how it fits ${icon('arrow', 16)}</a>
+        <a class="card-link" href="${i.id}.html">See the ${i.title.toLowerCase()} page ${icon('arrow', 16)}</a>
       </article>`).join('')}
     </div>
     <div class="also reveal"><p class="also-h">Also configured for</p>
-      <ul class="also-list">${c.moreIndustries.map((m) => `<li><a href="industries.html#${m.id}">${icon(m.icon, 16)}${m.title}</a></li>`).join('')}<li><a href="industries.html#other">${icon('plus', 16)}and more</a></li></ul>
+      <ul class="also-list">${c.moreIndustries.map((m) => `<li><a href="${m.id}.html">${icon(m.icon, 16)}${m.title}</a></li>`).join('')}<li><a href="industries.html#other">${icon('plus', 16)}and more</a></li></ul>
     </div>
   </div>
 </section>`;
@@ -474,7 +475,7 @@ export const industryDetails = () => c.industries.map((ind, i) => `
       <ul class="ticks">${ind.items.map((t) => `<li>${icon('check', 18)}<span>${t}</span></li>`).join('')}</ul>
       <p class="chips-label">Typical modules</p>
       <ul class="tags">${moduleNames(c.scopeTypes[presetFor[ind.id]].modules).map((t) => `<li>${t}</li>`).join('')}</ul>
-      <div class="btn-row">${button('Request a Demo', 'contact.html', 'primary')}</div>
+      <div class="btn-row">${button('Request a Demo', 'contact.html', 'primary')}${button('Full ' + ind.title.toLowerCase() + ' page', ind.id + '.html', 'ghost-dark')}</div>
     </div>
     <div class="work-card industry-visual reveal">
       <div class="work-preview"><div class="win-bar" aria-hidden="true"><i></i><i></i><i></i><span>Illustrative preview</span><em>Sample data</em></div>${projectPreview(ind.preview)}</div>
@@ -604,15 +605,21 @@ export const storyIllustration = () => {
 };
 
 
+const showcaseList = () => {
+  const preset = { 'service-contractors': 'contractor', 'driving-ranges': 'range', 'car-washes': 'carwash' };
+  const first = c.industries.map((i) => ({ id: i.id, icon: i.icon, title: i.title, sub: i.sub, items: i.items, modules: c.scopeTypes.find((t) => t.id === preset[i.id]).modules }));
+  return [...first, ...c.moreIndustries];
+};
+
 export const moreIndustries = () => `
 <section class="section section-tint" id="more-industries" aria-labelledby="more-title">
   <div class="container">
-    ${sectionHead('More industries', 'See it set up for your business.', 'Pick an industry to see an example dashboard. These show how the existing modules can be configured; each setup is agreed in writing before work begins.', true).replace('<h2>', '<h2 id="more-title">')}
+    ${sectionHead('Pick your industry', 'See it set up for your business.', 'Choose an industry to see an example dashboard. These show how the existing modules can be configured; each setup is agreed in writing before work begins.', true).replace('<h2>', '<h2 id="more-title">')}
     <div class="ind-tabs" role="tablist" aria-label="More industries">
-      ${c.moreIndustries.map((m, i) => `<button type="button" class="ind-tab${i === 0 ? ' is-active' : ''}" role="tab" id="tab-${m.id}" aria-controls="${m.id}" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">${icon(m.icon, 18)}<span>${m.title}</span></button>`).join('')}
+      ${showcaseList().map((m, i) => `<button type="button" class="ind-tab${i === 0 ? ' is-active' : ''}" role="tab" id="tab-${m.id}" aria-controls="${m.id}" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">${icon(m.icon, 18)}<span>${m.title}</span></button>`).join('')}
     </div>
     <div class="ind-panels">
-      ${c.moreIndustries.map((m, i) => `
+      ${showcaseList().map((m, i) => `
       <article class="ind-panel${i === 0 ? ' is-active' : ''}" id="${m.id}" role="tabpanel" aria-labelledby="tab-${m.id}" tabindex="0">
         <div class="ind-top">
           <div class="ind-info">
@@ -623,7 +630,7 @@ export const moreIndustries = () => `
           <div class="ind-side">
             <ul class="tags">${moduleNames(m.modules).map((t) => `<li>${t}</li>`).join('')}</ul>
             ${m.note ? `<p class="more-note">${icon('shield', 16)}<span>${m.note}</span></p>` : ''}
-            <div class="btn-row">${button('Ask about this', 'contact.html', 'primary')}</div>
+            <div class="btn-row">${button('Ask about this', 'contact.html', 'primary')}${button('Full page', m.id + '.html', 'ghost-dark')}</div>
           </div>
         </div>
         ${industryDashboard(m.id)}
@@ -631,3 +638,115 @@ export const moreIndustries = () => `
     </div>
   </div>
 </section>`;
+
+
+// ---------- Dedicated industry pages ----------
+const iconFor = (id) => (c.industries.find((i) => i.id === id) || c.moreIndustries.find((m) => m.id === id) || {}).icon || 'layers';
+const itemsFor = (id) => (c.industries.find((i) => i.id === id) || c.moreIndustries.find((m) => m.id === id) || {}).items || [];
+const modulesFor = (id) => {
+  const map = { 'service-contractors': 'contractor', 'driving-ranges': 'range', 'car-washes': 'carwash' };
+  const m = c.moreIndustries.find((x) => x.id === id);
+  if (m) return m.modules;
+  return c.scopeTypes.find((t) => t.id === map[id]).modules;
+};
+export const industryNote = (id) => (c.moreIndustries.find((m) => m.id === id) || {}).note || '';
+
+export const breadcrumb = (name) => `
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="index.html">Home</a></li><li><a href="industries.html">Industries</a></li><li aria-current="page">${name}</li></ol></nav>`;
+
+export const industryHero = (id) => {
+  const d = industryPages[id];
+  return `
+<section class="page-hero" aria-labelledby="page-title">
+  <div class="container reveal">
+    ${breadcrumb(d.short)}
+    <p class="eyebrow eyebrow-dark">${icon(iconFor(id), 14)} ${d.short}</p>
+    <h1 id="page-title">${d.h1}</h1>
+    <p class="page-lead">${d.lead}</p>
+    <div class="btn-row hero-actions">${button('Request a Demo', 'contact.html', 'lime')}${button('See the sample dashboard', '#dashboard', 'ghost')}</div>
+  </div>
+</section>`;
+};
+
+export const industryProblems = (id) => {
+  const d = industryPages[id];
+  return `
+<section class="section theme-light" id="problems" aria-labelledby="ip-problems">
+  <div class="container">
+    ${sectionHead('Common problems', `What ${d.name.toLowerCase()} run into, and how the system helps`, 'Each problem on the left maps to a practical capability on the right. Nothing here is a promise of savings or revenue.', true).replace('<h2>', '<h2 id="ip-problems">')}
+    <div class="problem-list">
+      ${d.problems.map(([p, f]) => `
+      <article class="problem reveal">
+        <div class="problem-from"><span class="problem-ico">${icon(iconFor(id), 22)}</span><p>${p}</p></div>
+        <div class="problem-arrow" aria-hidden="true">${icon('arrow', 22)}</div>
+        <div class="problem-to"><p>${f}</p></div>
+      </article>`).join('')}
+    </div>
+  </div>
+</section>`;
+};
+
+export const industryDash = (id) => {
+  const d = industryPages[id];
+  return `
+<section class="section dash-section" id="dashboard" aria-labelledby="ip-dash">
+  <div class="container">
+    ${sectionHead('Sample dashboard', `What a ${d.short.toLowerCase().replace(/s$/, '')} owner could see each day`, 'An illustrative dashboard with sample data. Your own version is configured around your business and agreed in writing before work begins.', true).replace('<div class="section-head center reveal">', '<div class="section-head center reveal dash-head">').replace('<h2>', '<h2 id="ip-dash">').replace('<p class="eyebrow">', '<p class="eyebrow eyebrow-dark">')}
+    <div class="dash-stage reveal">${industryDashboard(id)}</div>
+    <p class="dash-foot"><span>Illustrative dashboard</span><span>Sample data</span><span>Philippine pesos</span></p>
+  </div>
+</section>`;
+};
+
+export const industryIncluded = (id) => {
+  const d = industryPages[id];
+  const names = ['Attendance & payroll prep', 'Inventory & equipment', 'Bookings & crews', 'Quotations', 'Service reports', 'Billing & collections', 'Dashboards'];
+  const note = industryNote(id);
+  return `
+<section class="section theme-light" id="included" aria-labelledby="ip-incl">
+  <div class="container split">
+    <div class="split-copy reveal">
+      <h2 id="ip-incl">What you can run in OpsPilot</h2>
+      <p class="lead">Typical setup for ${d.name.toLowerCase()}. You can start with one module and add others later; additional modules are quoted separately.</p>
+      <ul class="ticks">${itemsFor(id).map((t) => `<li>${icon('check', 18)}<span>${t}</span></li>`).join('')}</ul>
+      <p class="chips-label">Typical modules</p>
+      <ul class="tags">${modulesFor(id).map((n) => `<li>${names[n]}</li>`).join('')}</ul>
+      ${note ? `<p class="more-note">${icon('shield', 16)}<span>${note}</span></p>` : ''}
+    </div>
+    <div class="how reveal">
+      <h3>How a project works</h3>
+      <ol class="how-list">
+        <li><b>Understand</b><span>We walk through how your business actually runs.</span></li>
+        <li><b>Define</b><span>We agree the scope in writing: modules, roles, reports.</span></li>
+        <li><b>Build &amp; pilot</b><span>We build, then test with realistic scenarios.</span></li>
+        <li><b>Launch &amp; support</b><span>Staff are trained and support is defined in your agreement.</span></li>
+      </ol>
+      <div class="btn-row">${button('Request a Demo', 'contact.html', 'primary')}</div>
+    </div>
+  </div>
+</section>`;
+};
+
+export const industryFaq = (id) => {
+  const d = industryPages[id];
+  return `
+<section class="section theme-light section-flush" id="faq" aria-labelledby="ip-faq">
+  <div class="container faq-wrap">
+    ${sectionHead('FAQ', `Questions from ${d.name.toLowerCase()}`, '', true).replace('<h2>', '<h2 id="ip-faq">')}
+    <div class="faq-list reveal">
+      ${d.faqs.map(([q, a]) => `<details class="faq"><summary><span>${q}</span>${icon('plus', 20)}</summary><p>${a}</p></details>`).join('')}
+    </div>
+  </div>
+</section>`;
+};
+
+export const industryRelated = (id) => `
+<section class="section theme-light section-flush" aria-labelledby="ip-rel">
+  <div class="container center-block reveal">
+    <h2 id="ip-rel">Other industries</h2>
+    <ul class="also-list">${related[id].map((r) => `<li><a href="${r}.html">${icon(iconFor(r), 16)}${industryPages[r].short}</a></li>`).join('')}<li><a href="industries.html">${icon('layers', 16)}All industries</a></li></ul>
+  </div>
+</section>`;
+
+export const industryPageBody = (id) => [industryHero(id), industryProblems(id), industryDash(id), industryIncluded(id), industryFaq(id), industryRelated(id), ctaBand(`Let’s set up OpsPilot for your ${industryPages[id].short.toLowerCase().replace(/s$/, '')}.`, 'Tell us how your day runs. We will follow up to arrange a demo or workflow consultation.')];
+export { industryPages, industryOrder };
