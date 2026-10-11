@@ -816,7 +816,7 @@ export const openFollowUp = (d: Pick<DB, 'client_feedback'>, jobId: string) => d
 
 export interface SatAgg { key: string; label: string; n: number; avg: number; notSat: number; sat: number; very: number; quality: number; professionalism: number; communication: number }
 export interface SatisfactionStats {
-  n: number; avg: number; pctSatisfied: number; dist: Record<SatisfactionRating, number>; questions: { quality: number; professionalism: number; communication: number };
+  recommendN: number; recommendPct: number; n: number; avg: number; pctSatisfied: number; dist: Record<SatisfactionRating, number>; questions: { quality: number; professionalism: number; communication: number };
   byLeader: SatAgg[]; byCrew: SatAgg[]; byService: SatAgg[]; monthly: { month: string; avg: number; n: number }[]; followUps: ClientFeedback[];
 }
 const qmean = (x: (number | undefined)[]) => { const v = x.filter((n): n is number => !!n); return v.length ? round2(sum(v, (n) => n) / v.length) : 0; };
@@ -839,6 +839,7 @@ export function satisfactionStats(db: DB, from: string, to: string): Satisfactio
   for (const f of rows) { const k = f.service_date.slice(0, 7); const e = months.get(k) ?? { t: 0, n: 0 }; e.t += f.rating; e.n++; months.set(k, e); }
   return {
     questions: { quality: qmean(rows.map((f) => f.q_quality)), professionalism: qmean(rows.map((f) => f.q_professionalism)), communication: qmean(rows.map((f) => f.q_communication)) },
+    recommendN: rows.filter((f) => f.recommend).length, recommendPct: rows.filter((f) => f.recommend).length ? Math.round((rows.filter((f) => f.recommend === 'yes').length / rows.filter((f) => f.recommend).length) * 100) : 0,
     n: rows.length, avg: rows.length ? round2(sum(rows, (f) => f.rating) / rows.length) : 0, pctSatisfied: rows.length ? round2(((dist[2] + dist[3]) / rows.length) * 100) : 0, dist,
     byLeader: agg(rows.map((f) => [f.leader_id ?? '-', emp(f.leader_id), f])),
     byCrew: agg(rows.flatMap((f) => [...new Set([...(f.leader_id ? [f.leader_id] : []), ...f.crew_ids])].map((id): [string, string, ClientFeedback] => [id, emp(id), f]))),

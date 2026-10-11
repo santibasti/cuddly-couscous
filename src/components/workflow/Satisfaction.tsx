@@ -8,6 +8,8 @@ import { addDays, fmtDate, fmtDateTime } from '@/lib/util';
 import type { ClientFeedback, IssueCategory, SatisfactionRating } from '@/lib/types';
 
 const RATINGS: SatisfactionRating[] = [1, 2, 3];
+const RECOMMEND: ['yes' | 'maybe' | 'no', string, string, string][] = [['yes', '👍', 'Yes, definitely', 'good'], ['maybe', '🤔', 'Maybe', 'mid'], ['no', '👎', 'No', 'bad']];
+export const RECOMMEND_LABEL = { yes: 'Yes, definitely', maybe: 'Maybe', no: 'No' } as const;
 const TONE: Record<SatisfactionRating, string> = { 1: 'bad', 2: 'mid', 3: 'good' };
 
 /**
@@ -48,6 +50,18 @@ export function SatisfactionCheck({ value, onChange, disabled, clientMode }: { v
         </>
       )}
       {answered && r && (
+        <>
+          <div className="satq" style={{ marginTop: 16 }}>Would you recommend TopMop to your friends and family?</div>
+          <div className="smileys" role="radiogroup" aria-label="Would you recommend us">
+            {RECOMMEND.map(([k, emo, label, tone]) => (
+              <button key={k} type="button" role="radio" aria-checked={value.recommend === k} disabled={disabled} className={`smiley ${tone} ${value.recommend === k ? 'on' : ''}`} onClick={() => onChange({ ...value, recommend: k })}>
+                <span className="emo" aria-hidden="true">{emo}</span><span>{label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {answered && r && (
         <div className="stack" style={{ marginTop: 12 }}>
           <Field label="Additional comment (optional)"><input disabled={disabled} value={value.comment ?? ''} onChange={(e) => onChange({ ...value, comment: e.target.value })} /></Field>
           {low && !clientMode && (
@@ -71,13 +85,13 @@ export function IssuePicker({ value, onChange }: { value: Partial<SatisfactionIn
   );
 }
 /** Everything the handover needs before the report can be signed. */
-export const satisfactionComplete = (s: Partial<SatisfactionInput>) => SAT_QUESTIONS.every((q) => !!s[q.key]) && !!s.rating && (!needsFollowUp(s) || !!s.issue_category);
+export const satisfactionComplete = (s: Partial<SatisfactionInput>) => SAT_QUESTIONS.every((q) => !!s[q.key]) && !!s.rating && !!s.recommend && (!needsFollowUp(s) || !!s.issue_category);
 
 export function FeedbackSummary({ fb }: { fb: ClientFeedback }) {
   return (
     <div className="small">
       <b>{RATING_EMOJI[fb.rating]} {RATING_LABEL[fb.rating]}</b>
-      {fb.q_quality ? ` · cleaning ${fb.q_quality}/5 · crew ${fb.q_professionalism}/5 · communication ${fb.q_communication}/5` : ''}{fb.issue_category ? ` · ${fb.issue_category}` : ''}{fb.aspects.length ? ` · ${fb.aspects.join(', ')}` : ''}{fb.comment ? ` · “${fb.comment}”` : ''}
+      {fb.q_quality ? ` · cleaning ${fb.q_quality}/5 · crew ${fb.q_professionalism}/5 · communication ${fb.q_communication}/5` : ''}{fb.recommend ? ` · would recommend: ${RECOMMEND_LABEL[fb.recommend]}` : ''}{fb.issue_category ? ` · ${fb.issue_category}` : ''}{fb.aspects.length ? ` · ${fb.aspects.join(', ')}` : ''}{fb.comment ? ` · “${fb.comment}”` : ''}
       {fb.follow_up === 'Required' && <> <Badge tone="red">Follow-up required</Badge></>}{fb.follow_up === 'Acknowledged' && <> <Badge tone="green">Acknowledged</Badge></>}
     </div>
   );
@@ -131,6 +145,7 @@ export function SatisfactionDashboard({ from, to }: { from: string; to: string }
         <div className="stat navy"><div className="k">Average rating</div><div className="v">{st.n ? st.avg.toFixed(2) : '—'} <span className="small">/ 3</span></div><div className="s">{st.n} response{st.n === 1 ? '' : 's'}</div></div>
         <div className="stat good"><div className="k">😊 Very Satisfied</div><div className="v">{st.dist[3]}</div><div className="s">{st.n ? Math.round((st.dist[3] / st.n) * 100) : 0}%</div></div>
         <div className="stat"><div className="k">😐 Satisfied</div><div className="v">{st.dist[2]}</div><div className="s">{st.n ? Math.round((st.dist[2] / st.n) * 100) : 0}%</div></div>
+        <div className="stat"><div className="k">👍 Would recommend us</div><div className="v">{st.recommendN ? `${st.recommendPct}%` : '—'}</div><div className="s">{st.recommendN} answered</div></div>
         <div className="stat"><div className="k">Question averages (1–5)</div><div className="v small" style={{ fontSize: 15 }}>Cleaning {st.questions.quality || '—'} · Crew {st.questions.professionalism || '—'} · Comm. {st.questions.communication || '—'}</div><div className="s">quality · professionalism · communication</div></div>
         <div className={`stat ${st.dist[1] ? 'bad' : ''}`}><div className="k">😞 Not Satisfied</div><div className="v">{st.dist[1]}</div><div className="s">{st.followUps.length} follow-up{st.followUps.length === 1 ? '' : 's'} open</div></div>
       </div>

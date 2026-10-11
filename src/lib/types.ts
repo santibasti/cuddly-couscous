@@ -615,6 +615,7 @@ export interface ClientFeedback extends Base {
   q_quality?: number; q_professionalism?: number; q_communication?: number;
   aspects: string[];                 // legacy ticked items (no longer asked)
   comment?: string;
+  recommend?: 'yes' | 'maybe' | 'no'; // would the client recommend TopMop to friends and family
   issue_category?: IssueCategory;    // required from the Team Leader when Not Satisfied
   follow_up: 'None' | 'Required' | 'Acknowledged';
   ack_note?: string; ack_by?: string; ack_at?: string;
