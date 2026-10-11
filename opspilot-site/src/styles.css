@@ -880,3 +880,32 @@ option { background: #0b1733; color: #fff; }
 .choice-4 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 @media (min-width: 640px) { .choice-4 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } }
 .theme-light .scope-summary h3 { color: #fff; }
+
+/* ===== Dedicated industry pages ===== */
+.btn-ghost-dark { background: transparent; color: var(--ink); border-color: rgba(143, 176, 255, .4); }
+.btn-ghost-dark:hover { background: rgba(61, 123, 255, .1); border-color: #8db2ff; }
+.theme-light .btn-ghost-dark { color: #0b1a3a; border-color: #b9c8ec; }
+.theme-light .btn-ghost-dark:hover { background: #e6eeff; border-color: #2563ff; }
+.crumbs { margin-bottom: 18px; }
+.crumbs ol { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 0; font-size: .86rem; color: #9fb2da; }
+.crumbs li + li::before { content: "/"; margin: 0 10px; opacity: .5; }
+.crumbs a { color: #cfdcff; text-decoration: none; }
+.crumbs a:hover { text-decoration: underline; }
+.crumbs [aria-current] { color: #fff; font-weight: 600; }
+.hero-actions { justify-content: center; margin-top: 28px; }
+.page-hero .eyebrow .icon { color: var(--lime); }
+.problem-to p { margin-top: 0; font-size: 1rem; color: var(--text); }
+.problem-to { border-left-color: var(--lime); }
+.dash-head .eyebrow { color: #bcd0ff; }
+.section-flush { padding-top: clamp(36px, 5vw, 64px); padding-bottom: clamp(36px, 5vw, 64px); }
+.how { padding: clamp(20px, 3vw, 30px); border-radius: var(--radius); background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--card-shadow); }
+.how h3 { font-size: 1.25rem; margin-bottom: 14px; }
+.how-list { display: grid; gap: 14px; counter-reset: h; margin-bottom: 22px; }
+.how-list li { display: grid; gap: 2px; padding-left: 44px; position: relative; counter-increment: h; }
+.how-list li::before { content: counter(h); position: absolute; left: 0; top: 0; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: #0b1a3a; color: var(--lime); font-weight: 800; font-size: .86rem; }
+.how-list b { color: var(--ink); }
+.how-list span { color: var(--text); font-size: .94rem; }
+.split-copy .more-note { margin-top: 18px; background: #fff6d6; border-color: #f0d98a; color: #5c4000; }
+.theme-light .more-note { background: #fff6d6; border-color: #f0d98a; color: #5c4000; }
+.theme-light .more-note .icon { color: #b97a00; }
+.center-block .also-list { margin-top: 18px; }
