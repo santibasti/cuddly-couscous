@@ -134,7 +134,7 @@ export const engagement = [
 ];
 
 export const faqs = [
-  { q: 'Can we start with one module?', a: 'Yes. Many businesses begin with the area that hurts most, such as attendance, equipment or billing, and add modules later. Additional modules are quoted separately.' },
+  { q: 'Can we start with one module?', a: 'Yes. You can begin with the area that hurts most, such as attendance, equipment or billing, and add modules later. Additional modules are quoted separately.' },
   { q: 'Can staff use phones and tablets?', a: 'The system is designed to be used in a web browser on phones, tablets and computers. It needs an internet connection; offline operation is not currently offered as a standard feature.' },
   { q: 'How does customization work?', a: 'We map your workflow first, then agree which screens, fields, roles and rules to configure. Changes within the agreed scope are part of the build; major changes after launch are quoted separately.' },
   { q: 'What is included in monthly support?', a: 'Hosting, maintenance, backups and defined support. The exact response arrangements and what counts as a major change are set out in your agreement.' },

@@ -578,3 +578,32 @@ option { background: #0b1733; color: #fff; }
 .ticker { background: rgba(5, 11, 28, .8); }
 .section-navy { background: linear-gradient(180deg, rgba(7, 15, 36, .6), rgba(10, 22, 52, .85)); }
 .site-footer { background-color: #040a1a; }
+
+/* Consent, contact actions, meet card, privacy */
+.check { display: flex; gap: 12px; align-items: flex-start; font-weight: 400; font-size: .88rem; color: var(--text); cursor: pointer; }
+.check input { width: 20px; height: 20px; min-height: 0; flex: none; margin-top: 2px; accent-color: #b6f23a; }
+.check a { font-weight: 600; }
+.form-status[data-kind="notice"] { color: #ffe6a3; }
+.contact-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+.meet { display: flex; gap: 16px; align-items: center; margin-top: 28px; padding: 18px; border-radius: var(--radius); background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--card-shadow); }
+.meet-photo { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; flex: none; }
+.meet-initials { display: grid; place-items: center; font-weight: 800; font-size: 1.4rem; color: var(--navy); background: linear-gradient(135deg, #b6f23a, #6fe0c4); }
+.meet strong { display: block; color: #fff; font-size: 1.1rem; }
+.meet > div span { display: block; font-size: .92rem; color: var(--text); }
+.meet-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: .92rem; }
+.privacy { padding-block: clamp(40px, 6vw, 72px); background: rgba(5, 11, 28, .6); }
+.privacy-wrap { max-width: 760px; display: grid; gap: 14px; font-size: .95rem; }
+.privacy h2 { font-size: 1.5rem; }
+.privacy ul { display: grid; gap: 10px; padding-left: 18px; list-style: disc; }
+.privacy strong { color: #fff; }
+.footer-small a { color: #fff; }
+
+/* Readability: raise the smallest text sizes */
+.pvx { font-size: .84rem; } .pvx-h { font-size: .9rem; } .pvx-h small, .pv-stat small, .pv-row small { font-size: .74rem; }
+.pv-row strong, .pv-tab-h, .pv-check li, .pv-bay strong { font-size: .84rem; } .pv-line { font-size: .8rem; } .pv-btn { font-size: .82rem; }
+.pvx .status { font-size: .72rem; } .win-bar span { font-size: .74rem; } .win-bar em { font-size: .7rem; }
+.work-concept .pvx { font-size: .82rem; }
+.contact-list span { font-size: .76rem; } .card-idx { font-size: .78rem; } .eyebrow { font-size: .76rem; }
+.work-group-h { font-size: .82rem; } .work-group-h small { font-size: .8rem; }
+.hero-points { font-size: .98rem; } .facts dd { font-size: .88rem; } .float-badge span { font-size: .78rem; } .float-badge strong { font-size: .88rem; }
+.ticker-label { font-size: .78rem; } .dash-foot { font-size: .8rem; }

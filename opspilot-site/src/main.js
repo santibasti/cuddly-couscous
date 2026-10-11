@@ -47,7 +47,7 @@
     const bad = [...form.elements].filter((f) => f.required && !f.checkValidity());
     if (bad.length) {
       bad.forEach((f) => f.setAttribute('aria-invalid', 'true'));
-      say('Please complete the highlighted fields.', 'error');
+      say('Please complete the required fields and tick the consent box.', 'error');
       bad[0].focus();
       return;
     }
@@ -55,7 +55,15 @@
 
     const endpoint = form.dataset.endpoint;
     if (!endpoint) {
-      say('Not sent. This form is not connected to a submission service yet, so your details were not delivered.', 'error');
+      // No submission service configured: hand the request to the visitor's email app. Nothing is "sent" by us.
+      const d = Object.fromEntries(new FormData(form)), to = form.dataset.mailto;
+      let body = `Name: ${d.name}\nCompany: ${d.company}\nBusiness type: ${d.business_type}\nEmail: ${d.email}\nPhone: ${d.phone}\n\nWorkflow to improve:\n${d.workflow}`;
+      const make = () => `mailto:${to}?subject=${encodeURIComponent('Demo request: ' + d.company)}&body=${encodeURIComponent(body)}`;
+      let url = make();
+      if (url.length > 1900) { body = body.slice(0, 900) + '…'; url = make(); }
+      const a = document.createElement('a');
+      a.href = url; document.body.append(a); a.click(); a.remove();
+      say(`Your email app should open with your request ready. Please press Send there; we have not received anything yet. If nothing opens, email ${to} directly.`, 'notice');
       return;
     }
     const submit = form.querySelector('button[type=submit]');
@@ -67,7 +75,7 @@
       form.reset();
       say('Thank you. Your inquiry was received. We will follow up to arrange your demo or consultation.', 'success');
     } catch {
-      say('Something went wrong and your inquiry was not sent. Please try again later.', 'error');
+      say(`Something went wrong and your inquiry was not sent. Please try again, or email ${form.dataset.mailto}.`, 'error');
     } finally {
       submit.disabled = false;
     }
@@ -90,7 +98,7 @@
       const t = currentType(), picked = chosen();
       typeLine.textContent = t.label;
       list.replaceChildren(...picked.map((name) => Object.assign(document.createElement('li'), { textContent: name })));
-      count.textContent = picked.length === 1 ? 'Starting with one module is a good way to begin; we confirm the order with you.' : picked.length > 1 ? `${picked.length} modules. Many businesses start with one or two and add the rest later.` : '';
+      count.textContent = picked.length === 1 ? 'Starting with one module is a good way to begin; we confirm the order with you.' : picked.length > 1 ? `${picked.length} modules selected. You can start with the most important one and add the rest later.` : '';
       send.disabled = picked.length === 0;
       hint.hidden = picked.length > 0;
     };

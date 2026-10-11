@@ -3,6 +3,9 @@ import { icon, logoMark } from './icons.mjs';
 import * as c from './content.mjs';
 import { heroDashboard, fullDashboard } from './dashboard.mjs';
 
+const telHref = (m) => 'tel:+63' + m.replace(/\D/g, '').replace(/^0/, '');
+const prettyMobile = (m) => m.replace(/\D/g, '').replace(/^(\d{4})(\d{3})(\d{4})$/, '$1 $2 $3');
+
 export const button = (label, href, variant = 'primary', extra = '') =>
   `<a class="btn btn-${variant}" href="${href}">${label}${variant === 'primary' || variant === 'lime' ? icon('arrow', 18) : ''}${extra}</a>`;
 
@@ -236,7 +239,14 @@ export const process = () => `
   </div>
 </section>`;
 
-export const about = () => `
+const meetCard = (config) => `
+      <div class="meet">
+        ${config.photo ? `<img class="meet-photo" src="${config.photo}" alt="${config.contactPerson}" width="72" height="72" loading="lazy">` : `<span class="meet-photo meet-initials" aria-hidden="true">${config.contactPerson.split(' ').map((w) => w[0]).join('').slice(0, 2)}</span>`}
+        <div><strong>${config.contactPerson}</strong><span>Your contact for demos and workflow consultations</span>
+          <p class="meet-links"><a href="mailto:${config.email}">${config.email}</a><a href="${telHref(config.mobile)}">${prettyMobile(config.mobile)}</a></p></div>
+      </div>`;
+
+export const about = (config) => `
 <section class="section" id="about" aria-labelledby="about-title">
   <div class="container about-grid">
     <div class="reveal">
@@ -244,6 +254,7 @@ export const about = () => `
       <h2 id="about-title">Practical systems for the way real businesses run.</h2>
       <p class="lead">OpsPilot builds custom business systems for Philippine MSMEs. We focus on everyday workflows (who worked where, what equipment went out, what was billed and what has been paid) and on systems that your staff can actually use.</p>
       <p class="lead">We would rather understand your operation properly than hand you a generic package.</p>
+      ${meetCard(config)}
     </div>
     <ul class="principles">
       ${c.principles.map((p) => `<li class="principle reveal"><span class="card-ico card-ico-blue">${icon(p.icon, 24)}</span><div><h3>${p.title}</h3><p>${p.text}</p></div></li>`).join('')}
@@ -319,8 +330,6 @@ export const faq = () => `
   </div>
 </section>`;
 
-const telHref = (m) => 'tel:+63' + m.replace(/\D/g, '').replace(/^0/, '');
-const prettyMobile = (m) => m.replace(/\D/g, '').replace(/^(\d{4})(\d{3})(\d{4})$/, '$1 $2 $3');
 const contactDetails = (config) => `
       <ul class="contact-list">
         ${config.email ? `<li>${icon('mail', 20)}<div><span>Email</span><a href="mailto:${config.email}">${config.email}</a></div></li>` : ''}
@@ -328,6 +337,15 @@ const contactDetails = (config) => `
         ${config.address ? `<li>${icon('pin', 20)}<div><span>Office</span><address>${config.address}</address></div></li>` : ''}
         ${config.officeHours ? `<li>${icon('clock', 20)}<div><span>Office hours</span><p>${config.officeHours}</p></div></li>` : ''}
       </ul>`;
+
+const contactActions = (config) => {
+  const b = [];
+  if (config.bookingUrl) b.push(`<a class="btn btn-lime" href="${config.bookingUrl}" rel="noopener">Book a consultation${icon('arrow', 18)}</a>`);
+  if (config.messengerUrl) b.push(`<a class="btn btn-ghost" href="${config.messengerUrl}" rel="noopener">Message on Messenger</a>`);
+  if (config.viberNumber) b.push(`<a class="btn btn-ghost" href="viber://chat?number=%2B${config.viberNumber.replace(/\D/g, '')}">Chat on Viber</a>`);
+  if (config.whatsappNumber) b.push(`<a class="btn btn-ghost" href="https://wa.me/${config.whatsappNumber.replace(/\D/g, '')}" rel="noopener">WhatsApp</a>`);
+  return b.length ? `<div class="contact-actions">${b.join('')}</div>` : '';
+};
 
 export const contact = (config) => `
 <section class="section section-navy" id="contact" aria-labelledby="contact-title">
@@ -338,9 +356,10 @@ export const contact = (config) => `
       <p class="lead lead-dark">Tell us which workflow is giving you the most trouble. We will follow up to arrange a demo or workflow consultation.</p>
       <p class="contact-person"><span>Contact person</span><strong>${config.contactPerson}</strong></p>
       ${contactDetails(config)}
+      ${contactActions(config)}
     </div>
-    <form class="form reveal" id="contact-form" novalidate data-endpoint="${config.formEndpoint || ''}" ${config.formEndpoint ? 'action="' + config.formEndpoint + '" ' : ''}method="post">
-      ${config.formEndpoint ? '' : `<p class="form-notice" role="note">${icon('alert', 18)}<span><strong>This form is not connected yet.</strong> Submitting will not send your details anywhere. Please email <a href="mailto:${config.email}">${config.email}</a> or call ${prettyMobile(config.mobile)} instead.</span></p>`}
+    <form class="form reveal" id="contact-form" novalidate data-endpoint="${config.formEndpoint || ''}" data-mailto="${config.email}" ${config.formEndpoint ? 'action="' + config.formEndpoint + '" ' : ''}method="post">
+      ${config.formEndpoint ? '' : `<p class="form-notice" role="note">${icon('mail', 18)}<span><strong>How this form works:</strong> sending opens your email app with your request ready to go to <a href="mailto:${config.email}">${config.email}</a>. We receive it only once you press Send there. You can also call ${prettyMobile(config.mobile)}.</span></p>`}
       <div class="field"><label for="f-name">Name</label><input id="f-name" name="name" type="text" autocomplete="name" required></div>
       <div class="field"><label for="f-company">Company</label><input id="f-company" name="company" type="text" autocomplete="organization" required></div>
       <div class="field"><label for="f-type">Business type</label>
@@ -350,10 +369,25 @@ export const contact = (config) => `
         <div class="field"><label for="f-phone">Phone</label><input id="f-phone" name="phone" type="tel" autocomplete="tel" required></div>
       </div>
       <div class="field"><label for="f-workflow">Workflow to improve</label><textarea id="f-workflow" name="workflow" rows="4" required placeholder="e.g. Tracking crew attendance and equipment across sites"></textarea></div>
+      <div class="consent"><label class="check"><input type="checkbox" name="consent" value="yes" required><span>I agree that OpsPilot may use these details to respond to my inquiry, as described in the <a href="#privacy">privacy notice</a>.</span></label></div>
       <div class="hp" aria-hidden="true"><label>Leave empty<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
       <button class="btn btn-lime" type="submit">Send request${icon('arrow', 18)}</button>
       <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
     </form>
+  </div>
+</section>`;
+
+export const privacy = (config) => `
+<section class="section privacy" id="privacy" aria-labelledby="privacy-title">
+  <div class="container privacy-wrap">
+    <h2 id="privacy-title">Privacy notice</h2>
+    <p>When you use the contact form on this site, you give us your name, company, business type, email address, phone number and a description of the workflow you want to improve.</p>
+    <ul>
+      <li><strong>Why we use it:</strong> to reply to your inquiry and arrange a demo or workflow consultation.</li>
+      <li><strong>Who sees it:</strong> OpsPilot. If a form-handling service is connected to this site, that service processes the submission on our behalf; your email app is used if it is not.</li>
+      <li><strong>How long we keep it:</strong> only as long as needed to respond to you and, if we work together, for the engagement.</li>
+      <li><strong>Your choices:</strong> you can ask us to see, correct or delete your details at any time by writing to <a href="mailto:${config.email}">${config.email}</a>.</li>
+    </ul>
   </div>
 </section>`;
 
@@ -363,6 +397,6 @@ export const footer = (config) => `
     ${logo(true)}
     <p class="footer-tag">Your business. One clear system.</p>
     <p class="footer-contact"><a href="mailto:${config.email}">${config.email}</a><span aria-hidden="true">·</span><a href="${telHref(config.mobile)}">${prettyMobile(config.mobile)}</a><span aria-hidden="true">·</span><span>${config.address}</span></p>
-    <p class="footer-small">© <span id="year">${new Date().getFullYear()}</span> OpsPilot. Dashboards and previews on this site are illustrative and use sample data.</p>
+    <p class="footer-small">© <span id="year">${new Date().getFullYear()}</span> OpsPilot. Dashboards and previews on this site are illustrative and use sample data. <a href="#privacy">Privacy notice</a></p>
   </div>
 </footer>`;

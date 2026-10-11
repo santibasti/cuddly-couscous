@@ -6,5 +6,11 @@
   "officeHours": "",
   "siteUrl": "",
   "formEndpoint": "",
-  "_notes": "formEndpoint: set to a form-submission URL (e.g. a Formspree/Basin/Getform endpoint or your own API). It is a public URL, not a secret. Leave empty until configured; the form then says it is not connected and never reports success. officeHours: leave empty to hide; set e.g. \"Mon–Fri, 9:00 AM–6:00 PM\" when confirmed. siteUrl: set to the public address (e.g. https://opspilot.ph, no trailing slash) once the domain is connected; the build then adds canonical/og:url tags and sitemap.xml."
+  "_notes": "formEndpoint: set to a form-submission URL (e.g. a Formspree/Basin/Getform endpoint or your own API). It is a public URL, not a secret. Leave empty until configured; the form then says it is not connected and never reports success. officeHours: leave empty to hide; set e.g. \"Mon–Fri, 9:00 AM–6:00 PM\" when confirmed. siteUrl: set to the public address (e.g. https://opspilot.ph, no trailing slash) once the domain is connected; the build then adds canonical/og:url tags and sitemap.xml.",
+  "photo": "",
+  "bookingUrl": "",
+  "messengerUrl": "",
+  "viberNumber": "",
+  "whatsappNumber": "",
+  "_notes2": "Optional buttons appear in the contact section only when set: bookingUrl (Cal.com/Calendly link), messengerUrl (e.g. https://m.me/yourpage), viberNumber / whatsappNumber (digits with country code, e.g. 639193185860), photo (path to an image placed in public/, e.g. jig.jpg)."
 }

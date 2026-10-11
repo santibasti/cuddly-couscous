@@ -23,6 +23,8 @@ const html = `<!doctype html>
 <meta property="og:description" content="${description}">
 <meta property="og:type" content="website">
 ${config.siteUrl ? `<link rel="canonical" href="${config.siteUrl}/">\n<meta property="og:url" content="${config.siteUrl}/">` : ''}
+${config.siteUrl ? `<meta property="og:image" content="${config.siteUrl}/og.png">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n<meta name="twitter:card" content="summary_large_image">` : ''}
+<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'ProfessionalService', name: 'OpsPilot', description, email: config.email, telephone: '+63' + config.mobile.replace(/\D/g, '').replace(/^0/, ''), address: { '@type': 'PostalAddress', addressLocality: config.address, addressCountry: 'PH' }, ...(config.siteUrl ? { url: config.siteUrl } : {}) })}</script>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 <script>document.documentElement.classList.add('js')</script>
@@ -38,12 +40,13 @@ ${ui.solutions()}
 ${ui.sampleDashboard()}
 ${ui.industries()}
 ${ui.work()}
-${ui.process()}
-${ui.about()}
-${ui.engagement()}
 ${ui.scopeBuilder()}
+${ui.process()}
+${ui.about(config)}
+${ui.engagement()}
 ${ui.faq()}
 ${ui.contact(config)}
+${ui.privacy(config)}
 </main>
 ${ui.footer(config)}
 <script src="main.js" defer></script>

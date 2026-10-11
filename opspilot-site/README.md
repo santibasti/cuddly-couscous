@@ -17,8 +17,11 @@ npm run dev     # build + preview at http://localhost:4173
 - `site.config.json` – contact person and form endpoint
 - `public/favicon.svg` – brand favicon
 
-## Contact form – needs configuration
-No submission service is configured. Until `formEndpoint` in `site.config.json` is set to a form-handling URL (Formspree, Basin, Getform, or your own API; it is a public URL, not a secret) and the site is rebuilt, the form shows a "not connected" notice and reports "Not sent" on submit. Success is shown only after the endpoint returns an OK response.
+## Contact form
+- **Out of the box (no service configured):** submitting opens the visitor's email app with the request pre-written to `info@opspilot.ph`. The page says plainly that nothing has been received until they press Send there.
+- **To receive submissions directly:** create an account with a form service (Formspree, Basin, Getform, or FormSubmit.co, which needs a one-time email activation), paste its endpoint URL into `formEndpoint` in `site.config.json`, and redeploy. Success is shown only after the service returns OK.
+- A consent checkbox and a privacy notice (`#privacy`) are included. The notice is a plain-language draft: have it reviewed for Data Privacy Act requirements.
+- Optional contact buttons (booking link, Messenger, Viber, WhatsApp) and a photo for the contact card appear only when set in `site.config.json`.
 
 ## Still to supply
 Public domain, email/phone/address (none invented), real screenshots for the project showcase, and the form endpoint.

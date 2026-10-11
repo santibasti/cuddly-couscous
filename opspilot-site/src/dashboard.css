@@ -166,3 +166,11 @@
 .aging-key i { width: 9px; height: 9px; border-radius: 3px; flex: none; }
 .aging-key b { margin-left: auto; color: var(--d-text); font-variant-numeric: tabular-nums; }
 .is-visible .aging-bar i { animation: grow-x 1.1s cubic-bezier(.3, .7, .2, 1) both; }
+
+/* Readability: raise the smallest dashboard text */
+.kpi-label { font-size: .8rem; } .kpi-note { font-size: .78rem; } .dash-sub { font-size: .8rem; }
+.badge-illus, .badge-sample { font-size: .74rem; } .dash-table { font-size: .86rem; } .dash-table thead th { font-size: .7rem; } .dash-table tbody th { font-size: .82rem; }
+.status { font-size: .78rem; } .att-tag { font-size: .7rem; } .att-text { font-size: .84rem; } .attention strong { font-size: .9rem; }
+.ring-label { font-size: .84rem; } .ring-sub { font-size: .78rem; } .site-list li { font-size: .86rem; } .map-note { font-size: .8rem; }
+.legend { font-size: .8rem; } .legend small, .legend-unit { font-size: .74rem; } .ch-axis { font-size: 12px; } .aging-key { font-size: .8rem; } .aging-h { font-size: .84rem; }
+.tbl-view { font-size: .86rem; } .ch-tip span { font-size: .84rem; } .ch-tip small { font-size: .74rem; }
