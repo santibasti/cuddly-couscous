@@ -114,3 +114,13 @@ The database records these events itself (migrations `0044`/`0045`, table `alert
 4. Dashboard → Database → Webhooks → create: table `alert_outbox`, event `Insert`, type *Supabase Edge Function* → `send-alerts`, add HTTP header `x-webhook-secret: <the same text>`.
 
 Messages use plain letters ("PHP 12,117.28") so each stays within 160 characters per SMS credit. Failed sends are kept in `alert_outbox` (`error`, `attempts`) and retried the next time the function runs.
+
+## SMS reminders to clients (day before and 7:00 AM on the service day)
+
+Needs the same Semaphore account/secrets as the owner alerts (`SEMAPHORE_API_KEY`, optional `SEMAPHORE_SENDER`) and no `WEBHOOK_SECRET` (the scheduler does not send one).
+
+1. `supabase.cmd db push` (migration `0048`: log table + a pg_cron job that runs every 10 minutes; if it prints a notice that scheduling failed, enable the **pg_cron** and **pg_net** extensions under Database → Extensions and run the `do $$ ... $$` block from the migration again).
+2. `supabase functions deploy send-client-reminders --no-verify-jwt`
+3. In the app: Admin → Settings → Notifications & reminders → tick **SMS reminders to clients** and set the two send times, then **Save**.
+
+Each reminder is sent once per job and service date. `client_sms_log` shows what was sent, to which number, and any error (for example a client with no valid mobile number).

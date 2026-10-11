@@ -59,6 +59,7 @@ export function seedDB(): DB {
       { key: 'wtax', label: 'Withholding tax on compensation', mode: 'percent', value: 10, min: 0, max: 0, threshold: 10417 },
     ],
     channels: { email: true, sms: false, whatsapp: true },
+    client_sms: { enabled: false, day_before_time: '17:00', morning_time: '07:00' },
     reminder_days: { quote_expiry: 5, doc_expiry: 30, chemical_expiry: 30, invoice_due: 5, maintenance: 7 },
     glass_group_size: 4,
     access: clone(DEFAULT_ACCESS) as Record<Role, string[]>,

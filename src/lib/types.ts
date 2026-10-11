@@ -890,6 +890,8 @@ export interface Settings {
   grace_minutes: number;
   statutory: StatutoryRate[];
   channels: { email: boolean; sms: boolean; whatsapp: boolean };
+  /** SMS reminders to the client (sent by the send-client-reminders Edge Function): off until Admin turns it on */
+  client_sms?: { enabled: boolean; day_before_time: string; morning_time: string };
   reminder_days: { quote_expiry: number; doc_expiry: number; chemical_expiry: number; invoice_due: number; maintenance: number };
   glass_group_size: number;
   access: Record<Role, string[]>; // permission overrides (editable by owner)
