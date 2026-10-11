@@ -40,7 +40,7 @@
   const status = $('#form-status');
   const say = (msg, kind) => { status.textContent = msg; status.dataset.kind = kind; };
 
-  form.addEventListener('submit', async (e) => {
+  if (form) form.addEventListener('submit', async (e) => {
     e.preventDefault();
     say('', '');
     form.querySelectorAll('[aria-invalid]').forEach((f) => f.removeAttribute('aria-invalid'));
@@ -108,16 +108,25 @@
     applyPreset();
 
     send.addEventListener('click', () => {
-      const f = $('#contact-form'), t = currentType();
-      f.elements.business_type.value = data.businessTypes[t.formType];
-      const lines = ['Scope outline from the website scope builder:', ...chosen().map((m) => '- ' + m)];
-      const n = chosenNotes();
-      if (n.length) lines.push('', 'Also: ' + n.join('; ') + '.');
-      const ta = f.elements.workflow;
-      ta.value = lines.join('\n');
-      $('#contact').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
-      setTimeout(() => f.elements.name.focus({ preventScroll: true }), reduced ? 0 : 500);
+      const t = currentType();
+      const q = new URLSearchParams({ t: t.id, m: mods.filter((m) => m.checked).map((m) => m.value).join(','), n: notes.filter((n) => n.checked).map((n) => n.value).join(',') });
+      location.href = 'contact.html?' + q.toString() + '#contact-form';
     });
+  }
+
+  // Contact page: prefill the form from a scope outline passed in the link (?t=&m=&n=).
+  if (form && data) {
+    const q = new URLSearchParams(location.search);
+    const t = data.types.find((x) => x.id === q.get('t'));
+    const ms = (q.get('m') || '').split(',').filter((v) => /^\d+$/.test(v) && data.modules[+v]);
+    if (t && ms.length) {
+      form.elements.business_type.value = data.businessTypes[t.formType];
+      const ns = (q.get('n') || '').split(',').map((id) => (data.notes.find((x) => x.id === id) || {}).label).filter(Boolean);
+      const lines = ['Scope outline from the website scope builder:', ...ms.map((v) => '- ' + data.modules[+v])];
+      if (ns.length) lines.push('', 'Also: ' + ns.join('; ') + '.');
+      form.elements.workflow.value = lines.join('\n');
+      say('We added your scope outline to the form below. Please check it and fill in the rest.', 'notice');
+    }
   }
 
   // ---- Premium layer: scroll progress, card spotlight, count-up, interactive chart ----
@@ -128,7 +137,7 @@
   }
 
   if (!reduced && matchMedia('(hover: hover)').matches) {
-    document.querySelectorAll('.card, .industry, .engage, .principle, .step, .problem').forEach((el) => {
+    document.querySelectorAll('.card, .industry, .engage, .principle, .step, .problem, .mini').forEach((el) => {
       el.setAttribute('data-spot', '');
       el.addEventListener('pointermove', (e) => {
         const r = el.getBoundingClientRect();

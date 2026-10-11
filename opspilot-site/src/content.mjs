@@ -1,12 +1,12 @@
 // All page copy lives here so wording can be reviewed in one place.
 
 export const nav = [
-  ['Home', '#home'],
-  ['Solutions', '#solutions'],
-  ['Industries', '#industries'],
-  ['Our Work', '#work'],
-  ['About', '#about'],
-  ['Contact', '#contact'],
+  ['Home', 'index.html'],
+  ['Solutions', 'solutions.html'],
+  ['Industries', 'industries.html'],
+  ['Our Work', 'work.html'],
+  ['About', 'about.html'],
+  ['Contact', 'contact.html'],
 ];
 
 export const problems = [
@@ -43,30 +43,33 @@ export const problems = [
 ];
 
 export const solutions = [
-  { icon: 'clock', title: 'Attendance and payroll preparation', points: ["Time-in and time-out recorded per job and crew", "Supervisor verification before figures are used", "Payroll figures prepared from approved rules"], text: 'Capture attendance, review and verify it, then prepare payroll figures from verified attendance and the pay rules your business has approved. Final payroll and statutory obligations stay with your business and its advisers.' },
-  { icon: 'box', title: 'Inventory and equipment tracking', points: ["Stock levels for supplies and consumables", "Equipment issued to a named person or crew", "Return records with overdue items flagged"], text: 'Track supplies and equipment: what is in stock, what has been issued, to whom, and what has been returned.' },
-  { icon: 'calendar', title: 'Bookings, jobs and crew assignments', points: ["Job and booking schedule by day", "Crew assignment for each job", "Status from request to completion"], text: 'Schedule jobs or bookings, assign crews and keep status visible from request to completion.' },
-  { icon: 'quote', title: 'Quotations and approved scope changes', points: ["Quotations prepared from your service list", "Additional work recorded and approved", "Approved changes carried into the bill"], text: 'Prepare quotations, then record approved changes to scope so additional work is traceable to the bill.' },
-  { icon: 'report', title: 'Service reports and client sign-off', points: ["Checklist completed on a phone or tablet", "Notes kept together with the job", "Client acknowledgement recorded"], text: 'Complete service reports on a phone or tablet and capture the client’s acknowledgement for your records.' },
-  { icon: 'wallet', title: 'Sales, expenses, billing and collections', points: ["Sales and expenses recorded daily", "Payments logged against each bill", "Outstanding balances by client"], text: 'Record sales and expenses, issue bills, log payments and follow up outstanding balances.' },
-  { icon: 'dashboard', title: 'Management dashboards and reports', points: ["Daily view of jobs, crews and equipment", "Sales, payments and balances in one place", "Items needing attention highlighted"], text: 'Daily and periodic views built from the records your team already enters, so reports need no re-typing.' },
+  { icon: 'clock', title: 'Attendance and payroll preparation', short: 'Verified attendance, with payroll figures prepared from approved rules.', points: ["Time-in and time-out recorded per job and crew", "Supervisor verification before figures are used", "Payroll figures prepared from approved rules"], text: 'Capture attendance, review and verify it, then prepare payroll figures from verified attendance and the pay rules your business has approved. Final payroll and statutory obligations stay with your business and its advisers.' },
+  { icon: 'box', title: 'Inventory and equipment tracking', short: 'Know what is in stock, who has which equipment and what came back.', points: ["Stock levels for supplies and consumables", "Equipment issued to a named person or crew", "Return records with overdue items flagged"], text: 'Track supplies and equipment: what is in stock, what has been issued, to whom, and what has been returned.' },
+  { icon: 'calendar', title: 'Bookings, jobs and crew assignments', short: 'Schedule jobs and bookings and assign crews with clear status.', points: ["Job and booking schedule by day", "Crew assignment for each job", "Status from request to completion"], text: 'Schedule jobs or bookings, assign crews and keep status visible from request to completion.' },
+  { icon: 'quote', title: 'Quotations and approved scope changes', short: 'Quotations and approved scope changes carried into the bill.', points: ["Quotations prepared from your service list", "Additional work recorded and approved", "Approved changes carried into the bill"], text: 'Prepare quotations, then record approved changes to scope so additional work is traceable to the bill.' },
+  { icon: 'report', title: 'Service reports and client sign-off', short: 'Service reports and client sign-off from a phone or tablet.', points: ["Checklist completed on a phone or tablet", "Notes kept together with the job", "Client acknowledgement recorded"], text: 'Complete service reports on a phone or tablet and capture the client’s acknowledgement for your records.' },
+  { icon: 'wallet', title: 'Sales, expenses, billing and collections', short: 'Record sales and expenses, bill clients and follow up balances.', points: ["Sales and expenses recorded daily", "Payments logged against each bill", "Outstanding balances by client"], text: 'Record sales and expenses, issue bills, log payments and follow up outstanding balances.' },
+  { icon: 'dashboard', title: 'Management dashboards and reports', short: 'One daily view of jobs, people, equipment and money.', points: ["Daily view of jobs, crews and equipment", "Sales, payments and balances in one place", "Items needing attention highlighted"], text: 'Daily and periodic views built from the records your team already enters, so reports need no re-typing.' },
 ];
 
 export const industries = [
   {
     icon: 'wrench',
+    id: 'service-contractors', preview: 'topmop', intro: 'Crew deployment, equipment, quotations, reports and collections for contractors who send teams to client sites.',
     title: 'Service contractors',
     sub: 'Cleaning, maintenance and similar crews',
     items: ['Crew deployment and attendance by site', 'Equipment issued to crews and returned', 'Quotations and approved scope changes', 'Service reports with client sign-off', 'Billing and collections follow-up'],
   },
   {
     icon: 'flag',
+    id: 'driving-ranges', preview: 'range', intro: 'Bay availability, player tabs, buckets, food and beverage orders, checkout and reports for recreation facilities.',
     title: 'Driving ranges',
     sub: 'Recreation facilities and cafés',
     items: ['Bay availability', 'Player tabs and bucket tracking', 'Food and beverage orders', 'Checkout and payment recording', 'Daily and shift reports'],
   },
   {
     icon: 'drop',
+    id: 'car-washes', preview: 'carwash', intro: 'Job queue, service records, supplies and sales for bay-based service businesses.',
     title: 'Car washes',
     sub: 'Service bays and detailing',
     items: ['Job queue by bay and status', 'Service records per vehicle', 'Supplies used and stock levels', 'Sales and daily totals'],

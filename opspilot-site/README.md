@@ -1,6 +1,8 @@
 # OpsPilot marketing site
 
-Static, single-page marketing site for OpsPilot (Custom Business Systems). Zero runtime dependencies; a small Node script assembles reusable components into `dist/`.
+Static multi-page marketing site for OpsPilot (Custom Business Systems). Zero runtime dependencies; a small Node script assembles reusable components into `dist/`.
+
+**Pages:** Home (`index.html`), Solutions (modules, full sample dashboard, scope builder), Industries, Our Work, About (engagement model), Contact (form + FAQ), Privacy, 404. Pages are defined in `build.mjs`; copy lives in `src/content.mjs`.
 
 ```
 npm run build   # writes dist/ (Node 20+)
@@ -12,7 +14,7 @@ npm run dev     # build + preview at http://localhost:4173
 - `src/components.mjs` – section/UI components (header, hero, cards, FAQ, form…)
 - `src/dashboard.mjs` + `src/dashboard.css` – illustrative "command center" dashboard (KPI sparklines, interactive chart, gauge rings, dot-matrix map, job table). All figures are labelled sample data. Chart colours were checked with a palette validator.
 - `src/icons.mjs` – inline icons and the OpsPilot logo mark
-- Scope builder: `scopeTypes` / `scopeNotes` in `content.mjs` (presets per business type); logic at the end of `main.js`. Shows no prices and copies a scope outline into the contact form.
+- Scope builder (Solutions page): `scopeTypes` / `scopeNotes` in `content.mjs` (presets per business type); logic in `main.js`. Shows no prices; "Use this scope in my inquiry" opens the Contact page with the outline pre-filled via the link (`?t=&m=&n=`).
 - `src/styles.css`, `src/main.js` – styling and progressive enhancement
 - `site.config.json` – contact person and form endpoint
 - `public/favicon.svg` – brand favicon

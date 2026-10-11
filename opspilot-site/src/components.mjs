@@ -10,7 +10,7 @@ export const button = (label, href, variant = 'primary', extra = '') =>
   `<a class="btn btn-${variant}" href="${href}">${label}${variant === 'primary' || variant === 'lime' ? icon('arrow', 18) : ''}${extra}</a>`;
 
 export const logo = (onDark = false) => `
-<a class="logo ${onDark ? 'logo-dark' : ''}" href="#home" aria-label="OpsPilot, Custom Business Systems — home">
+<a class="logo ${onDark ? 'logo-dark' : ''}" href="index.html" aria-label="OpsPilot, Custom Business Systems — home">
   ${logoMark()}
   <span class="logo-text"><span class="wordmark">Ops<b>Pilot</b></span><span class="descriptor">Custom Business Systems</span></span>
 </a>`;
@@ -22,14 +22,14 @@ export const sectionHead = (eyebrow, title, lead = '', center = false) => `
   ${lead ? `<p class="lead">${lead}</p>` : ''}
 </div>`;
 
-export const header = () => `
+export const header = (active = '') => `
 <header class="site-header" id="top">
   <div class="scroll-progress" aria-hidden="true"><i></i></div>
   <div class="container header-inner">
     ${logo()}
     <nav class="nav" id="site-nav" aria-label="Primary">
-      <ul>${c.nav.map(([l, h]) => `<li><a href="${h}">${l}</a></li>`).join('')}</ul>
-      ${button('Request a Demo', '#contact', 'primary')}
+      <ul>${c.nav.map(([l, h]) => `<li><a href="${h}"${h === active ? ' aria-current="page"' : ''}>${l}</a></li>`).join('')}</ul>
+      ${button('Request a Demo', 'contact.html', 'primary')}
     </nav>
     <button class="menu-btn" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu">
       <span class="icon-open">${icon('menu')}</span><span class="icon-close">${icon('close')}</span>
@@ -44,7 +44,7 @@ export const hero = () => `
       <p class="eyebrow eyebrow-dark">Custom Business Systems</p>
       <h1 id="hero-title">Your business. <span>One clear system.</span></h1>
       <p class="hero-lead">Custom operations systems for Philippine MSMEs. Connect your jobs, people, equipment, sales, and collections around the way your business works.</p>
-      <div class="btn-row">${button('Request a Demo', '#contact', 'lime')}${button('Explore Solutions', '#solutions', 'ghost')}</div>
+      <div class="btn-row">${button('Request a Demo', 'contact.html', 'lime')}${button('Explore Solutions', 'solutions.html', 'ghost')}</div>
       <ul class="hero-points">
         <li>${icon('check', 18)}Built around your workflow</li>
         <li>${icon('check', 18)}Start with one module</li>
@@ -91,19 +91,19 @@ export const problems = () => `
   </div>
 </section>`;
 
-export const solutions = () => `
-<section class="section section-tint" id="solutions" aria-labelledby="solutions-title">
+export const solutions = (withHead = true) => `
+<section class="section section-tint" id="solutions" aria-label="Solution modules">
   <div class="container">
-    ${sectionHead('Solutions', 'Modules that fit together.', 'Start with the module that matters most. Add others as your needs grow; they share the same records.', true).replace('<h2>', '<h2 id="solutions-title">')}
+    ${withHead ? sectionHead('Solutions', 'Modules that fit together.', 'Start with the module that matters most. Add others as your needs grow; they share the same records.', true) : ''}
     <div class="card-grid bento">
       ${c.solutions.map((s, i) => `
-      <article class="card reveal b${i}">
+      <article class="card reveal b${i}" id="module-${i + 1}">
         <span class="card-idx">0${i + 1}</span>
         <span class="card-ico">${icon(s.icon, 26)}</span>
         <div class="b${i}-copy"><h3>${s.title}</h3>
         <p>${s.text}</p>
         <ul class="card-points">${s.points.map((t) => `<li>${icon('check', 16)}<span>${t}</span></li>`).join('')}</ul></div>
-        <a class="card-link" href="#contact">Ask about this ${icon('arrow', 16)}</a>
+        <a class="card-link" href="contact.html">Ask about this ${icon('arrow', 16)}</a>
       </article>`).join('')}
     </div>
   </div>
@@ -207,20 +207,25 @@ const workCard = (p) => `
         </div>
       </article>`;
 
-export const work = () => `
-<section class="section" id="work" aria-labelledby="work-title">
+export const workGroups = () => `
+<section class="section" id="work" aria-label="Projects and concept prototypes">
   <div class="container">
-    ${sectionHead('Our Work', 'Projects and concept prototypes.', 'Two projects we are building or demonstrating, plus concept prototypes that show how the approach adapts to other businesses. Previews are illustrative, not screenshots, and none is presented as a client deployment.', true).replace('<h2>', '<h2 id="work-title">')}
-    <h3 class="work-group-h reveal"><span>Projects</span></h3>
+    <h2 class="work-group-h reveal"><span>Projects</span></h2>
     <div class="work-grid">${c.projects.filter((p) => p.group === 'project').map(workCard).join('')}
     </div>
-    <h3 class="work-group-h reveal"><span>Concept prototypes</span><small>Built with sample data to show what is possible</small></h3>
+    <h2 class="work-group-h reveal"><span>Concept prototypes</span><small>Built with sample data to show what is possible</small></h2>
     <div class="work-grid work-grid-3">${c.projects.filter((p) => p.group === 'concept').map(workCard).join('')}
     </div>
-    <div class="work-cta reveal">
-      <div><strong>Have a workflow in mind?</strong><span>We can prototype it with your own scenarios before you commit to a full build.</span></div>
-      ${button('Request a Demo', '#contact', 'primary')}
+  </div>
+</section>`;
+
+export const workTeaser = () => `
+<section class="section" id="work" aria-labelledby="work-title">
+  <div class="container">
+    ${sectionHead('Our Work', 'Projects, described plainly.', 'Two projects we are building or demonstrating. Previews are illustrative, not screenshots, and neither is presented as a client deployment.', true).replace('<h2>', '<h2 id="work-title">')}
+    <div class="work-grid">${c.projects.filter((p) => p.group === 'project').map(workCard).join('')}
     </div>
+    <p class="more-link reveal">${button('See all projects and concepts', 'work.html', 'primary')}</p>
   </div>
 </section>`;
 
@@ -246,12 +251,10 @@ const meetCard = (config) => `
           <p class="meet-links"><a href="mailto:${config.email}">${config.email}</a><a href="${telHref(config.mobile)}">${prettyMobile(config.mobile)}</a></p></div>
       </div>`;
 
-export const about = (config) => `
-<section class="section" id="about" aria-labelledby="about-title">
+export const aboutBody = (config) => `
+<section class="section" id="about" aria-label="About OpsPilot">
   <div class="container about-grid">
     <div class="reveal">
-      <p class="eyebrow">About OpsPilot</p>
-      <h2 id="about-title">Practical systems for the way real businesses run.</h2>
       <p class="lead">OpsPilot builds custom business systems for Philippine MSMEs. We focus on everyday workflows (who worked where, what equipment went out, what was billed and what has been paid) and on systems that your staff can actually use.</p>
       <p class="lead">We would rather understand your operation properly than hand you a generic package.</p>
       ${meetCard(config)}
@@ -331,7 +334,7 @@ export const faq = () => `
 </section>`;
 
 const contactDetails = (config) => `
-      <ul class="contact-list">
+      <ul class="contact-list" id="details">
         ${config.email ? `<li>${icon('mail', 20)}<div><span>Email</span><a href="mailto:${config.email}">${config.email}</a></div></li>` : ''}
         ${config.mobile ? `<li>${icon('phone', 20)}<div><span>Mobile</span><a href="${telHref(config.mobile)}">${prettyMobile(config.mobile)}</a></div></li>` : ''}
         ${config.address ? `<li>${icon('pin', 20)}<div><span>Office</span><address>${config.address}</address></div></li>` : ''}
@@ -348,11 +351,11 @@ const contactActions = (config) => {
 };
 
 export const contact = (config) => `
-<section class="section section-navy" id="contact" aria-labelledby="contact-title">
+<section class="section section-navy section-top" id="contact" aria-labelledby="contact-title">
   <div class="container contact-grid">
     <div class="contact-copy reveal">
       <p class="eyebrow eyebrow-dark">Contact</p>
-      <h2 id="contact-title">Let’s simplify your daily operations.</h2>
+      <h1 id="contact-title">Let’s simplify your daily operations.</h1>
       <p class="lead lead-dark">Tell us which workflow is giving you the most trouble. We will follow up to arrange a demo or workflow consultation.</p>
       <p class="contact-person"><span>Contact person</span><strong>${config.contactPerson}</strong></p>
       ${contactDetails(config)}
@@ -369,7 +372,7 @@ export const contact = (config) => `
         <div class="field"><label for="f-phone">Phone</label><input id="f-phone" name="phone" type="tel" autocomplete="tel" required></div>
       </div>
       <div class="field"><label for="f-workflow">Workflow to improve</label><textarea id="f-workflow" name="workflow" rows="4" required placeholder="e.g. Tracking crew attendance and equipment across sites"></textarea></div>
-      <div class="consent"><label class="check"><input type="checkbox" name="consent" value="yes" required><span>I agree that OpsPilot may use these details to respond to my inquiry, as described in the <a href="#privacy">privacy notice</a>.</span></label></div>
+      <div class="consent"><label class="check"><input type="checkbox" name="consent" value="yes" required><span>I agree that OpsPilot may use these details to respond to my inquiry, as described in the <a href="privacy.html">privacy notice</a>.</span></label></div>
       <div class="hp" aria-hidden="true"><label>Leave empty<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
       <button class="btn btn-lime" type="submit">Send request${icon('arrow', 18)}</button>
       <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
@@ -378,9 +381,8 @@ export const contact = (config) => `
 </section>`;
 
 export const privacy = (config) => `
-<section class="section privacy" id="privacy" aria-labelledby="privacy-title">
+<section class="section privacy" id="privacy" aria-label="Privacy notice">
   <div class="container privacy-wrap">
-    <h2 id="privacy-title">Privacy notice</h2>
     <p>When you use the contact form on this site, you give us your name, company, business type, email address, phone number and a description of the workflow you want to improve.</p>
     <ul>
       <li><strong>Why we use it:</strong> to reply to your inquiry and arrange a demo or workflow consultation.</li>
@@ -396,7 +398,86 @@ export const footer = (config) => `
   <div class="container footer-inner">
     ${logo(true)}
     <p class="footer-tag">Your business. One clear system.</p>
+    <nav class="footer-nav" aria-label="Footer">${c.nav.map(([l, h]) => `<a href="${h}">${l}</a>`).join('')}<a href="privacy.html">Privacy</a></nav>
     <p class="footer-contact"><a href="mailto:${config.email}">${config.email}</a><span aria-hidden="true">·</span><a href="${telHref(config.mobile)}">${prettyMobile(config.mobile)}</a><span aria-hidden="true">·</span><span>${config.address}</span></p>
-    <p class="footer-small">© <span id="year">${new Date().getFullYear()}</span> OpsPilot. Dashboards and previews on this site are illustrative and use sample data. <a href="#privacy">Privacy notice</a></p>
+    <p class="footer-small">© <span id="year">${new Date().getFullYear()}</span> OpsPilot. Dashboards and previews on this site are illustrative and use sample data. <a href="privacy.html">Privacy notice</a></p>
   </div>
 </footer>`;
+
+
+// ---------- Multi-page components ----------
+export const pageHero = (eyebrow, title, lead = '') => `
+<section class="page-hero" aria-labelledby="page-title">
+  <div class="container reveal">
+    <p class="eyebrow eyebrow-dark">${eyebrow}</p>
+    <h1 id="page-title">${title}</h1>
+    ${lead ? `<p class="page-lead">${lead}</p>` : ''}
+  </div>
+</section>`;
+
+export const ctaBand = (title = 'Let’s simplify your daily operations.', text = 'Tell us which workflow is giving you the most trouble. We will follow up to arrange a demo or workflow consultation.') => `
+<section class="cta-band" aria-label="Get in touch">
+  <div class="container cta-inner reveal">
+    <div><h2>${title}</h2><p>${text}</p></div>
+    <div class="btn-row">${button('Request a Demo', 'contact.html', 'lime')}${button('Contact details', 'contact.html#details', 'ghost')}</div>
+  </div>
+</section>`;
+
+export const solutionsOverview = () => `
+<section class="section section-tint" id="solutions" aria-labelledby="solutions-title">
+  <div class="container">
+    ${sectionHead('Solutions', 'Modules that fit together.', 'Start with the module that matters most. Add others as your needs grow; they share the same records.', true).replace('<h2>', '<h2 id="solutions-title">')}
+    <div class="mini-grid">
+      ${c.solutions.map((s, i) => `<a class="mini reveal" href="solutions.html#module-${i + 1}"><span class="card-ico">${icon(s.icon, 24)}</span><h3>${s.title}</h3><p>${s.short}</p><span class="mini-more">Details ${icon('arrow', 16)}</span></a>`).join('')}
+      <a class="mini mini-cta reveal" href="contact.html"><span class="card-ico card-ico-blue">${icon('plus', 24)}</span><h3>Something else?</h3><p>Describe your workflow and we will tell you how it could fit.</p><span class="mini-more">Talk to us ${icon('arrow', 16)}</span></a>
+    </div>
+    <p class="more-link reveal">${button('See all solutions', 'solutions.html', 'primary')}</p>
+  </div>
+</section>`;
+
+export const industriesOverview = () => `
+<section class="section" id="industries" aria-labelledby="industries-title">
+  <div class="container">
+    ${sectionHead('Industries', 'One approach, adapted to how you operate.', 'The building blocks stay the same; the screens, fields and reports are configured for your kind of business.', true).replace('<h2>', '<h2 id="industries-title">')}
+    <div class="industry-grid">
+      ${c.industries.map((i) => `
+      <article class="industry reveal">
+        <span class="card-ico card-ico-blue">${icon(i.icon, 26)}</span>
+        <h3>${i.title}</h3>
+        <p class="industry-sub">${i.sub}</p>
+        <ul class="ticks">${i.items.slice(0, 3).map((t) => `<li>${icon('check', 18)}<span>${t}</span></li>`).join('')}</ul>
+        <a class="card-link" href="industries.html#${i.id}">See how it fits ${icon('arrow', 16)}</a>
+      </article>`).join('')}
+    </div>
+  </div>
+</section>`;
+
+const moduleNames = (ids) => ids.map((n) => c.solutions[n].title);
+const presetFor = { 'service-contractors': 0, 'driving-ranges': 1, 'car-washes': 2 };
+
+export const industryDetails = () => c.industries.map((ind, i) => `
+<section class="section${i % 2 ? ' section-tint' : ''}" id="${ind.id}" aria-labelledby="${ind.id}-title">
+  <div class="container split${i % 2 ? ' split-rev' : ''}">
+    <div class="split-copy reveal">
+      <span class="card-ico card-ico-blue">${icon(ind.icon, 26)}</span>
+      <h2 id="${ind.id}-title">${ind.title}</h2>
+      <p class="lead">${ind.intro}</p>
+      <ul class="ticks">${ind.items.map((t) => `<li>${icon('check', 18)}<span>${t}</span></li>`).join('')}</ul>
+      <p class="chips-label">Typical modules</p>
+      <ul class="tags">${moduleNames(c.scopeTypes[presetFor[ind.id]].modules).map((t) => `<li>${t}</li>`).join('')}</ul>
+      <div class="btn-row">${button('Request a Demo', 'contact.html', 'primary')}</div>
+    </div>
+    <div class="work-card industry-visual reveal">
+      <div class="work-preview"><div class="win-bar" aria-hidden="true"><i></i><i></i><i></i><span>Illustrative preview</span><em>Sample data</em></div>${projectPreview(ind.preview)}</div>
+    </div>
+  </div>
+</section>`).join('');
+
+export const otherIndustries = () => `
+<section class="section" id="other" aria-labelledby="other-title">
+  <div class="container center-block reveal">
+    <h2 id="other-title">Running something else?</h2>
+    <p class="lead">If your business has staff, stock, bookings or daily transactions, the same building blocks may fit. Describe how it works today and we will tell you honestly whether and how we can help.</p>
+    <div class="btn-row center-row">${button('Describe your workflow', 'contact.html', 'primary')}</div>
+  </div>
+</section>`;
