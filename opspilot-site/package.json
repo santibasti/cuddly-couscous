@@ -1,0 +1,12 @@
+{
+  "name": "opspilot-site",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "OpsPilot marketing website (static, zero runtime dependencies)",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs && node serve.mjs",
+    "check": "node build.mjs && node check.mjs"
+  }
+}
