@@ -240,3 +240,5 @@ input.err{border-color:#c0392b}
 }
 .masonry figure[data-tone]{background:linear-gradient(145deg,var(--t1),var(--t2))}
 .foot .copy span{display:inline;margin:0}
+.masonry figure>img{position:absolute;inset:0;height:100%;object-fit:cover}
+.masonry figure{min-height:260px}.masonry figure.tall{min-height:460px}.masonry figure.h2{min-height:380px}
