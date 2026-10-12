@@ -1,7 +1,7 @@
 // Ocular visits: a site inspection booked in the same calendar as jobs. After it is completed the estimator (or Admin) turns it into a quotation.
 import { defaultCrew, defaultDisclaimer } from './quote-text';
 import { store, RuleError } from './store';
-import type { DB, Measurement, OcularStatus, OcularVisit, PanelRow, Quotation, ServiceCode } from './types';
+import type { DB, Measurement, OcularCheck, OcularStatus, OcularVisit, PanelRow, Quotation, ServiceCode } from './types';
 import { docTotals, ocularConflicts, quotationLinesFromOcular, panelTotals } from './business';
 import { runAutomations } from './actions';
 import { addDays, isoNow, nowLocal, today } from './util';
@@ -91,7 +91,38 @@ export function reopenOcularReport(id: string, reason: string) {
   if (!v.client_sig) fail('The report is not signed.'); if (!reason.trim()) fail('Give a reason for reopening the report.');
   return store.update('ocular_visits', id, { client_sig: undefined, client_sig_name: undefined, client_sig_at: undefined, assessor_sig: undefined, assessor_sig_at: undefined } as never, 'update', `Ocular report ${v.number} reopened: ${reason.trim()}`);
 }
-export interface OcularResult { panels: PanelRow[]; measurements: Measurement[]; findings: string; visit_sig?: string; visit_sig_name?: string }
+export interface OcularResult { panels: PanelRow[]; measurements: Measurement[]; findings: string; checklist?: OcularCheck[]; visit_sig?: string; visit_sig_name?: string }
+
+/** Standard site checklist. `bad` = the answer that is a concern for the quotation (shown as a flag): "no" for good-to-have items, "yes" for problems. */
+export interface CheckDef { key: string; label: string; bad: 'yes' | 'no'; group: 'general' | 'glass' | 'roof' | 'surface' | 'solar' }
+export const OCULAR_CHECKLIST: CheckDef[] = [
+  { key: 'access', label: 'Easy access for the crew and equipment (parking, gate, lift / stairs)', bad: 'no', group: 'general' },
+  { key: 'permit', label: 'Building permit or security clearance required', bad: 'yes', group: 'general' },
+  { key: 'water', label: 'Water supply available on site', bad: 'no', group: 'general' },
+  { key: 'power', label: 'Power outlet available', bad: 'no', group: 'general' },
+  { key: 'hours', label: 'Restricted working hours (building rules)', bad: 'yes', group: 'general' },
+  { key: 'stains', label: 'Hard-water stains on the glass', bad: 'yes', group: 'glass' },
+  { key: 'scratch', label: 'Scratched or damaged glass', bad: 'yes', group: 'glass' },
+  { key: 'film', label: 'Tinted or film-covered glass', bad: 'yes', group: 'glass' },
+  { key: 'reach', label: 'Glass out of reach of the water-fed pole (lift or rope access needed)', bad: 'yes', group: 'glass' },
+  { key: 'obstruct', label: 'Plants, AC units or other obstructions near the windows', bad: 'yes', group: 'glass' },
+  { key: 'steep', label: 'Roof too steep to walk on safely', bad: 'yes', group: 'roof' },
+  { key: 'fragile', label: 'Fragile roofing (skylights, old sheets)', bad: 'yes', group: 'roof' },
+  { key: 'rails', label: 'Safety rails or anchor points present', bad: 'no', group: 'roof' },
+  { key: 'moss', label: 'Moss, algae or heavy dirt', bad: 'yes', group: 'roof' },
+  { key: 'oil', label: 'Heavy oil, paint or stubborn stains', bad: 'yes', group: 'surface' },
+  { key: 'mossS', label: 'Moss or algae on the surface', bad: 'yes', group: 'surface' },
+  { key: 'drain', label: 'Drainage for the wash water available', bad: 'no', group: 'surface' },
+  { key: 'solarReach', label: 'Solar panels reachable (ground or safe roof access)', bad: 'no', group: 'solar' },
+  { key: 'solarDirt', label: 'Heavy dust, bird droppings or cracked panels', bad: 'yes', group: 'solar' },
+];
+export const CHECK_GROUP_LABEL: Record<CheckDef['group'], string> = { general: 'Access & site', glass: 'Glass', roof: 'Roof', surface: 'Floor / wall', solar: 'Solar panels' };
+export const checkGroupsFor = (codes: string[]): CheckDef['group'][] => [
+  'general', ...(codes.some((c) => c === 'GLASS_EXT' || c === 'GLASS_INT') ? ['glass' as const] : []), ...(codes.includes('ROOF') ? ['roof' as const] : []),
+  ...(codes.some((c) => c === 'FLOOR' || c === 'WALL') ? ['surface' as const] : []), ...(codes.includes('SOLAR') ? ['solar' as const] : []),
+];
+/** The answers that are a concern (e.g. "Roof too steep: yes", "Water supply: no"). */
+export const checklistConcerns = (list: OcularCheck[] | undefined) => (list ?? []).flatMap((c) => { const d = OCULAR_CHECKLIST.find((x) => x.key === c.key); return d && c.answer === d.bad ? [{ label: d.label, bad: d.bad, note: c.note }] : []; });
 /** Mark the visit Completed and record what was found: panel count (floor, side, external, internal), measurements and notes. No photos, no odometer. */
 export function completeOcularVisit(id: string, r: OcularResult) {
   const v = vOf(id);
@@ -110,7 +141,7 @@ export function completeOcularVisit(id: string, r: OcularResult) {
     if (!r.visit_sig_name?.trim()) fail("Type the contact person's printed name next to the signature.");
   }
   const sigPatch = r.visit_sig ? { visit_sig: r.visit_sig, visit_sig_name: (r.visit_sig_name ?? v.contact_person).trim(), visit_sig_at: isoNow() } : {};
-  const res = store.update('ocular_visits', id, { ...sigPatch, status: 'Completed', panels: r.panels, measurements: r.measurements, findings: r.findings.trim(), completed_at: v.completed_at ?? nowLocal(), completed_by: v.completed_by ?? store.user?.id } as never, 'update', `Ocular visit ${v.number} ${v.status === 'Completed' ? 'findings updated' : 'completed'}${r.panels.length ? ` — ${panelTotals(r.panels).total} panels counted` : ''}`);
+  const res = store.update('ocular_visits', id, { ...sigPatch, status: 'Completed', panels: r.panels, measurements: r.measurements, findings: r.findings.trim(), checklist: r.checklist ?? v.checklist ?? [], completed_at: v.completed_at ?? nowLocal(), completed_by: v.completed_by ?? store.user?.id } as never, 'update', `Ocular visit ${v.number} ${v.status === 'Completed' ? 'findings updated' : 'completed'}${r.panels.length ? ` — ${panelTotals(r.panels).total} panels counted` : ''}`);
   runAutomations();
   return res;
 }
@@ -132,6 +163,7 @@ export function createQuotationFromOcular(id: string): Quotation {
     v.panels.length ? `Glass panels counted: ${pt.external} external, ${pt.internal} internal (${pt.total} total) across ${v.panels.length} area(s): ${v.panels.map((p) => `${p.area} ${p.side} ${p.external}/${p.internal}`).join('; ')}.` : '',
     v.measurements.length ? `Measurements: ${v.measurements.map((m) => `${m.label} ${m.qty} ${m.unit}`).join('; ')}.` : '',
     v.report_surface && `Surface condition: ${v.report_surface}`, v.report_hazards && `Hazards / access requirements: ${v.report_hazards}`, v.report_recommendation && `Recommendation: ${v.report_recommendation}`,
+    checklistConcerns(v.checklist).length ? `Site conditions to note: ${checklistConcerns(v.checklist).map((c) => `${c.label} (${c.bad === 'yes' ? 'yes' : 'no'})${c.note ? ` — ${c.note}` : ''}`).join('; ')}.` : '',
     v.findings && `Notes: ${v.findings}`, v.access_notes && `Access: ${v.access_notes}`, ...notes,
   ].filter(Boolean).join('\n');
   const q = store.insert('quotations', {

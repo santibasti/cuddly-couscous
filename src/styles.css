@@ -840,3 +840,17 @@ body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small {
 @media (max-width: 640px) { .pd .jl-u { text-align: left; font-size: 12.5px; color: var(--pd-mut); } }
 .clientpage .pcwin-b { max-width: 720px; }
 .clientpage h2 { font-size: 24px; }
+
+/* ocular recording */
+.ocrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-top: 8px; }
+.ocrow > input[aria-label=Area] { flex: 2 1 180px; min-width: 0; }
+.ocdim { display: grid; gap: 2px; flex: 1 1 90px; }
+.ocdim input { width: 100%; }
+.occheck { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 8px 2px; border-bottom: 1px solid var(--line-2, #eaeff4); }
+.occheck.flag { background: rgba(240, 160, 40, .08); }
+.occ-q { flex: 1 1 260px; }
+.occ-a { display: flex; gap: 6px; }
+.occ-a button { min-width: 56px; min-height: 40px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font-weight: 600; }
+.occ-a button.on { background: var(--teal, #0f9ea0); border-color: var(--teal, #0f9ea0); color: #fff; }
+.occ-a button.on.bad { background: var(--amber, #d98b0f); border-color: var(--amber, #d98b0f); }
+.occ-n { flex: 1 1 100%; }

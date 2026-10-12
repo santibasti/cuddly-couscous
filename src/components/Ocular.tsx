@@ -1,4 +1,5 @@
 import { OcularReport } from '@/components/OcularReport';
+import { MeasureSection, OcularChecklistForm } from '@/components/OcularRecord';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, live } from '@/lib/store';
@@ -8,9 +9,9 @@ import { useDraft } from '@/lib/useDraft';
 import { confirmLeave } from '@/lib/sync';
 import { OCULAR_STATUSES, isOcularActive, ocularConflicts, ocularEnd, ocularStats, panelTotals } from '@/lib/business';
 import { PANEL_AREAS, PANEL_SIDES } from '@/lib/workflow';
-import { cancelOcularVisit, completeOcularVisit, confirmOcularVisit, createQuotationFromOcular, scheduleOcularVisit, updateOcularVisit, type OcularForm } from '@/lib/ocular';
+import { OCULAR_CHECKLIST, checklistConcerns, cancelOcularVisit, completeOcularVisit, confirmOcularVisit, createQuotationFromOcular, scheduleOcularVisit, updateOcularVisit, type OcularForm } from '@/lib/ocular';
 import { addDays, fmtDate, fmtDateTime, fmtTime, today, uid } from '@/lib/util';
-import type { Measurement, OcularVisit, PanelRow, ServiceCode } from '@/lib/types';
+import type { Measurement, OcularCheck, OcularVisit, PanelRow, ServiceCode } from '@/lib/types';
 
 export const OCULAR_TONE: Record<OcularVisit['status'], string> = { Scheduled: 'amber', Confirmed: 'teal', Completed: 'blue', Cancelled: 'gray', 'Converted to Quotation': 'green' };
 const DURATIONS: [number, string][] = [[30, '30 min'], [60, '1 hour'], [90, '1½ hours'], [120, '2 hours'], [180, '3 hours'], [240, 'Half day']];
@@ -83,14 +84,16 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
   const [panels, setPanels] = useState<PanelRow[]>(v.panels.length ? v.panels : []);
   const [meas, setMeas] = useState<Measurement[]>(v.measurements);
   const [notes, setNotes] = useState(v.findings);
+  const [checks, setChecks] = useState<OcularCheck[]>(v.checklist ?? []);
+  const [extraSvc, setExtraSvc] = useState<ServiceCode[]>([]);
   const [vname, setVname] = useState(v.contact_person); const [vsig, setVsig] = useState<string>();
   const needSig = !v.visit_sig && v.status !== 'Completed';   // the first time the visit is completed, the contact person signs on site
   const glass = v.service_codes.some((c) => c === 'GLASS_EXT' || c === 'GLASS_INT');
-  const dr = useDraft(`d:ocular:${v.id}:result`, { panels, meas, notes }, (d) => { setPanels(d.panels); setMeas(d.meas); setNotes(d.notes); }, rec);
+  const dr = useDraft(`d:ocular:${v.id}:result`, { panels, meas, notes, checks }, (d) => { setPanels(d.panels); setMeas(d.meas); setNotes(d.notes); setChecks(d.checks ?? []); }, rec);
   const pt = panelTotals(panels);
   const setP = (id: string, p: Partial<PanelRow>) => setPanels(panels.map((r) => (r.id === id ? { ...r, ...p } : r)));
   const setM = (id: string, p: Partial<Measurement>) => setMeas(meas.map((r) => (r.id === id ? { ...r, ...p } : r)));
-  const save = () => { if (attempt(() => completeOcularVisit(v.id, { panels, measurements: meas, findings: notes, visit_sig: vsig, visit_sig_name: vname }), 'Ocular visit completed')) { dr.markSaved(); setRec(false); } };
+  const save = () => { if (attempt(() => completeOcularVisit(v.id, { panels, measurements: meas.filter((m) => m.label.trim() || m.qty), findings: notes, checklist: checks, visit_sig: vsig, visit_sig_name: vname }), 'Ocular visit completed')) { dr.markSaved(); setRec(false); } };
   const toQuote = () => { const q = attempt(() => createQuotationFromOcular(v.id), 'Draft quotation created from the ocular visit'); if (q) { onClose(); if (can('sales.edit')) nav(`/sales/quote/${q.id}`); } };
   if (edit) return <OcularFormModal initial={v} onClose={() => setEdit(false)} />;
   const canAct = (manager || mine);
@@ -107,10 +110,11 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
           {v.cancel_reason && <><dt>Cancelled because</dt><dd>{v.cancel_reason}</dd></>}
         </dl>
         {v.status === 'Completed' || v.status === 'Converted to Quotation' || rec ? null : null}
-        {(v.panels.length > 0 || v.measurements.length > 0 || v.findings) && !rec && (
+        {(v.panels.length > 0 || v.measurements.length > 0 || v.findings || (v.checklist ?? []).some((c) => c.answer)) && !rec && (
           <div className="card" style={{ padding: 12 }}><b>What was found</b>
             {v.panels.length > 0 && <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Floor / area</th><th>Side</th><th className="num">External</th><th className="num">Internal</th></tr></thead><tbody>{v.panels.map((p) => <tr key={p.id}><td>{p.area}</td><td>{p.side}</td><td className="num">{p.external}</td><td className="num">{p.internal}</td></tr>)}</tbody><tfoot><tr><th colSpan={2}>Total</th><th className="num">{panelTotals(v.panels).external}</th><th className="num">{panelTotals(v.panels).internal}</th></tr></tfoot></table></div>}
             {v.measurements.length > 0 && <ul className="small" style={{ margin: '6px 0' }}>{v.measurements.map((m) => <li key={m.id}>{m.label}: <b>{m.qty} {m.unit}</b>{m.service_code ? ` (${svcNames(db, [m.service_code])})` : ''}</li>)}</ul>}
+            {(v.checklist ?? []).some((c) => c.answer) && <div className="small" style={{ margin: '6px 0' }}><b>Site checklist:</b> {checklistConcerns(v.checklist).length ? checklistConcerns(v.checklist).map((c) => `⚠ ${c.label} — ${c.bad === 'yes' ? 'yes' : 'no'}${c.note ? ` (${c.note})` : ''}`).join(' · ') : 'no concerns'} <span className="muted">({(v.checklist ?? []).filter((c) => c.answer).length}/{OCULAR_CHECKLIST.length} answered)</span></div>}
             {v.findings && <div className="small">{v.findings}</div>}
           </div>
         )}
@@ -131,15 +135,19 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
                 <button className="btn sm" onClick={() => setPanels([...panels, newPanel()])}>+ Add area</button>
               </div>
             )}
-            <div><b>Measurements</b>
-              {meas.map((m) => <div key={m.id} className="row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
-                <input aria-label="Label" placeholder="e.g. Driveway" value={m.label} onChange={(e) => setM(m.id, { label: e.target.value })} style={{ flex: '2 1 160px' }} />
-                <select aria-label="Service" value={m.service_code ?? ''} onChange={(e) => setM(m.id, { service_code: (e.target.value || undefined) as ServiceCode | undefined })} style={{ flex: '1 1 140px' }}><option value="">— service —</option>{v.service_codes.map((c) => <option key={c} value={c}>{svcNames(db, [c])}</option>)}</select>
+            {[...v.service_codes, ...extraSvc].filter((c, k, a) => c !== 'GLASS_EXT' && c !== 'GLASS_INT' && a.indexOf(c) === k).map((c) => {
+              const sv = db.services.find((x) => x.code === c);
+              return <MeasureSection key={c} code={c} name={sv?.name ?? c} unit={sv?.unit ?? 'sqm'} rows={meas.filter((m) => m.service_code === c)} onChange={(rows) => setMeas([...meas.filter((m) => m.service_code !== c), ...rows])} />;
+            })}
+            {meas.some((m) => !m.service_code) && <div><b>Other measurements</b>
+              {meas.filter((m) => !m.service_code).map((m) => <div key={m.id} className="row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+                <input aria-label="Label" value={m.label} onChange={(e) => setM(m.id, { label: e.target.value })} style={{ flex: '2 1 160px' }} />
                 <input aria-label="Quantity" type="number" inputMode="decimal" min="0" value={m.qty || ''} onChange={(e) => setM(m.id, { qty: +e.target.value })} style={{ width: 100 }} />
                 <input aria-label="Unit" value={m.unit} onChange={(e) => setM(m.id, { unit: e.target.value })} style={{ width: 80 }} />
                 <button className="btn sm danger" onClick={() => setMeas(meas.filter((x) => x.id !== m.id))}>✕</button></div>)}
-              <button className="btn sm" style={{ marginTop: 6 }} onClick={() => setMeas([...meas, newMeasure(v.service_codes.find((c) => c !== 'GLASS_EXT' && c !== 'GLASS_INT'))])}>+ Add measurement</button>
-            </div>
+            </div>}
+            <Field label="Also measure another service"><select value="" onChange={(e) => { const c = e.target.value; if (c) setExtraSvc([...extraSvc, c as ServiceCode]); }}><option value="">— add a service section —</option>{db.services.filter((s) => !s.deleted_at && !v.service_codes.includes(s.code) && !extraSvc.includes(s.code) && !['GLASS_EXT', 'GLASS_INT'].includes(s.code)).map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></Field>
+            <OcularChecklistForm codes={[...v.service_codes, ...extraSvc]} value={checks} onChange={setChecks} />
             <Field label="Notes / findings"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Condition, access, hazards, what the client agreed to" /></Field>
             {needSig && <div className="card" style={{ padding: 12 }}>
               <b>Contact person's signature</b> <span className="small muted">— shows the ocular visit took place</span>
@@ -165,7 +173,7 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
     </Modal>
   );
 }
-const DraftHint = () => <div className="small muted">Record the glass panel count and measurements here. No photos or odometer needed.</div>;
+const DraftHint = () => <div className="small muted">Record what you count or measure for each service, then answer the site checklist. No photos or odometer needed.</div>;
 
 /** Dashboard widget: today, upcoming, awaiting quotation, converted. */
 export function OcularWidget() {

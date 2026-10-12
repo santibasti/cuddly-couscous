@@ -278,6 +278,14 @@ describe('panel counting & variations', () => {
     expect(B.priceService(sv, 31).lines[0].rate).toBe(4799);
   });
 
+  it('ocular checklist: only the concerning answers are flagged', async () => {
+    const O = await import('./ocular');
+    const c = O.checklistConcerns([{ key: 'steep', answer: 'yes' }, { key: 'water', answer: 'yes' }, { key: 'access', answer: 'no', note: 'narrow gate' }, { key: 'rails', answer: 'na' }]);
+    expect(c.map((x) => x.label.slice(0, 12))).toEqual(['Roof too ste', 'Easy access ']);
+    expect(c[1].note).toBe('narrow gate');
+    expect(O.checkGroupsFor(['GLASS_EXT', 'ROOF'])).toEqual(['general', 'glass', 'roof']);
+  });
+
   it('starter package panels: the panels counted beyond it are the additional work', () => {
     const panels = [{ id: 'a', area: '1st Floor', side: 'Front', external: 20, internal: 6 }, { id: 'b', area: '2nd Floor', side: 'Back', external: 4, internal: 0 }];
     const bd = B.panelBreakdown(db(), undefined, panels, 24);

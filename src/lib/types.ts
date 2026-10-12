@@ -558,7 +558,9 @@ export interface QuoteImage extends Base {
 
 /* ---------- Ocular Visits (site inspections before a quotation) ---------- */
 export type OcularStatus = 'Scheduled' | 'Confirmed' | 'Completed' | 'Cancelled' | 'Converted to Quotation';
-export interface Measurement { id: string; label: string; service_code?: ServiceCode; qty: number; unit: string; notes?: string }
+export interface Measurement { id: string; label: string; service_code?: ServiceCode; qty: number; unit: string; notes?: string; length?: number; width?: number }
+/** One line of the ocular site checklist: a yes / no / not-applicable answer to a standard question, with an optional note. */
+export interface OcularCheck { key: string; answer?: 'yes' | 'no' | 'na'; note?: string }
 export interface OcularVisit extends Base, GeoFields {
   number: string;                       // OV-2026-0001
   client_id: string; contact_person: string; contact_mobile?: string;
@@ -573,6 +575,7 @@ export interface OcularVisit extends Base, GeoFields {
   branch_id: string;
   // recorded when the visit is completed (no photos, no odometer)
   panels: PanelRow[]; measurements: Measurement[]; findings: string;
+  checklist?: OcularCheck[];             // site checklist answers (see OCULAR_CHECKLIST)
   completed_at?: string; completed_by?: string; cancel_reason?: string;
   quotation_id?: string; converted_at?: string;
   // ocular report: what the estimator recommends, and the client's signed acknowledgement of the findings
