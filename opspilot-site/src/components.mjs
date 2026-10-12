@@ -223,6 +223,36 @@ export const workGroups = () => `
   </div>
 </section>`;
 
+// Work page: tabbed project showcase, each with a full animated sample dashboard.
+const workDash = { topmop: 'service-contractors', range: 'driving-ranges', carwash: 'car-washes', maintenance: 'maintenance', booking: 'salons' };
+const workShort = { topmop: 'Service operations', range: 'Driving range', carwash: 'Car wash', maintenance: 'Maintenance', booking: 'Appointments' };
+export const workShowcase = () => `
+<section class="section section-tint" id="work" aria-labelledby="work-title">
+  <div class="container">
+    ${sectionHead('Our Work', 'See each project in more detail.', 'Choose a project to see an example dashboard. Every figure and name shown is sample data, and the previews are illustrative, not screenshots.', true).replace('<h2>', '<h2 id="work-title">')}
+    <div class="ind-tabs" role="tablist" aria-label="Projects and concept prototypes">
+      ${c.projects.map((p, i) => `<button type="button" class="ind-tab${i === 0 ? ' is-active' : ''}" role="tab" id="tab-p-${p.kind}" aria-controls="p-${p.kind}" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}"><span>${workShort[p.kind]}</span></button>`).join('')}
+    </div>
+    <div class="ind-panels">
+      ${c.projects.map((p, i) => `
+      <article class="ind-panel${i === 0 ? ' is-active' : ''}" id="p-${p.kind}" role="tabpanel" aria-labelledby="tab-p-${p.kind}" tabindex="0">
+        <div class="ind-top">
+          <div class="ind-info">
+            <div><span class="status-pill ${p.group === 'concept' ? 'pill-concept' : 'pill-demo'}">${p.status}</span><h3>${p.name}</h3></div>
+          </div>
+          <p class="work-desc">${p.text}</p>
+          <div class="ind-side">
+            <ul class="tags">${p.tags.map((t) => `<li>${t}</li>`).join('')}</ul>
+            ${p.kind === 'booking' ? '<p class="more-note">' + icon('shield', 16) + '<span>Shown with a salon-style setup as an example of an appointment-based business.</span></p>' : ''}
+            <div class="btn-row">${button('Ask about this', 'contact.html', 'primary')}</div>
+          </div>
+        </div>
+        ${industryDashboard(workDash[p.kind])}
+      </article>`).join('')}
+    </div>
+  </div>
+</section>`;
+
 export const workTeaser = () => `
 <section class="section" id="work" aria-labelledby="work-title">
   <div class="container">

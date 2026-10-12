@@ -42,7 +42,7 @@ const pages = [
     description: 'OpsPilot projects and concept prototypes: a service operations system in use with a client, a driving range and café demo, and prototypes for car washes, maintenance and appointment businesses.',
     body: () => [
       ui.pageHero('Our Work', 'Projects and concept prototypes.', 'One system in use with a client and one working demo, plus concept prototypes that show how the approach adapts to other businesses. Previews are illustrative, not screenshots, and use sample data only.'),
-      ui.workGroups(), ui.ctaBand('Have a workflow in mind?', 'We can prototype it with your own scenarios before you commit to a full build.'),
+      ui.workShowcase(), ui.ctaBand('Have a workflow in mind?', 'We can prototype it with your own scenarios before you commit to a full build.'),
     ],
   },
   {

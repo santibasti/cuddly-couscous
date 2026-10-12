@@ -153,3 +153,7 @@
 .feed li:first-child::before { animation: hc-pulse 1.8s ease-in-out infinite; }
 .feed time { font-family: var(--mono); font-size: .74rem; color: var(--d-muted, #a5b4d6); padding-top: 2px; }
 @media (max-width: 460px) { .mix li { grid-template-columns: 1fr 40px; } .mix-bar { grid-column: 1 / -1; grid-row: 2; } .mix b { grid-row: 1; grid-column: 2; } .feed li { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Work page showcase */
+.work-desc { margin: 0; color: var(--muted); line-height: 1.6; }
+.ind-info .status-pill { margin-bottom: 10px; display: inline-block; }
