@@ -30,7 +30,7 @@ const pages = [
   {
     file: 'industries.html', nav: 'industries.html',
     title: 'Industries | OpsPilot',
-    description: 'How OpsPilot adapts to service contractors, driving ranges, car washes, clinics and dental practices, tourist bus and taxi fleets, salons, laundry and auto repair shops.',
+    description: 'How OpsPilot adapts to service contractors, construction businesses, driving ranges, car washes, clinics and dental practices, tourist bus and taxi fleets, salons, laundry and auto repair shops.',
     body: () => [
       ui.pageHero('Industries', 'One approach, adapted to how you operate.', 'The building blocks stay the same; the screens, fields and reports are configured for your kind of business.'),
       ui.moreIndustries(), ui.otherIndustries(), ui.ctaBand(),
