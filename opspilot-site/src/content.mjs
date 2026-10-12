@@ -152,6 +152,7 @@ export const businessTypes = [
   'Clinic / dental practice',
   'Bus / taxi / van fleet',
   'Salon / laundry / repair shop',
+  'Construction / fit-out contractor',
   'Other MSME',
 ];
 
@@ -163,11 +164,15 @@ export const scopeTypes = [
   { id: 'clinic', label: 'Clinic or dental', hint: 'Appointments, supplies, billing', formType: 3, modules: [0, 1, 2, 5, 6] },
   { id: 'fleet', label: 'Bus, taxi or van fleet', hint: 'Vehicles, drivers, collections', formType: 4, modules: [0, 1, 2, 5, 6] },
   { id: 'shop', label: 'Salon, laundry or repair', hint: 'Jobs, stock, sales', formType: 5, modules: [1, 2, 4, 5, 6] },
-  { id: 'other', label: 'Other MSME', hint: 'Staff, stock, bookings', formType: 6, modules: [] },
+  { id: 'construction', label: 'Construction contractor', hint: 'Projects, crews, materials, billing', formType: 6, modules: [0, 1, 2, 3, 4, 5, 6] },
+  { id: 'other', label: 'Other MSME', hint: 'Staff, stock, bookings', formType: 7, modules: [] },
 ];
 
 // More industries (shown as compact cards). `modules` are indexes into `solutions`.
 export const moreIndustries = [
+  { id: 'construction', icon: 'hardhat', title: 'Construction businesses', sub: 'Contractors, fit-out and renovation', modules: [0, 1, 2, 3, 4, 5, 6],
+    items: ['Projects and sites with crew assignments', 'Verified attendance for workers and crews', 'Materials, tools and equipment by site', 'Quotations, variation orders and progress billing', 'Site reports and client sign-off', 'Billings, collections and balances'],
+    note: 'OpsPilot keeps your business records. It does not replace engineering, safety, permit or licensing processes, and it does not check regulatory compliance.' },
   { id: 'clinics', icon: 'cross', title: 'Clinics', sub: 'General and specialty clinics', modules: [0, 1, 2, 5, 6],
     items: ['Appointment schedule by doctor and room', 'Staff duty schedules and attendance', 'Clinic supplies and equipment stock', 'Billing, payments and balances', 'Daily and monthly summaries'],
     note: 'Patient clinical records are sensitive and are a separate scope, discussed case by case.' },

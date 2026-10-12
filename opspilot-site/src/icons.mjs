@@ -30,6 +30,7 @@ const paths = {
   taxi: '<path d="M5 16v-4l2-5h10l2 5v4M3 16h18v3H3zM9.5 3h5v3h-5z"/><circle cx="7.5" cy="19" r="1.2"/><circle cx="16.5" cy="19" r="1.2"/>',
   scissors: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8 7.5L20 18M8 16.5L20 6"/>',
   laundry: '<rect x="4" y="3" width="16" height="18" rx="2.5"/><circle cx="12" cy="13" r="4.2"/><path d="M8 6.5h.01M11 6.5h.01"/>',
+  hardhat: '<path d="M4 17h16v2H4z"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 6v5M9 8.5V11M15 8.5V11"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
   rocket: '<path d="M5 15c-1.5 1-2 4-2 6 2 0 5-.5 6-2M12 15l-3-3c1-4 4-8 11-9 0 7-4 10-8 12z"/><circle cx="15.5" cy="8.5" r="1"/>',
 };

@@ -164,6 +164,24 @@ export const industryPages = {
       ['Can we price by kilo or by item?', 'Yes. Your price rules are set up during configuration and agreed in writing.'],
     ],
   },
+  construction: {
+    name: 'Construction businesses', short: 'Construction businesses',
+    title: 'Construction Business Management System | OpsPilot',
+    desc: 'Custom system for Philippine construction and fit-out contractors: projects and crews, verified attendance, materials and equipment, variation orders and progress billing.',
+    h1: 'Management system for construction businesses',
+    lead: 'Several sites, crews moving between them, materials and tools to account for, and changes to the scope along the way. OpsPilot tracks projects and crew assignments, verified attendance, materials and equipment by site, quotations and variation orders, site reports and progress billing.',
+    problems: [
+      ['Crew attendance is hard to verify across sites.', 'Attendance is recorded per crew and site and checked by a supervisor before payroll preparation.'],
+      ['Materials and tools go missing between sites.', 'Materials, tools and equipment are recorded by site, with issues and returns tracked.'],
+      ['Scope changes are agreed verbally and not billed.', 'Variation orders are quoted, approved and carried into the progress bill.'],
+      ['Progress billings and collections are hard to follow.', 'Billings, payments and balances are recorded per project, with past-due amounts listed.'],
+    ],
+    faqs: [
+      ['Does it replace our estimating or engineering software?', 'No. OpsPilot keeps your operational and billing records. It is not engineering or structural design software, and it does not replace permit, licensing or safety processes.'],
+      ['Can it handle progress billing?', 'It can record progress billings against a quotation and the variation orders added to it, according to the billing rules your business agrees with its clients.'],
+      ['Can site supervisors use it on phones?', 'Yes. It runs in a web browser on phones and tablets and needs an internet connection. Offline use is not a standard feature, so tell us during scoping if some sites have poor signal.'],
+    ],
+  },
   'auto-repair': {
     name: 'Auto repair shops', short: 'Auto repair shops',
     title: 'Auto Repair Shop Management System | OpsPilot',
@@ -184,9 +202,10 @@ export const industryPages = {
   },
 };
 
-export const industryOrder = ['service-contractors', 'driving-ranges', 'car-washes', 'clinics', 'dental', 'tourist-buses', 'taxi-fleets', 'salons', 'laundry', 'auto-repair'];
+export const industryOrder = ['service-contractors', 'driving-ranges', 'car-washes', 'construction', 'clinics', 'dental', 'tourist-buses', 'taxi-fleets', 'salons', 'laundry', 'auto-repair'];
 export const related = {
-  'service-contractors': ['car-washes', 'auto-repair', 'laundry'],
+  'service-contractors': ['construction', 'car-washes', 'auto-repair'],
+  construction: ['service-contractors', 'auto-repair', 'taxi-fleets'],
   'driving-ranges': ['salons', 'car-washes', 'laundry'],
   'car-washes': ['auto-repair', 'laundry', 'taxi-fleets'],
   clinics: ['dental', 'salons', 'laundry'],
