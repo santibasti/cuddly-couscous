@@ -182,6 +182,60 @@ export const industryPages = {
       ['Can site supervisors use it on phones?', 'Yes. It runs in a web browser on phones and tablets and needs an internet connection. Offline use is not a standard feature, so tell us during scoping if some sites have poor signal.'],
     ],
   },
+  'property-management': {
+    name: 'Property management', short: 'Property management',
+    title: 'Property Management System for Rentals | OpsPilot',
+    desc: 'Custom system for Philippine landlords and property managers: units and tenants, rent billing and balances, maintenance requests, supplies and collections.',
+    h1: 'Management system for property managers and landlords',
+    lead: 'Units to keep track of, rent to collect, repairs to follow up and tenants to update. OpsPilot records units and tenants, rent billing and payments, maintenance requests with quotations, service reports and a monthly collections summary.',
+    problems: [
+      ['Rent due dates and balances live in notebooks.', 'Rent billing, payments and balances are recorded per unit, with past-due amounts listed.'],
+      ['Maintenance requests get lost or forgotten.', 'Requests are logged, assigned and followed through to a service report with tenant acknowledgement.'],
+      ['Repair costs are not tracked per unit.', 'Quotations and approved work are recorded against the unit and carried into billing.'],
+      ['It is hard to see occupancy and collections at a glance.', 'A dashboard shows occupied and vacant units, rent collected and amounts outstanding.'],
+    ],
+    faqs: [
+      ['Does it handle lease contracts?', 'It records unit, tenant and rent details. Lease terms and legal matters remain between you and your tenants, and OpsPilot does not give legal advice.'],
+      ['Can tenants pay or submit requests online?', 'Not as a standard feature. Payments and requests are entered by your team. If you want something different, we can discuss it during scoping.'],
+      ['Can it manage more than one property?', 'It can be set up for several properties. This is scoped during discovery and agreed in writing.'],
+    ],
+  },
+  'retail-shops': {
+    name: 'Retail and hardware shops', short: 'Retail and hardware shops',
+    title: 'Retail and Hardware Shop Management System | OpsPilot',
+    desc: 'Custom system for Philippine retail and hardware shops: stock levels and reorder alerts, daily sales and expenses, supplier purchases, customer credit and staff attendance.',
+    h1: 'Management system for retail and hardware shops',
+    lead: 'Hundreds of items, daily sales, suppliers to pay and customers on credit. OpsPilot tracks stock levels with reorder alerts, daily sales and expenses, supplier purchases and payables, customer balances and staff attendance.',
+    problems: [
+      ['Stock counts are out of date.', 'Stock levels are recorded as items come in and go out, with low items flagged for reordering.'],
+      ['Daily sales and expenses take time to add up.', 'Sales and expenses are recorded as they happen and summarised daily.'],
+      ['Supplier payables and customer credit are hard to follow.', 'Purchases, payables and customer balances are recorded, with amounts that are past due listed.'],
+      ['It is unclear which items sell and which sit idle.', 'Reports show movement by item so you can see what to reorder and what is slow.'],
+    ],
+    faqs: [
+      ['Does it replace our point-of-sale or receipts?', 'Not unless we agree that during scoping. We discuss how your counter, receipts and tax records fit before building, and OpsPilot does not make tax-compliance claims.'],
+      ['Can it scan barcodes?', 'That is not a standard feature. If you rely on barcodes, tell us during scoping and we will say what is possible.'],
+      ['Can we bring in our existing item list?', 'Usually yes. Spreadsheet item lists can be imported during setup, and the format is agreed in writing.'],
+    ],
+  },
+  schools: {
+    name: 'Schools and training centers', short: 'Schools and training centers',
+    title: 'School and Training Center Management System | OpsPilot',
+    desc: 'Custom system for Philippine private schools, tutorials and training centers: class schedules, staff attendance, fee billing, payments and balances.',
+    h1: 'Management system for schools and training centers',
+    lead: 'Classes to schedule, staff to account for and fees to collect. OpsPilot records class and room schedules, staff and instructor attendance, fee billing, payments and balances, supplies and daily summaries.',
+    problems: [
+      ['Fee balances are hard to follow up.', 'Fees, payments and balances are recorded per account, with past-due amounts listed.'],
+      ['Staff and instructor attendance is tracked on paper.', 'Attendance is recorded and verified before payroll figures are prepared.'],
+      ['Class and room schedules clash.', 'A schedule by class, instructor and room shows what is booked and what is free.'],
+      ['Supplies and equipment run short.', 'Supplies and equipment are tracked, with low items flagged for reordering.'],
+    ],
+    faqs: [
+      ['Does it store student records and grades?', 'Not as part of the standard scope. Student records are sensitive and carry privacy obligations, so we would discuss them separately before agreeing anything. We make no compliance claims, and grading or accreditation features are not included by default.'],
+      ['Can parents pay or view balances online?', 'Not as a standard feature. Payments are entered by your team. If you want something different, we can discuss it during scoping.'],
+      ['Does it work for tutorials or short courses?', 'Yes. The same schedule, attendance and fee modules can be configured for tutorials, review centers and training programs.'],
+    ],
+  },
   'auto-repair': {
     name: 'Auto repair shops', short: 'Auto repair shops',
     title: 'Auto Repair Shop Management System | OpsPilot',
@@ -202,7 +256,7 @@ export const industryPages = {
   },
 };
 
-export const industryOrder = ['service-contractors', 'driving-ranges', 'car-washes', 'construction', 'clinics', 'dental', 'tourist-buses', 'taxi-fleets', 'salons', 'laundry', 'auto-repair'];
+export const industryOrder = ['service-contractors', 'driving-ranges', 'car-washes', 'construction', 'clinics', 'dental', 'tourist-buses', 'taxi-fleets', 'salons', 'laundry', 'auto-repair', 'property-management', 'retail-shops', 'schools'];
 export const related = {
   'service-contractors': ['construction', 'car-washes', 'auto-repair'],
   construction: ['service-contractors', 'auto-repair', 'taxi-fleets'],
@@ -215,4 +269,7 @@ export const related = {
   salons: ['dental', 'clinics', 'laundry'],
   laundry: ['car-washes', 'salons', 'service-contractors'],
   'auto-repair': ['car-washes', 'taxi-fleets', 'tourist-buses'],
+  'property-management': ['construction', 'service-contractors', 'retail-shops'],
+  'retail-shops': ['laundry', 'salons', 'property-management'],
+  schools: ['clinics', 'property-management', 'salons'],
 };
