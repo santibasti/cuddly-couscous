@@ -138,3 +138,19 @@ Customer messages on your Facebook Page are stored in the app (**Facebook Inbox*
 6. Facebook only delivers messages from the public once the app has the **pages_messaging** permission approved (App Review, business verification). Before that, only people with a role on the app (you, testers) can chat with it — enough to test.
 
 The AI never invents prices, never promises dates, and hands the chat to a person (status **Needs a person**) for complaints, custom jobs or anything it is unsure about; those replies are never sent automatically.
+
+## Lead intake address (for ManyChat / Chatfuel / Botpress / Zapier / a website form)
+
+A chatbot tool collects the customer's details and sends them to TopMop. TopMop creates the client (or finds the same mobile number) and an inquiry with source "Facebook", and texts the owner "New lead …" through the owner-alert SMS.
+
+1. Choose a long random key (letters and numbers only) and set it: `supabase secrets set LEAD_INTAKE_KEY=your_long_random_key`
+2. `supabase functions deploy lead-intake --no-verify-jwt`
+3. In the chatbot tool add an **External request / Webhook** step at the end of the chat:
+   - Method **POST**, URL `https://<project-ref>.supabase.co/functions/v1/lead-intake?key=your_long_random_key`
+   - Header `Content-Type: application/json` (if the tool can add headers, you can use `x-api-key: your_long_random_key` instead of `?key=`)
+   - Body (use the tool's own fields in place of the examples):
+     `{"name": "Maria Santos", "mobile": "09171234567", "address": "Alabang, Muntinlupa", "service": "window cleaning", "property_type": "Residential", "preferred_date": "Saturday", "details": "2-storey house, about 30 windows", "source": "Facebook"}`
+4. Only `name` and `mobile` (or `email`) are required. A leftover test lead can be removed in Clients.
+
+Quick test from PowerShell (replace the project ref and key):
+`Invoke-RestMethod -Method Post -Uri "https://<project-ref>.supabase.co/functions/v1/lead-intake?key=your_long_random_key" -ContentType "application/json" -Body '{"name":"Test Lead","mobile":"09170000000","service":"window cleaning"}'`
