@@ -286,6 +286,18 @@ describe('panel counting & variations', () => {
     expect(O.checkGroupsFor(['GLASS_EXT', 'ROOF'])).toEqual(['general', 'glass', 'roof']);
   });
 
+  it('materials & methodology: one section per service, edits are kept, removed services drop out', async () => {
+    const T = await import('./quote-text');
+    const svcs = db().services;
+    const first = T.syncMethodSections(svcs, ['GLASS_EXT', 'GLASS_EXT', 'ROOF', 'OTHER']);
+    expect(first.map((x) => x.code)).toEqual(['GLASS_EXT', 'ROOF']);
+    expect(first[1].materials).toContain('harness');
+    const edited = first.map((x) => (x.code === 'ROOF' ? { ...x, materials: 'custom kit' } : x));
+    const next = T.syncMethodSections(svcs, ['ROOF', 'SOLAR'], edited);
+    expect(next.map((x) => x.code)).toEqual(['ROOF', 'SOLAR']);
+    expect(next[0].materials).toBe('custom kit');
+  });
+
   it('starter package panels: the panels counted beyond it are the additional work', () => {
     const panels = [{ id: 'a', area: '1st Floor', side: 'Front', external: 20, internal: 6 }, { id: 'b', area: '2nd Floor', side: 'Back', external: 4, internal: 0 }];
     const bd = B.panelBreakdown(db(), undefined, panels, 24);

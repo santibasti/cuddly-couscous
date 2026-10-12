@@ -271,29 +271,43 @@ export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?:
   if (q.vat_mode === 'none') { setText(8, false, MUTED); doc.text('Prices are not subject to VAT.', M, y - 5); }
   }
 
-  // ---- methodology ----
-  const mth = parseMethodology(q.methodology?.trim() || defaultMethodology(db.settings));
-  section('Our cleaning system methodology');
-  need(26); doc.setFillColor(...NAVY); doc.roundedRect(M, y, CW, 11, 2, 2, 'F'); setText(10, true, [255, 255, 255]); doc.text(clean(DEFAULT_TECHNOLOGY), M + 5, y + 7);
-  setText(8.5, false, [170, 200, 230]); doc.text('Water-Fed Pole | Deionized Water Technology | No harsh chemicals', W - M - 5, y + 7, { align: 'right' }); y += 16;
-  mth.paragraphs.forEach((p, i) => { if (i === mth.stepsAfter && mth.steps.length) drawSteps(); para(p, M, CW, 9.5, 4.8); y += 2.5; });
-  if (mth.steps.length && mth.stepsAfter >= mth.paragraphs.length) drawSteps();
-  function drawSteps() {
-    setText(9.5, true, NAVY); need(10); doc.text('The process', M, y); y += 4;
-    mth.steps.forEach((st, i) => {
-      const w = CW - 16; const body = `${st.text}`; doc.setFontSize(9); const n = (doc.splitTextToSize(clean(body), w) as string[]).length; const h = Math.max(11, 8 + n * 4.3);
-      need(h + 2); doc.setFillColor(...SOFT); doc.roundedRect(M, y, CW, h, 2, 2, 'F');
-      doc.setFillColor(...TEAL); doc.circle(M + 7, y + h / 2, 3.6, 'F'); setText(10, true, [255, 255, 255]); doc.text(String(i + 1), M + 7, y + h / 2 + 1.3, { align: 'center' });
-      setText(9.5, true, NAVY); if (st.name) doc.text(clean(st.name), M + 14, y + 5.4);
-      setText(9, false, INK); let k = y + (st.name ? 10 : 5.4); for (const line of doc.splitTextToSize(clean(body), w) as string[]) { doc.text(line, M + 14, k); k += 4.3; }
-      y += h + 2;
-    });
-    y += 4;
-  }
-  if (mth.note) {
-    doc.setFontSize(9); const n = (doc.splitTextToSize(clean(mth.note), CW - 22) as string[]).length; const h = 7 + n * 4.5; need(h + 3);
-    doc.setFillColor(255, 247, 224); doc.roundedRect(M, y, CW, h, 2, 2, 'F'); doc.setFillColor(...GREEN); doc.rect(M, y + 2, 1.2, h - 4, 'F');
-    setText(9, true, [138, 90, 16]); doc.text('Note', M + 5, y + 5.2); setText(9, false, INK); let k = y + 5.2; for (const line of doc.splitTextToSize(clean(mth.note), CW - 22) as string[]) { doc.text(line, M + 17, k); k += 4.5; } y += h + 4;
+  // ---- methodology (one block per service when the quotation has sections, otherwise the single general text) ----
+  const sections = (q.method_sections ?? []).filter((m) => m.methodology.trim() || m.materials?.trim());
+  const drawMethod = (mth: ReturnType<typeof parseMethodology>) => {
+    const drawSteps = () => {
+      setText(9.5, true, NAVY); need(10); doc.text('The process', M, y); y += 4;
+      mth.steps.forEach((st, i) => {
+        const w = CW - 16; const body = `${st.text}`; doc.setFontSize(9); const n = (doc.splitTextToSize(clean(body), w) as string[]).length; const h = Math.max(11, 8 + n * 4.3);
+        need(h + 2); doc.setFillColor(...SOFT); doc.roundedRect(M, y, CW, h, 2, 2, 'F');
+        doc.setFillColor(...TEAL); doc.circle(M + 7, y + h / 2, 3.6, 'F'); setText(10, true, [255, 255, 255]); doc.text(String(i + 1), M + 7, y + h / 2 + 1.3, { align: 'center' });
+        setText(9.5, true, NAVY); if (st.name) doc.text(clean(st.name), M + 14, y + 5.4);
+        setText(9, false, INK); let k = y + (st.name ? 10 : 5.4); for (const line of doc.splitTextToSize(clean(body), w) as string[]) { doc.text(line, M + 14, k); k += 4.3; }
+        y += h + 2;
+      });
+      y += 4;
+    };
+    mth.paragraphs.forEach((p, i) => { if (i === mth.stepsAfter && mth.steps.length) drawSteps(); para(p, M, CW, 9.5, 4.8); y += 2.5; });
+    if (mth.steps.length && mth.stepsAfter >= mth.paragraphs.length) drawSteps();
+    if (mth.note) {
+      doc.setFontSize(9); const n = (doc.splitTextToSize(clean(mth.note), CW - 22) as string[]).length; const h = 7 + n * 4.5; need(h + 3);
+      doc.setFillColor(255, 247, 224); doc.roundedRect(M, y, CW, h, 2, 2, 'F'); doc.setFillColor(...GREEN); doc.rect(M, y + 2, 1.2, h - 4, 'F');
+      setText(9, true, [138, 90, 16]); doc.text('Note', M + 5, y + 5.2); setText(9, false, INK); let k = y + 5.2; for (const line of doc.splitTextToSize(clean(mth.note), CW - 22) as string[]) { doc.text(line, M + 17, k); k += 4.5; } y += h + 4;
+    }
+  };
+  if (sections.length) {
+    section('Materials & methodology');
+    for (const sec of sections) {
+      need(30); setText(11, true, NAVY); doc.text(clean(sec.name), M, y); y += 6;
+      if (sec.materials) { doc.setFillColor(...NAVY); const ml = doc.splitTextToSize(clean(sec.materials), CW - 52) as string[]; const mh = Math.max(11, 5 + ml.length * 4.2); need(mh + 4); doc.roundedRect(M, y, CW, mh, 2, 2, 'F'); setText(9, true, [255, 255, 255]); doc.text('Materials & equipment', M + 5, y + 6.6); setText(8.5, false, [200, 220, 240]); let k = y + 6.6; for (const line of ml) { doc.text(line, W - M - 5, k, { align: 'right' }); k += 4.2; } y += mh + 4; }
+      drawMethod(parseMethodology(sec.methodology));
+      y += 2;
+    }
+  } else {
+    const mth = parseMethodology(q.methodology?.trim() || defaultMethodology(db.settings));
+    section('Our cleaning system methodology');
+    need(26); doc.setFillColor(...NAVY); doc.roundedRect(M, y, CW, 11, 2, 2, 'F'); setText(10, true, [255, 255, 255]); doc.text(clean(DEFAULT_TECHNOLOGY), M + 5, y + 7);
+    setText(8.5, false, [170, 200, 230]); doc.text('Water-Fed Pole | Deionized Water Technology | No harsh chemicals', W - M - 5, y + 7, { align: 'right' }); y += 16;
+    drawMethod(mth);
   }
 
   // ---- project plan: manpower and duration ----

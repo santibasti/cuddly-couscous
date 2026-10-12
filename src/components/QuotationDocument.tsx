@@ -12,6 +12,17 @@ export interface QuoteBundle {
   company: Settings['company']; defaults?: { intro?: string; methodology?: string; disclaimer?: string; crew?: string };
 }
 
+function MethodBody({ m }: { m: ReturnType<typeof parseMethodology> }) {
+  return (
+    <>
+      {m.paragraphs.slice(0, m.stepsAfter || m.paragraphs.length).map((p, i) => <p key={i}>{p}</p>)}
+      {m.steps.length > 0 && <><div className="pd-k" style={{ marginTop: 6 }}>The process</div><div className="pd-steps">{m.steps.map((s, i) => <div className="pd-step" key={i}><i>{i + 1}</i><div>{s.name && <b>{s.name}</b>}<div>{s.text}</div></div></div>)}</div></>}
+      {m.stepsAfter > 0 && m.paragraphs.slice(m.stepsAfter).map((p, i) => <p key={`a${i}`}>{p}</p>)}
+      {m.note && <div className="pd-note" style={{ marginTop: 8 }}><div className="pd-k">Note</div>{m.note}</div>}
+    </>
+  );
+}
+
 export function QuotationDocument({ b }: { b: QuoteBundle }) {
   const q = b.quotation; const c = b.company; const t = docTotals(q.items, q.discount, q.vat_mode, q.vat_rate);
   const intro = q.intro?.trim() || b.defaults?.intro?.trim() || DEFAULT_INTRO;
@@ -19,6 +30,7 @@ export function QuotationDocument({ b }: { b: QuoteBundle }) {
   const disclaimer = q.disclaimer?.trim() || b.defaults?.disclaimer?.trim() || '';
   const manpower = manpowerText(q); const duration = durationText(q);
   const amounts = quoteShowsAmounts(q);
+  const sections = (q.method_sections ?? []).filter((s) => s.methodology.trim() || s.materials?.trim());
   const pay = paymentSentence(q.payment_option);
   const hello = b.client.contact_person?.trim();
   return (
@@ -48,12 +60,16 @@ export function QuotationDocument({ b }: { b: QuoteBundle }) {
         <div className="fin"><span>TOTAL</span><span>{money(t.total)}</span></div>
       </div>}
 
-      <div className="pd-h">Our cleaning system methodology</div>
-      <div className="pd-tech"><b>{DEFAULT_TECHNOLOGY}</b><span>Water-Fed Pole · Deionized Water Technology · No harsh chemicals</span></div>
-      {method.paragraphs.slice(0, method.stepsAfter || method.paragraphs.length).map((p, i) => <p key={i}>{p}</p>)}
-      {method.steps.length > 0 && <><div className="pd-k" style={{ marginTop: 6 }}>The process</div><div className="pd-steps">{method.steps.map((s, i) => <div className="pd-step" key={i}><i>{i + 1}</i><div>{s.name && <b>{s.name}</b>}<div>{s.text}</div></div></div>)}</div></>}
-      {method.stepsAfter > 0 && method.paragraphs.slice(method.stepsAfter).map((p, i) => <p key={`a${i}`}>{p}</p>)}
-      {method.note && <div className="pd-note" style={{ marginTop: 8 }}><div className="pd-k">Note</div>{method.note}</div>}
+      <div className="pd-h">{sections.length ? 'Materials & methodology' : 'Our cleaning system methodology'}</div>
+      {sections.length === 0 && <div className="pd-tech"><b>{DEFAULT_TECHNOLOGY}</b><span>Water-Fed Pole · Deionized Water Technology · No harsh chemicals</span></div>}
+      {sections.length === 0 && <MethodBody m={method} />}
+      {sections.map((s) => (
+        <div key={s.code} className="pd-card" style={{ marginTop: 10 }}>
+          <b className="n">{s.name}</b>
+          {s.materials && <div className="pd-tech" style={{ marginTop: 6 }}><b>Materials &amp; equipment</b><span>{s.materials}</span></div>}
+          <MethodBody m={parseMethodology(s.methodology)} />
+        </div>
+      ))}
 
       {(manpower || duration) && <><div className="pd-h">Project plan</div>
         <div className="pd-two">{manpower && <div className="pd-card"><div className="pd-k">Manpower deployment</div>{manpower}</div>}{duration && <div className="pd-card"><div className="pd-k">Estimated duration</div>{duration}</div>}</div></>}

@@ -7,7 +7,7 @@ import type {
 } from './types';
 import { DEFAULT_ACCESS } from './rbac';
 import { geoPatch } from './geo-ph';
-import { DEFAULT_DISCLAIMER } from './quote-text';
+import { DEFAULT_DISCLAIMER, SERVICE_METHOD_DEFAULTS } from './quote-text';
 import { seedMaintenance } from './maint-seed';
 import { employeeRating } from './rating-core';
 import { findConflicts, buildChecklistItems, buildPayrollLines, computeTimes, docTotals, invoiceTotals, jobDays, priceService, dailyEquivalent } from './business';
@@ -89,6 +89,7 @@ export function seedDB(): DB {
     svc('GUTTER', 'Gutter Cleaning', 'lm', 0, 1, { custom_quote: true }),
     svc('OTHER', 'Other Property-Care Service', 'lot', 0, 1, { custom_quote: true }),
   ];
+  for (const sv of services) { const d = SERVICE_METHOD_DEFAULTS[sv.code]; if (d) { sv.materials = d.materials; sv.methodology = d.methodology; } }
   const S = (c: ServiceCode) => services.find((s) => s.code === c)!;
 
   /* ---- employees ---- */

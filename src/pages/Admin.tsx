@@ -121,6 +121,14 @@ function Pricing() {
           <td>{num(r.rate, (n) => set(i, { rate: n }), 100)}</td><td>{num(r.minimum_qty, (n) => set(i, { minimum_qty: n }), 80)}</td><td>{num(r.est_hours_per_unit, (n) => set(i, { est_hours_per_unit: n }), 70)}</td>
           <td><input type="checkbox" checked={r.custom_quote} onChange={(e) => set(i, { custom_quote: e.target.checked })} aria-label="Custom quote" /></td>
           <td>{PROTECTED_SERVICES.includes(r.code) ? <span className="small muted" title="Used by the glass package, panel counting and blank quotation lines — edit it, but it cannot be deleted">core</span> : <button className="btn sm danger" onClick={() => void del(r)}>Delete</button>}</td></tr>,
+        <tr key={r.id + 'm'}><td colSpan={7} style={{ background: 'rgba(34,193,195,.03)' }}>
+          <details><summary className="small" style={{ cursor: 'pointer' }}>Materials &amp; methodology printed on quotations{r.methodology || r.materials ? '' : ' — none yet'}</summary>
+            <div className="form-grid" style={{ marginTop: 8 }}>
+              <label className="full small muted">Materials &amp; equipment used (separate with commas)<input value={r.materials ?? ''} onChange={(e) => set(i, { materials: e.target.value })} style={{ width: '100%' }} /></label>
+              <label className="full small muted">Methodology — blank line between paragraphs; “Process:” lists steps as “Name: what happens”; “Note:” becomes a note<textarea rows={9} value={r.methodology ?? ''} onChange={(e) => set(i, { methodology: e.target.value })} style={{ width: '100%' }} /></label>
+            </div>
+          </details>
+        </td></tr>,
         ...(r.code === 'GLASS_EXT' ? [<tr key={r.id + 'p'}><td colSpan={7} style={{ background: 'rgba(34,193,195,.07)' }}><span className="small muted">Starter package: </span>price ₱ {num(r.package_price, (n) => set(i, { package_price: n }), 100)} covers {num(r.package_qty, (n) => set(i, { package_qty: n }), 70)} panels · excess ₱ {num(r.excess_rate, (n) => set(i, { excess_rate: n }), 90)} per panel</td></tr>,
           <tr key={r.id + 'pk'}><td colSpan={7} style={{ background: 'rgba(34,193,195,.04)' }}>
             <div className="small muted" style={{ marginBottom: 6 }}>More glass packages — the sales team picks one when making a quotation (price for N panels, with its own excess rate).</div>

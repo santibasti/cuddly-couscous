@@ -1,4 +1,4 @@
-import { PAYMENT_OPTIONS, defaultCrew, defaultDisclaimer, defaultIntro, defaultMethodology, durationText, manpowerText } from '@/lib/quote-text';
+import { PAYMENT_OPTIONS, SERVICE_METHOD_DEFAULTS, syncMethodSections, defaultCrew, defaultDisclaimer, defaultIntro, defaultMethodology, durationText, manpowerText } from '@/lib/quote-text';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
@@ -69,7 +69,11 @@ export default function QuoteEditor() {
   const [pkgId, setPkgId] = useState('');
   const pkg = pkgOptions.find((p) => p.id === (pkgId || pkgOptions[0]?.id));
 
-  const setItems = (items: QuoteItem[]) => f.set('items', items);
+  const setItems = (items: QuoteItem[]) => {
+    f.set('items', items);
+    // a new quotation starts with one materials & methodology section per service; sections follow the services on the quotation
+    if (v.method_sections !== undefined || !existing) f.set('method_sections', syncMethodSections(db.services, items.map((i) => i.service_code), v.method_sections ?? []));
+  };
   const updItem = (i: number, p: Partial<QuoteItem>) => setItems(v.items.map((x, k) => (k === i ? { ...x, ...p } : x)));
   const addPriced = (code: ServiceCode, q: number, pkg?: { price: number; qty: number; excess_rate: number }) => {
     const d = db.services.find((s) => s.code === code)!;
@@ -181,8 +185,23 @@ export default function QuoteEditor() {
         </Card>
         <Card title="Introduction & cleaning methodology" actions={<span className="small muted">Printed on the quotation — edit for this client if needed</span>}>
           <Field label="Introduction (after “Dear Sir/Ma'am,”)" className="full"><textarea rows={4} style={{ width: '100%' }} disabled={readOnly} value={v.intro ?? ''} onChange={(e) => f.set('intro', e.target.value)} /></Field>
+          {(v.method_sections?.length ?? 0) > 0 ? (
+            <div className="stack">
+              <div className="small muted">Materials and methodology for each service on this quotation — filled from the service defaults (Admin → Service pricing). Edit them for this client if needed.</div>
+              {v.method_sections!.map((m, i) => (
+                <div key={m.code} className="card" style={{ padding: 12 }}>
+                  <div className="row between"><b>{m.name}</b>{!readOnly && <button type="button" className="btn sm" onClick={() => { const sv = db.services.find((x) => x.code === m.code); const d = SERVICE_METHOD_DEFAULTS[m.code]; f.set('method_sections', v.method_sections!.map((x, j) => (j === i ? { ...x, materials: sv?.materials ?? d?.materials, methodology: sv?.methodology ?? d?.methodology ?? '' } : x))); }}>Reset to default</button>}</div>
+                  <Field label="Materials & equipment used" hint="Separate with commas"><input disabled={readOnly} value={m.materials ?? ''} onChange={(e) => f.set('method_sections', v.method_sections!.map((x, j) => (j === i ? { ...x, materials: e.target.value } : x)))} /></Field>
+                  <Field label="Methodology" hint="Blank line between paragraphs. A block starting “Process:” lists steps as “Name: what happens”; “Note:” becomes a note."><textarea rows={9} style={{ width: '100%' }} disabled={readOnly} value={m.methodology} onChange={(e) => f.set('method_sections', v.method_sections!.map((x, j) => (j === i ? { ...x, methodology: e.target.value } : x)))} /></Field>
+                </div>
+              ))}
+              {!readOnly && <div className="row"><button type="button" className="btn sm" onClick={() => f.set('method_sections', syncMethodSections(db.services, v.items.map((i) => i.service_code), []))}>Reset all from service defaults</button><button type="button" className="btn sm" onClick={() => f.set('method_sections', undefined)}>Use one general methodology instead</button></div>}
+            </div>
+          ) : (<>
+          {!readOnly && v.items.length > 0 && <div><button type="button" className="btn sm navy" onClick={() => f.set('method_sections', syncMethodSections(db.services, v.items.map((i) => i.service_code), []))}>Use materials &amp; methodology per service</button><span className="small muted"> — one section for each service on this quotation</span></div>}
           <Field label="Our cleaning system methodology" className="full" hint="Leave a blank line between paragraphs. A block starting “Process:” lists steps as “Name: what happens”; a paragraph starting “Note:” is shown as a note."><textarea rows={12} style={{ width: '100%' }} disabled={readOnly} value={v.methodology ?? ''} onChange={(e) => f.set('methodology', e.target.value)} /></Field>
           {!readOnly && <div className="row" style={{ gap: 8 }}><button type="button" className="btn sm" onClick={() => f.set('intro', defaultIntro(db.settings))}>Reset introduction</button><button type="button" className="btn sm" onClick={() => f.set('methodology', defaultMethodology(db.settings))}>Reset methodology</button></div>}
+          </>)}
         </Card>
         <Card title="Manpower, duration & disclaimer" actions={<span className="small muted">Shown on the quotation sent to the client</span>}>
           <div className="form-grid">

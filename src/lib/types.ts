@@ -98,6 +98,8 @@ export interface ServiceDef extends Base {
   package_price?: number; // glass starter package
   package_qty?: number;   // panels covered by the package
   excess_rate?: number;   // per panel beyond the package
+  materials?: string;     // materials and equipment used for this service (printed on the quotation)
+  methodology?: string;   // how the service is done: paragraphs, “Process:” steps, “Note:” — printed on the quotation
   packages?: GlassPackage[]; // further glass packages the sales team can pick (price for N panels, excess per panel)
   custom_quote: boolean;  // no standard rate – priced per quotation
   est_hours_per_unit: number;
@@ -158,6 +160,8 @@ export interface Quotation extends Base {
   ocular_done?: boolean;
   /** manpower, duration and disclaimer shown on the quotation (absent on quotations made before they existed) */
   crew_size?: string; safety_officer?: boolean; work_days?: number; disclaimer?: string; intro?: string; methodology?: string;
+  /** materials and methodology per service on the quotation (when present they replace the single methodology text) */
+  method_sections?: { code: string; name: string; materials?: string; methodology: string }[];
   status: QuoteStatus;
   sent_at?: string;
   decided_at?: string;

@@ -71,3 +71,31 @@ export const paymentSentence = (opt?: string) => {
   const d = paymentDays(opt); if (d === undefined) return undefined;
   return d === 0 ? 'Payment is due upon completion of the job.' : `Payment is due within ${d} days (net ${d}) from the invoice date.`;
 };
+
+/* ---------- materials & methodology per service ---------- */
+export interface MethodDefault { materials: string; methodology: string }
+/** Starting text for each service; Admin can edit it (Admin → Service pricing) and Sales can edit it again for a single quotation. */
+export const SERVICE_METHOD_DEFAULTS: Record<string, MethodDefault> = {
+  GLASS_EXT: { materials: 'Water-fed pole system, deionized (DI) water, soft-bristle brush, no harsh chemicals', methodology: DEFAULT_METHODOLOGY },
+  GLASS_INT: { materials: 'Microfiber cloths, squeegee, neutral glass cleaner, drop sheets', methodology: `Interior glass is cleaned by hand, with drop sheets to protect floors and furniture.\n\nProcess:\nProtect: Drop sheets and floor protection are placed under the work area.\nClean: The glass is washed with a neutral cleaner and a microfiber applicator.\nSqueegee & detail: Squeegee finish, then frames and sills are wiped dry.\n\nNote: Furniture within reach of the windows should be moved or covered before we arrive.` },
+  ROOF: { materials: 'Low-pressure rinse, soft brush, eco-safe roof cleaner, fall-protection harness and anchor lines', methodology: `We clean the roof with a low-pressure rinse and a soft brush, using eco-safe roof cleaner only when needed, so the roofing is not damaged. The crew works with certified work-at-height equipment.\n\nProcess:\nSafety setup: Anchor points, harnesses and barricades are set before work starts.\nDry removal: Loose debris, leaves and dust are cleared first.\nWash: Moss, algae and stains are loosened with a soft brush and low-pressure rinse.\nFinal rinse: The roof and gutters are rinsed clear.\n\nNote: Roofs that are too steep or fragile may need extra safety measures and are quoted separately.` },
+  WALL: { materials: 'Low-pressure washer, soft brush, eco-safe cleaner, water supply from the property', methodology: `Walls and floors are cleaned with a low-pressure wash and a soft brush, so paint and surfaces are not damaged.\n\nProcess:\nPre-wet: The surface is wetted to loosen dirt.\nScrub: Stains, moss and algae are scrubbed with a soft brush and eco-safe cleaner where needed.\nRinse: The area is rinsed clear and the wash water is directed away.\n\nNote: We will use your property's water connection. Stubborn paint or oil stains may need a separate quotation.` },
+  FLOOR: { materials: 'Surface cleaner, low-pressure washer, stiff brush, eco-safe degreaser, wet vacuum if needed', methodology: `Hardscape and floors are cleaned with a surface cleaner and low-pressure wash that lifts dirt without damaging the surface.\n\nProcess:\nSweep: Loose dirt and debris are cleared.\nWash: The surface is cleaned with a surface cleaner and degreaser where needed.\nRinse: Wash water is rinsed away or collected, leaving the surface clean.\n\nNote: We will use your property's water connection. Drainage for the wash water should be available.` },
+  SOLAR: { materials: 'Deionized (DI) water, soft-bristle brush, water-fed pole, no detergents or abrasives', methodology: `Solar panels are cleaned with deionized water and a soft brush only, with no chemicals and no pressure washer, to protect the panel coating and the warranty.\n\nProcess:\nInspect: Panels are checked for cracks and loose parts before cleaning.\nBrush: A soft brush with deionized water lifts dust and bird droppings.\nRinse: Final rinse leaves a spot-free surface that dries without residue.\n\nNote: We clean in the early morning or late afternoon, when panels are cool.` },
+  ACP: { materials: 'Soft brush, pH-neutral cleaner, low-pressure rinse, work-at-height equipment', methodology: `ACP and cladding panels are cleaned with a pH-neutral cleaner and a soft brush to keep the finish intact.\n\nProcess:\nRinse: Loose dirt is rinsed off from the top down.\nClean: Panels are washed with a pH-neutral cleaner and soft brush.\nFinal rinse: Panels are rinsed clear and left to dry.` },
+  CEILING: { materials: 'Microfiber tools, dry sponge, vacuum, drop sheets', methodology: `Ceilings are cleaned dry or damp, depending on the material, with drop sheets protecting everything below.\n\nProcess:\nProtect: Floors and furniture are covered.\nDust: Dust and cobwebs are removed with microfiber tools and a vacuum.\nSpot clean: Marks are removed with a damp cloth where the material allows.` },
+  GUTTER: { materials: 'Gloves, scoops, hose, work-at-height equipment', methodology: `Gutters are cleared by hand and flushed with water so rainwater flows freely.\n\nProcess:\nClear: Leaves and debris are removed by hand.\nFlush: Gutters and downpipes are flushed to check the flow.\nCheck: Joints and outlets are checked for blockages and leaks.` },
+};
+export interface MethodSection { code: string; name: string; materials?: string; methodology: string }
+/** One section per distinct service on the quotation (in order), keeping what was already edited for a service that is still on it. */
+export function syncMethodSections(services: { code: string; name: string; methodology?: string; materials?: string }[], itemCodes: string[], existing: MethodSection[] = []): MethodSection[] {
+  const out: MethodSection[] = [];
+  for (const code of itemCodes) {
+    if (code === 'OTHER' || out.some((s) => s.code === code)) continue;
+    const kept = existing.find((s) => s.code === code); if (kept) { out.push(kept); continue; }
+    const sv = services.find((x) => x.code === code); const d = SERVICE_METHOD_DEFAULTS[code];
+    const methodology = (sv?.methodology ?? d?.methodology ?? '').trim(); if (!methodology && !(sv?.materials ?? d?.materials)) continue;
+    out.push({ code, name: sv?.name ?? code, materials: (sv?.materials ?? d?.materials ?? '').trim() || undefined, methodology });
+  }
+  return out;
+}
