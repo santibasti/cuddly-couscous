@@ -83,8 +83,8 @@ export const projects = [
   {
     kind: 'topmop', group: 'project',
     name: 'TopMop service operations',
-    status: 'Internal system in development',
-    text: 'An operations system for a service business: attendance, crews, equipment, jobs, quotations and collections in one place. It is being developed as an internal system and is not presented as a client deployment.',
+    status: 'In use with a client',
+    text: 'An operations system for a service business: attendance, crews, equipment, jobs, quotations and collections in one place. It is in use with a client today; the preview here is illustrative, with sample data only.',
     tags: ['Attendance', 'Equipment', 'Jobs', 'Collections'],
   },
   {

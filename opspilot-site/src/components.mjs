@@ -203,7 +203,7 @@ const workCard = (p) => `
       <article class="work-card reveal${p.group === 'concept' ? ' work-concept' : ''}">
         <div class="work-preview"><div class="win-bar" aria-hidden="true"><i></i><i></i><i></i><span>Illustrative preview</span><em>Sample data</em></div>${projectPreview(p.kind)}</div>
         <div class="work-body">
-          <span class="status-pill ${p.group === 'concept' ? 'pill-concept' : p.kind === 'topmop' ? 'pill-dev' : 'pill-demo'}">${p.status}</span>
+          <span class="status-pill ${p.group === 'concept' ? 'pill-concept' : 'pill-demo'}">${p.status}</span>
           <h3>${p.name}</h3>
           <p>${p.text}</p>
           <ul class="tags">${p.tags.map((t) => `<li>${t}</li>`).join('')}</ul>
@@ -226,7 +226,7 @@ export const workGroups = () => `
 export const workTeaser = () => `
 <section class="section" id="work" aria-labelledby="work-title">
   <div class="container">
-    ${sectionHead('Our Work', 'Projects, described plainly.', 'Two projects we are building or demonstrating. Previews are illustrative, not screenshots, and neither is presented as a client deployment.', true).replace('<h2>', '<h2 id="work-title">')}
+    ${sectionHead('Our Work', 'Projects, described plainly.', 'One system in use with a client and one working demo. Previews are illustrative, not screenshots, and use sample data only.', true).replace('<h2>', '<h2 id="work-title">')}
     <p class="strip-hint" aria-hidden="true">Swipe to browse →</p>
     <div class="work-grid work-strip" tabindex="0" role="region" aria-label="Projects, scroll sideways to browse">${c.projects.filter((p) => p.group === 'project').map(workCard).join('')}
     </div>
