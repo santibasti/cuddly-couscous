@@ -12,3 +12,8 @@ Drop high-res files into `assets/photos/` using these names (missing ones show a
 - Colours/fonts: CSS variables at the top of `styles.css`
 - Booking form currently opens a pre-filled email; swap the handler in `script.js` for Formspree/Netlify Forms etc.
 - Christmas countdown targets 1 Dec; early-bird banner text lives in `index.html` (`.announce`, `#christmas`).
+
+## Pages
+`index.html` (Home), `sessions.html`, `portfolio.html`, `christmas.html`, `about.html`, `packages.html` (Packages + FAQ), `book.html`.
+Header, footer and mobile action bar are repeated in each file — if you change the menu or contact details, update all 7 files.
+Service cards link to `book.html?session=<name>` so the booking form opens with that session pre-selected.
