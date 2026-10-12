@@ -304,3 +304,4 @@ input.err{border-color:#c0392b}
 .f-quote::before{content:none}
 .founder{isolation:isolate}
 .masonry figure.ph-fig>img{position:absolute;inset:0;height:100%;object-fit:cover}
+.arch img{object-position:50% 40%}
