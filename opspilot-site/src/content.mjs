@@ -153,6 +153,7 @@ export const businessTypes = [
   'Bus / taxi / van fleet',
   'Salon / laundry / repair shop',
   'Construction / fit-out contractor',
+  'Property management / retail shop / school',
   'Other MSME',
 ];
 
@@ -165,7 +166,10 @@ export const scopeTypes = [
   { id: 'fleet', label: 'Bus, taxi or van fleet', hint: 'Vehicles, drivers, collections', formType: 4, modules: [0, 1, 2, 5, 6] },
   { id: 'shop', label: 'Salon, laundry or repair', hint: 'Jobs, stock, sales', formType: 5, modules: [1, 2, 4, 5, 6] },
   { id: 'construction', label: 'Construction contractor', hint: 'Projects, crews, materials, billing', formType: 6, modules: [0, 1, 2, 3, 4, 5, 6] },
-  { id: 'other', label: 'Other MSME', hint: 'Staff, stock, bookings', formType: 7, modules: [] },
+  { id: 'property', label: 'Property management', hint: 'Units, tenants, rent, requests', formType: 7, modules: [1, 2, 3, 4, 5, 6] },
+  { id: 'retail', label: 'Retail or hardware shop', hint: 'Stock, sales, suppliers', formType: 7, modules: [0, 1, 5, 6] },
+  { id: 'school', label: 'School or training center', hint: 'Attendance, fees, schedules', formType: 7, modules: [0, 1, 2, 5, 6] },
+  { id: 'other', label: 'Other MSME', hint: 'Staff, stock, bookings', formType: 8, modules: [] },
 ];
 
 // More industries (shown as compact cards). `modules` are indexes into `solutions`.
@@ -189,6 +193,15 @@ export const moreIndustries = [
     items: ['Appointments by stylist or therapist', 'Staff schedules and attendance', 'Product stock and usage', 'Service sales and payments', 'Daily sales report'] },
   { id: 'laundry', icon: 'laundry', title: 'Laundry shops', sub: 'Laundry and dry cleaning', modules: [1, 2, 5, 6],
     items: ['Job queue by stage: received, washing, ready', 'Customer claim and pickup records', 'Detergent and supplies stock', 'Payments and unpaid balances', 'Daily sales'] },
+  { id: 'property-management', icon: 'building', title: 'Property management', sub: 'Rentals, apartments and commercial units', modules: [1, 2, 3, 4, 5, 6],
+    items: ['Units and tenants, with rent due dates', 'Rent billing, payments and balances', 'Maintenance requests and repair quotations', 'Service reports and tenant acknowledgement', 'Supplies and equipment stock', 'Collections and occupancy summary'],
+    note: 'OpsPilot records rent and requests. Lease terms and legal matters stay between you and your tenants, and the system does not give legal advice.' },
+  { id: 'retail-shops', icon: 'store', title: 'Retail and hardware shops', sub: 'Stores, hardware and trading businesses', modules: [0, 1, 5, 6],
+    items: ['Stock levels with reorder alerts', 'Sales and expenses recorded daily', 'Supplier purchases and payables', 'Customer credit and unpaid balances', 'Staff attendance and schedules'],
+    note: 'Not a point-of-sale replacement unless agreed during scoping. We discuss how your counter, receipts and tax records fit before building.' },
+  { id: 'schools', icon: 'school', title: 'Schools and training centers', sub: 'Private schools, tutorials and training', modules: [0, 1, 2, 5, 6],
+    items: ['Class and room schedules', 'Staff and instructor attendance', 'Fee billing, payments and balances', 'Supplies and equipment stock', 'Daily and monthly summaries'],
+    note: 'Student records are sensitive and are a separate scope, discussed case by case. We make no compliance claims and do not provide grading or accreditation features by default.' },
   { id: 'auto-repair', icon: 'gear', title: 'Auto repair shops', sub: 'Service and repair garages', modules: [1, 2, 3, 4, 5, 6],
     items: ['Job orders by bay and mechanic', 'Quotations and approved additional work', 'Parts and supplies stock', 'Service reports with customer sign-off', 'Billing and collections'] },
 ];
