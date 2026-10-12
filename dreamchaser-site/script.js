@@ -65,5 +65,7 @@
     }
   });
 
+  var mq=$('#moreq');if(mq){mq.addEventListener('click',function(){$('#acc').classList.add('all');mq.remove()})}
+
   $('#yr').textContent=new Date().getFullYear();
 })();

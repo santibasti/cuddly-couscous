@@ -305,3 +305,94 @@ input.err{border-color:#c0392b}
 .founder{isolation:isolate}
 .masonry figure.ph-fig>img{position:absolute;inset:0;height:100%;object-fit:cover}
 .arch img{object-position:50% 40%}
+
+/* ===== Mobile compaction ===== */
+@media(max-width:760px){
+  body{font-size:15px;line-height:1.6}
+  h2{font-size:clamp(1.9rem,8vw,2.4rem)}
+  .wrap{width:min(1200px,100% - 36px)}
+  .intro,.services,.portfolio,.packages,.experience,.founder,.love,.faq,.book{padding-block:56px}
+  .xmas{padding-block:60px}
+  .sec-head{margin-bottom:26px}
+  .body-lg{font-size:1rem;margin-top:1rem}
+  .eyebrow{margin-bottom:.8rem;font-size:.66rem}
+
+  /* hero */
+  .hero{padding:28px 18px 48px;gap:26px}
+  .hero-art{width:min(260px,70%)}
+  .hero h1{font-size:2.5rem}
+  .lead{font-size:1rem;margin-top:1rem}
+  .cta-row{margin-top:1.4rem;gap:.6rem}
+  .cta-row .btn{flex:1;padding:.95rem 1rem;font-size:.7rem;white-space:nowrap}
+  .proof{margin-top:1.8rem;padding-top:1.2rem;gap:18px}
+  .proof strong{font-size:1.5rem}
+  .badge-float{padding:.7rem 1rem;left:-14px}.badge-float .script{font-size:1.5rem}
+  .marquee{padding:.7rem 0}.track{font-size:1.25rem}
+
+  /* intro pillars -> compact */
+  .pillars{gap:18px;margin-top:36px}
+  .pillars article{padding-top:1rem}.pillars h3{font-size:1.5rem;margin:.3rem 0}
+
+  /* swipe rows instead of long stacks */
+  .svc-grid,.pkg-grid,.quotes{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;margin-inline:-18px;padding:0 18px 14px;scrollbar-width:none;max-width:none}
+  .svc-grid::-webkit-scrollbar,.pkg-grid::-webkit-scrollbar,.quotes::-webkit-scrollbar{display:none}
+  .svc{flex:0 0 78%;aspect-ratio:3/4;scroll-snap-align:start}
+  .svc p{max-height:90px;opacity:.9}
+  .svc h3{font-size:1.8rem}.svc-body{padding:1.3rem}
+  .pkg{flex:0 0 82%;scroll-snap-align:start;padding:1.8rem 1.5rem}
+  .pkg-grid{max-width:none}
+  blockquote{flex:0 0 86%;scroll-snap-align:start;padding:26px}
+  blockquote p{font-size:1.2rem;margin-top:1.6rem}
+  .rent{padding:1.3rem;margin-top:6px}.rent h3{font-size:1.5rem}
+
+  /* portfolio: compact 2-col grid, square-ish tiles */
+  .masonry{columns:auto;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .masonry figure,.masonry figure.tall,.masonry figure.h2{min-height:0;aspect-ratio:3/4;margin:0;border-radius:14px}
+  .masonry figcaption{opacity:1;transform:none;font-size:1rem;padding:1.4rem .8rem .6rem}
+  .filters{flex-wrap:nowrap;overflow-x:auto;margin-inline:-18px;padding:0 18px 4px;scrollbar-width:none}
+  .filters button{flex:0 0 auto}
+
+  /* christmas */
+  .off{font-size:5rem;margin:1rem 0 .3rem}.xmas-card{padding:2rem 1.2rem}
+
+  /* steps: 2x2 grid */
+  .steps{grid-template-columns:1fr 1fr;gap:26px 16px}
+  .steps h3{font-size:1.3rem}.steps p{font-size:.85rem}.steps li span{font-size:1.7rem;top:-.95rem}
+
+  /* founder: smaller photo */
+  .f-photo{max-width:260px}
+  .f-quote{font-size:1.6rem;margin-top:1.2rem}
+
+  /* faq */
+  .acc summary{font-size:1.2rem;padding:1.1rem 0}
+
+  /* book */
+  .contact{margin:1.2rem 0}.contact li{padding:.65rem 0}
+  .form{padding:22px;gap:.9rem}
+
+  /* footer */
+  .foot{padding-top:44px}
+  .foot-in{grid-template-columns:1fr 1fr;gap:1.4rem}
+  .foot-in>div:first-child{grid-column:1/-1}
+  .copy{margin-top:2rem}
+}
+
+.more-q{display:none}
+@media(max-width:760px){
+  .announce{font-size:.66rem;padding:.5rem .8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+  .announce a{display:none}
+  .hero{min-height:0}
+  .intro .pillars{grid-template-columns:1fr;gap:14px}
+  .pillars p{font-size:.88rem}.num{display:none}
+  .masonry figure,.masonry figure.tall,.masonry figure.h2{aspect-ratio:1/1}
+  .xmas .body-lg{font-size:.95rem}
+  .f-p2{display:none}.f-photo{max-width:220px}
+  .acc:not(.all) details:nth-child(n+6){display:none}
+  .more-q{display:flex;margin:1.4rem auto 0}
+  .acc.all~.more-q{display:none}
+  .contact{display:none}
+  .form .two:first-of-type label:nth-child(2){display:none}
+  .form .two:first-of-type{grid-template-columns:1fr}
+  .f-sess{display:none}
+  .intro{padding-bottom:36px}
+}
