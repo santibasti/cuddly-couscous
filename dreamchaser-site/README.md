@@ -4,8 +4,8 @@ Static, dependency-free site (HTML/CSS/JS). Open `index.html` or run `python3 -m
 
 ## Swap in real photos
 Drop high-res files into `assets/photos/` using these names (missing ones show a styled placeholder):
-`hero.jpg`, `newborn-1.jpg`, `newborn-2.jpg`, `maternity-1.jpg`, `maternity-2.jpg`, `sitters-1.jpg`, `kids-1.jpg`, `family-1.jpg`, `family-2.jpg`, `fineart-1.jpg`.
-The current `hero`, `newborn-1`, `sitters-1` are low-res crops from Facebook screenshots — replace them.
+`hero.jpg`, `newborn-1.jpg`, `maternity-1.jpg`, `maternity-2.jpg`, `sitters-1.jpg`, `kids-1.jpg`, `family-1.jpg`, `family-2.jpg`, `fineart-1.jpg`.
+`hero`, `newborn-1`, `sitters-1` are low-res crops from Facebook screenshots — replace them. Add `newborn-2.jpg` and re-add its tile in the portfolio when available.
 
 ## Edit
 - Copy, contact info, reviews: `index.html`

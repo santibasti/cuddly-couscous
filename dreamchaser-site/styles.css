@@ -303,3 +303,4 @@ input.err{border-color:#c0392b}
 .f-quote{background:none;border-radius:0;padding:.2rem 0 .2rem 1.4rem}
 .f-quote::before{content:none}
 .founder{isolation:isolate}
+.masonry figure.ph-fig>img{position:absolute;inset:0;height:100%;object-fit:cover}
