@@ -38,6 +38,7 @@ import QuotePublic from '@/pages/QuotePublic';
 import JobOrderPage from '@/pages/JobOrderPage';
 import CrewJobOrderPage from '@/pages/CrewJobOrderPage';
 import QuotePreviewPage from '@/pages/QuotePreviewPage';
+import Inbox from '@/pages/Inbox';
 
 const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: string; group?: string }[] = [
   { to: '/dashboard', key: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'Overview' },
@@ -48,6 +49,7 @@ const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: st
   { to: '/maintenance', key: 'maintenance', label: 'Maintenance', icon: 'maintenance' },
   { to: '/clients', key: 'clients', label: 'Clients', icon: 'clients', group: 'Sales' },
   { to: '/sales', key: 'sales', label: 'Quotations', icon: 'sales' },
+  { to: '/inbox', key: 'inbox', label: 'Facebook Inbox', icon: 'clients' },
   { to: '/finance', key: 'finance', label: 'Finance', icon: 'finance', group: 'Finance & People' },
   { to: '/payroll', key: 'payroll', label: 'Payroll', icon: 'payroll' },
   { to: '/employees', key: 'employees', label: 'Employees', icon: 'employees' },
@@ -150,6 +152,7 @@ function Shell() {
             <Route path="/maintenance" element={<Guard area="maintenance"><Maintenance /></Guard>} />
             <Route path="/clients" element={<Guard area="clients"><Clients /></Guard>} />
             <Route path="/clients/:id" element={<Guard area="clients"><ClientDetail /></Guard>} />
+            <Route path="/inbox" element={<Guard area="inbox"><Inbox /></Guard>} />
             <Route path="/sales" element={<Guard area="sales"><Sales /></Guard>} />
             <Route path="/sales/quote/:id" element={<Guard area="sales"><QuoteEditor /></Guard>} />
             <Route path="/sales/quote/:id/preview" element={<Guard area="sales"><QuotePreviewPage /></Guard>} />

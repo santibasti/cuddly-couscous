@@ -124,3 +124,17 @@ Needs the same Semaphore account/secrets as the owner alerts (`SEMAPHORE_API_KEY
 3. In the app: Admin → Settings → Notifications & reminders → tick **SMS reminders to clients** and set the two send times, then **Save**.
 
 Each reminder is sent once per job and service date. `client_sms_log` shows what was sent, to which number, and any error (for example a client with no valid mobile number).
+
+## Facebook Page AI assistant (replies to customers, saves leads)
+
+Customer messages on your Facebook Page are stored in the app (**Facebook Inbox** in the menu). The AI (Claude) drafts a reply from your services, prices and the extra facts you type in Admin; when the customer has given name, mobile and what they need, it creates a client + inquiry (source "Facebook") in TopMop. By default (mode **Suggest**) nothing is sent until you press **Approve & send**.
+
+1. `supabase.cmd db push` (migration `0053`: inbox tables + permission) and, in the app, Admin → Settings → Facebook AI assistant → set the mode and add your extra facts → **Save**.
+2. **Anthropic key:** create an API key at console.anthropic.com. **Meta app:** at developers.facebook.com create an app (type *Business*), add the **Messenger** product, connect your Page, and generate the Page access token. Note the App Secret (Settings → Basic).
+3. Secrets (your own values; no spaces or `<` `>`):
+   `supabase secrets set FB_VERIFY_TOKEN=any-random-word FB_APP_SECRET=... FB_PAGE_TOKEN=... ANTHROPIC_API_KEY=...`
+4. `supabase functions deploy fb-webhook --no-verify-jwt` and `supabase functions deploy fb-send`
+5. In the Meta app → Messenger → Webhooks: callback URL `https://<project-ref>.supabase.co/functions/v1/fb-webhook`, verify token = the word from step 3, subscribe the Page to **messages**.
+6. Facebook only delivers messages from the public once the app has the **pages_messaging** permission approved (App Review, business verification). Before that, only people with a role on the app (you, testers) can chat with it — enough to test.
+
+The AI never invents prices, never promises dates, and hands the chat to a person (status **Needs a person**) for complaints, custom jobs or anything it is unsure about; those replies are never sent automatically.

@@ -902,6 +902,8 @@ export interface Settings {
   statutory: StatutoryRate[];
   channels: { email: boolean; sms: boolean; whatsapp: boolean };
   /** SMS reminders to the client (sent by the send-client-reminders Edge Function): off until Admin turns it on */
+  /** Facebook Page AI assistant: off, suggest (staff approve each reply) or auto (replies right away); `notes` = extra facts and FAQs for the AI */
+  fb_ai?: { mode: 'off' | 'suggest' | 'auto'; notes: string };
   client_sms?: { enabled: boolean; day_before_time: string; morning_time: string };
   reminder_days: { quote_expiry: number; doc_expiry: number; chemical_expiry: number; invoice_due: number; maintenance: number };
   glass_group_size: number;
