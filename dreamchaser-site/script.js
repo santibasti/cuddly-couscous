@@ -45,14 +45,24 @@
     cd.innerHTML=[['Days',dd],['Hrs',h],['Min',m],['Sec',s]].map(function(p){return '<div><b>'+String(p[1]).padStart(2,'0')+'</b><small>'+p[0]+'</small></div>'}).join('')}
   tick();setInterval(tick,1000);
 
-  // booking form -> prefilled email (no backend needed); swap for Formspree/etc. later
+  // booking form
+  // To receive leads without an email app: create a free form at formspree.io and paste its URL here.
+  var FORM_ENDPOINT='';
   $('#form').addEventListener('submit',function(e){
-    e.preventDefault();var f=e.target,ok=true;
+    e.preventDefault();var f=e.target,ok=true,fine=$('#fine'),btn=$('button',f);
     ['name','phone'].forEach(function(n){var i=f.elements[n];var bad=!i.value.trim();i.classList.toggle('err',bad);if(bad)ok=false});
-    if(!ok){$('#fine').textContent='Please add your name and mobile number.';return}
-    var d=new FormData(f),body='Name: '+d.get('name')+'\nMobile: '+d.get('phone')+'\nEmail: '+d.get('email')+'\nSession: '+d.get('session')+'\nPreferred date: '+d.get('date')+'\n\n'+d.get('msg');
-    location.href='mailto:hello@dreamchaserstudio.info?subject='+encodeURIComponent('Session enquiry — '+d.get('session'))+'&body='+encodeURIComponent(body);
-    $('#fine').textContent='Thank you! Your email app should open — or message us on Messenger for a faster reply.';
+    if(!ok){fine.textContent='Please add your name and mobile number.';return}
+    var d=new FormData(f);
+    var text='Hi Dream Chaser Studio! I\'d like to book.\nName: '+d.get('name')+'\nMobile: '+d.get('phone')+'\nSession: '+d.get('session')+(d.get('date')?'\nPreferred date: '+d.get('date'):'')+(d.get('msg')?'\n'+d.get('msg'):'');
+    if(FORM_ENDPOINT){
+      btn.disabled=true;btn.textContent='Sending…';
+      fetch(FORM_ENDPOINT,{method:'POST',body:d,headers:{Accept:'application/json'}}).then(function(r){
+        if(!r.ok)throw 0;f.reset();btn.textContent='Sent ✓';fine.innerHTML='Thank you! We\'ll reply within 24 hours. Need us sooner? <a href="https://m.me/DreamchaserbyLS" target="_blank" rel="noopener">Message us</a>.';
+      }).catch(function(){btn.disabled=false;btn.textContent='Send enquiry';fine.textContent='Something went wrong — please message us on Messenger or Viber.'});
+    }else{
+      location.href='mailto:hello@dreamchaserstudio.info?subject='+encodeURIComponent('Session enquiry — '+d.get('session'))+'&body='+encodeURIComponent(text);
+      fine.innerHTML='Your email app should open. Prefer chat? <a href="viber://chat?number=%2B639175544602">Viber</a> · <a href="https://wa.me/639175544602?text='+encodeURIComponent(text)+'" target="_blank" rel="noopener">WhatsApp</a>.';
+    }
   });
 
   $('#yr').textContent=new Date().getFullYear();
