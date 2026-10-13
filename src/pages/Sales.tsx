@@ -80,11 +80,11 @@ export default function Sales() {
 
       {tab === 'quotes' && (
         <Card flush>
-          <DataTable<Quotation> rows={quotes.filter((q) => !status || q.status === status)} rowKey={(q) => q.id} onRow={(q) => nav(`/sales/quote/${q.id}`)} exportTitle="Quotations" initialSort={{ key: 'issue', dir: -1 }}
+          <DataTable<Quotation> rows={quotes.filter((q) => !status || q.status === status)} rowKey={(q) => q.id} onRow={(q) => nav(`/sales/quote/${q.id}`)} exportTitle="Quotations" initialSort={{ key: 'created', dir: -1 }}
             filters={<select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">All statuses</option>{['Draft', 'Sent', 'Approved', 'Rejected', 'Expired'].map((s) => <option key={s}>{s}</option>)}</select>}
             cols={[
               { key: 'number', header: 'Quotation #', value: (q) => q.number }, { key: 'client', header: 'Client', value: (q) => cn(q.client_id) },
-              { key: 'issue', header: 'Issued', value: (q) => q.issue_date, render: (q) => fmtDate(q.issue_date) }, { key: 'valid', header: 'Valid until', value: (q) => q.valid_until, render: (q) => fmtDate(q.valid_until) },
+              { key: 'created', header: 'Created', value: (q) => q.created_at, render: (q) => fmtDate(q.created_at.slice(0, 10)) }, { key: 'issue', header: 'Issued', value: (q) => q.issue_date, render: (q) => fmtDate(q.issue_date) }, { key: 'valid', header: 'Valid until', value: (q) => q.valid_until, render: (q) => fmtDate(q.valid_until) },
               { key: 'total', header: 'Total', num: true, type: 'money', value: total, render: (q) => money(total(q)) }, { key: 'status', header: 'Status', value: (q) => q.status, render: (q) => <Badge>{q.status}</Badge> },
               { key: 'actions', header: '', sortable: false, noExport: true, render: (q) => q.status === 'Sent' && can('sales.approve') ? <span className="row" onClick={(e) => e.stopPropagation()}><button className="btn sm primary" onClick={() => attempt(() => setQuoteStatus(q.id, 'Approved'), 'Marked approved')}>Approve</button><button className="btn sm" onClick={async () => { const r = await ask('Reject quotation', 'Reason'); if (r) attempt(() => setQuoteStatus(q.id, 'Rejected', r), 'Marked rejected'); }}>Reject</button></span> : null },
             ]} />

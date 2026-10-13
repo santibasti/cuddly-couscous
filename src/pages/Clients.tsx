@@ -126,7 +126,7 @@ export default function Clients() {
       </PageHead>
       <Card flush>
         <DataTable<Row>
-          rows={rows} rowKey={(r) => r.c.id} onRow={(r) => nav(`/clients/${r.c.id}`)} exportTitle={admin ? undefined : 'Clients'}
+          initialSort={{ key: 'added', dir: -1 }} rows={rows} rowKey={(r) => r.c.id} onRow={(r) => nav(`/clients/${r.c.id}`)} exportTitle={admin ? undefined : 'Clients'}
           searchText={(r) => `${r.c.name} ${r.c.contact_person} ${r.c.mobile} ${r.loc}`}
           filters={<>
             {sel('type', 'Type', [['', 'All types'], ...CLIENT_TYPES.map((x) => [x, x] as const)])}
@@ -141,6 +141,7 @@ export default function Clients() {
             { key: 'type', header: 'Type', render: ({ c }) => <Badge tone="blue">{c.type}</Badge>, value: ({ c }) => c.type },
             { key: 'status', header: 'Status', render: ({ c }) => <Badge>{c.status}</Badge>, value: ({ c }) => c.status },
             { key: 'mobile', header: 'Mobile', value: ({ c }) => c.mobile },
+            { key: 'added', header: 'Added', value: ({ c }) => c.created_at, render: ({ c }) => fmtDate(c.created_at.slice(0, 10)) },
             { key: 'sites', header: 'Sites', num: true, value: ({ c }) => db.sites.filter((s) => s.client_id === c.id && !s.deleted_at).length },
             { key: 'jobs', header: 'Completed services', num: true, value: ({ v }) => v.completed },
             { key: 'last', header: 'Last service', value: ({ v }) => v.lastDate ?? '', render: ({ v }) => (v.lastDate ? fmtDate(v.lastDate) : '—') },
