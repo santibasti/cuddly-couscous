@@ -415,9 +415,30 @@ export function saveInvoice(i: Omit<Invoice, 'id' | 'created_at' | 'updated_at' 
   if (i.id) { const cur = db().invoices.find((x) => x.id === i.id)!; if (cur.status !== 'Draft') fail('Approved invoices are locked.'); return store.update('invoices', i.id, i as never); }
   return store.insert('invoices', { ...i, number: store.nextNumber('INV') } as never);
 }
+/** The live invoice (if any) that bills this quotation directly, without a booking. */
+export const directInvoiceOf = (d: Pick<DB, 'invoices'>, quotationId: string) => d.invoices.find((i) => i.quotation_id === quotationId && !i.job_id && i.status !== 'Reversed' && !i.deleted_at);
+/** Bill an approved quotation straight away — a deposit, a fixed-price job or a client who pays before the visit — without creating a booking. */
+export function invoiceFromQuotation(quotationId: string): Invoice {
+  store.require('invoices.edit');
+  const q = db().quotations.find((x) => x.id === quotationId && !x.deleted_at); if (!q) fail('Quotation not found.');
+  if (q!.status !== 'Approved') fail('Only an approved quotation can be invoiced. Mark it approved (or let the client sign it) first.');
+  const dup = directInvoiceOf(db(), quotationId); if (dup) fail(`This quotation was already invoiced (${dup.number}).`);
+  const jobs = db().jobs.filter((j) => j.quotation_id === quotationId && !j.deleted_at && !['Cancelled', 'Rescheduled'].includes(j.status));
+  const viaJob = db().invoices.find((i) => i.status !== 'Reversed' && !i.deleted_at && i.job_id && jobs.some((j) => j.id === i.job_id));
+  if (viaJob) fail(`This quotation is already billed through its job (${viaJob.number}).`);
+  const unmeasured = q!.items.find((i) => i.measure);
+  if (unmeasured) fail(`“${unmeasured.description}” is billed by site measurement, so its amount is not known yet. Invoice it after the crew measures, or untick “Bill by site measurement” on the quotation line.`);
+  const client = db().clients.find((c) => c.id === q!.client_id)!;
+  const note = `Billed directly from quotation ${q!.number} (no booking yet).${jobs.length ? ' A booking exists for this quotation; it will not be invoiced again.' : ''}`;
+  return store.allowDiscount(() => saveInvoice({
+    client_id: q!.client_id, site_id: q!.site_id, quotation_id: q!.id, issue_date: today(), due_date: addDays(today(), paymentDays(q!.payment_option) ?? db().settings.payment_terms_days),
+    items: q!.items.map((i) => ({ ...i })), vat_mode: q!.vat_mode, vat_rate: q!.vat_rate, discount: q!.discount, withholding_rate: client.withholding_rate, status: 'Draft', branch_id: q!.branch_id, notes: note,
+  }) as Invoice);
+}
 export function invoiceFromJob(jobId: string): Invoice {
   store.require('invoices.edit');
   const j = db().jobs.find((x) => x.id === jobId)!;
+  { const dq = j.quotation_id ? directInvoiceOf(db(), j.quotation_id) : undefined; if (dq) fail(`The quotation of this job was already invoiced directly (${dq.number}). Reverse that invoice first if the job should be billed instead.`); }
   if (!isDone(j.status)) fail('Only jobs with completed work can be invoiced.');
   if (db().invoices.some((i) => i.job_id === jobId && i.status !== 'Reversed' && !i.deleted_at)) fail('This job already has an invoice.');
   { const bj = j.back_job_id ? db().back_jobs.find((b) => b.id === j.back_job_id) : undefined; if (bj?.charge_type === 'No Charge') fail(`${bj.number} is a no-charge back job: there is nothing to bill. Its cost is tracked against the original job.`); }

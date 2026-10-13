@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, attempt, ask, useObj } from '@/components/ui';
 import { countPanels, docTotals, priceService, type GlassRow } from '@/lib/business';
-import { duplicateQuotation, quoteLink, saveQuotation, setQuoteStatus } from '@/lib/actions';
+import { directInvoiceOf, duplicateQuotation, invoiceFromQuotation, quoteLink, saveQuotation, setQuoteStatus } from '@/lib/actions';
 import { quotationPdf, shareTextQuote } from '@/lib/export';
 import { IncludeImagesToggle, QuoteImageGallery } from '@/components/QuoteImages';
 import { SiteForm } from './ClientDetail';
@@ -96,6 +96,7 @@ export default function QuoteEditor() {
   const share = existing ? shareTextQuote(db, existing) : '';
   const wa = (client?.mobile ?? '').replace(/[^\d]/g, '').replace(/^0/, '63');
   const job = existing ? db.jobs.find((j) => j.quotation_id === existing.id && !j.deleted_at) : undefined;
+  const directInv = existing ? directInvoiceOf(db, existing.id) : undefined;
 
   return (
     <>
@@ -107,6 +108,9 @@ export default function QuoteEditor() {
         {existing && client?.email && <a className="btn" href={`mailto:${client.email}?subject=${encodeURIComponent(`Quotation ${existing.number} – ${db.settings.company.name}`)}&body=${encodeURIComponent(share + '\n\n(Attach the downloaded PDF.)')}`}><Icon name="mail" />Email</a>}
         {existing && <a className="btn" target="_blank" rel="noreferrer" href={`https://wa.me/${wa}?text=${encodeURIComponent(share)}`}><Icon name="share" />WhatsApp</a>}
         {existing && ['Sent', 'Approved'].includes(existing.status) && <button className="btn" onClick={async () => { const url = quoteLink(existing.id); try { await navigator.clipboard.writeText(url); attempt(() => true, 'Client link copied — paste it in WhatsApp, Viber or email'); } catch { window.prompt('Copy this link for the client', url); } }}><Icon name="share" />Copy client link</button>}
+        {existing && existing.status === 'Approved' && can('invoices.edit') && (directInv
+          ? <Link to="/finance?tab=invoices" className="btn">Invoice {directInv.number}</Link>
+          : !job && <button className="btn primary" onClick={() => { const i = attempt(() => invoiceFromQuotation(existing.id), 'Draft invoice created from the quotation'); if (i) nav('/finance?tab=invoices'); }}>Create invoice (no booking)</button>)}
         {existing && can('sales.edit') && <button className="btn" onClick={() => { const q = attempt(() => duplicateQuotation(existing.id), 'Duplicated as draft') as Quotation | undefined; if (q && (q as Quotation).id) nav(`/sales/quote/${(q as Quotation).id}`); }}>Duplicate</button>}
       </PageHead>
 

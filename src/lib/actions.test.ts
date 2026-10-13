@@ -18,6 +18,19 @@ describe('business rules enforced by the store', () => {
     await expect(m.store.login('owner@topmop.ph', 'nope')).rejects.toThrow('Invalid');
   });
 
+  it('an approved quotation can be invoiced straight away, once, without a booking', async () => {
+    await as('owner@topmop.ph');
+    const q = db().quotations.find((x) => x.status === 'Approved' && !x.deleted_at && !db().jobs.some((j) => j.quotation_id === x.id && !j.deleted_at) && !x.items.some((i) => i.measure))!;
+    expect(q).toBeTruthy();
+    const draft = m.store.getDB().quotations.find((x) => x.status === 'Draft')!;
+    expect(() => m.A.invoiceFromQuotation(draft.id)).toThrow(/approved/);
+    const inv = m.A.invoiceFromQuotation(q.id);
+    expect(inv).toMatchObject({ quotation_id: q.id, status: 'Draft', client_id: q.client_id });
+    expect(inv.job_id).toBeUndefined();
+    expect(m.B.invoiceTotals(inv).total).toBe(m.B.docTotals(q.items, q.discount, q.vat_mode, q.vat_rate).total);
+    expect(() => m.A.invoiceFromQuotation(q.id)).toThrow(/already invoiced/);
+  });
+
   it('blocks double-booking crew, vehicle and equipment', async () => {
     await as('owner@topmop.ph');
     const j = db().jobs.find((x) => x.status === 'Confirmed')!;
