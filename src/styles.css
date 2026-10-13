@@ -854,3 +854,10 @@ body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small {
 .occ-a button.on { background: var(--teal, #0f9ea0); border-color: var(--teal, #0f9ea0); color: #fff; }
 .occ-a button.on.bad { background: var(--amber, #d98b0f); border-color: var(--amber, #d98b0f); }
 .occ-n { flex: 1 1 100%; }
+
+/* photo library */
+.photogrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+.photocell { position: relative; aspect-ratio: 1; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel-2, rgba(255,255,255,.05)); cursor: pointer; display: grid; place-items: center; }
+.photocell img { width: 100%; height: 100%; object-fit: cover; }
+.photocell .pk { position: absolute; left: 6px; bottom: 6px; background: rgba(5, 20, 40, .75); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 99px; }
+.photocell .pok { position: absolute; right: 6px; top: 6px; background: #1a9b52; color: #fff; font-size: 12px; font-weight: 700; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; }

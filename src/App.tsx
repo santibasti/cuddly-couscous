@@ -39,10 +39,12 @@ import JobOrderPage from '@/pages/JobOrderPage';
 import CrewJobOrderPage from '@/pages/CrewJobOrderPage';
 import QuotePreviewPage from '@/pages/QuotePreviewPage';
 import Inbox from '@/pages/Inbox';
+import PhotoLibrary from '@/pages/PhotoLibrary';
 
 const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: string; group?: string }[] = [
   { to: '/dashboard', key: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'Overview' },
   { to: '/jobs', key: 'jobs', label: 'Jobs & Calendar', icon: 'calendar', group: 'Operations' },
+  { to: '/photos', key: 'photos', label: 'Photo Library', icon: 'camera' },
   { to: '/attendance', key: 'attendance', label: 'Attendance', icon: 'attendance' },
   { to: '/assets', key: 'assets', label: 'Equipment Out/In', icon: 'assets' },
   { to: '/inventory', key: 'inventory', label: 'Inventory', icon: 'inventory' },
@@ -152,6 +154,7 @@ function Shell() {
             <Route path="/maintenance" element={<Guard area="maintenance"><Maintenance /></Guard>} />
             <Route path="/clients" element={<Guard area="clients"><Clients /></Guard>} />
             <Route path="/clients/:id" element={<Guard area="clients"><ClientDetail /></Guard>} />
+            <Route path="/photos" element={<Guard area="photos"><PhotoLibrary /></Guard>} />
             <Route path="/inbox" element={<Guard area="inbox"><Inbox /></Guard>} />
             <Route path="/sales" element={<Guard area="sales"><Sales /></Guard>} />
             <Route path="/sales/quote/:id" element={<Guard area="sales"><QuoteEditor /></Guard>} />

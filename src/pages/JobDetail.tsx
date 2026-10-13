@@ -62,6 +62,7 @@ export default function JobDetail() {
         {can('jobs.edit') && !locked && <button className="btn" onClick={() => setEdit(true)}><Icon name="edit" />Edit / reassign</button>}
         {can('jobs.edit') && j.status === 'Pending' && <button className="btn" onClick={() => attempt(() => setJobStatus(j.id, 'Confirmed'), 'Job confirmed')}>Confirm</button>}
         {can('jobs.edit') && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status) && <button className="btn danger" onClick={async () => { const r = await ask('Cancel job', 'Reason for cancellation'); if (r) attempt(() => setJobStatus(j.id, 'Cancelled', r), 'Job cancelled'); }}>Cancel</button>}
+        {(can('photos.manage') || can('jobs.mine')) && <Link to={`/photos?job=${j.id}`} className="btn"><Icon name="camera" />Photos</Link>}
         {(can('dispatch.run') || can('incidents.manage')) && <button className="btn" onClick={() => setInc(true)}><Icon name="alert" />Report incident</button>}
         {can('dispatch.approve') && !['Cancelled', 'Rescheduled'].includes(j.status) && <button className="btn" onClick={() => setOvr(true)}>Override status…</button>}
         {locked && <button className="btn" onClick={() => attempt(() => serviceReportPdf(db, j))}><Icon name="download" />Service report (PDF)</button>}
