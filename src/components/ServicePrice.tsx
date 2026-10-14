@@ -17,7 +17,7 @@ export const useCanSeePrice = () => { const { can } = useAuth(); return can('dis
 const lineAmt = (i: QuoteItem) => i.qty * i.rate - i.discount;
 
 export function usePriceView(job: Job) {
-  const { db } = useAuth();
+  const { db, can } = useAuth();
   const q = db.quotations.find((x) => x.id === job.quotation_id && !x.deleted_at);
   const vars = db.variations.filter((v) => v.job_id === job.id && !v.deleted_at && v.items.length > 0 && v.status !== 'Rejected');
   const approved = vars.filter((v) => v.status === 'Approved'); const waiting = vars.filter((v) => v.status === 'Draft');
@@ -25,10 +25,14 @@ export function usePriceView(job: Job) {
   const qt = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
   const waitingTotal = waiting.reduce((n, v) => n + variationTotals(v).total, 0);
   const rates = !!q && !quoteShowsAmounts(q); // no ocular visit: only the agreed rates are shown, the final amount follows the count on site
-  return { q, approved, waiting, fc, qt, waitingTotal, rates };
+  // an ocular-visit quotation: the price is already agreed, so the Team Leader sees the services but no amounts (managers still do)
+  const hidden = !!q && quoteShowsAmounts(q) && !(can('sales.view') || can('invoices.view'));
+  return { q, approved, waiting, fc, qt, waitingTotal, rates, hidden };
 }
 
-const Lines = ({ items, rates }: { items: QuoteItem[]; rates?: boolean }) => rates ? (
+const Lines = ({ items, rates, hidden }: { items: QuoteItem[]; rates?: boolean; hidden?: boolean }) => hidden ? (
+  <ul className="list" style={{ margin: 0 }}>{items.map((i, k) => <li key={k}><span>{i.description}{!i.measure && <div className="small muted">{i.qty.toLocaleString('en-PH')} {i.unit}</div>}</span></li>)}</ul>
+) : rates ? (
   <ul className="list" style={{ margin: 0 }}>{items.map((i, k) => <li key={k}><span>{i.description}</span><b className="mono">{money(i.rate)} / {i.unit}</b></li>)}</ul>
 ) : (
   <ul className="list" style={{ margin: 0 }}>{items.map((i, k) => <li key={k}><span>{i.description}<div className="small muted">{i.measure ? `${money(i.rate)} per ${i.unit} — measured on site` : <>{i.qty.toLocaleString('en-PH')} {i.unit} × {money(i.rate)}{i.discount ? ` − ${money(i.discount)}` : ''}</>}</div></span><b className="mono">{i.measure ? 'To be measured' : money(lineAmt(i))}</b></li>)}</ul>
@@ -39,7 +43,7 @@ const Lines = ({ items, rates }: { items: QuoteItem[]; rates?: boolean }) => rat
 export function ServicePriceCard({ job, step = -1 }: { job: Job; step?: number }) {
   const ok = useCanSeePrice(); const { can } = useAuth(); const [add, setAdd] = useState(false);
   const canAdd = can('jobs.edit') && can('dispatch.run') && ['Confirmed', 'Dispatch Checklist Pending', 'Dispatched', 'On Site', 'In Progress'].includes(job.status);
-  const { q, approved, waiting, fc, qt, waitingTotal, rates } = usePriceView(job);
+  const { q, approved, waiting, fc, qt, waitingTotal, rates, hidden } = usePriceView(job);
   if (!ok || step === 3) return null;
   if (!q && !approved.length && !waiting.length) return <Card title="Service & price"><div className="small muted">No approved quotation is linked to this booking yet.</div></Card>;
   const body = (
@@ -47,9 +51,10 @@ export function ServicePriceCard({ job, step = -1 }: { job: Job; step?: number }
       {q && <>
         <div className="row between" style={{ marginBottom: 4 }}><b>Quotation {q.number}</b><Badge tone="green">{q.status}</Badge></div>
         {q.scope && <div className="small" style={{ marginBottom: 6 }}>{q.scope}</div>}
-        <Lines items={q.items} rates={rates} />
+        <Lines items={q.items} rates={rates} hidden={hidden} />
+        {hidden && <div className="small muted" style={{ marginTop: 6 }}>The price for this service was agreed in the approved quotation after the ocular visit.</div>}
         {rates && <div className="small muted" style={{ marginTop: 6 }}>{RATES_NOTE}</div>}
-        {qt && !rates && <div className="small" style={{ marginTop: 6, display: 'grid', gap: 2 }}>
+        {qt && !rates && !hidden && <div className="small" style={{ marginTop: 6, display: 'grid', gap: 2 }}>
           {qt.discount > 0 && <div className="row between"><span className="muted">Discount</span><span>− {money(qt.discount)}</span></div>}
           {q.vat_mode !== 'none' && <div className="row between"><span className="muted">VAT {q.vat_rate}%{q.vat_mode === 'inclusive' ? ' (included)' : ''}</span><span>{money(qt.vat)}</span></div>}
           <div className="row between"><b>Quotation total</b><b>{money(qt.total)}</b></div></div>}
@@ -59,20 +64,21 @@ export function ServicePriceCard({ job, step = -1 }: { job: Job; step?: number }
       {waiting.map((v) => <div key={v.id} className="alert warn" style={{ marginTop: 12 }}><div className="row between"><b>Additional work {v.number}</b><Badge tone="amber">Waiting for the client's OK</Badge></div>{v.reason && <div className="small">{v.reason}</div>}<Lines items={v.items} rates={rates} />{!rates && <div className="row between small" style={{ marginTop: 4 }}><span>Total incl. VAT</span><b>{money(variationTotals(v).total)}</b></div>}<div className="small muted">The Team Leader gets the client's signature on site, in the Scope Approval step.</div></div>)}
       {canAdd && <div style={{ marginTop: 10 }}><button className="btn sm navy" onClick={() => setAdd(true)}>+ Add extra work to this booking</button><span className="small muted"> — shows here for the Team Leader; the client approves it on site</span></div>}
       {add && <VariationModal job={job} onClose={() => setAdd(false)} />}
-      {!rates && <div className="alert info" style={{ marginTop: 12, marginBottom: 0 }}>
+      {!rates && !hidden && <div className="alert info" style={{ marginTop: 12, marginBottom: 0 }}>
         <div className="row between"><span>Agreed contract value</span><b>{money(fc.payableTotal)}</b></div>
         {waiting.length > 0 && <div className="row between"><span>If the client also approves the additional work</span><b>{money(fc.payableTotal + waitingTotal)}</b></div>}
         {fc.discount > 0 && <div className="small">Includes an approved management discount of {money(fc.discount)}.</div>}
       </div>}
     </Card>
   );
-  return step >= 4 ? <Fold title="Service & price" hint={rates ? 'Agreed rates · tap to see them' : <>{money(fc.payableTotal)} · tap to see the lines</>}>{body}</Fold> : body;
+  return step >= 4 ? <Fold title="Service & price" hint={hidden ? 'Services · tap to see them' : rates ? 'Agreed rates · tap to see them' : <>{money(fc.payableTotal)} · tap to see the lines</>}>{body}</Fold> : body;
 }
 
 /** One-line version for the confirmation banner. */
 export function PriceLine({ job }: { job: Job }) {
-  const ok = useCanSeePrice(); const { fc, waiting, waitingTotal, q, rates } = usePriceView(job);
+  const ok = useCanSeePrice(); const { fc, waiting, waitingTotal, q, rates, hidden } = usePriceView(job);
   if (!ok || (!q && !fc.payableTotal)) return null;
+  if (hidden) return <>Price agreed in the approved quotation (ocular visit){waiting.length > 0 && <span style={{ color: 'var(--amber)' }}> · +{money(waitingTotal)} additional work waiting for the client</span>}</>;
   if (rates) return <>Agreed rates only (quotation {q!.number}) — the final amount follows the count on site</>;
   return <><b>{money(fc.payableTotal)}</b> incl. VAT{q ? ` (quotation ${q.number})` : ''}{waiting.length > 0 && <span style={{ color: 'var(--amber)' }}> · +{money(waitingTotal)} additional work waiting for the client</span>}</>;
 }
