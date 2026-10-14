@@ -260,17 +260,19 @@ export function computePayrollLine(inp: PayrollInput): { line: PayrollLine; pend
   let regular = 0, lateDed = 0, ot = 0, holPay = 0, restPay = 0, leavePay = 0, days = 0;
   const laborByJob: Record<string, number> = {};
   const isMonthly = emp.pay_basis === 'monthly';
+  // Paid by the day (default): any day worked is one full day, whatever the hours spent at the client — no hourly proration, overtime or late / undertime deduction.
+  const byDay = s.pay_by_day !== false;
 
   for (const a of ok) {
-    const worked = a.clock_in && a.clock_out;
+    const worked = byDay ? !!a.clock_in : a.clock_in && a.clock_out;
     const hol = holidayOn(a.date);
     const isRest = dow(a.date) === emp.rest_day;
-    const dayFraction = worked ? Math.min(a.worked_hours, s.std_hours_per_day) / s.std_hours_per_day : 0;
+    const dayFraction = worked ? (byDay ? 1 : Math.min(a.worked_hours, s.std_hours_per_day) / s.std_hours_per_day) : 0;
     if (a.kind === 'Leave' && a.paid_leave) { leavePay += isMonthly ? 0 : daily; continue; }
     if (!worked) continue;
     days += 1;
     if (a.job_id) laborByJob[a.job_id] = round2((laborByJob[a.job_id] || 0) + daily * dayFraction);
-    const otPay = (a.ot_min / 60) * hourly * s.multipliers.overtime;
+    const otPay = byDay ? 0 : (a.ot_min / 60) * hourly * s.multipliers.overtime;
     ot += otPay;
     if (hol) {
       const m = hol.kind === 'Regular' ? s.multipliers.regular_holiday : s.multipliers.special_holiday;
@@ -280,7 +282,7 @@ export function computePayrollLine(inp: PayrollInput): { line: PayrollLine; pend
     } else if (!isMonthly) {
       regular += daily * dayFraction;
     }
-    lateDed += ((a.late_min + a.undertime_min) / 60) * hourly * (isMonthly ? 1 : 0); // daily-paid: fraction already reflects hours worked
+    lateDed += byDay ? 0 : ((a.late_min + a.undertime_min) / 60) * hourly * (isMonthly ? 1 : 0); // daily-paid: fraction already reflects hours worked
   }
 
   if (isMonthly) {

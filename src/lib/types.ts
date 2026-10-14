@@ -903,6 +903,8 @@ export interface Settings {
   channels: { email: boolean; sms: boolean; whatsapp: boolean };
   /** SMS reminders to the client (sent by the send-client-reminders Edge Function): off until Admin turns it on */
   /** Facebook Page AI assistant: off, suggest (staff approve each reply) or auto (replies right away); `notes` = extra facts and FAQs for the AI */
+  /** pay a full day for any day worked, whatever the hours (no hourly proration, overtime or late / undertime deductions). Default on. */
+  pay_by_day?: boolean;
   fb_ai?: { mode: 'off' | 'suggest' | 'auto'; notes: string };
   client_sms?: { enabled: boolean; day_before_time: string; morning_time: string };
   reminder_days: { quote_expiry: number; doc_expiry: number; chemical_expiry: number; invoice_due: number; maintenance: number };

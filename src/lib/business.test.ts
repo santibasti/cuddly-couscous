@@ -84,9 +84,16 @@ describe('payroll calculation', () => {
     const l = run([att('2026-03-02'), att('2026-03-03', { approval: 'Pending' })]);
     expect(l.days_worked).toBe(1);
   });
-  it('pays overtime at the configured multiplier', () => {
-    const l = run([att('2026-03-02', { ot_min: 120 })]);
-    expect(l.overtime_pay).toBeCloseTo((emp.daily_rate / 8) * 2 * 1.25, 1);
+  it('pays overtime at the configured multiplier when hours are counted', () => {
+    const hourly = computePayrollLine({ emp: { ...emp, rest_day: 0 }, period, attendance: [att('2026-03-02', { ot_min: 120 })] as never, holidays: [], adjustments: [], settings: { ...db.settings, pay_by_day: false }, asOf: '2026-03-06' }).line;
+    expect(hourly.overtime_pay).toBeCloseTo((emp.daily_rate / 8) * 2 * 1.25, 1);
+  });
+  it('paid by the day: any day worked is one full day — hours, overtime and lateness do not change the pay', () => {
+    const l = run([att('2026-03-02', { worked_hours: 3, clock_out: '2026-03-02T11:00', late_min: 45, undertime_min: 300 }), att('2026-03-03', { ot_min: 120, worked_hours: 11 })]);
+    expect(l.days_worked).toBe(2);
+    expect(l.regular_pay).toBe(emp.daily_rate * 2);
+    expect(l.overtime_pay).toBe(0);
+    expect(l.late_undertime_deduction).toBe(0);
   });
   it('deducts cash advances and gross − deductions = net', () => {
     const l = run([att('2026-03-02'), att('2026-03-03')], [{ id: 'a', employee_id: emp.id, kind: 'Cash Advance', amount: 300, balance: 1000, period_id: null, active: true, note: '' }]);
