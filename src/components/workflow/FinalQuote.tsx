@@ -7,7 +7,7 @@ import { DraftBar, PresetChips, Stepper, Toggle } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { confirmLeave } from '@/lib/sync';
 import { getGeo } from '@/lib/geo';
-import { ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, currentRequest, discountBlock, jobRequests, categoryLabel, finalQuoteSummary, lineTotals, packagePanels, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
+import { billRows, ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, currentRequest, discountBlock, jobRequests, categoryLabel, finalQuoteSummary, lineTotals, packagePanels, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
 import { DISCOUNT_NOTICE, DeclineJobModal } from './DiscountPanel';
 import { applyDiscount, approveFinalQuote, billBase, decideDiscount, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
 import { conformePdf } from '@/lib/export';
@@ -41,19 +41,12 @@ export function QuoteLines({ items, mode, rate }: { items: QuoteItem[]; mode: Va
 }
 
 export function FinalSummary({ sm, pendingLabel }: { sm: ReturnType<typeof finalQuoteSummary>; pendingLabel?: string }) {
-  const row = (k: string, v: string, cls = '') => <tr className={cls}><td>{k}</td><td className="num">{v}</td></tr>;
+  const rows = billRows(sm, { pendingLabel });
   return (
     <>
-      <table className="tbl finalsum"><tbody>
-        {row('Original Quote Total', money(sm.originalTotal))}
-        {row(pendingLabel ?? 'Additional Work Total', money(sm.additionalTotal))}
-        {sm.discount > 0 && row('Discounts already in the quoted prices', money(sm.discount), 'sub')}
-        {sm.granted > 0 && row(`Discount (approved)${sm.request ? ` · ${sm.request.number}` : ''}`, `− ${money(sm.granted)}`, 'disc')}
-        {row('VAT', money(sm.vat), 'sub')}
-        {row('Final Amount Payable', money(sm.finalTotal), 'big')}
-        {sm.deposit > 0 && row('Less: deposit / prior payment', `− ${money(sm.deposit)}`)}
-        {sm.deposit > 0 && row('Balance due', money(sm.balance), 'big')}
-      </tbody></table>
+      {rows.length === 0 ? <div className="small muted">No additional work. The original quotation applies as agreed.</div> : <table className="tbl finalsum"><tbody>
+        {rows.map((r) => <tr key={r.k} className={r.cls === 'neg' ? '' : r.cls}><td>{r.k}</td><td className="num">{r.v < 0 ? `− ${money(-r.v)}` : money(r.v)}</td></tr>)}
+      </tbody></table>}
       {sm.granted > 0 && <p className="small" style={{ margin: '6px 0 0', color: 'var(--green)' }}>{DISCOUNT_NOTICE}</p>}
     </>
   );
@@ -61,19 +54,12 @@ export function FinalSummary({ sm, pendingLabel }: { sm: ReturnType<typeof final
 
 /** The final billing summary in the premium look (client-facing review). */
 function PremiumSummary({ sm, pendingLabel }: { sm: ReturnType<typeof finalQuoteSummary>; pendingLabel?: string }) {
-  const r = (k: string, v: string, cls?: string) => <div className="row" key={k} style={cls ? { color: cls } : undefined}><span>{k}</span><span>{v}</span></div>;
+  const rows = billRows(sm, { pendingLabel: pendingLabel ?? 'Additional work total' });
   return (
     <>
-      <div className="pd-tot">
-        {r('Original quote total', money(sm.originalTotal))}
-        {r(pendingLabel ?? 'Additional work total', money(sm.additionalTotal))}
-        {sm.discount > 0 && r('Discounts already in the quoted prices', money(sm.discount))}
-        {sm.granted > 0 && r(`Discount (approved)${sm.request ? ` · ${sm.request.number}` : ''}`, `− ${money(sm.granted)}`)}
-        {r('VAT', money(sm.vat))}
-        <div className="fin"><span>FINAL AMOUNT PAYABLE</span><span>{money(sm.finalTotal)}</span></div>
-        {sm.deposit > 0 && r('Less: deposit / prior payment', `− ${money(sm.deposit)}`)}
-        {sm.deposit > 0 && <div className="fin" style={{ marginTop: 6 }}><span>BALANCE DUE</span><span>{money(sm.balance)}</span></div>}
-      </div>
+      {rows.length === 0 ? <div className="pd-small">No additional work. The original quotation applies as agreed.</div> : <div className="pd-tot">
+        {rows.map((r) => r.cls === 'big' ? <div className="fin" key={r.k} style={r.k === 'Balance due' ? { marginTop: 6 } : undefined}><span>{r.k.toUpperCase()}</span><span>{money(r.v)}</span></div> : <div className="row" key={r.k}><span>{r.k}</span><span>{r.v < 0 ? `− ${money(-r.v)}` : money(r.v)}</span></div>)}
+      </div>}
       {sm.granted > 0 && <p className="pd-small" style={{ color: '#1f7a3a' }}>{DISCOUNT_NOTICE}</p>}
     </>
   );
@@ -259,7 +245,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
 
         <div className="pd-h">1 · Original scope of work <span className="pd-small" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>— approved quotation, unchanged</span></div>
         <p className="pd-scope">{q?.scope ?? job.scope}</p>
-        {q && <LineItems title="Services" rows={q.items.map((i) => ({ description: i.description, qty: i.qty, unit: i.unit, rate: i.rate, amount: i.qty * i.rate - i.discount, measure: i.measure }))} />}
+        {q && <LineItems title="Services" rows={q.items.map((i) => ({ description: i.description, qty: i.qty, unit: i.unit, rate: i.rate, amount: i.qty * i.rate - i.discount, measure: i.measure }))} hideAmounts={sm.hideOriginal} />}
         {q && <QuoteImageGallery target={{ quotation_id: q.id }} items={q.items} client />}
         {wf.panels.length > 0 && <div style={{ marginTop: 8 }}><div className="small muted">Glass panels counted on site</div><div className="pbks"><div className="pbk"><span>Original</span><b>{pb.original}</b></div><div className={`pbk ${pb.additional ? 'warn' : ''}`}><span>Additional</span><b>{pb.additional}</b></div><div className="pbk"><span>External</span><b>{pb.external}</b></div><div className="pbk"><span>Internal</span><b>{pb.internal}</b></div><div className="pbk navy"><span>Total</span><b>{pb.total}</b></div></div></div>}
 

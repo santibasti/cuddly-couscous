@@ -9,6 +9,7 @@ import { DeclineJobModal, DiscountSection } from './DiscountPanel';
 import { DraftBar, Stepper } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { PANEL_AREAS, PANEL_SIDES, confirmScopeNoChanges, savePanels, setQuoteLineMeasured, setScopeChanged } from '@/lib/workflow';
+import { quoteShowsAmounts } from '@/lib/quote-text';
 import { countPanels, docTotals, scopeRoute, panelTotals, quotedPanels, rowPanels } from '@/lib/business';
 import { fmtDateTime, money, uid } from '@/lib/util';
 import { conformePdf } from '@/lib/export';
@@ -119,6 +120,7 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
   const { db, can } = useAuth();
   const q = db.quotations.find((x) => x.id === (wf.conf_quotation_id ?? job.quotation_id));
   const t = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
+  const hide = !!q && quoteShowsAmounts(q); // ocular-visit quotation: the original amounts are not repeated here
   const client = db.clients.find((c) => c.id === job.client_id); const site = db.sites.find((s) => s.id === job.site_id);
   const signed = !!wf.conf_at;
   const canMeasure = !signed && !wf.start_at && can('admin.settings') || can('dispatch.approve') || run;
@@ -143,13 +145,13 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
         <div className="row between"><b>{recurring && !signed ? 'Existing approved scope' : 'Original quotation'} {q?.number ?? '—'}</b><Badge tone="gray">approved — read-only</Badge></div>
         <dl className="kv"><dt>Client / site</dt><dd>{client?.name ?? ''}{client ? ' · ' : ''}{site?.name}</dd><dt>Scope</dt><dd>{q?.scope ?? job.scope}</dd></dl>
         {q && t ? (
-          <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Description</th><th className="num">Qty</th><th>Unit</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead><tbody>
-            {q.items.map((i, k) => <tr key={k}><td>{i.description}{canMeasure && i.service_code !== 'GLASS_EXT' && i.service_code !== 'GLASS_INT' && <label className="check small" style={{ display: 'flex', marginTop: 4 }} title="The rate stays agreed; the quantity is measured on site and billed in the final bill. This line then adds nothing to the quotation total."><input type="checkbox" checked={!!i.measure} onChange={(e) => attempt(() => setQuoteLineMeasured(q!.id, k, e.target.checked), e.target.checked ? 'Line will be billed by site measurement' : 'Line billed as quoted')} />Bill by site measurement</label>}</td><td className="num">{i.measure ? '—' : i.qty}</td><td>{i.measure ? `per ${i.unit}` : i.unit}</td><td className="num">{money(i.rate)}</td><td className="num">{i.measure ? <span className="muted">To be measured</span> : money(i.qty * i.rate - i.discount)}</td></tr>)}
-          </tbody><tfoot>
+          <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Description</th><th className="num">Qty</th><th>Unit</th>{!hide && <><th className="num">Rate</th><th className="num">Amount</th></>}</tr></thead><tbody>
+            {q.items.map((i, k) => <tr key={k}><td>{i.description}{canMeasure && i.service_code !== 'GLASS_EXT' && i.service_code !== 'GLASS_INT' && <label className="check small" style={{ display: 'flex', marginTop: 4 }} title="The rate stays agreed; the quantity is measured on site and billed in the final bill. This line then adds nothing to the quotation total."><input type="checkbox" checked={!!i.measure} onChange={(e) => attempt(() => setQuoteLineMeasured(q!.id, k, e.target.checked), e.target.checked ? 'Line will be billed by site measurement' : 'Line billed as quoted')} />Bill by site measurement</label>}</td><td className="num">{i.measure ? '—' : i.qty}</td><td>{i.measure ? `per ${i.unit}` : i.unit}</td>{!hide && <><td className="num">{money(i.rate)}</td><td className="num">{i.measure ? <span className="muted">To be measured</span> : money(i.qty * i.rate - i.discount)}</td></>}</tr>)}
+          </tbody>{!hide && <tfoot>
             <tr><td colSpan={4} className="num">Subtotal</td><td className="num">{money(t.gross)}</td></tr>
             {t.discount > 0 && <tr><td colSpan={4} className="num">Discount (in the approved quotation)</td><td className="num">- {money(t.discount)}</td></tr>}
             {q.vat_mode !== 'none' && <tr><td colSpan={4} className="num">VAT {q.vat_rate}%{q.vat_mode === 'inclusive' ? ' (included)' : ''}</td><td className="num">{money(t.vat)}</td></tr>}
-            <tr><th colSpan={4} className="num">Total</th><th className="num">{money(t.total)}</th></tr></tfoot></table></div>
+            <tr><th colSpan={4} className="num">Total</th><th className="num">{money(t.total)}</th></tr></tfoot>}</table></div>
         ) : <div className="muted">No quotation is linked to this job — agreed contract amount {money(job.contract_amount)}.</div>}
         {q && <div style={{ marginTop: 8 }}><QuoteImageGallery target={{ quotation_id: q.id }} items={q.items} compact title="Quotation images (optional)" /></div>}
         {q?.terms && <details><summary className="small" style={{ cursor: 'pointer' }}>Terms &amp; exclusions</summary><p className="small" style={{ whiteSpace: 'pre-wrap' }}>{q.terms}</p></details>}

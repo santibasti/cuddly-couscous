@@ -2,7 +2,7 @@ import { logoDataUrl } from './logo';
 import { DEFAULT_TECHNOLOGY, defaultIntro, defaultMethodology, durationText, quoteShowsAmounts, RATES_NOTE, paymentLabel, paymentSentence, manpowerText, parseMethodology } from './quote-text';
 import type { DB, Invoice, OcularVisit, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
 import { quoteImagesOf } from './quoteimages';
-import { paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, packagePanels, panelTotals, rowPanels, variationTotals } from './business';
+import { billRows, paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, packagePanels, panelTotals, rowPanels, variationTotals } from './business';
 import { fmtDate, fmtDateTime, nowLocal, round2, sum } from './util';
 import { store } from './store';
 
@@ -551,7 +551,11 @@ export async function conformePdf(db: DB, j: Job, opts: { includeImages?: boolea
 
   h('1. Original Scope of Work');
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); y = wrapText(doc, q?.scope ?? j.scope, 12, y, 186) + 3;
-  if (q) y = itemsTable(doc, autoTable, y, q.items, q.vat_mode, q.vat_rate, q.discount) + 3;
+  if (q && quoteShowsAmounts(q)) {
+    // ocular-visit quotation: the price was agreed earlier, so the services are listed without amounts
+    autoTable(doc, { startY: y, head: [['#', 'Description', 'Quantity']], body: q.items.map((i, n) => [n + 1, clean(i.description), i.measure ? `per ${i.unit}` : `${i.qty.toLocaleString('en-PH')} ${i.unit}`]), columnStyles: { 0: { cellWidth: 8 }, 2: { halign: 'right', cellWidth: 40 } }, ...tableStyle, margin: { left: 12, right: 12 } });
+    y = ymax(doc) + 3;
+  } else if (q) y = itemsTable(doc, autoTable, y, q.items, q.vat_mode, q.vat_rate, q.discount) + 3;
   if (wf?.panels.length) {
     const pt = panelTotals(wf.panels); const pb = panelBreakdown(db, q, wf.panels, packagePanels(db, j, wf));
     autoTable(doc, { startY: y, head: [['Area / floor', 'Side', 'External', 'Internal', 'Total', 'Notes']], body: wf.panels.map((p) => [p.area, p.side, p.external, p.internal, rowPanels(p), clean(`${p.additional ? '[additional] ' : ''}${p.notes ?? ''}`)]), foot: [['Total', '', pt.external, pt.internal, pt.total, '']], ...tableStyle, footStyles: { fillColor: [234, 239, 244], textColor: NAVY, fontStyle: 'bold' }, margin: { left: 12, right: 12 } });
@@ -582,7 +586,9 @@ export async function conformePdf(db: DB, j: Job, opts: { includeImages?: boolea
 
   h('3. Final Billing Summary');
   const sm = finalQuoteSummary(db, j, { deposit: wf?.conf_deposit });
-  const sumRows: [string, string, boolean?][] = [
+  const sumRows: [string, string, boolean?][] = sm.hideOriginal
+    ? (billRows(sm).length ? billRows(sm).map((r) => [r.k === 'Additional Work Total' ? 'Additional Work Total (incl. VAT)' : r.k, (r.v < 0 ? '- ' : '') + pm(Math.abs(r.v)), r.cls === 'big'] as [string, string, boolean]) : [['No additional work - the original quotation applies as agreed', '']])
+    : [
     ['Original Quote Total (incl. VAT)', pm(sm.originalTotal)], ['Additional Work Total (incl. VAT)', pm(sm.additionalTotal)],
     ...(sm.discount > 0 ? [['Discounts already in the quoted prices', pm(sm.discount)] as [string, string]] : []),
     ...(sm.granted > 0 ? [[`Discount (approved)${sm.request ? ` ${sm.request.number}` : ''}`, '- ' + pm(sm.granted)] as [string, string]] : []),

@@ -3,7 +3,20 @@ import { money } from '@/lib/util';
 
 export interface Line { description: string; qty: number; unit: string; rate: number; amount: number; measure?: boolean }
 
-export function LineItems({ rows, title = 'Description', ratesOnly = false, rateLabel = 'Approved rate' }: { rows: Line[]; title?: string; ratesOnly?: boolean; rateLabel?: string }) {
+export function LineItems({ rows, title = 'Description', ratesOnly = false, rateLabel = 'Approved rate', hideAmounts = false }: { rows: Line[]; title?: string; ratesOnly?: boolean; rateLabel?: string; hideAmounts?: boolean }) {
+  if (hideAmounts) {
+    return (
+      <div className="jl jl-rates">
+        <div className="jl-head"><span>{title}</span><span>Quantity</span></div>
+        {rows.map((r, i) => (
+          <div className="jl-row" key={i}>
+            <div className="jl-desc">{r.description}</div>
+            <div className="jl-u">{r.measure ? `per ${r.unit}` : `${r.qty.toLocaleString('en-PH')} ${r.unit}`}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   if (ratesOnly) {
     return (
       <div className="jl jl-rates">

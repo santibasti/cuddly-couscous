@@ -1,3 +1,4 @@
+import { quoteShowsAmounts } from './quote-text';
 import type {
   CheckItem,
   JobWorkflow,
@@ -690,6 +691,8 @@ export interface FinalQuoteSummary {
   subtotal: number;
   /** Discount Request that is applied to this bill (peso value incl. VAT) */
   granted: number; request?: DiscountRequest;
+  /** the quotation came from an ocular visit (exact price agreed): the final bill shows the additional work on its own, not the original amounts */
+  hideOriginal: boolean;
 }
 /** Original quote + additional work → final bill. `pending` previews additions that the client has not approved yet. */
 export function finalQuoteSummary(d: Pick<DB, 'quotations' | 'variations'> & Partial<Pick<DB, 'discount_requests'>>, job: Job, o: { pending?: { items: QuoteItem[]; vat_mode: Variation['vat_mode']; vat_rate: number }; deposit?: number } = {}): FinalQuoteSummary {
@@ -710,6 +713,7 @@ export function finalQuoteSummary(d: Pick<DB, 'quotations' | 'variations'> & Par
     originalTotal, originalNet: orig?.net ?? fc.originalNet, originalDiscount: orig?.discount ?? 0, originalVat: orig?.vat ?? 0,
     additionalTotal, additionalNet, additionalDiscount, additionalVat,
     discount: round2((orig?.discount ?? 0) + additionalDiscount), vat: round2((orig?.vat ?? 0) + additionalVat - (granted ? vatPortion(granted, q?.vat_mode ?? 'none', q?.vat_rate ?? 0) : 0)),
+    hideOriginal: !!q && quoteShowsAmounts(q),
     subtotal, granted, request, finalTotal, deposit, balance: round2(Math.max(0, finalTotal - deposit)),
   };
 }
@@ -971,4 +975,28 @@ export function quotationLinesFromOcular(db: Pick<DB, 'services'>, v: import('./
     items.push(...priceService(def, qty).lines);
   }
   return { items, notes };
+}
+
+/** The lines of the final billing summary. For an ocular-visit quotation only the additional work is shown (the original quote is not repeated). */
+export function billRows(sm: FinalQuoteSummary, o: { pendingLabel?: string; depositNote?: string } = {}): { k: string; v: number; cls?: 'sub' | 'disc' | 'big' | 'neg' }[] {
+  const add = o.pendingLabel ?? 'Additional Work Total';
+  if (sm.hideOriginal) {
+    if (sm.additionalTotal <= 0) return [];
+    const pay = Math.max(0, round2(sm.additionalTotal - sm.granted));
+    return [
+      { k: add, v: sm.additionalTotal },
+      ...(sm.additionalVat > 0 ? [{ k: 'VAT (included above)', v: sm.additionalVat, cls: 'sub' as const }] : []),
+      ...(sm.granted > 0 ? [{ k: `Discount (approved)${sm.request ? ` · ${sm.request.number}` : ''}`, v: -sm.granted, cls: 'disc' as const }] : []),
+      { k: 'Additional Work Payable', v: pay, cls: 'big' as const },
+    ];
+  }
+  return [
+    { k: 'Original Quote Total', v: sm.originalTotal },
+    { k: add, v: sm.additionalTotal },
+    ...(sm.discount > 0 ? [{ k: 'Discounts already in the quoted prices', v: sm.discount, cls: 'sub' as const }] : []),
+    ...(sm.granted > 0 ? [{ k: `Discount (approved)${sm.request ? ` · ${sm.request.number}` : ''}`, v: -sm.granted, cls: 'disc' as const }] : []),
+    { k: 'VAT', v: sm.vat, cls: 'sub' as const },
+    { k: 'Final Amount Payable', v: sm.finalTotal, cls: 'big' as const },
+    ...(sm.deposit > 0 ? [{ k: 'Less: deposit / prior payment' + (o.depositNote ? ` (${o.depositNote})` : ''), v: -sm.deposit, cls: 'neg' as const }, { k: 'Balance due', v: sm.balance, cls: 'big' as const }] : []),
+  ];
 }
