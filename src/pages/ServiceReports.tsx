@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Modal, PageHead, attempt, toast } from '@/components/ui';
+import { AiRephrase } from '@/components/AiRephrase';
 import { DataTable } from '@/components/DataTable';
 import { LOGO_SMALL_URL } from '@/lib/logo';
 import { FREQUENCIES, SECTION_TITLES, arrangePhotos, buildSections, createServiceReport, parseBody, setReportStatus, updateServiceReport } from '@/lib/servicereport';
@@ -59,6 +60,7 @@ function ReportEditor({ id }: { id: string }) {
   const [r, setR] = useState<ServiceReport | undefined>(saved); const [dirty, setDirty] = useState(false);
   const [urls, setUrls] = useState<Record<string, string>>({}); const [group, setGroup] = useState<ReportPhoto['group']>('Before'); const [busy, setBusy] = useState<string>();
   const [preview, setPreview] = useState(false);
+  const areas = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const cam = useRef<HTMLInputElement>(null); const gal = useRef<HTMLInputElement>(null);
   useEffect(() => { if (saved && !dirty) setR(saved); }, [saved, dirty]);
   useEffect(() => { if (r) photoUrls(r.photos).then(setUrls); }, [r?.photos.map((p) => p.id).join()]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -137,8 +139,8 @@ function ReportEditor({ id }: { id: string }) {
             {arr.pairs.length > 0 && <div className="small muted" style={{ marginTop: 8 }}>{arr.pairs.length} before / after pair{arr.pairs.length === 1 ? '' : 's'}{arr.rest.length ? ` · ${arr.rest.length} more photo${arr.rest.length === 1 ? '' : 's'} in the grid` : ''}</div>}
           </Card>
           {r.sections.map((s) => (
-            <Card key={s.key} title={s.title || SECTION_TITLES[s.key]} actions={!locked && <button className="btn sm" onClick={() => resetSec(s.key)}>Reset to template</button>}>
-              <textarea rows={Math.min(14, Math.max(4, s.body.split('\n').length + 1))} style={{ width: '100%' }} disabled={locked} value={s.body} onChange={(e) => setSec(s.key, e.target.value)} />
+            <Card key={s.key} title={s.title || SECTION_TITLES[s.key]} actions={!locked && <div className="row"><AiRephrase value={s.body} area={() => areas.current[s.key] ?? null} onApply={(b) => setSec(s.key, b)} /><button className="btn sm" onClick={() => resetSec(s.key)}>Reset to template</button></div>}>
+              <textarea ref={(el) => { areas.current[s.key] = el; }} rows={Math.min(14, Math.max(4, s.body.split('\n').length + 1))} style={{ width: '100%' }} disabled={locked} value={s.body} onChange={(e) => setSec(s.key, e.target.value)} />
               <div className="small muted">A blank line starts a new paragraph. A line starting with “- ” becomes a bullet.</div>
             </Card>
           ))}
