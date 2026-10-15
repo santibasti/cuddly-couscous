@@ -863,3 +863,10 @@ body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small {
 .photocell .pok { position: absolute; right: 6px; top: 6px; background: #1a9b52; color: #fff; font-size: 12px; font-weight: 700; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; }
 
 .pd .jl-rates .jl-head:has(span:nth-child(2):last-child), .pd .jl-rates .jl-row:has(.jl-u:nth-child(2):last-child) { grid-template-columns: minmax(0, 1fr) 160px; }
+
+/* service report preview: a portrait A4 sheet */
+.srsheet { width: 100%; max-width: 794px; margin: 0 auto; background: #fff; border-radius: 4px; box-shadow: 0 6px 30px rgba(0, 0, 0, .35); padding: 40px 44px; box-sizing: border-box; }
+.srsheet .pd { box-shadow: none; padding: 0; max-width: none; }
+.srsheet .pd-head { flex-wrap: wrap; gap: 8px; }
+.srsheet .pd-title .t1 { font-size: 17px; }
+@media (max-width: 700px) { .srsheet { padding: 20px 16px; } }

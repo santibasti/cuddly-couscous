@@ -156,7 +156,7 @@ function ReportPreview({ r, client, urls, company }: { r: ServiceReport; client:
   const sec = (key: string) => r.sections.find((s) => s.key === key);
   const show = (key: string) => { const s = sec(key); return s?.body.trim() ? <div key={key}><div className="pd-h">{++n}. {s.title}</div>{body(s.body)}</div> : null; };
   return (
-    <div className="jopage-sheet"><div className="pd">
+    <div className="srsheet"><div className="pd">
       <div className="pd-head">
         <div className="pd-brand"><img src={LOGO_SMALL_URL} alt="TopMop" width={58} height={58} /><div><div className="pd-co">{company.name}</div><div className="s">{company.tagline}</div><div className="s">{company.phone} · {company.email}</div></div></div>
         <div className="pd-title"><div className="t1">SERVICE ACCOMPLISHMENT REPORT</div><div className="no">{r.number}</div><div className="s">{fmtDate(r.report_date)}</div></div>
