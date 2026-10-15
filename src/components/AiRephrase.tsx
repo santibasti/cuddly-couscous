@@ -21,7 +21,7 @@ export function AiRephrase({ value, area, onApply }: { value: string; area: () =
     setBusy(true); setResult('');
     try {
       const { data, error } = await supabase().functions.invoke('ai-rewrite', { body: { text: original, mode, instruction, selection: range[1] - range[0] < value.length } });
-      if (error) throw new Error(error.message);
+      if (error) { let msg = error.message; try { const b = await (error as { context?: Response }).context?.json(); if (b?.error) msg = b.error; } catch { /* keep the generic message */ } throw new Error(msg); }
       const d = data as { text?: string; error?: string }; if (d?.error) throw new Error(d.error);
       setResult(d.text ?? '');
     } catch (e) { toast(e instanceof Error ? e.message : 'The AI could not answer. Try again.'); } finally { setBusy(false); }
