@@ -853,6 +853,19 @@ export interface JobOrderContent {
   /** 'rates' = approved rates only, quantities are counted on site (default); 'none' = no prices (ocular-based quotation: the exact quote is already agreed) */
   price_mode?: 'rates' | 'none';
 }
+/** A section of a service report: paragraphs separated by a blank line; a line starting with "- " is a bullet. */
+export interface ReportSection { key: string; title: string; body: string }
+/** A photo on a service report: a Photo Library file (production) or an inline picture (demo), placed in a group. */
+export interface ReportPhoto { id: string; path?: string; data?: string; group: 'Before' | 'After' | 'Detail'; caption: string }
+export interface ServiceReport extends Base {
+  number: string;                  // SR-2026-0001
+  job_id: string; client_id: string;
+  title: string; location: string; team: string;
+  service_date?: string; report_date: string; frequency: string;
+  service_codes: ServiceCode[];
+  sections: ReportSection[]; photos: ReportPhoto[];
+  prepared_by?: string; status: 'Draft' | 'Final'; finalized_at?: string;
+}
 export interface JobOrder extends Base {
   number: string;                 // JO-2026-0001 (the same number for every version of one order)
   version: number;                // 1, 2, … a revised version is a new record; a sent one is never overwritten
@@ -917,7 +930,7 @@ export type TableName =
   | 'users' | 'branches' | 'clients' | 'sites' | 'communications' | 'complaints' | 'services' | 'inquiries'
   | 'quotations' | 'jobs' | 'employees' | 'attendance' | 'corrections' | 'holidays' | 'reviews'
   | 'adjustments' | 'periods' | 'runs' | 'locations' | 'items' | 'stock' | 'requests' | 'assets'
-  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations' | 'ocular_visits' | 'quote_images' | 'followups' | 'followup_rules' | 'job_orders' | 'maint_profiles' | 'maint_plans' | 'maint_templates' | 'maint_records';
+  | 'checkouts' | 'tickets' | 'invoices' | 'payments' | 'expenses' | 'petty' | 'notifications' | 'workflows' | 'variations' | 'incidents' | 'discount_requests' | 'client_feedback' | 'back_jobs' | 'payment_confirmations' | 'ocular_visits' | 'quote_images' | 'followups' | 'followup_rules' | 'job_orders' | 'service_reports' | 'maint_profiles' | 'maint_plans' | 'maint_templates' | 'maint_records';
 
 /* ---------- Maintenance ---------- */
 export type MaintCategory = 'Vehicle' | 'Water System' | 'Pump' | 'Pressure Washer' | 'Vacuum' | 'Safety Equipment' | 'Tool' | 'Other';
@@ -962,7 +975,7 @@ export interface DB {
   reviews: PerfReview[]; adjustments: PayrollAdjustment[]; periods: PayrollPeriod[]; runs: PayrollRun[];
   locations: StorageLocation[]; items: InventoryItem[]; stock: StockTx[]; requests: MaterialRequest[];
   assets: Asset[]; checkouts: Checkout[]; tickets: MaintenanceTicket[]; invoices: Invoice[]; payments: Payment[];
-  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[]; ocular_visits: OcularVisit[]; quote_images: QuoteImage[]; followups: FollowUp[]; followup_rules: FollowUpRule[]; job_orders: JobOrder[]; maint_profiles: MaintProfile[]; maint_plans: MaintPlan[]; maint_templates: MaintTemplate[]; maint_records: MaintRecord[];
+  expenses: Expense[]; petty: PettyCashEntry[]; notifications: Notification[]; workflows: JobWorkflow[]; variations: Variation[]; incidents: IncidentReport[]; discount_requests: DiscountRequest[]; client_feedback: ClientFeedback[]; back_jobs: BackJob[]; payment_confirmations: PaymentConfirmation[]; ocular_visits: OcularVisit[]; quote_images: QuoteImage[]; followups: FollowUp[]; followup_rules: FollowUpRule[]; job_orders: JobOrder[]; service_reports: ServiceReport[]; maint_profiles: MaintProfile[]; maint_plans: MaintPlan[]; maint_templates: MaintTemplate[]; maint_records: MaintRecord[];
   audit: AuditLog[];
   settings: Settings;
   version: number;

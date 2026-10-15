@@ -134,6 +134,7 @@ export const ROUTE_ACCESS: Record<string, string[]> = {
   sales: ['sales.view'],
   inbox: ['inbox.manage'],
   photos: ['photos.manage', 'jobs.mine'],
+  servicereports: ['jobs.all', 'dispatch.run'],
   jobs: ['jobs.all', 'jobs.mine'],
   attendance: ['attendance.own', 'attendance.view'],
   employees: ['employees.view', 'performance.view'],

@@ -298,6 +298,19 @@ describe('panel counting & variations', () => {
     expect(next[0].materials).toBe('custom kit');
   });
 
+  it('service report: a template for every service, bullets parse, before/after photos pair up', async () => {
+    const R = await import('./servicereport');
+    for (const code of R.SERVICE_TEMPLATE_CODES) { const s = R.buildSections([code]); expect(s.map((x) => x.key)).toEqual(R.SECTION_ORDER); expect(s.every((x) => x.body.trim().length > 10)).toBe(true); }
+    const multi = R.buildSections(['GLASS_EXT', 'ROOF'], 'Monthly');
+    expect(multi.find((x) => x.key === 'method')!.body).toContain('Roof cleaning:');
+    expect(multi.find((x) => x.key === 'recs')!.body).toContain('monthly maintenance schedule');
+    expect(R.parseBody('Intro line\n\n- one\n- two\nafter')).toEqual([{ kind: 'p', text: 'Intro line' }, { kind: 'ul', items: ['one', 'two'] }, { kind: 'p', text: 'after' }]);
+    const ph = (id: string, group: 'Before' | 'After' | 'Detail') => ({ id, group, caption: '' });
+    const a2 = R.arrangePhotos([ph('b1', 'Before'), ph('b2', 'Before'), ph('b3', 'Before'), ph('a1', 'After'), ph('a2', 'After'), ph('d1', 'Detail')]);
+    expect(a2.pairs.map(([x, y]) => [x.id, y.id])).toEqual([['b1', 'a1'], ['b2', 'a2']]);
+    expect(a2.rest.map((x) => x.id)).toEqual(['b3', 'd1']);
+  });
+
   it('starter package panels: the panels counted beyond it are the additional work', () => {
     const panels = [{ id: 'a', area: '1st Floor', side: 'Front', external: 20, internal: 6 }, { id: 'b', area: '2nd Floor', side: 'Back', external: 4, internal: 0 }];
     const bd = B.panelBreakdown(db(), undefined, panels, 24);

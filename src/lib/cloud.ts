@@ -14,7 +14,7 @@ let _client: SupabaseClient | null = null;
 export const supabase = (): SupabaseClient => (_client ??= createClient(URL!, KEY!, { auth: { persistSession: true, autoRefreshToken: true } }));
 
 /** Tables copied between the app and Supabase, parents first (foreign keys). `users`, `notifications` and `audit` are handled separately. */
-export const SYNC_TABLES = ['branches', 'clients', 'sites', 'communications', 'complaints', 'services', 'inquiries', 'quotations', 'employees', 'jobs', 'attendance', 'corrections', 'holidays', 'reviews', 'adjustments', 'periods', 'runs', 'locations', 'items', 'stock', 'requests', 'assets', 'checkouts', 'tickets', 'invoices', 'payments', 'expenses', 'petty', 'workflows', 'variations', 'incidents', 'discount_requests', 'client_feedback', 'back_jobs', 'payment_confirmations', 'ocular_visits', 'quote_images', 'followups', 'followup_rules', 'job_orders', 'maint_profiles', 'maint_plans', 'maint_templates', 'maint_records'] as const satisfies readonly TableName[];
+export const SYNC_TABLES = ['branches', 'clients', 'sites', 'communications', 'complaints', 'services', 'inquiries', 'quotations', 'employees', 'jobs', 'attendance', 'corrections', 'holidays', 'reviews', 'adjustments', 'periods', 'runs', 'locations', 'items', 'stock', 'requests', 'assets', 'checkouts', 'tickets', 'invoices', 'payments', 'expenses', 'petty', 'workflows', 'variations', 'incidents', 'discount_requests', 'client_feedback', 'back_jobs', 'payment_confirmations', 'ocular_visits', 'quote_images', 'followups', 'followup_rules', 'job_orders', 'service_reports', 'maint_profiles', 'maint_plans', 'maint_templates', 'maint_records'] as const satisfies readonly TableName[];
 export type SyncTable = (typeof SYNC_TABLES)[number];
 const RENAME: Partial<Record<SyncTable, Record<string, string>>> = { periods: { start: 'period_start', end: 'period_end' } };
 const invert = (m: Record<string, string>) => Object.fromEntries(Object.entries(m).map(([a, b]) => [b, a]));
@@ -48,7 +48,7 @@ export function toDb(row: Record<string, unknown>, before?: Record<string, unkno
 }
 
 /* ---------- reading ---------- */
-const NEWER_TABLES = new Set(['maint_profiles', 'maint_plans', 'maint_templates', 'maint_records', 'job_orders']);
+const NEWER_TABLES = new Set(['maint_profiles', 'maint_plans', 'maint_templates', 'maint_records', 'job_orders', 'service_reports']);
 async function readAll(table: string, order = 'id'): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = []; const page = 1000;
   for (let from = 0; ; from += page) {
@@ -67,7 +67,7 @@ export const emptyDB = (): DB => ({
   users: [], branches: [], clients: [], sites: [], communications: [], complaints: [], services: [], inquiries: [], quotations: [], jobs: [], employees: [], attendance: [], corrections: [],
   holidays: [], reviews: [], adjustments: [], periods: [], runs: [], locations: [], items: [], stock: [], requests: [], assets: [], checkouts: [], tickets: [], invoices: [], payments: [],
   expenses: [], petty: [], notifications: [], workflows: [], variations: [], incidents: [], discount_requests: [], client_feedback: [], back_jobs: [], payment_confirmations: [], ocular_visits: [],
-  quote_images: [], followups: [], followup_rules: [], job_orders: [], maint_profiles: [], maint_plans: [], maint_templates: [], maint_records: [], audit: [], settings: { counters: {} } as unknown as Settings, version: 1,
+  quote_images: [], followups: [], followup_rules: [], job_orders: [], service_reports: [], maint_profiles: [], maint_plans: [], maint_templates: [], maint_records: [], audit: [], settings: { counters: {} } as unknown as Settings, version: 1,
 });
 
 export const toUser = (p: Record<string, unknown>): UserAccount => {

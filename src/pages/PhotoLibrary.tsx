@@ -6,23 +6,12 @@ import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Modal, PageHead, attempt, toast } from '@/components/ui';
 import { CLOUD, supabase } from '@/lib/cloud';
 import { fmtDate } from '@/lib/util';
+import { prepare } from '@/lib/photos';
 
 type Kind = 'Before' | 'After' | 'During' | 'Site' | 'Other';
 const KINDS: Kind[] = ['Before', 'After', 'During', 'Site', 'Other'];
 interface Photo { id: string; job_id: string | null; client_id: string | null; path: string; thumb_path: string | null; kind: Kind; caption: string; tags: string[]; taken_at: string; client_ok: boolean; uploaded_by: string | null; created_at: string }
 const PAGE = 48;
-
-/** Re-draws the picture on a canvas: this resizes it and drops all hidden data (GPS position, camera details). */
-async function prepare(file: File): Promise<{ full: Blob; thumb: Blob; width: number; height: number }> {
-  const bmp = await createImageBitmap(file);
-  const draw = (max: number, q: number) => new Promise<{ blob: Blob; w: number; h: number }>((res, rej) => {
-    const s = Math.min(1, max / Math.max(bmp.width, bmp.height)); const w = Math.round(bmp.width * s), h = Math.round(bmp.height * s);
-    const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d')!.drawImage(bmp, 0, 0, w, h);
-    c.toBlob((b) => (b ? res({ blob: b, w, h }) : rej(new Error('Could not process the photo'))), 'image/jpeg', q);
-  });
-  const f = await draw(1600, 0.82); const t = await draw(360, 0.7);
-  return { full: f.blob, thumb: t.blob, width: f.w, height: f.h };
-}
 
 export default function PhotoLibrary() {
   const { db, can, user } = useAuth();
