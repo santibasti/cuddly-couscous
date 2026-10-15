@@ -1,51 +1,4 @@
-/* ---------------------------------------------------------------
-   Choi Narciso — portfolio
-   Swap the files in /img for the photographer's full-res originals
-   and edit the arrays below. Nothing else needs to change.
----------------------------------------------------------------- */
-const IMG = (n) => `img/${n}.jpg`;
-
-// Only full-resolution photos are shown until the photographer's originals replace the
-// low-res Instagram crops. Add a file's number here once it has been swapped for a sharp one,
-// or set SHOW_LOWRES = true to show everything.
-const SHOW_LOWRES = false;
-const SHARP = new Set(['01', '02', '03', '04']);
-const ok = (src) => SHOW_LOWRES || SHARP.has(src.match(/(\d\d)\.jpg$/)?.[1]);
-
-// Hero slideshow
-const HERO = [
-  { src: IMG('02'), credit: 'Light Notes' },
-  { src: IMG('01'), credit: 'Portrait' },
-  { src: IMG('04'), credit: 'Editorial' },
-  { src: IMG('03'), credit: 'Editorial' },
-  { src: IMG('21'), credit: 'Fashion' },
-].filter(h => ok(h.src));
-
-// Horizontal "Selected" strip
-const SELECTED = [
-  { src: IMG('02'), t: 'Light Notes' }, { src: IMG('01'), t: 'Portrait' },
-  { src: IMG('03'), t: 'Editorial' },   { src: IMG('13'), t: 'Fashion' },
-  { src: IMG('04'), t: 'Editorial' },   { src: IMG('12'), t: 'Portrait' },
-  { src: IMG('21'), t: 'Fashion' },     { src: IMG('15'), t: 'Vogue' },
-].filter(s => ok(s.src));
-
-// Published list (hover shows the cover)
-const PUBLISHED = [
-  { t: 'Harvesting <em>Hope</em>',    m: 'Vogue Philippines · Apr 2026', img: IMG('c-vogue') },
-  { t: 'Light Notes <em>No. 59</em>', m: 'Vogue Philippines',            img: IMG('c-lightnotes59') },
-  { t: 'Light Notes <em>No. 57</em>', m: 'Vogue Philippines',            img: IMG('c-lightnotes57') },
-  { t: 'Come Rain <em>or Shine</em>', m: 'Metro',                        img: IMG('c-metro') },
-  { t: 'Dining <em>Design</em>',      m: 'F&B Report',                   img: IMG('c-fb') },
-];
-
-// Archive grid — cat: portrait | editorial | sport | still
-const ARCHIVE = [
-  ['06','portrait'],['02','editorial'],['16','still'],['11','portrait'],
-  ['10','sport'],['03','editorial'],['08','portrait'],['17','still'],
-  ['12','portrait'],['15','editorial'],['20','sport'],['07','portrait'],
-  ['13','editorial'],['18','still'],['01','portrait'],['09','still'],
-  ['19','portrait'],['14','editorial'],['04','editorial'],['05','still'],['21','editorial'],
-].map(([n, cat]) => ({ src: IMG(n), cat })).filter(a => ok(a.src));
+/* Choi Narciso — portfolio behaviour. Content lives in data.js */
 
 /* ----------------------------- helpers ----------------------------- */
 const $  = (s, c = document) => c.querySelector(s);
@@ -58,21 +11,23 @@ const lerp = (a, b, t) => a + (b - a) * t;
 /* ----------------------------- build DOM --------------------------- */
 $('#yr').textContent = new Date().getFullYear();
 
-$('#heroSlides').innerHTML = HERO.map((h, i) =>
-  `<figure data-credit="${h.credit}"${i === 0 ? ' class="is-on"' : ''}><img src="${h.src}" alt="" ${i ? 'loading="lazy"' : ''}></figure>`).join('');
+$('#heroSlides').innerHTML = HERO.map((k, i) =>
+  `<figure data-credit="${label(k)}"${i === 0 ? ' class="is-on"' : ''}><img src="${IMG(k)}" alt="" ${i ? 'loading="lazy"' : ''}></figure>`).join('');
 
 $('#hsTrack').innerHTML =
   `<div class="card card--text"><h3>Selected<br><em>frames</em></h3></div>` +
-  SELECTED.map((s, i) =>
-    `<div class="card" data-lb="${i}" data-cursor="View"><img src="${s.src}" alt="${s.t}" loading="lazy">
-       <div class="card__cap"><span>${String(i + 1).padStart(2, '0')}</span><span>${s.t}</span></div></div>`).join('');
+  SELECTED.map((k, i) =>
+    `<div class="card" data-lb="${i}" data-cursor="View">${pic(IMG(k), WORKS[k].alt, 'loading="lazy" decoding="async"')}
+       <div class="card__cap"><span>${String(i + 1).padStart(2, '0')}</span><span>${label(k)}</span></div></div>`).join('');
 
-$('#indexList').innerHTML = PUBLISHED.map((p, i) =>
-  `<li><a href="#" data-img="${p.img}" data-cursor="Open"><span class="n">${String(i + 1).padStart(2, '0')}</span>
-    <span class="t">${p.t}</span><span class="m">${p.m}</span></a></li>`).join('');
+$('#indexList').innerHTML = PROJECTS.map((p, i) =>
+  `<li><a href="project.html?p=${p.slug}" data-img="${p.cover}" data-cursor="Open"><span class="n">${String(i + 1).padStart(2, '0')}</span>
+    <span class="t">${p.title}</span><span class="m">${[p.outlet, p.date].filter(Boolean).join(' · ')}</span></a></li>`).join('');
 
-$('#grid').innerHTML = ARCHIVE.map((a, i) =>
-  `<div class="tile" data-cat="${a.cat}" data-i="${i}" data-cursor="View"><img src="${a.src}" alt="${a.cat} photograph" loading="lazy"></div>`).join('');
+$('#grid').innerHTML = ARCHIVE.map((k, i) =>
+  `<div class="tile" data-cat="${WORKS[k].cat}" data-i="${i}" data-key="${k}" data-cursor="View">${pic(IMG(k), WORKS[k].alt, 'loading="lazy" decoding="async"')}</div>`).join('');
+
+if (HERO.length) { $('#bleedImg').src = IMG(HERO.includes('03') ? '03' : HERO[0]); $('#bleedCap').textContent = label(HERO.includes('03') ? '03' : HERO[0]); }
 
 $$('.statement__text.split').forEach(el => {
   el.innerHTML = el.textContent.trim().split(/\s+/).map(w => `<span class="w"><span>${w}</span></span>`).join(' ');
@@ -84,7 +39,7 @@ $$('.statement__text.split').forEach(el => {
   const bar = $('.loader__bar i'), count = $('#count');
   const start = performance.now(), dur = reduce ? 100 : 1900;
   let loaded = false;
-  const first = new Image(); first.onload = first.onerror = () => loaded = true; first.src = HERO[0].src;
+  const first = new Image(); first.onload = first.onerror = () => loaded = true; first.src = IMG(HERO[0]);
   (function tick(now) {
     const p = clamp((now - start) / dur, 0, 1);
     const eased = 1 - Math.pow(1 - p, 3);
@@ -157,7 +112,7 @@ function onScroll() {
   cur = lerp(cur, p, reduce ? 1 : .12);
   track.style.transform = `translate3d(${-cur * hsDist}px,0,0)`;
   bar.style.transform = `scaleX(${cur})`;
-  const n = SELECTED.length;
+  const n = SELECTED.length || 1;
   hsCount.textContent = `${String(clamp(Math.round(cur * (n - 1)) + 1, 1, n)).padStart(2, '0')} / ${String(n).padStart(2, '0')}`;
   // parallax
   parallax.forEach(el => {
@@ -200,7 +155,6 @@ if (fine) {
   $$('#indexList a').forEach(a => {
     a.addEventListener('pointerenter', () => { img.src = a.dataset.img; pv.classList.add('is-on'); on = true; });
     a.addEventListener('pointerleave', () => { pv.classList.remove('is-on'); on = false; });
-    a.addEventListener('click', e => e.preventDefault());
   });
   addEventListener('pointermove', e => { x = e.clientX; y = e.clientY; });
   (function loop() {
@@ -227,6 +181,7 @@ $('#filters').addEventListener('click', e => {
 });
 
 /* ----------------------------- lightbox ---------------------------- */
+const caption = (k) => [label(k), WORKS[k].credit, WORKS[k].year].filter(Boolean).join(' · ');
 (function lightbox() {
   const lb = $('#lb'), img = $('img', lb), cap = $('figcaption', lb);
   let list = [], idx = 0;
@@ -240,11 +195,11 @@ $('#filters').addEventListener('click', e => {
 
   document.addEventListener('click', e => {
     const card = e.target.closest('[data-lb]');
-    if (card) return open(SELECTED, +card.dataset.lb);
+    if (card) return open(SELECTED.map(k => ({ src: IMG(k), t: caption(k) })), +card.dataset.lb);
     const tile = e.target.closest('.tile');
     if (tile) {
       const vis = $$('.tile:not(.is-hide)');
-      open(vis.map(t => ({ src: t.querySelector('img').src, t: t.dataset.cat })), vis.indexOf(tile));
+      open(vis.map(t => ({ src: IMG(t.dataset.key), t: caption(t.dataset.key) })), vis.indexOf(tile));
     }
   });
   $('.lb__close').onclick = close;
@@ -268,4 +223,15 @@ $('#filters').addEventListener('click', e => {
   const toggle = (open) => { btn.setAttribute('aria-expanded', open); m.classList.toggle('is-open', open); m.setAttribute('aria-hidden', !open); };
   btn.onclick = () => toggle(btn.getAttribute('aria-expanded') !== 'true');
   $$('a', m).forEach(a => a.addEventListener('click', () => toggle(false)));
+})();
+
+/* ----------------------------- nav behaviour ----------------------- */
+(function navScroll() {
+  const nav = $('.nav'); let last = scrollY;
+  addEventListener('scroll', () => {
+    const y = scrollY, down = y > last;
+    nav.classList.toggle('is-solid', y > innerHeight * .6);
+    nav.classList.toggle('is-hidden', down && y > innerHeight * .6 && !$('.menu.is-open'));
+    last = y;
+  }, { passive: true });
 })();

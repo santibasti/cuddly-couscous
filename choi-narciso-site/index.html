@@ -10,7 +10,7 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Choi Narciso — Photographer, Manila">
 <meta property="og:description" content="Portrait, fashion and editorial photography for Vogue Philippines, Metro and more.">
-<meta property="og:image" content="img/og.jpg">
+<meta property="og:image" content="https://YOUR-DOMAIN.com/img/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -65,14 +65,20 @@
   <!-- MARQUEE -->
   <section class="marquee" aria-label="Publications">
     <div class="marquee__track">
-      <span>Vogue Philippines</span><em>✦</em><span>Metro</span><em>✦</em><span>F&amp;B Report</span><em>✦</em><span>Light Notes</span><em>✦</em>
-      <span>Vogue Philippines</span><em>✦</em><span>Metro</span><em>✦</em><span>F&amp;B Report</span><em>✦</em><span>Light Notes</span><em>✦</em>
+      <span>Vogue Philippines</span><em>✦</em><span>Metro</span><em>✦</em><span>F&amp;B Report</span><em>✦</em>
+      <span>Vogue Philippines</span><em>✦</em><span>Metro</span><em>✦</em><span>F&amp;B Report</span><em>✦</em>
     </div>
+  </section>
+
+  <!-- FULL-BLEED FEATURE -->
+  <section class="bleed" aria-label="Featured photograph">
+    <div class="bleed__img reveal-img"><img id="bleedImg" alt="" data-parallax="0.08"></div>
+    <p class="bleed__cap"><span id="bleedCap"></span><span>Featured</span></p>
   </section>
 
   <!-- INTRO STATEMENT -->
   <section class="statement" id="work">
-    <p class="eyebrow reveal">Selected Work — 2024 / 26</p>
+    <p class="eyebrow reveal">Selected Work</p>
     <h2 class="statement__text split">Light is the subject. People are the story. I make portraits that hold still long enough to be felt.</h2>
   </section>
 
@@ -115,13 +121,12 @@
 
   <!-- ABOUT -->
   <section class="about" id="about">
-    <div class="about__img reveal-img"><img src="img/01.jpg" alt="Portrait by Choi Narciso" data-parallax="0.08"></div>
+    <div class="about__img reveal-img"><img src="img/01.jpg" alt="Portrait by Choi Narciso" data-parallax="0.06"></div>
     <div class="about__copy">
       <p class="eyebrow reveal">About</p>
-      <h2 class="reveal">Quiet frames,<br><em>loud</em> light.</h2>
-      <p class="reveal">Choi Narciso is a photographer based in Manila, Philippines. His work moves between intimate black-and-white portraiture, fashion and editorial storytelling, with commissions for Vogue Philippines and Metro.</p>
-      <p class="reveal">He shoots with a painter's patience for shadow — sculpting faces out of darkness, and finding warmth in landscapes, kitchens, boxing rings and rooms full of strangers.</p>
-      <ul class="about__list reveal">
+      <h2 class="reveal">Quiet frames,<br>loud light.</h2>
+      <p class="reveal">Choi Narciso is a photographer based in Manila, Philippines. His work moves between intimate black-and-white portraiture, fashion and editorial storytelling, with published work in Vogue Philippines, Metro and F&amp;B Report. <!-- DRAFT COPY: replace with the photographer's own words --></p>
+            <ul class="about__list reveal">
         <li><span>Based</span>Manila, PH</li>
         <li><span>Clients</span>Vogue Philippines, Metro, F&amp;B Report</li>
         <li><span>Disciplines</span>Portrait · Fashion · Editorial · Still life</li>
@@ -131,6 +136,7 @@
 
   <!-- CONTACT -->
   <section class="contact" id="contact">
+    <div class="contact__bg" aria-hidden="true"><img src="img/03.jpg" alt=""></div>
     <p class="eyebrow reveal">Commissions &amp; Collaborations</p>
     <a class="contact__mail" href="mailto:lounarcisom@gmail.com" data-magnetic data-cursor="Write">Let's make<br><em>something.</em></a>
     <div class="contact__row reveal">
@@ -155,6 +161,7 @@
   <figure><img alt=""><figcaption></figcaption></figure>
 </div>
 
+<script src="data.js"></script>
 <script src="main.js"></script>
 </body>
 </html>
