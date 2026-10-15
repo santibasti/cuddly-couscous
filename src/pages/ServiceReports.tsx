@@ -152,7 +152,7 @@ function ReportEditor({ id }: { id: string }) {
 function ReportPreview({ r, client, urls, company }: { r: ServiceReport; client: string; urls: Record<string, string>; company: { name: string; tagline: string; address: string; phone: string; email: string } }) {
   const body = (b: string) => parseBody(b).map((x, i) => (x.kind === 'p' ? <p key={i}>{x.text}</p> : <ul key={i} className="pd-list">{x.items.map((t, k) => <li key={k}>{t}</li>)}</ul>));
   const arr = arrangePhotos(r.photos); let n = 1;
-  const fig = (p: ReportPhoto, label?: boolean) => <figure key={p.id} style={{ margin: 0 }}>{urls[p.id] ? <img src={urls[p.id]} alt={p.caption || p.group} style={{ width: '100%', borderRadius: 6 }} /> : null}{(label || p.caption) && <figcaption className="pd-small" style={{ textAlign: 'center' }}>{label ? <b>{p.group.toUpperCase()}</b> : null}{label && p.caption ? ' · ' : ''}{p.caption}</figcaption>}</figure>;
+  const fig = (p: ReportPhoto, label?: boolean) => <figure key={p.id} style={{ margin: 0 }}><div style={{ aspectRatio: '4 / 3', background: '#eef3f7', borderRadius: 6, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>{urls[p.id] ? <img src={urls[p.id]} alt={p.caption || p.group} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : null}</div>{(label || p.caption) && <figcaption className="pd-small" style={{ textAlign: 'center' }}>{label ? <b>{p.group.toUpperCase()}</b> : null}{label && p.caption ? ' · ' : ''}{p.caption}</figcaption>}</figure>;
   const sec = (key: string) => r.sections.find((s) => s.key === key);
   const show = (key: string) => { const s = sec(key); return s?.body.trim() ? <div key={key}><div className="pd-h">{++n}. {s.title}</div>{body(s.body)}</div> : null; };
   return (
@@ -167,7 +167,7 @@ function ReportPreview({ r, client, urls, company }: { r: ServiceReport; client:
       {r.photos.length > 0 && <div><div className="pd-h">{++n}. Photo documentation</div>
         <div style={{ display: 'grid', gap: 12 }}>
           {arr.pairs.map(([b, a]) => <div key={b.id + a.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>{fig(b, true)}{fig(a, true)}</div>)}
-          {arr.rest.length > 0 && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>{arr.rest.map((p) => fig(p))}</div>}
+          {arr.rest.length > 0 && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>{arr.rest.map((p) => fig(p))}</div>}
         </div></div>}
       {show('completion')}
       <div className="pd-foot"><span>{r.number} · {company.name}</span><span>Prepared by {r.prepared_by ?? ''}</span></div>

@@ -47,13 +47,14 @@ export async function buildServiceReportPdf(r: ServiceReport, o: { company: Sett
   const photosBlock = async () => {
     if (!r.photos.length) return;
     section('Photo documentation');
-    const { pairs, rest } = arrangePhotos(r.photos); const gap = 5; const cw = (CW - gap) / 2; const maxH = 64;
+    const { pairs, rest } = arrangePhotos(r.photos); const gap = 5; const cw = (CW - gap) / 2; const maxH = 62;
     const draw = async (p: ReportPhoto, x: number, w: number, top: number, label?: string) => {
       const url = o.images[p.id]; if (!url) return 0;
       const sz = await imageSize(url); const s = Math.min(w / sz.w, maxH / sz.h); const iw = sz.w * s, ih = sz.h * s;
-      try { doc.addImage(url, 'JPEG', x + (w - iw) / 2, top, iw, ih); } catch { return 0; }
-      if (label) { doc.setFillColor(...NAVY); doc.roundedRect(x + (w - iw) / 2 + 1.5, top + 1.5, 17, 5, 1, 1, 'F'); txt(label, x + (w - iw) / 2 + 10, top + 5, { size: 7.5, bold: true, color: WHITE, align: 'center' }); }
-      return ih;
+      doc.setFillColor(...SOFT); doc.roundedRect(x, top, w, maxH, 1.5, 1.5, 'F'); // every photo sits in the same frame, so rows line up
+      try { doc.addImage(url, 'JPEG', x + (w - iw) / 2, top + (maxH - ih) / 2, iw, ih); } catch { return maxH; }
+      if (label) { doc.setFillColor(...NAVY); doc.roundedRect(x + 1.5, top + 1.5, 17, 5, 1, 1, 'F'); txt(label, x + 10, top + 5, { size: 7.5, bold: true, color: WHITE, align: 'center' }); }
+      return maxH;
     };
     const row = async (a: ReportPhoto, b: ReportPhoto | undefined, labels: boolean) => {
       need(maxH + 14); const top = y;
