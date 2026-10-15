@@ -5,6 +5,13 @@
 ---------------------------------------------------------------- */
 const IMG = (n) => `img/${n}.jpg`;
 
+// Only full-resolution photos are shown until the photographer's originals replace the
+// low-res Instagram crops. Add a file's number here once it has been swapped for a sharp one,
+// or set SHOW_LOWRES = true to show everything.
+const SHOW_LOWRES = false;
+const SHARP = new Set(['01', '02', '03', '04']);
+const ok = (src) => SHOW_LOWRES || SHARP.has(src.match(/(\d\d)\.jpg$/)?.[1]);
+
 // Hero slideshow
 const HERO = [
   { src: IMG('02'), credit: 'Light Notes' },
@@ -12,7 +19,7 @@ const HERO = [
   { src: IMG('04'), credit: 'Editorial' },
   { src: IMG('03'), credit: 'Editorial' },
   { src: IMG('21'), credit: 'Fashion' },
-];
+].filter(h => ok(h.src));
 
 // Horizontal "Selected" strip
 const SELECTED = [
@@ -20,7 +27,7 @@ const SELECTED = [
   { src: IMG('03'), t: 'Editorial' },   { src: IMG('13'), t: 'Fashion' },
   { src: IMG('04'), t: 'Editorial' },   { src: IMG('12'), t: 'Portrait' },
   { src: IMG('21'), t: 'Fashion' },     { src: IMG('15'), t: 'Vogue' },
-];
+].filter(s => ok(s.src));
 
 // Published list (hover shows the cover)
 const PUBLISHED = [
@@ -38,7 +45,7 @@ const ARCHIVE = [
   ['12','portrait'],['15','editorial'],['20','sport'],['07','portrait'],
   ['13','editorial'],['18','still'],['01','portrait'],['09','still'],
   ['19','portrait'],['14','editorial'],['04','editorial'],['05','still'],['21','editorial'],
-].map(([n, cat]) => ({ src: IMG(n), cat }));
+].map(([n, cat]) => ({ src: IMG(n), cat })).filter(a => ok(a.src));
 
 /* ----------------------------- helpers ----------------------------- */
 const $  = (s, c = document) => c.querySelector(s);
@@ -112,7 +119,12 @@ function initReveals() {
   const io = new IntersectionObserver((es) => es.forEach(e => {
     if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); }
   }), { threshold: .15, rootMargin: '0px 0px -6% 0px' });
-  $$('.reveal, .reveal-img, .split').forEach(el => io.observe(el));
+  $$('.reveal, .split').forEach(el => io.observe(el));
+  // clip-path'd elements report zero visible area, so watch their parent instead
+  const cio = new IntersectionObserver((es) => es.forEach(e => {
+    if (e.isIntersecting) { $$('.reveal-img', e.target).forEach(r => r.classList.add('is-in')); cio.unobserve(e.target); }
+  }), { threshold: .25 });
+  $$('.reveal-img').forEach(el => cio.observe(el.parentElement));
 
   // stagger archive tiles as they enter
   const tio = new IntersectionObserver((es) => es.forEach(e => {
@@ -202,6 +214,7 @@ if (fine) {
 })();
 
 /* ----------------------------- filters ----------------------------- */
+$$('#filters button').forEach(b => { if (b.dataset.f !== 'all' && !ARCHIVE.some(a => a.cat === b.dataset.f)) b.remove(); });
 $('#filters').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   $$('#filters button').forEach(x => x.classList.toggle('is-active', x === b));
