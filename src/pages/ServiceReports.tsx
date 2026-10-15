@@ -170,7 +170,7 @@ function ReportPreview({ r, client, urls, company }: { r: ServiceReport; client:
           {arr.rest.length > 0 && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>{arr.rest.map((p) => fig(p))}</div>}
         </div></div>}
       {show('completion')}
-      <div className="pd-foot"><span>{r.number} · {company.name}</span><span>Prepared by {r.prepared_by ?? ''}</span></div>
+      <div className="pd-foot"><span>{r.number} · {company.name}</span><span>Prepared by TopMop</span></div>
     </div></div>
   );
 }

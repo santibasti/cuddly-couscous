@@ -72,7 +72,7 @@ export async function buildServiceReportPdf(r: ServiceReport, o: { company: Sett
   for (const [key, title] of order) { const s = sec(key); if (!s?.body.trim()) continue; section(s.title || title); body(s.body); }
   await photosBlock();
   const done = sec('completion'); if (done?.body.trim()) { section(done.title || 'Completion confirmation'); body(done.body); }
-  need(26); y += 4; doc.setDrawColor(...MUTED); doc.line(M, y + 12, M + 70, y + 12); txt(`Prepared by: ${r.prepared_by ?? ''}`, M, y + 17, { size: 9, color: MUTED });
+  need(26); y += 4; doc.setDrawColor(...MUTED); doc.line(M, y + 12, M + 70, y + 12); txt('Prepared by TopMop', M, y + 17, { size: 9, color: MUTED });
   txt(`${c.name}  |  ${c.phone}  |  ${c.email}`, W / 2, H - 8, { size: 8, color: MUTED, align: 'center' });
   return doc.output('blob');
 }
