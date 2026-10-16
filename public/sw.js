@@ -19,6 +19,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  if (/\.html$/.test(new URL(req.url).pathname) && !/\/index\.html$/.test(new URL(req.url).pathname)) return; // static pages (privacy policy, …) are not the app shell
   if (req.mode === 'navigate') {
     // newest page when online, cached shell when not
     e.respondWith(fetch(req).then((r) => { const copy = r.clone(); caches.open(CACHE).then((c) => c.put('./', copy)); return r; }).catch(() => caches.match('./', { ignoreVary: true })));
