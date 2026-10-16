@@ -7,7 +7,8 @@ import { AiRephrase } from '@/components/AiRephrase';
 import { CLOUD, supabase } from '@/lib/cloud';
 import { photoDataUrls, photoUrls } from '@/lib/photos';
 import { callFn } from '@/lib/fnclient';
-import { LibraryPicker, MarketingLibrary, mediaUrls } from '@/components/MarketingLibrary';
+import { LibraryPicker, MarketingLibrary, mediaDataUrls, mediaUrls } from '@/components/MarketingLibrary';
+import { EMPTY_POSTER, ICONS, ICON_LABEL, type IconName } from '@/lib/marketingposter';
 import { TONES } from '@/lib/marketingtone';
 import { GraphicSpec, GraphicStyle, STYLE_LABEL, canvasBlob, renderGraphic } from '@/lib/marketinggraphic';
 import { fmtStamp } from '@/lib/util';
@@ -24,7 +25,7 @@ const fromLocal = (v: string) => new Date(Date.parse(v + ':00Z') - 8 * 3600_000)
 const fn = callFn;
 
 export default function Marketing() {
-  const { db } = useAuth(); const company = db.settings.company; const mode = db.settings.marketing?.mode ?? 'off';
+  const { db } = useAuth(); const company = { ...db.settings.company, website: db.settings.marketing?.website ?? 'https://www.topmop.ph' }; const mode = db.settings.marketing?.mode ?? 'off';
   const [tone, setTone] = useState<string>('Default'); const [ask, setAsk] = useState(''); const [askKind, setAskKind] = useState('Other'); const [askAt, setAskAt] = useState(''); const [posts, setPosts] = useState<Post[]>([]); const [busy, setBusy] = useState<string>(); const [add, setAdd] = useState(false); const [tab, setTab] = useState<'todo' | 'posted' | 'library'>('todo');
   const load = useCallback(async () => { const { data } = await supabase().from('marketing_posts').select('*').order('scheduled_at', { ascending: true }).limit(300); setPosts((data ?? []) as Post[]); }, []);
   useEffect(() => { if (!CLOUD) return; load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, [load]);
@@ -82,13 +83,17 @@ export default function Marketing() {
   );
 }
 
-type Company = { name: string; phone: string; email: string };
+type Company = { name: string; phone: string; email: string; tagline?: string; website?: string };
 const BLANK: GraphicSpec = { on: false, headline: '', sub: '', points: [], style: 'auto' };
 
 function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChanged: () => void }) {
-  const [text, setText] = useState(p.text); const [at, setAt] = useState(toLocal(p.scheduled_at)); const [photos, setPhotos] = useState<string[]>(p.photo_ids); const [media, setMedia] = useState<string[]>(p.media_ids ?? []); const [mUrls, setMUrls] = useState<Record<string, string>>({}); const [picker, setPicker] = useState(false); const [urls, setUrls] = useState<Record<string, string>>({});
+  const [text, setText] = useState(p.text); const [at, setAt] = useState(toLocal(p.scheduled_at)); const [photos, setPhotos] = useState<string[]>(p.photo_ids); const [media, setMedia] = useState<string[]>(p.media_ids ?? []); const [mUrls, setMUrls] = useState<Record<string, string>>({}); const mediaRows = useRef<{ id: string; path: string }[]>([]); const mediaCache = useRef<Record<string, string>>({}); const [picker, setPicker] = useState(false); const [urls, setUrls] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false); const area = useRef<HTMLTextAreaElement>(null);
   const [g, setG] = useState<GraphicSpec>(p.graphic ?? BLANK); const cv = useRef<HTMLCanvasElement>(null); const photoRows = useRef<{ id: string; path: string }[]>([]); const dataCache = useRef<Record<string, string>>({});
+  const pst = { ...EMPTY_POSTER, ...g.poster };
+  const setP = (v: Partial<typeof pst>) => setG({ ...g, poster: { ...pst, ...v } });
+  const setFeat = (i: number, v: Partial<{ icon: IconName; label: string }>) => { const f = [0, 1, 2].map((k) => pst.features[k] ?? { icon: 'check' as IconName, label: '' }); f[i] = { ...f[i], ...v }; setP({ features: f }); };
+  const setCard = (i: number, v: Partial<{ label: string; value: string }>) => { const c = [0, 1].map((k) => pst.cards[k] ?? { label: '', value: '' }); c[i] = { ...c[i], ...v }; setP({ cards: c }); };
   const gKey = JSON.stringify(g); const gDirty = gKey !== JSON.stringify(p.graphic ?? BLANK); const needsImage = g.on && (!p.image_path || gDirty);
   const editable = p.status === 'Idea' || p.status === 'Approved' || p.status === 'Failed';
   const dirty = text !== p.text || at !== toLocal(p.scheduled_at) || photos.join() !== p.photo_ids.join() || media.join() !== (p.media_ids ?? []).join() || gDirty || needsImage;
@@ -100,14 +105,16 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
 
   useEffect(() => {
     if (!media.length) return;
-    supabase().from('marketing_media').select('id, path, thumb_path').in('id', media).then(async ({ data }) => setMUrls(await mediaUrls((data ?? []).map((m) => ({ id: m.id as string, path: (m.thumb_path ?? m.path) as string })))));
+    supabase().from('marketing_media').select('id, path, thumb_path').in('id', media).then(async ({ data }) => { mediaRows.current = (data ?? []).map((m) => ({ id: m.id as string, path: m.path as string })); setMUrls(await mediaUrls((data ?? []).map((m) => ({ id: m.id as string, path: (m.thumb_path ?? m.path) as string })))); });
   }, [media.join()]); // eslint-disable-line react-hooks/exhaustive-deps
   const draw = async (c: HTMLCanvasElement) => {
     const want = photos.map((id) => photoRows.current.find((r) => r.id === id)).filter(Boolean) as { id: string; path: string }[];
     const need = want.filter((r) => !dataCache.current[r.id]); if (need.length) Object.assign(dataCache.current, await photoDataUrls(need));
-    await renderGraphic(c, g, p.kind, { company, photos: want.map((r) => dataCache.current[r.id]).filter(Boolean) });
+    const wm = media.map((id) => mediaRows.current.find((r) => r.id === id)).filter(Boolean) as { id: string; path: string }[];
+    const needM = wm.filter((r) => !mediaCache.current[r.id]); if (needM.length) Object.assign(mediaCache.current, await mediaDataUrls(needM));
+    await renderGraphic(c, g, p.kind, { company, photos: [...wm.map((r) => mediaCache.current[r.id]), ...want.map((r) => dataCache.current[r.id])].filter(Boolean) });
   };
-  useEffect(() => { if (editable && g.on && cv.current) draw(cv.current).catch(() => undefined); }, [gKey, photos.join(), Object.keys(urls).length, editable]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (editable && g.on && cv.current) draw(cv.current).catch(() => undefined); }, [gKey, photos.join(), media.join(), Object.keys(urls).length, Object.keys(mUrls).length, editable]); // eslint-disable-line react-hooks/exhaustive-deps
   const uploadGraphic = async (): Promise<string | null> => {
     const c = document.createElement('canvas'); await draw(c); const blob = await canvasBlob(c); const path = `${p.id}/${Date.now()}.png`;
     const { error } = await supabase().storage.from('marketing-graphics').upload(path, blob, { contentType: 'image/png' }); if (error) throw new Error(error.message); return path;
@@ -164,13 +171,37 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
             {g.on && (
               <div className="stack" style={{ marginTop: 10 }}>
                 <div className="row" style={{ flexWrap: 'wrap', alignItems: 'flex-start', gap: 14 }}>
-                  <canvas ref={cv} style={{ width: 300, height: 300, borderRadius: 10, background: '#0b2545' }} />
+                  <canvas ref={cv} style={{ width: 300, height: 'auto', aspectRatio: '4 / 5', borderRadius: 10, background: '#eaf6f8', boxShadow: '0 2px 10px rgba(0,0,0,.2)' }} />
                   <div className="form-grid" style={{ flex: 1, minWidth: 240 }}>
                     <Field label="Headline" className="full"><input value={g.headline} maxLength={70} onChange={(e) => setG({ ...g, headline: e.target.value })} /></Field>
                     <Field label="Line under it" className="full"><input value={g.sub} maxLength={110} onChange={(e) => setG({ ...g, sub: e.target.value })} /></Field>
                     <Field label="Short points (one per line, up to 3)" className="full"><textarea rows={3} value={g.points.join('\n')} onChange={(e) => setG({ ...g, points: e.target.value.split('\n').slice(0, 3) })} /></Field>
                     <Field label="Look"><select value={g.style} onChange={(e) => setG({ ...g, style: e.target.value as GraphicStyle })}>{(Object.keys(STYLE_LABEL) as GraphicStyle[]).map((k) => <option key={k} value={k}>{STYLE_LABEL[k]}</option>)}</select></Field>
                     <div style={{ alignSelf: 'flex-end' }}><button type="button" className="btn sm" onClick={downloadGraphic}>Download picture</button></div>
+                    <details className="full" style={{ gridColumn: '1 / -1' }}>
+                      <summary className="small" style={{ cursor: 'pointer', fontWeight: 600 }}>Poster details (ribbon, places, banner, steps, dates)</summary>
+                      <div className="form-grid" style={{ marginTop: 8 }}>
+                        <Field label="Coloured first line"><input value={pst.kicker} maxLength={28} onChange={(e) => setP({ kicker: e.target.value })} /></Field>
+                        <Field label="Ribbon (offer)"><input value={pst.badge} maxLength={24} onChange={(e) => setP({ badge: e.target.value })} placeholder="FREE" /></Field>
+                        <Field label="Under the ribbon" className="full"><input value={pst.badge_sub} maxLength={36} onChange={(e) => setP({ badge_sub: e.target.value })} placeholder="Ocular visit & quotation" /></Field>
+                        <Field label="Places (comma separated)" className="full"><input value={pst.areas.join(', ')} onChange={(e) => setP({ areas: e.target.value.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 4) })} /></Field>
+                        <Field label="Dark banner"><input value={pst.urgency} maxLength={34} onChange={(e) => setP({ urgency: e.target.value })} placeholder="Limited slots only!" /></Field>
+                        <Field label="Banner second line"><input value={pst.urgency_sub} maxLength={30} onChange={(e) => setP({ urgency_sub: e.target.value })} placeholder="Reserve your slot now!" /></Field>
+                        {[0, 1, 2].map((i) => (
+                          <Field key={i} label={`Step / tip ${i + 1}`} className="full"><div className="row" style={{ gap: 6 }}>
+                            <select value={pst.features[i]?.icon ?? 'check'} onChange={(e) => setFeat(i, { icon: e.target.value as IconName })}>{ICONS.map((k) => <option key={k} value={k}>{ICON_LABEL[k]}</option>)}</select>
+                            <input style={{ flex: 1 }} value={pst.features[i]?.label ?? ''} maxLength={34} onChange={(e) => setFeat(i, { label: e.target.value })} />
+                          </div></Field>
+                        ))}
+                        {[0, 1].map((i) => (
+                          <Field key={i} label={`Info card ${i + 1} (label / value)`} className="full"><div className="row" style={{ gap: 6 }}>
+                            <input style={{ flex: 1 }} value={pst.cards[i]?.label ?? ''} maxLength={26} onChange={(e) => setCard(i, { label: e.target.value })} placeholder="Open for bookings" />
+                            <input style={{ flex: 1 }} value={pst.cards[i]?.value ?? ''} maxLength={22} onChange={(e) => setCard(i, { value: e.target.value })} placeholder="Mon to Sat" />
+                          </div></Field>
+                        ))}
+                        <Field label="Small note" className="full"><input value={pst.note} maxLength={110} onChange={(e) => setP({ note: e.target.value })} /></Field>
+                      </div>
+                    </details>
                   </div>
                 </div>
                 <div className="small muted">The graphic is saved when you press Save, Approve or Post now.</div>

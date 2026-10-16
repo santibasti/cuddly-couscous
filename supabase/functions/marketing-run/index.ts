@@ -26,7 +26,16 @@ function slots(cfg: Cfg, n: number, after: number): string[] {
   return out;
 }
 
-interface Graphic { on: boolean; headline: string; sub: string; points: string[]; style: 'auto' }
+interface Poster { kicker: string; badge: string; badge_sub: string; areas: string[]; urgency: string; urgency_sub: string; features: { icon: string; label: string }[]; cards: { label: string; value: string }[]; note: string }
+interface Graphic { on: boolean; headline: string; sub: string; points: string[]; style: 'auto'; poster: Poster }
+const ICONS = ['window', 'house', 'building', 'solar', 'shield', 'leaf', 'calendar', 'clock', 'sparkle', 'check', 'drop'];
+const str = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+const cleanPoster = (v: unknown): Poster => {
+  const q = (v ?? {}) as Record<string, unknown>; const arr = (x: unknown) => (Array.isArray(x) ? x : []);
+  return { kicker: str(q.kicker, 28), badge: str(q.badge, 24), badge_sub: str(q.badge_sub, 36), areas: arr(q.areas).slice(0, 4).map((a) => str(a, 22)).filter(Boolean), urgency: str(q.urgency, 34), urgency_sub: str(q.urgency_sub, 30),
+    features: arr(q.features).slice(0, 3).map((f) => ({ icon: ICONS.includes(str((f as { icon?: unknown })?.icon, 12)) ? str((f as { icon?: unknown }).icon, 12) : 'check', label: str((f as { label?: unknown })?.label, 34) })).filter((f) => f.label),
+    cards: arr(q.cards).slice(0, 2).map((c) => ({ label: str((c as { label?: unknown })?.label, 26), value: str((c as { value?: unknown })?.value, 22) })).filter((c) => c.label || c.value), note: str(q.note, 110) };
+};
 interface Lib { id: string; description: string; tags: string[] }
 async function write(sb: Sb, cfg: Cfg, kind: string, ctx: string, recent: string[], lib: Lib[] = []): Promise<{ text: string; graphic: Graphic; media_ids: string[] }> {
   const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle();
@@ -38,22 +47,22 @@ Rules: 2–6 short lines, a clear hook in the first line, 0–3 relevant emojis,
 ${cfg.brief ? 'COMPANY KNOWLEDGE (authoritative — write only from these facts; if something is not here, do not claim it):\n' + cfg.brief.slice(0, 7000) : ''}
 ${notes ? 'More company facts:\n' + notes : ''}
 Do not repeat these recent posts:\n${recent.slice(0, 8).map((t) => '- ' + t.slice(0, 120)).join('\n') || '(none yet)'}
-Reply with JSON only, no markdown fence: {"text":"the post","graphic":{"headline":"max 7 words, punchy","sub":"max 14 words","points":["up to 3 short points of max 8 words each — only for tips, otherwise an empty list"]}}. The graphic words are printed on an image, so keep them short, with no hashtags or emojis.${lib.length ? ` Add "media_ids":[...] to the JSON: pick up to 2 photos from the library below that genuinely fit THIS post, or an empty list if none fit. Never pick a photo that does not match the topic.\nPhoto library (id | what it shows | tags):\n${lib.map((m) => `${m.id} | ${m.description} | ${m.tags.join(', ')}`).join('\n')}` : ''}`;
+Reply with JSON only, no markdown fence: {"text":"the post","graphic":{"headline":"max 6 words, the big bold title","sub":"max 22 words, one plain sentence under it","poster":{"kicker":"1-3 words shown first in colour (a place or a hook) or empty","badge":"max 3 words, the offer (for example FREE) or empty","badge_sub":"max 5 words under the badge or empty","areas":["up to 4 places — only places named in the company knowledge or the owner request"],"urgency":"max 5 words or empty — only when the request or company knowledge says slots or dates are limited","urgency_sub":"max 4 words or empty","features":[{"icon":"one of: window, house, building, solar, shield, leaf, calendar, clock, sparkle, check, drop","label":"max 4 words"}],"cards":[{"label":"max 3 words","value":"max 3 words"}],"note":"max 14 words or empty"}}}. Poster rules: features = up to 3 key benefits, steps or tips; cards = up to 2, ONLY real dates or hours stated in the request or company knowledge; leave any block empty rather than invent it; never invent offers, dates, prices or places; for a tip post put the tips in features and leave badge, urgency and cards empty. The graphic words are printed on an image, so no hashtags or emojis in them. ${lib.length ? ` Add "media_ids":[...] to the JSON: pick up to 2 photos from the library below that genuinely fit THIS post, or an empty list if none fit. Never pick a photo that does not match the topic.\nPhoto library (id | what it shows | tags):\n${lib.map((m) => `${m.id} | ${m.description} | ${m.tags.join(', ')}`).join('\n')}` : ''}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: env('MARKETING_MODEL') || 'claude-sonnet-5-5', max_tokens: 700, system, messages: [{ role: 'user', content: `Post type: ${kind}.\n${ctx}` }] }) });
+    body: JSON.stringify({ model: env('MARKETING_MODEL') || 'claude-sonnet-5-5', max_tokens: 1300, system, messages: [{ role: 'user', content: `Post type: ${kind}.\n${ctx}` }] }) });
   if (!res.ok) { const d = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? ''; throw new Error(`AI ${res.status}. ${d}`.trim()); }
   const out = (await res.json()) as { content?: { type: string; text?: string }[] };
   const t = (out.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('').trim();
   if (!t) throw new Error('The AI returned nothing.');
   try {
-    const j = JSON.parse(t.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as { text?: string; graphic?: { headline?: string; sub?: string; points?: unknown } };
+    const j = JSON.parse(t.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as { text?: string; graphic?: { headline?: string; sub?: string; points?: unknown; poster?: unknown } };
     if (j.text) {
       const g = j.graphic ?? {};
       const pick = (Array.isArray((j as { media_ids?: unknown }).media_ids) ? (j as { media_ids: unknown[] }).media_ids : []).map(String).filter((id) => lib.some((m) => m.id === id)).slice(0, 2);
-      return { text: String(j.text).trim(), media_ids: pick, graphic: { on: true, headline: String(g.headline ?? '').slice(0, 70), sub: String(g.sub ?? '').slice(0, 110), points: Array.isArray(g.points) ? g.points.slice(0, 3).map((x) => String(x).slice(0, 60)) : [], style: 'auto' } };
+      return { text: String(j.text).trim(), media_ids: pick, graphic: { on: true, headline: str(g.headline, 60), sub: str(g.sub, 160), points: Array.isArray(g.points) ? g.points.slice(0, 3).map((x) => String(x).slice(0, 60)) : [], style: 'auto', poster: cleanPoster(g.poster) } };
     }
   } catch { /* the model answered with plain text */ }
-  return { text: t, media_ids: [], graphic: { on: true, headline: t.split('\n')[0].replace(/[#@]\S+/g, '').slice(0, 60).trim(), sub: '', points: [], style: 'auto' } };
+  return { text: t, media_ids: [], graphic: { on: true, headline: t.split('\n')[0].replace(/[#@]\S+/g, '').slice(0, 60).trim(), sub: '', points: [], style: 'auto', poster: cleanPoster({}) } };
 }
 
 const htmlToText = (html: string) => html.replace(/<(script|style|noscript|svg)[\s\S]*?<\/\1>/gi, ' ').replace(/<!--[\s\S]*?-->/g, ' ').replace(/<\/(p|div|li|h[1-6]|tr|section|br)>/gi, '\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, "'").replace(/&quot;/g, '"').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();

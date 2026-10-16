@@ -1,19 +1,20 @@
 // Branded graphics for Facebook posts, drawn in the browser (1080 × 1080) from the AI's headline — no image generator involved, so every graphic uses the real TopMop logo and colours.
 import { LOGO_SMALL_URL } from './logo';
+import { EMPTY_POSTER, renderPoster, type PosterSpec } from './marketingposter';
 
-export type GraphicStyle = 'auto' | 'tip' | 'promo' | 'seasonal' | 'job';
-export interface GraphicSpec { on: boolean; headline: string; sub: string; points: string[]; style: GraphicStyle }
-export const STYLE_LABEL: Record<GraphicStyle, string> = { auto: 'Automatic', tip: 'Tip card', promo: 'Free quote', seasonal: 'Seasonal', job: 'Job showcase' };
+export type GraphicStyle = 'auto' | 'poster' | 'tip' | 'promo' | 'seasonal' | 'job';
+export interface GraphicSpec { on: boolean; headline: string; sub: string; points: string[]; style: GraphicStyle; poster?: PosterSpec }
+export const STYLE_LABEL: Record<GraphicStyle, string> = { auto: 'Automatic (poster)', poster: 'Poster', tip: 'Simple tip card', promo: 'Simple free-quote card', seasonal: 'Simple seasonal card', job: 'Simple job card' };
 const NAVY = '#0b2545', NAVY2 = '#13427a', CYAN = '#1fb6c9', GOLD = '#f5b83d', WHITE = '#ffffff';
 const FONT = '"Segoe UI", "Helvetica Neue", Arial, sans-serif';
 export const SIZE = 1080;
 
-export const resolveStyle = (kind: string, s: GraphicStyle, hasPhotos: boolean): Exclude<GraphicStyle, 'auto'> => {
-  if (s !== 'auto') return s;
-  if (kind === 'Completed job' && hasPhotos) return 'job';
-  return kind === 'Promo' ? 'promo' : kind === 'Seasonal' ? 'seasonal' : 'tip';
+export const resolveStyle = (kind: string, s: GraphicStyle, hasPhotos: boolean): Exclude<GraphicStyle, 'auto' | 'poster'> | 'poster' => {
+  void kind; void hasPhotos;
+  if (s === 'auto' || s === 'poster') return 'poster';
+  return s;
 };
-const TAG: Record<Exclude<GraphicStyle, 'auto'>, string> = { tip: 'CLEANING TIP', promo: 'FREE QUOTE', seasonal: 'SEASON TIP', job: 'JOB UPDATE' };
+const TAG: Record<Exclude<GraphicStyle, 'auto' | 'poster'>, string> = { tip: 'CLEANING TIP', promo: 'FREE QUOTE', seasonal: 'SEASON TIP', job: 'JOB UPDATE' };
 
 const loadImg = (src: string) => new Promise<HTMLImageElement | null>((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
 
@@ -32,10 +33,11 @@ function cover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, 
   ctx.save(); rr(ctx, x, y, w, h, r); ctx.clip(); const s = Math.max(w / img.naturalWidth, h / img.naturalHeight); const iw = img.naturalWidth * s, ih = img.naturalHeight * s; ctx.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih); ctx.restore();
 }
 
-export async function renderGraphic(c: HTMLCanvasElement, spec: GraphicSpec, kind: string, o: { company: { name: string; phone: string; email: string }; photos: string[] }) {
+export async function renderGraphic(c: HTMLCanvasElement, spec: GraphicSpec, kind: string, o: { company: { name: string; phone: string; email: string; tagline?: string; website?: string }; photos: string[] }) {
+  if (resolveStyle(kind, spec.style, o.photos.length > 0) === 'poster') { await renderPoster(c, { headline: spec.headline, sub: spec.sub, poster: { ...EMPTY_POSTER, ...spec.poster, features: spec.poster?.features?.length ? spec.poster.features : spec.points.filter(Boolean).slice(0, 3).map((label) => ({ icon: 'check' as const, label })) }, company: o.company, photos: o.photos }); return; }
   c.width = SIZE; c.height = SIZE; const ctx = c.getContext('2d')!;
   const imgs = (await Promise.all(o.photos.slice(0, 2).map(loadImg))).filter(Boolean) as HTMLImageElement[];
-  const style = resolveStyle(kind, spec.style, imgs.length > 0); const accent = style === 'promo' ? GOLD : CYAN;
+  const style = resolveStyle(kind, spec.style, imgs.length > 0) as Exclude<GraphicStyle, 'auto' | 'poster'>; const accent = style === 'promo' ? GOLD : CYAN;
   // background
   const g = ctx.createLinearGradient(0, 0, SIZE, SIZE); g.addColorStop(0, NAVY); g.addColorStop(1, style === 'seasonal' ? '#0e6f7d' : NAVY2); ctx.fillStyle = g; ctx.fillRect(0, 0, SIZE, SIZE);
   let seed = [...spec.headline].reduce((a, ch) => a + ch.charCodeAt(0), 7); const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };

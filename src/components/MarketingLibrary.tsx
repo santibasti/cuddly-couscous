@@ -14,6 +14,12 @@ export async function mediaUrls(items: { id: string; path: string }[]): Promise<
   const { data } = await supabase().storage.from(BUCKET).createSignedUrls(items.map((m) => m.path), 3600);
   const out: Record<string, string> = {}; (data ?? []).forEach((d, i) => { if (d.signedUrl) out[items[i].id] = d.signedUrl; }); return out;
 }
+/** Photos from the library as data URLs (for drawing them into a graphic). */
+export async function mediaDataUrls(items: { id: string; path: string }[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}; const signed = await mediaUrls(items);
+  for (const [id, u] of Object.entries(signed)) { try { const b = await (await fetch(u)).blob(); out[id] = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(b); }); } catch { /* skip a photo that cannot be loaded */ } }
+  return out;
+}
 const small = async (file: Blob): Promise<string> => {
   const bmp = await createImageBitmap(file); const s = Math.min(1, 900 / Math.max(bmp.width, bmp.height)); const c = document.createElement('canvas'); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s); c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', 0.8).split(',')[1];
