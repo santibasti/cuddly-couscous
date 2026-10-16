@@ -920,6 +920,8 @@ export interface Settings {
   /** pay a full day for any day worked, whatever the hours (no hourly proration, overtime or late / undertime deductions). Default on. */
   pay_by_day?: boolean;
   fb_ai?: { mode: 'off' | 'suggest' | 'auto'; notes: string };
+  /** Marketing AI: writes and posts to the Facebook Page. approve = I approve each post, auto = posts go out on schedule. */
+  marketing?: { mode: 'off' | 'approve' | 'auto'; per_week: number; days: number[]; time: string; topics: string[]; voice: string };
   client_sms?: { enabled: boolean; day_before_time: string; morning_time: string };
   reminder_days: { quote_expiry: number; doc_expiry: number; chemical_expiry: number; invoice_due: number; maintenance: number };
   glass_group_size: number;

@@ -39,6 +39,7 @@ import JobOrderPage from '@/pages/JobOrderPage';
 import CrewJobOrderPage from '@/pages/CrewJobOrderPage';
 import QuotePreviewPage from '@/pages/QuotePreviewPage';
 import Inbox from '@/pages/Inbox';
+import Marketing from '@/pages/Marketing';
 import PhotoLibrary from '@/pages/PhotoLibrary';
 import ServiceReports from '@/pages/ServiceReports';
 
@@ -54,6 +55,7 @@ const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: st
   { to: '/clients', key: 'clients', label: 'Clients', icon: 'clients', group: 'Sales' },
   { to: '/sales', key: 'sales', label: 'Quotations', icon: 'sales' },
   { to: '/inbox', key: 'inbox', label: 'Facebook Inbox', icon: 'clients' },
+  { to: '/marketing', key: 'marketing', label: 'Marketing AI', icon: 'reports' },
   { to: '/finance', key: 'finance', label: 'Finance', icon: 'finance', group: 'Finance & People' },
   { to: '/payroll', key: 'payroll', label: 'Payroll', icon: 'payroll' },
   { to: '/employees', key: 'employees', label: 'Employees', icon: 'employees' },
@@ -160,6 +162,7 @@ function Shell() {
             <Route path="/service-reports/:id" element={<Guard area="servicereports"><ServiceReports /></Guard>} />
             <Route path="/photos" element={<Guard area="photos"><PhotoLibrary /></Guard>} />
             <Route path="/inbox" element={<Guard area="inbox"><Inbox /></Guard>} />
+            <Route path="/marketing" element={<Guard area="marketing"><Marketing /></Guard>} />
             <Route path="/sales" element={<Guard area="sales"><Sales /></Guard>} />
             <Route path="/sales/quote/:id" element={<Guard area="sales"><QuoteEditor /></Guard>} />
             <Route path="/sales/quote/:id/preview" element={<Guard area="sales"><QuotePreviewPage /></Guard>} />

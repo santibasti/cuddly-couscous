@@ -154,3 +154,14 @@ A chatbot tool collects the customer's details and sends them to TopMop. TopMop 
 
 Quick test from PowerShell (replace the project ref and key):
 `Invoke-RestMethod -Method Post -Uri "https://<project-ref>.supabase.co/functions/v1/lead-intake?key=your_long_random_key" -ContentType "application/json" -Body '{"name":"Test Lead","mobile":"09170000000","service":"window cleaning"}'`
+
+## Marketing AI (Facebook Page posts)
+
+Writes posts for your Page (tips, recently finished jobs, seasonal and promo posts) on a schedule and publishes the ones you approve.
+
+1. `supabase db push` (migration 0058 adds the posts table and an hourly schedule).
+2. `supabase functions deploy marketing-run --no-verify-jwt` — the hourly schedule calls it without a login.
+3. Secrets: `ANTHROPIC_API_KEY` (writes the posts) and `FB_PAGE_TOKEN` (a Facebook Page access token with the `pages_manage_posts` permission — needed only for posting; without it you can still copy the text into Facebook by hand).
+4. Admin → Rates & settings → **Marketing AI**: choose the mode, days, time and topics. Review posts under **Marketing AI** in the menu.
+
+Only photos marked "client agreed to marketing use" in the Photo Library are ever attached, and the AI is never given client names, addresses or prices.

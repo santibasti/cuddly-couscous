@@ -43,7 +43,7 @@ function Rates({ s }: { s: Settings }) {
   const [draft, setDraft] = useState<Settings>(() => clone(s));
   const setM = (k: keyof Settings['multipliers'], v: number) => setDraft({ ...draft, multipliers: { ...draft.multipliers, [k]: v } });
   const setStat = (i: number, patch: Partial<StatutoryRate>) => setDraft({ ...draft, statutory: draft.statutory.map((r, k) => (k === i ? { ...r, ...patch } : r)) });
-  const save = () => attempt(() => { store.require('admin.settings'); store.patchSettings({ pay_by_day: draft.pay_by_day, vat_rate: draft.vat_rate, multipliers: draft.multipliers, statutory: draft.statutory, std_hours_per_day: draft.std_hours_per_day, monthly_divisor_days: draft.monthly_divisor_days, grace_minutes: draft.grace_minutes, payment_terms_days: draft.payment_terms_days, quote_validity_days: draft.quote_validity_days, glass_group_size: draft.glass_group_size, channels: draft.channels, client_sms: draft.client_sms, fb_ai: draft.fb_ai, reminder_days: draft.reminder_days, default_terms: draft.default_terms, default_crew_size: draft.default_crew_size, default_disclaimer: draft.default_disclaimer, default_intro: draft.default_intro, default_methodology: draft.default_methodology, company: draft.company }, 'Updated payroll, tax and system settings'); }, 'Settings saved');
+  const save = () => attempt(() => { store.require('admin.settings'); store.patchSettings({ pay_by_day: draft.pay_by_day, vat_rate: draft.vat_rate, multipliers: draft.multipliers, statutory: draft.statutory, std_hours_per_day: draft.std_hours_per_day, monthly_divisor_days: draft.monthly_divisor_days, grace_minutes: draft.grace_minutes, payment_terms_days: draft.payment_terms_days, quote_validity_days: draft.quote_validity_days, glass_group_size: draft.glass_group_size, channels: draft.channels, client_sms: draft.client_sms, fb_ai: draft.fb_ai, marketing: draft.marketing, reminder_days: draft.reminder_days, default_terms: draft.default_terms, default_crew_size: draft.default_crew_size, default_disclaimer: draft.default_disclaimer, default_intro: draft.default_intro, default_methodology: draft.default_methodology, company: draft.company }, 'Updated payroll, tax and system settings'); }, 'Settings saved');
   const n = (v: number, fn: (x: number) => void, label: string, step = 'any') => <Field label={label}><input type="number" step={step} value={v} onChange={(e) => fn(+e.target.value)} /></Field>;
   return (
     <div className="stack">
@@ -75,6 +75,18 @@ function Rates({ s }: { s: Settings }) {
           <div className="form-grid">
             <Field label="Mode"><select value={draft.fb_ai?.mode ?? 'off'} onChange={(e) => setDraft({ ...draft, fb_ai: { notes: '', ...draft.fb_ai, mode: e.target.value as 'off' | 'suggest' | 'auto' } })}><option value="off">Off — only store the messages</option><option value="suggest">Suggest — I approve every reply (recommended)</option><option value="auto">Auto — replies are sent right away</option></select></Field>
             <Field label="Extra facts for the AI (service areas, working hours, FAQs, what NOT to say)" className="full"><textarea rows={5} value={draft.fb_ai?.notes ?? ''} onChange={(e) => setDraft({ ...draft, fb_ai: { mode: 'off', ...draft.fb_ai, notes: e.target.value } })} placeholder="e.g. We serve Metro Manila, Rizal and Cavite. Open Mon–Sat 8 AM–5 PM. We do not clean glass above the 10th floor without an ocular visit." /></Field>
+          </div>
+        </div>
+        <div className="full card" style={{ padding: 12 }}>
+          <b>Marketing AI (Facebook Page)</b>
+          <div className="small muted" style={{ margin: '4px 0 8px' }}>Writes posts for your Page — tips, recently finished jobs (only photos the client agreed to share), seasonal and promo posts — and publishes them on your schedule. Review them under Marketing AI. Setup steps are in supabase/README.md.</div>
+          <div className="form-grid">
+            <Field label="Mode"><select value={draft.marketing?.mode ?? 'off'} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, mode: e.target.value as 'off' | 'approve' | 'auto' } })}><option value="off">Off</option><option value="approve">Draft posts — I approve each one (recommended)</option><option value="auto">Auto — posts go out on the schedule without my approval</option></select></Field>
+            <Field label="Posts per week"><input type="number" min={1} max={7} value={draft.marketing?.per_week ?? 2} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, per_week: Math.min(7, Math.max(1, Number(e.target.value) || 1)) } })} /></Field>
+            <Field label="Post time (Manila)"><input type="time" value={draft.marketing?.time ?? '10:00'} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, time: e.target.value || '10:00' } })} /></Field>
+            <Field label="Days" className="full"><div className="chips" role="group">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => { const cur = draft.marketing?.days ?? MKT_DEFAULT.days; return <button key={d} type="button" className={cur.includes(i) ? 'on' : ''} onClick={() => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, days: cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort() } })}>{d}</button>; })}</div></Field>
+            <Field label="What to post about" className="full"><div className="chips" role="group">{['Tips & tricks', 'Completed jobs', 'Seasonal', 'Promos', 'Company news'].map((t) => { const cur = draft.marketing?.topics ?? MKT_DEFAULT.topics; return <button key={t} type="button" className={cur.includes(t) ? 'on' : ''} onClick={() => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, topics: cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t] } })}>{t}</button>; })}</div></Field>
+            <Field label="Voice and rules (optional)" className="full"><textarea rows={3} value={draft.marketing?.voice ?? ''} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, voice: e.target.value } })} placeholder="e.g. Friendly Taglish, always mention free ocular visits, never post about competitors." /></Field>
           </div>
         </div>
         <div className="full card" style={{ padding: 12 }}>
@@ -174,6 +186,8 @@ function Permissions({ access }: { access: Settings['access'] }) {
     </Card>
   );
 }
+
+const MKT_DEFAULT = { mode: 'off' as const, per_week: 2, days: [2, 5], time: '10:00', topics: ['Tips & tricks', 'Completed jobs', 'Seasonal', 'Promos'], voice: '' };
 
 export default function Admin() {
   const { db, can } = useAuth();
