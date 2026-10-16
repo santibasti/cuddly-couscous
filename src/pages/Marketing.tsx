@@ -5,11 +5,12 @@ import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Modal, PageHead, toast } from '@/components/ui';
 import { AiRephrase } from '@/components/AiRephrase';
 import { CLOUD, supabase } from '@/lib/cloud';
-import { photoUrls } from '@/lib/photos';
+import { photoDataUrls, photoUrls } from '@/lib/photos';
+import { GraphicSpec, GraphicStyle, STYLE_LABEL, canvasBlob, renderGraphic } from '@/lib/marketinggraphic';
 import { fmtStamp } from '@/lib/util';
 
 type Status = 'Idea' | 'Approved' | 'Posted' | 'Failed' | 'Rejected';
-interface Post { id: string; kind: string; text: string; photo_ids: string[]; job_id: string | null; scheduled_at: string; status: Status; by_ai: boolean; fb_post_id: string | null; posted_at: string | null; error: string | null }
+interface Post { id: string; kind: string; text: string; photo_ids: string[]; job_id: string | null; graphic: GraphicSpec | null; image_path: string | null; scheduled_at: string; status: Status; by_ai: boolean; fb_post_id: string | null; posted_at: string | null; error: string | null }
 const TONE: Record<Status, string> = { Idea: 'amber', Approved: 'blue', Posted: 'green', Failed: 'red', Rejected: 'gray' };
 const LABEL: Record<Status, string> = { Idea: 'Needs your approval', Approved: 'Approved — will post', Posted: 'Posted', Failed: 'Failed', Rejected: 'Rejected' };
 const KINDS = ['Tip', 'Completed job', 'Promo', 'Seasonal', 'Other'];
@@ -25,7 +26,7 @@ async function fn<T>(name: string, body: Record<string, unknown>): Promise<T> {
 }
 
 export default function Marketing() {
-  const { db } = useAuth(); const mode = db.settings.marketing?.mode ?? 'off';
+  const { db } = useAuth(); const company = db.settings.company; const mode = db.settings.marketing?.mode ?? 'off';
   const [posts, setPosts] = useState<Post[]>([]); const [busy, setBusy] = useState<string>(); const [add, setAdd] = useState(false); const [tab, setTab] = useState<'todo' | 'posted'>('todo');
   const load = useCallback(async () => { const { data } = await supabase().from('marketing_posts').select('*').order('scheduled_at', { ascending: true }).limit(300); setPosts((data ?? []) as Post[]); }, []);
   useEffect(() => { if (!CLOUD) return; load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, [load]);
@@ -54,7 +55,7 @@ export default function Marketing() {
         <button type="button" className={tab === 'posted' ? 'on' : ''} onClick={() => setTab('posted')}>Posted & rejected ({done.length})</button>
       </div>
       <div className="stack">
-        {(tab === 'todo' ? todo : done).map((p) => <PostCard key={p.id} p={p} onChanged={load} />)}
+        {(tab === 'todo' ? todo : done).map((p) => <PostCard key={p.id} p={p} company={company} onChanged={load} />)}
         {!(tab === 'todo' ? todo : done).length && <Card><div className="muted small">{tab === 'todo' ? 'No upcoming posts. Tap “Write 3 ideas now”, or switch the Marketing AI on in Admin so it keeps the schedule filled.' : 'Nothing posted yet.'}</div></Card>}
       </div>
       {add && <NewPost onClose={() => setAdd(false)} onSaved={load} />}
@@ -62,23 +63,46 @@ export default function Marketing() {
   );
 }
 
-function PostCard({ p, onChanged }: { p: Post; onChanged: () => void }) {
+type Company = { name: string; phone: string; email: string };
+const BLANK: GraphicSpec = { on: false, headline: '', sub: '', points: [], style: 'auto' };
+
+function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChanged: () => void }) {
   const [text, setText] = useState(p.text); const [at, setAt] = useState(toLocal(p.scheduled_at)); const [photos, setPhotos] = useState<string[]>(p.photo_ids); const [urls, setUrls] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false); const area = useRef<HTMLTextAreaElement>(null);
+  const [g, setG] = useState<GraphicSpec>(p.graphic ?? BLANK); const cv = useRef<HTMLCanvasElement>(null); const photoRows = useRef<{ id: string; path: string }[]>([]); const dataCache = useRef<Record<string, string>>({});
+  const gKey = JSON.stringify(g); const gDirty = gKey !== JSON.stringify(p.graphic ?? BLANK); const needsImage = g.on && (!p.image_path || gDirty);
   const editable = p.status === 'Idea' || p.status === 'Approved' || p.status === 'Failed';
-  const dirty = text !== p.text || at !== toLocal(p.scheduled_at) || photos.join() !== p.photo_ids.join();
-  useEffect(() => { setText(p.text); setAt(toLocal(p.scheduled_at)); setPhotos(p.photo_ids); }, [p.id, p.text, p.scheduled_at, p.photo_ids.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = text !== p.text || at !== toLocal(p.scheduled_at) || photos.join() !== p.photo_ids.join() || gDirty || needsImage;
+  useEffect(() => { setText(p.text); setAt(toLocal(p.scheduled_at)); setPhotos(p.photo_ids); setG(p.graphic ?? BLANK); }, [p.id, p.text, p.scheduled_at, p.photo_ids.join(), JSON.stringify(p.graphic)]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!p.photo_ids.length) return;
-    supabase().from('job_photos').select('id, path').in('id', p.photo_ids).then(async ({ data }) => setUrls(await photoUrls((data ?? []) as { id: string; path: string }[])));
+    supabase().from('job_photos').select('id, path').in('id', p.photo_ids).then(async ({ data }) => { photoRows.current = (data ?? []) as { id: string; path: string }[]; setUrls(await photoUrls(photoRows.current)); });
   }, [p.photo_ids.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const draw = async (c: HTMLCanvasElement) => {
+    const want = photos.map((id) => photoRows.current.find((r) => r.id === id)).filter(Boolean) as { id: string; path: string }[];
+    const need = want.filter((r) => !dataCache.current[r.id]); if (need.length) Object.assign(dataCache.current, await photoDataUrls(need));
+    await renderGraphic(c, g, p.kind, { company, photos: want.map((r) => dataCache.current[r.id]).filter(Boolean) });
+  };
+  useEffect(() => { if (editable && g.on && cv.current) draw(cv.current).catch(() => undefined); }, [gKey, photos.join(), Object.keys(urls).length, editable]); // eslint-disable-line react-hooks/exhaustive-deps
+  const uploadGraphic = async (): Promise<string | null> => {
+    const c = document.createElement('canvas'); await draw(c); const blob = await canvasBlob(c); const path = `${p.id}/${Date.now()}.png`;
+    const { error } = await supabase().storage.from('marketing-graphics').upload(path, blob, { contentType: 'image/png' }); if (error) throw new Error(error.message); return path;
+  };
+  const downloadGraphic = async () => { const c = document.createElement('canvas'); await draw(c); const a = document.createElement('a'); a.href = URL.createObjectURL(await canvasBlob(c)); a.download = 'topmop-post.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); };
 
   const patch = async (v: Record<string, unknown>, ok: string) => {
     setBusy(true);
     const { error } = await supabase().from('marketing_posts').update({ ...v, updated_at: new Date().toISOString() }).eq('id', p.id);
     setBusy(false); if (error) { toast(error.message, 'err'); return false; } toast(ok, 'ok'); onChanged(); return true;
   };
-  const save = () => patch({ text: text.trim(), scheduled_at: fromLocal(at), photo_ids: photos }, 'Saved');
+  const save = async () => {
+    try {
+      const extra: Record<string, unknown> = { graphic: g };
+      if (g.on) { if (needsImage) extra.image_path = await uploadGraphic(); } else extra.image_path = null;
+      return await patch({ text: text.trim(), scheduled_at: fromLocal(at), photo_ids: photos, ...extra }, 'Saved');
+    } catch (e) { toast(e instanceof Error ? e.message : 'Could not save the graphic', 'err'); return false; }
+  };
   const approve = async () => { if (dirty && !(await save())) return; await patch({ status: 'Approved', error: null }, 'Approved — it will be posted at the scheduled time'); };
   const postNow = async () => {
     if (!confirm('Post this to your Facebook Page right now?')) return;
@@ -99,6 +123,26 @@ function PostCard({ p, onChanged }: { p: Post; onChanged: () => void }) {
             {urls[id] ? <img src={urls[id]} alt="" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 6 }} /> : <div style={{ width: 96, height: 96, borderRadius: 6, background: '#eef3f7' }} />}
             {editable && <button type="button" className="btn sm danger" style={{ position: 'absolute', top: 2, right: 2, padding: '0 6px' }} aria-label="Remove photo" onClick={() => setPhotos(photos.filter((x) => x !== id))}>×</button>}
           </div>)}</div>
+        )}
+        {editable && (
+          <div className="card" style={{ padding: 12 }}>
+            <label className="check"><input type="checkbox" checked={g.on} onChange={(e) => setG({ ...g, on: e.target.checked, headline: g.headline || text.split('\n')[0].replace(/[#@]\S+/g, '').slice(0, 60).trim() })} /><b>🎨 Add a TopMop graphic</b> <span className="small muted">— a branded picture with the headline, posted with the text</span></label>
+            {g.on && (
+              <div className="stack" style={{ marginTop: 10 }}>
+                <div className="row" style={{ flexWrap: 'wrap', alignItems: 'flex-start', gap: 14 }}>
+                  <canvas ref={cv} style={{ width: 300, height: 300, borderRadius: 10, background: '#0b2545' }} />
+                  <div className="form-grid" style={{ flex: 1, minWidth: 240 }}>
+                    <Field label="Headline" className="full"><input value={g.headline} maxLength={70} onChange={(e) => setG({ ...g, headline: e.target.value })} /></Field>
+                    <Field label="Line under it" className="full"><input value={g.sub} maxLength={110} onChange={(e) => setG({ ...g, sub: e.target.value })} /></Field>
+                    <Field label="Short points (one per line, up to 3)" className="full"><textarea rows={3} value={g.points.join('\n')} onChange={(e) => setG({ ...g, points: e.target.value.split('\n').slice(0, 3) })} /></Field>
+                    <Field label="Look"><select value={g.style} onChange={(e) => setG({ ...g, style: e.target.value as GraphicStyle })}>{(Object.keys(STYLE_LABEL) as GraphicStyle[]).map((k) => <option key={k} value={k}>{STYLE_LABEL[k]}</option>)}</select></Field>
+                    <div style={{ alignSelf: 'flex-end' }}><button type="button" className="btn sm" onClick={downloadGraphic}>Download picture</button></div>
+                  </div>
+                </div>
+                <div className="small muted">The graphic is saved when you press Save, Approve or Post now.</div>
+              </div>
+            )}
+          </div>
         )}
         {p.error && <div className="alert warn">Could not post: {p.error}</div>}
         {editable ? (

@@ -26,7 +26,8 @@ function slots(cfg: Cfg, n: number, after: number): string[] {
   return out;
 }
 
-async function write(sb: Sb, cfg: Cfg, kind: string, ctx: string, recent: string[]): Promise<string> {
+interface Graphic { on: boolean; headline: string; sub: string; points: string[]; style: 'auto' }
+async function write(sb: Sb, cfg: Cfg, kind: string, ctx: string, recent: string[]): Promise<{ text: string; graphic: Graphic }> {
   const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle();
   const co = st?.data?.company ?? {}; const notes = st?.data?.fb_ai?.notes ?? '';
   const system = `You are the social media writer for ${co.name || 'TopMop Window Cleaning Solutions Corp.'}, a professional window, glass, solar panel and property-care cleaning company in the Philippines. Write ONE Facebook Page post.
@@ -34,14 +35,21 @@ Voice: ${cfg.voice || 'friendly, professional, easy to read; natural English wit
 Rules: 2–6 short lines, a clear hook in the first line, 0–3 relevant emojis, 2–4 hashtags at the end, a soft call to action (message us for a free quote). Never invent prices, discounts, awards, statistics, client names, addresses or promises. Do not mention anything you were not told. No markdown.
 ${notes ? 'Company facts:\n' + notes : ''}
 Do not repeat these recent posts:\n${recent.slice(0, 8).map((t) => '- ' + t.slice(0, 120)).join('\n') || '(none yet)'}
-Reply with the post text only.`;
+Reply with JSON only, no markdown fence: {"text":"the post","graphic":{"headline":"max 7 words, punchy","sub":"max 14 words","points":["up to 3 short points of max 8 words each — only for tips, otherwise an empty list"]}}. The graphic words are printed on an image, so keep them short, with no hashtags or emojis.`;
   const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: env('MARKETING_MODEL') || 'claude-sonnet-5-5', max_tokens: 500, system, messages: [{ role: 'user', content: `Post type: ${kind}.\n${ctx}` }] }) });
+    body: JSON.stringify({ model: env('MARKETING_MODEL') || 'claude-sonnet-5-5', max_tokens: 700, system, messages: [{ role: 'user', content: `Post type: ${kind}.\n${ctx}` }] }) });
   if (!res.ok) { const d = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? ''; throw new Error(`AI ${res.status}. ${d}`.trim()); }
   const out = (await res.json()) as { content?: { type: string; text?: string }[] };
   const t = (out.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('').trim();
   if (!t) throw new Error('The AI returned nothing.');
-  return t;
+  try {
+    const j = JSON.parse(t.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as { text?: string; graphic?: { headline?: string; sub?: string; points?: unknown } };
+    if (j.text) {
+      const g = j.graphic ?? {};
+      return { text: String(j.text).trim(), graphic: { on: true, headline: String(g.headline ?? '').slice(0, 70), sub: String(g.sub ?? '').slice(0, 110), points: Array.isArray(g.points) ? g.points.slice(0, 3).map((x) => String(x).slice(0, 60)) : [], style: 'auto' } };
+    }
+  } catch { /* the model answered with plain text */ }
+  return { text: t, graphic: { on: true, headline: t.split('\n')[0].replace(/[#@]\S+/g, '').slice(0, 60).trim(), sub: '', points: [], style: 'auto' } };
 }
 
 /** Makes drafts so that about two weeks ahead are always planned. */
@@ -81,27 +89,31 @@ async function topUp(sb: Sb, cfg: Cfg, forceCount?: number) {
     if (kind === 'Seasonal') ctx = `Write a seasonal post for the Philippines for ${month} (weather, typhoon/rainy season, dust/summer, holidays) tied to cleaning or property care.`;
     if (kind === 'Promo') ctx = 'Write a soft promotional post inviting people to book a free ocular visit or quotation. Do not mention any price or discount.';
     if (kind === 'Other') ctx = 'Write a short company post: our trained team, safety first (harness and fall protection), eco-safe products, or why regular cleaning protects glass and solar panels.';
-    const text = await write(sb, cfg, kind, ctx, recent);
+    const { text, graphic } = await write(sb, cfg, kind, ctx, recent);
     recent.unshift(text);
-    await sb.from('marketing_posts').insert({ kind, text, photo_ids: photoIds, job_id: jobId, scheduled_at: at, status: cfg.mode === 'auto' ? 'Approved' : 'Idea', by_ai: true });
+    await sb.from('marketing_posts').insert({ kind, text, graphic, photo_ids: photoIds, job_id: jobId, scheduled_at: at, status: cfg.mode === 'auto' ? 'Approved' : 'Idea', by_ai: true });
     made++;
   }
   return { made };
 }
 
-async function fbPost(sb: Sb, p: { id: string; text: string; photo_ids: string[] }) {
+async function fbPost(sb: Sb, p: { id: string; text: string; photo_ids: string[]; image_path?: string | null }) {
   const token = env('FB_PAGE_TOKEN');
   if (!token) throw new Error('FB_PAGE_TOKEN is not set yet.');
   const media: { media_fbid: string }[] = [];
+  const up = async (signedUrl: string) => {
+    const r = await fetch(`https://graph.facebook.com/v21.0/me/photos?access_token=${encodeURIComponent(token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: signedUrl, published: false }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.id) throw new Error(`Facebook photo upload: ${JSON.stringify(j).slice(0, 200)}`);
+    media.push({ media_fbid: j.id });
+  };
+  if (p.image_path) { const { data: g } = await sb.storage.from('marketing-graphics').createSignedUrl(p.image_path, 600); if (g?.signedUrl) await up(g.signedUrl); }
   if (p.photo_ids?.length) {
     const { data: ph } = await sb.from('job_photos').select('id, path, client_ok').in('id', p.photo_ids).eq('client_ok', true).is('deleted_at', null);
     for (const x of ph ?? []) {
       const { data: s } = await sb.storage.from('job-photos').createSignedUrl(x.path, 600);
       if (!s?.signedUrl) continue;
-      const r = await fetch(`https://graph.facebook.com/v21.0/me/photos?access_token=${encodeURIComponent(token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: s.signedUrl, published: false }) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.id) throw new Error(`Facebook photo upload: ${JSON.stringify(j).slice(0, 200)}`);
-      media.push({ media_fbid: j.id });
+      await up(s.signedUrl);
     }
   }
   const body: Record<string, unknown> = { message: p.text };
@@ -113,7 +125,7 @@ async function fbPost(sb: Sb, p: { id: string; text: string; photo_ids: string[]
 }
 
 async function publish(sb: Sb, id: string) {
-  const { data: p } = await sb.from('marketing_posts').select('id, text, photo_ids, status').eq('id', id).maybeSingle();
+  const { data: p } = await sb.from('marketing_posts').select('id, text, photo_ids, image_path, status').eq('id', id).maybeSingle();
   if (!p || (p.status !== 'Approved' && p.status !== 'Failed')) return { ok: false, error: 'Only an approved post can be posted.' };
   try {
     const fb = await fbPost(sb, p);
