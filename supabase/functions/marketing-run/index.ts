@@ -12,7 +12,7 @@ const db = () => createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KE
 const DONE = ['Work Completed', 'Leaving Site', 'Arrived at HQ', 'Closed'];
 const TOPIC_TO_KIND: Record<string, string> = { 'Tips & tricks': 'Tip', 'Completed jobs': 'Completed job', 'Promos': 'Promo', 'Seasonal': 'Seasonal', 'Company news': 'Other' };
 
-interface Cfg { mode?: 'off' | 'approve' | 'auto'; per_week?: number; days?: number[]; time?: string; topics?: string[]; voice?: string; tone?: string }
+interface Cfg { mode?: 'off' | 'approve' | 'auto'; per_week?: number; days?: number[]; time?: string; topics?: string[]; voice?: string; tone?: string; website?: string; brief?: string }
 type Sb = ReturnType<typeof db>;
 
 /** The next `n` slots (UTC ISO strings) on the chosen weekdays at the chosen Manila time, after `after`. */
@@ -35,7 +35,8 @@ async function write(sb: Sb, cfg: Cfg, kind: string, ctx: string, recent: string
 Voice: ${cfg.voice || 'easy to read; natural English with a light Filipino touch (Taglish is fine)'}.
 Tone: ${cfg.tone && cfg.tone !== 'Mixed' ? cfg.tone : 'friendly and professional; vary the mood naturally from post to post'}. Let the tone show in the words, never state it.
 Rules: 2–6 short lines, a clear hook in the first line, 0–3 relevant emojis, 2–4 hashtags at the end, a soft call to action (message us for a free quote). Never invent prices, discounts, awards, statistics, client names, addresses or promises. Do not mention anything you were not told. No markdown.
-${notes ? 'Company facts:\n' + notes : ''}
+${cfg.brief ? 'COMPANY KNOWLEDGE (authoritative — write only from these facts; if something is not here, do not claim it):\n' + cfg.brief.slice(0, 7000) : ''}
+${notes ? 'More company facts:\n' + notes : ''}
 Do not repeat these recent posts:\n${recent.slice(0, 8).map((t) => '- ' + t.slice(0, 120)).join('\n') || '(none yet)'}
 Reply with JSON only, no markdown fence: {"text":"the post","graphic":{"headline":"max 7 words, punchy","sub":"max 14 words","points":["up to 3 short points of max 8 words each — only for tips, otherwise an empty list"]}}. The graphic words are printed on an image, so keep them short, with no hashtags or emojis.${lib.length ? ` Add "media_ids":[...] to the JSON: pick up to 2 photos from the library below that genuinely fit THIS post, or an empty list if none fit. Never pick a photo that does not match the topic.\nPhoto library (id | what it shows | tags):\n${lib.map((m) => `${m.id} | ${m.description} | ${m.tags.join(', ')}`).join('\n')}` : ''}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -53,6 +54,42 @@ Reply with JSON only, no markdown fence: {"text":"the post","graphic":{"headline
     }
   } catch { /* the model answered with plain text */ }
   return { text: t, media_ids: [], graphic: { on: true, headline: t.split('\n')[0].replace(/[#@]\S+/g, '').slice(0, 60).trim(), sub: '', points: [], style: 'auto' } };
+}
+
+const htmlToText = (html: string) => html.replace(/<(script|style|noscript|svg)[\s\S]*?<\/\1>/gi, ' ').replace(/<!--[\s\S]*?-->/g, ' ').replace(/<\/(p|div|li|h[1-6]|tr|section|br)>/gi, '\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, "'").replace(/&quot;/g, '"').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+
+/** Reads the company website (home page + a few of its own pages) and has the AI write a factual company brief. */
+async function learn(website: string): Promise<string> {
+  let base: URL;
+  try { base = new URL(/^https?:\/\//i.test(website) ? website : `https://${website}`); } catch { throw new Error('That website address is not valid.'); }
+  if (base.protocol !== 'https:' && base.protocol !== 'http:') throw new Error('Use an http or https address.');
+  if (!base.hostname.includes('.') || /^[\d.]+$/.test(base.hostname) || /^(localhost|127\.|10\.|192\.168\.|169\.254\.)/.test(base.hostname)) throw new Error('Use your public website address, for example www.topmop.ph.');
+  const get = async (u: string) => { const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TopMopBot/1.0)' }, signal: AbortSignal.timeout(12000), redirect: 'follow' }); if (!r.ok) throw new Error(`${u} answered ${r.status}`); return r.text(); };
+  let home = '';
+  try { home = await get(base.toString()); } catch (e) { throw new Error(`Could not open the website: ${(e as Error).message}`); }
+  const host = base.hostname.replace(/^www\./, '');
+  const links = new Map<string, number>();
+  for (const m of home.matchAll(/href=["']([^"'#]+)["']/gi)) {
+    try {
+      const u = new URL(m[1], base); u.hash = '';
+      if (u.hostname.replace(/^www\./, '') !== host || !/^https?:$/.test(u.protocol) || /\.(jpe?g|png|gif|svg|webp|pdf|zip|css|js|ico|mp4)$/i.test(u.pathname) || u.href === base.href) continue;
+      const score = (/(about|who-we|story|company)/i.test(u.pathname) ? 5 : 0) + (/(service|solution|offer|what-we)/i.test(u.pathname) ? 6 : 0) + (/(clean|window|glass|solar|roof|facade|floor|wall|ceiling|gutter|maintenance)/i.test(u.pathname) ? 4 : 0) + (/(faq|why|safety|project|portfolio|client|area|contact|package|price)/i.test(u.pathname) ? 3 : 0);
+      links.set(u.href, Math.max(score, links.get(u.href) ?? 0));
+    } catch { /* ignore bad links */ }
+  }
+  const pages = [...links.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([u]) => u);
+  let text = `PAGE ${base.href}\n${htmlToText(home).slice(0, 9000)}`;
+  const rest = await Promise.allSettled(pages.map(async (u) => `\n\nPAGE ${u}\n${htmlToText(await get(u)).slice(0, 5000)}`));
+  for (const r of rest) if (r.status === 'fulfilled') text += r.value;
+  if (text.replace(/PAGE \S+/g, '').trim().length < 400) throw new Error('The website text could not be read (the site may load its content with scripts). Paste the key facts into the box instead.');
+  const system = `You write a factual company brief for the social media writer of a cleaning company, using ONLY the website text provided. Structure it with these headings: WHO WE ARE; SERVICES (each service with the specifics the site gives — methods, equipment, where it applies, benefits); CLIENTS AND SECTORS; SERVICE AREAS; WHAT MAKES US DIFFERENT (safety, training, equipment, products, certifications, experience); PHRASES AND STYLE the site uses; CONTACT; THINGS NOT STATED (list what the site does not say, such as prices, awards, years, so nobody invents them). Plain text, short bullet lines starting with "- ". Never add facts that are not in the text. Keep it under 900 words.`;
+  const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: env('MARKETING_MODEL') || 'claude-sonnet-5-5', max_tokens: 2200, system, messages: [{ role: 'user', content: text.slice(0, 45000) }] }) });
+  if (!res.ok) { const d = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? ''; throw new Error(`AI ${res.status}. ${d}`.trim()); }
+  const out = (await res.json()) as { content?: { type: string; text?: string }[] };
+  const brief = (out.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('').trim();
+  if (!brief) throw new Error('The AI returned nothing.');
+  return brief;
 }
 
 /** Makes drafts so that about two weeks ahead are always planned. */
@@ -150,14 +187,15 @@ async function publish(sb: Sb, id: string) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-  const body = (await req.json().catch(() => ({}))) as { action?: string; count?: number; id?: string; tone?: string };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; count?: number; id?: string; tone?: string; website?: string };
   const sb = db();
   const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle();
   const cfg = (st?.data?.marketing ?? {}) as Cfg;
-  if (body.action === 'generate' || body.action === 'post_now') {
+  if (body.action === 'generate' || body.action === 'post_now' || body.action === 'learn') {
     const asUser = createClient(env('SUPABASE_URL'), env('SUPABASE_ANON_KEY'), { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } });
     const { data: ok } = await asUser.rpc('can_manage_marketing');
     if (ok !== true) return json({ error: 'Not allowed' }, 403);
+    if (body.action === 'learn') { try { return json({ brief: await learn(String(body.website ?? cfg.website ?? 'https://www.topmop.ph')) }); } catch (e) { return json({ error: (e as Error).message }, 502); } }
     if (body.action === 'post_now') { const r = await publish(sb, String(body.id ?? '')); return json(r, r.ok ? 200 : 502); }
     try { return json(await topUp(sb, { ...cfg, tone: body.tone || cfg.tone, mode: cfg.mode === 'auto' ? 'auto' : 'approve' }, Math.min(5, Math.max(1, body.count ?? 3)))); } catch (e) { return json({ error: (e as Error).message }, 502); }
   }

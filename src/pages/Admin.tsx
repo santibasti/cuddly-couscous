@@ -1,4 +1,5 @@
 import { TONES } from '@/lib/marketingtone';
+import { callFn } from '@/lib/fnclient';
 import { DEFAULT_DISCLAIMER, DEFAULT_INTRO, DEFAULT_METHODOLOGY } from '@/lib/quote-text';
 import { CLOUD } from '@/lib/cloud';
 import { useState } from 'react';
@@ -42,6 +43,7 @@ function UserModal({ initial, onClose }: { initial?: UserAccount; onClose: () =>
 
 function Rates({ s }: { s: Settings }) {
   const [draft, setDraft] = useState<Settings>(() => clone(s));
+  const [readingSite, setReadingSite] = useState(false);
   const setM = (k: keyof Settings['multipliers'], v: number) => setDraft({ ...draft, multipliers: { ...draft.multipliers, [k]: v } });
   const setStat = (i: number, patch: Partial<StatutoryRate>) => setDraft({ ...draft, statutory: draft.statutory.map((r, k) => (k === i ? { ...r, ...patch } : r)) });
   const save = () => attempt(() => { store.require('admin.settings'); store.patchSettings({ pay_by_day: draft.pay_by_day, vat_rate: draft.vat_rate, multipliers: draft.multipliers, statutory: draft.statutory, std_hours_per_day: draft.std_hours_per_day, monthly_divisor_days: draft.monthly_divisor_days, grace_minutes: draft.grace_minutes, payment_terms_days: draft.payment_terms_days, quote_validity_days: draft.quote_validity_days, glass_group_size: draft.glass_group_size, channels: draft.channels, client_sms: draft.client_sms, fb_ai: draft.fb_ai, marketing: draft.marketing, reminder_days: draft.reminder_days, default_terms: draft.default_terms, default_crew_size: draft.default_crew_size, default_disclaimer: draft.default_disclaimer, default_intro: draft.default_intro, default_methodology: draft.default_methodology, company: draft.company }, 'Updated payroll, tax and system settings'); }, 'Settings saved');
@@ -87,6 +89,19 @@ function Rates({ s }: { s: Settings }) {
             <Field label="Post time (Manila)"><input type="time" value={draft.marketing?.time ?? '10:00'} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, time: e.target.value || '10:00' } })} /></Field>
             <Field label="Days" className="full"><div className="chips" role="group">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => { const cur = draft.marketing?.days ?? MKT_DEFAULT.days; return <button key={d} type="button" className={cur.includes(i) ? 'on' : ''} onClick={() => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, days: cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort() } })}>{d}</button>; })}</div></Field>
             <Field label="What to post about" className="full"><div className="chips" role="group">{['Tips & tricks', 'Completed jobs', 'Seasonal', 'Promos', 'Company news'].map((t) => { const cur = draft.marketing?.topics ?? MKT_DEFAULT.topics; return <button key={t} type="button" className={cur.includes(t) ? 'on' : ''} onClick={() => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, topics: cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t] } })}>{t}</button>; })}</div></Field>
+            <Field label="Company website" className="full" hint="The AI can read your website and write a company brief from it. You review and edit the brief before saving.">
+              <div className="row" style={{ gap: 8 }}>
+                <input style={{ flex: 1 }} value={draft.marketing?.website ?? 'https://www.topmop.ph'} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, website: e.target.value } })} />
+                <button type="button" className="btn" disabled={readingSite} onClick={async () => {
+                  if (!CLOUD) { toast('Reading the website works in the live app only.'); return; }
+                  if (draft.marketing?.brief && !confirm('Replace the current company knowledge with a fresh one from the website? Your edits will be lost.')) return;
+                  setReadingSite(true);
+                  try { const r = await callFn<{ brief: string }>('marketing-run', { action: 'learn', website: draft.marketing?.website || 'https://www.topmop.ph' }); setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, brief: r.brief } }); toast('Done — read it, fix anything wrong, then press Save', 'ok'); }
+                  catch (e) { toast(e instanceof Error ? e.message : 'Could not read the website', 'err'); } finally { setReadingSite(false); }
+                }}>{readingSite ? 'Reading…' : '🌐 Read my website'}</button>
+              </div>
+            </Field>
+            <Field label="Company knowledge for the AI (it writes only from this)" className="full" hint="Services and how you do them, who you serve, areas, safety, what makes TopMop different, and what NOT to claim. Check it carefully — every post is built on this."><textarea rows={12} value={draft.marketing?.brief ?? ''} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, brief: e.target.value } })} placeholder="Press “Read my website” to fill this in, then correct it." /></Field>
             <Field label="Mood / tone of the posts"><select value={draft.marketing?.tone ?? 'Mixed'} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, tone: e.target.value } })}>{TONES.map((t) => <option key={t} value={t}>{t === 'Mixed' ? 'Mixed — let the AI vary it' : t}</option>)}</select></Field>
             <Field label="Voice and rules (optional)" className="full"><textarea rows={3} value={draft.marketing?.voice ?? ''} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, voice: e.target.value } })} placeholder="e.g. Friendly Taglish, always mention free ocular visits, never post about competitors." /></Field>
           </div>
