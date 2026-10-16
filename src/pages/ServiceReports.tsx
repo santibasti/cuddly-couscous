@@ -6,7 +6,7 @@ import { Badge, Card, Field, Modal, PageHead, SignaturePad, attempt, toast } fro
 import { AiRephrase } from '@/components/AiRephrase';
 import { DataTable } from '@/components/DataTable';
 import { LOGO_SMALL_URL } from '@/lib/logo';
-import { FREQUENCIES, SECTION_TITLES, arrangePhotos, buildSections, createServiceReport, parseBody, setReportStatus, signServiceReport, updateServiceReport } from '@/lib/servicereport';
+import { FREQUENCIES, SECTION_TITLES, arrangePhotos, buildSections, createServiceReport, parseBody, deleteServiceReport, setReportStatus, signServiceReport, updateServiceReport } from '@/lib/servicereport';
 import { addJobPhoto, photoDataUrls, photoUrls } from '@/lib/photos';
 import { buildServiceReportPdf, serviceReportFilename } from '@/lib/servicereportpdf';
 import { fmtDate } from '@/lib/util';
@@ -92,6 +92,7 @@ function ReportEditor({ id }: { id: string }) {
       <PageHead title={<>{r.number} <Badge tone={locked ? 'green' : 'amber'}>{r.status}</Badge></>} sub={<>{job ? `${job.number} · ` : ''}{client?.name}{dirty ? ' · unsaved changes' : ''}</>}>
         <Link to="/service-reports" className="btn">← Reports</Link>
         <button className="btn" onClick={() => setPreview((v) => !v)}>{preview ? 'Edit' : 'Preview'}</button>
+        {mayEdit && (can('jobs.all') || !locked) && <button className="btn danger" onClick={() => { if (!confirm(`Delete service report ${r.number}?${r.signature ? ' It has been signed by TopMop.' : ''} It is removed from the list (the booking and its photos are not touched).`)) return; if (attempt(() => deleteServiceReport(r.id), 'Service report deleted')) nav('/service-reports'); }}>Delete</button>}
         {r.signature ? <button className="btn" onClick={download}>Download PDF</button> : can('jobs.all') ? <button className="btn primary" onClick={() => { if (dirty) save(); setSig(undefined); setSigning(true); }}>Sign as TopMop</button> : <span className="small muted">Waiting for TopMop's signature before it can be downloaded</span>}
         {mayEdit && !locked && <button className="btn primary" disabled={!dirty} onClick={save}>Save</button>}
         {mayEdit && !locked && <button className="btn navy" onClick={() => { if (dirty) save(); attempt(() => setReportStatus(r.id, 'Final'), 'Report marked final'); }}>Mark final</button>}

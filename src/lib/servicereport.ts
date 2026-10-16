@@ -223,4 +223,10 @@ export function signServiceReport(id: string, signature: string) {
   const now = new Date().toISOString();
   return store.update('service_reports', id, { status: 'Final', finalized_at: r.finalized_at ?? now, signature, signed_by: store.user?.name, signed_at: now } as never, 'approve', `Service report ${r.number} signed by TopMop`);
 }
+export function deleteServiceReport(id: string) {
+  const r = db().service_reports.find((x) => x.id === id && !x.deleted_at) ?? fail('Service report not found.');
+  const job = db().jobs.find((j) => j.id === r.job_id); if (!job || !canWork(job)) fail('Only the assigned Team Leader or Admin / Operations can delete this report.');
+  if ((r.status === 'Final' || r.signature) && !store.can('jobs.all')) fail('Only Admin / Operations can delete a final or signed report.');
+  return store.remove('service_reports', id);
+}
 export const reportsOfJob = (d: Pick<DB, 'service_reports'>, jobId: string) => (d.service_reports ?? []).filter((r) => r.job_id === jobId && !r.deleted_at);
