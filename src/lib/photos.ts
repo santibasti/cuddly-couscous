@@ -46,15 +46,15 @@ export async function prepare(file: File, enhance = getEnhance()): Promise<{ ful
 const blobToDataUrl = (b: Blob) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(b); });
 
 /** Adds a photo to a booking. Production: into the Photo Library (private storage) and returns its path. Demo: returns an inline picture. */
-export async function addJobPhoto(file: File, o: { jobId: string; clientId?: string; kind: 'Before' | 'After' | 'During' | 'Site' | 'Other'; caption?: string }): Promise<{ id: string; path?: string; data?: string }> {
+export async function addJobPhoto(file: File, o: { jobId: string; clientId?: string; kind: 'Before' | 'After' | 'During' | 'Site' | 'Other'; caption?: string; enhance?: boolean }): Promise<{ id: string; path?: string; data?: string }> {
   const id = crypto.randomUUID();
   if (!CLOUD) {
     const bmp = await createImageBitmap(file); const s = Math.min(1, 900 / Math.max(bmp.width, bmp.height));
     const c = document.createElement('canvas'); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s); c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
-    if (getEnhance()) { try { enhanceCanvas(c); } catch { /* keep the original look */ } }
+    if (o.enhance ?? getEnhance()) { try { enhanceCanvas(c); } catch { /* keep the original look */ } }
     return { id, data: c.toDataURL('image/jpeg', 0.72) };
   }
-  const p = await prepare(file); const base = `${o.jobId}/${id}`; const sb = supabase().storage.from('job-photos');
+  const p = await prepare(file, o.enhance); const base = `${o.jobId}/${id}`; const sb = supabase().storage.from('job-photos');
   const a = await sb.upload(`${base}.jpg`, p.full, { contentType: 'image/jpeg' }); if (a.error) throw new Error(a.error.message);
   const b = await sb.upload(`${base}_t.jpg`, p.thumb, { contentType: 'image/jpeg' }); if (b.error) throw new Error(b.error.message);
   const ins = await supabase().from('job_photos').insert({ id, job_id: o.jobId, client_id: o.clientId ?? null, path: `${base}.jpg`, thumb_path: `${base}_t.jpg`, kind: o.kind, caption: (o.caption ?? '').slice(0, 200), width: p.width, height: p.height, client_ok: false });

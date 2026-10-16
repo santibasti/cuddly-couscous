@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Modal, PageHead, SignaturePad, attempt, toast } from '@/components/ui';
+import { PrivacyEditor } from '@/components/PrivacyEditor';
 import { EnhanceToggle } from '@/components/EnhanceToggle';
 import { AiRephrase } from '@/components/AiRephrase';
 import { DataTable } from '@/components/DataTable';
@@ -60,7 +61,7 @@ function ReportEditor({ id }: { id: string }) {
   const saved = (db.service_reports ?? []).find((r) => r.id === id && !r.deleted_at);
   const [r, setR] = useState<ServiceReport | undefined>(saved); const [dirty, setDirty] = useState(false);
   const [urls, setUrls] = useState<Record<string, string>>({}); const [group, setGroup] = useState<ReportPhoto['group']>('Before'); const [busy, setBusy] = useState<string>();
-  const [preview, setPreview] = useState(false); const [signing, setSigning] = useState(false); const [sig, setSig] = useState<string>();
+  const [preview, setPreview] = useState(false); const [priv, setPriv] = useState<{ id: string; src: string }>(); const [signing, setSigning] = useState(false); const [sig, setSig] = useState<string>();
   const areas = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const cam = useRef<HTMLInputElement>(null); const gal = useRef<HTMLInputElement>(null);
   useEffect(() => { if (saved && !dirty) setR(saved); }, [saved, dirty]);
@@ -99,6 +100,11 @@ function ReportEditor({ id }: { id: string }) {
         {mayEdit && !locked && <button className="btn navy" onClick={() => { if (dirty) save(); attempt(() => setReportStatus(r.id, 'Final'), 'Report marked final'); }}>Mark final</button>}
         {mayEdit && locked && can('jobs.all') && <button className="btn" onClick={() => attempt(() => setReportStatus(r.id, 'Draft'), 'Report reopened')}>Reopen</button>}
       </PageHead>
+      {priv && job && <PrivacyEditor src={priv.src} onClose={() => setPriv(undefined)} onSave={async (blob) => {
+        const orig = r.photos.find((x) => x.id === priv.id); if (!orig) return;
+        const np = await addJobPhoto(new File([blob], 'privacy.jpg', { type: 'image/jpeg' }), { jobId: job.id, clientId: job.client_id, kind: orig.group === 'Detail' ? 'During' : orig.group, enhance: false });
+        set({ photos: r.photos.map((x) => (x.id === priv.id ? { ...x, id: np.id, path: np.path, data: np.data } : x)) }); toast('Privacy copy added to the report. The original is still in the photo library.', 'ok');
+      }} />}
       {signing && (
         <Modal title="Sign this report for TopMop" onClose={() => setSigning(false)} footer={<><button className="btn" onClick={() => setSigning(false)}>Cancel</button><button className="btn primary" disabled={!sig} onClick={() => { if (attempt(() => signServiceReport(r.id, sig!), 'Report signed. You can now download it.')) { setSigning(false); setDirty(false); } }}>Sign and finalize</button></>}>
           <div className="stack"><div className="small muted">Signing locks the report and lets you download and share the PDF. To change it later, reopen it (the signature is cleared).</div><SignaturePad value={sig} onChange={setSig} /></div>
@@ -139,6 +145,7 @@ function ReportEditor({ id }: { id: string }) {
                   <div style={{ padding: 6, display: 'grid', gap: 4 }}>
                     <select disabled={locked} value={p.group} onChange={(e) => set({ photos: r.photos.map((x) => (x.id === p.id ? { ...x, group: e.target.value as ReportPhoto['group'] } : x)) })}>{GROUPS.map((g) => <option key={g}>{g}</option>)}</select>
                     <input disabled={locked} placeholder="Caption" value={p.caption} maxLength={120} onChange={(e) => set({ photos: r.photos.map((x) => (x.id === p.id ? { ...x, caption: e.target.value } : x)) })} />
+                    {!locked && <button className="btn sm" onClick={async () => { const u = (await photoDataUrls([p]))[p.id]; if (u) setPriv({ id: p.id, src: u }); else toast('Could not open this photo', 'err'); }}>🔒 Privacy edit</button>}
                     {!locked && <button className="btn sm danger" onClick={() => set({ photos: r.photos.filter((x) => x.id !== p.id) })}>Remove</button>}
                   </div>
                 </div>
