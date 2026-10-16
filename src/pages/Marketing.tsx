@@ -6,7 +6,7 @@ import { Badge, Card, Field, Modal, PageHead, toast } from '@/components/ui';
 import { AiRephrase } from '@/components/AiRephrase';
 import { CLOUD, supabase } from '@/lib/cloud';
 import { photoUrls } from '@/lib/photos';
-import { fmtDateTime } from '@/lib/util';
+import { fmtStamp } from '@/lib/util';
 
 type Status = 'Idea' | 'Approved' | 'Posted' | 'Failed' | 'Rejected';
 interface Post { id: string; kind: string; text: string; photo_ids: string[]; job_id: string | null; scheduled_at: string; status: Status; by_ai: boolean; fb_post_id: string | null; posted_at: string | null; error: string | null }
@@ -113,8 +113,8 @@ function PostCard({ p, onChanged }: { p: Post; onChanged: () => void }) {
               <button className="btn danger" disabled={busy} onClick={() => { if (confirm('Reject this post? It will not be published.')) patch({ status: 'Rejected' }, 'Rejected'); }}>Reject</button>
             </div>
           </div>
-        ) : <div className="small muted">{p.status === 'Posted' ? `Posted ${p.posted_at ? fmtDateTime(p.posted_at) : ''}` : `Was scheduled for ${fmtDateTime(p.scheduled_at)}`}</div>}
-        {editable && <div className="small muted">Scheduled for {fmtDateTime(fromLocal(at))}</div>}
+        ) : <div className="small muted">{p.status === 'Posted' ? `Posted ${p.posted_at ? fmtStamp(p.posted_at) : ''}` : `Was scheduled for ${fmtStamp(p.scheduled_at)}`}</div>}
+        {editable && <div className="small muted">Scheduled for {fmtStamp(fromLocal(at))}</div>}
       </div>
     </Card>
   );
