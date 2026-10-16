@@ -858,7 +858,7 @@ export interface ReportSection { key: string; title: string; body: string }
 /** A photo on a service report: a Photo Library file (production) or an inline picture (demo), placed in a group. */
 export interface ReportPhoto { id: string; path?: string; data?: string; group: 'Before' | 'After' | 'Detail'; caption: string }
 export interface ServiceReport extends Base {
-  number: string;                  // SR-2026-0001
+  number: string;                  // SR-JOB-2026-0001 (SR- + the booking number)
   job_id: string; client_id: string;
   title: string; location: string; team: string;
   service_date?: string; report_date: string; frequency: string;

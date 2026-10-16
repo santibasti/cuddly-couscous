@@ -183,6 +183,12 @@ export function arrangePhotos(photos: ReportPhoto[]): { pairs: [ReportPhoto, Rep
 const teamOf = (d: DB, job: Job) => [job.leader_id, ...job.crew_ids].filter(Boolean).map((id) => d.employees.find((e) => e.id === id)?.full_name).filter(Boolean).join(', ');
 const canWork = (job: Job) => store.can('jobs.all') || (store.can('dispatch.run') && !!store.user?.employee_id && (job.leader_id === store.user.employee_id || job.crew_ids.includes(store.user.employee_id)));
 
+// SR-<booking number>, e.g. SR-JOB-2026-0007; a second report on the same booking gets -2, -3 …
+export const reportNumber = (d: Pick<DB, 'service_reports'>, jobNumber: string) => {
+  const base = `SR-${jobNumber}`; const n = (d.service_reports ?? []).filter((r) => r.number === base || /^-\d+$/.test(r.number.slice(base.length)) && r.number.startsWith(base)).length;
+  return n ? `${base}-${n + 1}` : base;
+};
+
 export function createServiceReport(jobId: string): ServiceReport {
   const d = db(); const job = d.jobs.find((j) => j.id === jobId && !j.deleted_at) ?? fail('Booking not found.');
   if (!canWork(job)) fail('Only the assigned Team Leader or Admin / Operations can make a service report for this booking.');
@@ -190,7 +196,7 @@ export function createServiceReport(jobId: string): ServiceReport {
   const codes = job.service_codes.length ? job.service_codes : ['OTHER'];
   const names = codes.map((c) => d.services.find((s) => s.code === c)?.name ?? c).join(', ');
   return store.insert('service_reports', {
-    number: store.nextNumber('SR'), job_id: job.id, client_id: job.client_id, title: names, location: [site?.name, site?.address].filter(Boolean).join(', ') || client?.address || '',
+    number: reportNumber(d, job.number), job_id: job.id, client_id: job.client_id, title: names, location: [site?.name, site?.address].filter(Boolean).join(', ') || client?.address || '',
     team: teamOf(d, job), service_date: job.start_at.slice(0, 10), report_date: new Date().toISOString().slice(0, 10), frequency: 'One-time',
     service_codes: codes, sections: buildSections(codes), photos: [], prepared_by: store.user?.name, status: 'Draft',
   } as never, `Service report started for ${job.number}`) as ServiceReport;
