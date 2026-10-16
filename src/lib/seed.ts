@@ -61,7 +61,7 @@ export function seedDB(): DB {
     channels: { email: true, sms: false, whatsapp: true },
     pay_by_day: true,
     fb_ai: { mode: 'off', notes: '' },
-    marketing: { mode: 'off', per_week: 2, days: [2, 5], time: '10:00', topics: ['Tips & tricks', 'Completed jobs', 'Seasonal', 'Promos'], voice: '', email: 'info@topmop.ph', website: 'https://www.topmop.ph' },
+    marketing: { mode: 'off', per_week: 2, days: [2, 5], time: '10:00', topics: ['Tips & tricks', 'Completed jobs', 'Seasonal', 'Promos'], voice: '', email: 'info@topmop.ph', phone: '+63 919 318 5860', facebook: 'Topmop Ph', website: 'https://www.topmop.ph' },
     client_sms: { enabled: false, day_before_time: '17:00', morning_time: '07:00' },
     reminder_days: { quote_expiry: 5, doc_expiry: 30, chemical_expiry: 30, invoice_due: 5, maintenance: 7 },
     glass_group_size: 4,

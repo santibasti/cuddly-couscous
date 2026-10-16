@@ -2,9 +2,9 @@
 // urgency banner, icon steps, info cards and a contact footer. Every block is optional — only what the post needs is drawn.
 import { LOGO_SMALL_URL } from './logo';
 
-export type IconName = 'window' | 'house' | 'building' | 'solar' | 'shield' | 'leaf' | 'calendar' | 'clock' | 'sparkle' | 'check' | 'phone' | 'pin' | 'drop';
+export type IconName = 'window' | 'house' | 'building' | 'solar' | 'shield' | 'leaf' | 'calendar' | 'clock' | 'sparkle' | 'check' | 'phone' | 'pin' | 'drop' | 'mail' | 'globe' | 'chat' | 'fb' | 'gear';
 export const ICONS: IconName[] = ['window', 'house', 'building', 'solar', 'shield', 'leaf', 'calendar', 'clock', 'sparkle', 'check', 'phone', 'pin', 'drop'];
-export const ICON_LABEL: Record<IconName, string> = { window: 'Window', house: 'House', building: 'Building', solar: 'Solar panel', shield: 'Safety', leaf: 'Eco-safe', calendar: 'Calendar', clock: 'Time', sparkle: 'Sparkle', check: 'Check', phone: 'Phone', pin: 'Location', drop: 'Water' };
+export const ICON_LABEL: Record<IconName, string> = { window: 'Window', house: 'House', building: 'Building', solar: 'Solar panel', shield: 'Safety', leaf: 'Eco-safe', calendar: 'Calendar', clock: 'Time', sparkle: 'Sparkle', check: 'Check', phone: 'Phone', pin: 'Location', drop: 'Water', mail: 'Email', globe: 'Website', chat: 'Chat', fb: 'Facebook', gear: 'Gear' };
 
 export interface PosterSpec {
   kicker: string;                       // first, coloured line of the headline (e.g. a place or a hook)
@@ -14,27 +14,30 @@ export interface PosterSpec {
   features: { icon: IconName; label: string }[];   // up to 3 icon steps / tips
   cards: { label: string; value: string }[];        // up to 2 info cards (dates, hours …)
   note: string;                         // small line with a tick
+  subtitle: string;                     // service template: line under the big service name (e.g. EXTERIOR & INTERIOR)
+  location: string; location_sub: string; // service template: the place tag (only when the request says where)
+  words: string[];                      // service template: the four words in the navy band (default Clean, Restore, Protect, Maintain)
 }
-export const EMPTY_POSTER: PosterSpec = { kicker: '', badge: '', badge_sub: '', areas: [], urgency: '', urgency_sub: '', features: [], cards: [], note: '' };
+export const EMPTY_POSTER: PosterSpec = { kicker: '', badge: '', badge_sub: '', areas: [], urgency: '', urgency_sub: '', features: [], cards: [], note: '', subtitle: '', location: '', location_sub: '', words: [] };
 
 // the TopMop logo palette: deep navy blue, cyan-blue, bright green and the dark teal of the centre
 const NAVY = '#06284a', BLUE = '#0b5f9e', CYAN = '#12a7d8', GREEN = '#52c75a', GREEN_L = '#8be063', TEAL_D = '#0c4f46', WHITE = '#ffffff', SOFT = '#d3e8f3';
 const FONT = '"Segoe UI", "Helvetica Neue", Arial, sans-serif';
 export const POSTER_W = 1080, POSTER_H = 1350;
 
-const loadImg = (src: string) => new Promise<HTMLImageElement | null>((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
-const rr = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => { c.beginPath(); c.roundRect(x, y, w, h, r); };
+export const loadImg = (src: string) => new Promise<HTMLImageElement | null>((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+export const rr = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => { c.beginPath(); c.roundRect(x, y, w, h, r); };
 
-function wrap(c: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+export function wrap(c: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   const out: string[] = []; let line = '';
   for (const w of text.split(/\s+/).filter(Boolean)) { const t = line ? `${line} ${w}` : w; if (c.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; }
   if (line) out.push(line); return out;
 }
-function fit(c: CanvasRenderingContext2D, text: string, weight: string, max: number, min: number, maxW: number, maxLines: number) {
+export function fit(c: CanvasRenderingContext2D, text: string, weight: string, max: number, min: number, maxW: number, maxLines: number) {
   for (let s = max; s >= min; s -= 2) { c.font = `${weight} ${s}px ${FONT}`; const l = wrap(c, text, maxW); if (l.length <= maxLines) return { size: s, lines: l }; }
   c.font = `${weight} ${min}px ${FONT}`; return { size: min, lines: wrap(c, text, maxW).slice(0, maxLines) };
 }
-const upper = (s: string) => s.toUpperCase();
+export const upper = (s: string) => s.toUpperCase();
 
 /** Simple line icons drawn around (cx, cy) inside a box of `s` pixels. */
 export function drawIcon(c: CanvasRenderingContext2D, name: IconName, cx: number, cy: number, s: number, color: string) {
@@ -53,6 +56,11 @@ export function drawIcon(c: CanvasRenderingContext2D, name: IconName, cx: number
     case 'check': path((p) => { p.arc(0, 0, 40, 0, Math.PI * 2); p.moveTo(-18, 2); p.lineTo(-5, 16); p.lineTo(20, -14); }); break;
     case 'phone': path((p) => { p.roundRect(-22, -42, 44, 84, 10); p.moveTo(-6, 32); p.lineTo(6, 32); }); break;
     case 'pin': path((p) => { p.moveTo(0, 42); p.quadraticCurveTo(-36, 0, -36, -14); p.arc(0, -14, 36, Math.PI, 0); p.quadraticCurveTo(36, 0, 0, 42); p.closePath(); p.moveTo(10, -14); p.arc(0, -14, 10, 0, Math.PI * 2); }); break;
+    case 'mail': path((p) => { p.roundRect(-42, -28, 84, 56, 8); p.moveTo(-40, -24); p.lineTo(0, 6); p.lineTo(40, -24); }); break;
+    case 'globe': path((p) => { p.arc(0, 0, 40, 0, Math.PI * 2); p.moveTo(-40, 0); p.lineTo(40, 0); p.moveTo(0, -40); p.quadraticCurveTo(-30, 0, 0, 40); p.moveTo(0, -40); p.quadraticCurveTo(30, 0, 0, 40); }); break;
+    case 'chat': path((p) => { p.moveTo(-40, -6); p.quadraticCurveTo(-40, -36, 0, -36); p.quadraticCurveTo(40, -36, 40, -6); p.quadraticCurveTo(40, 24, 0, 24); p.lineTo(-18, 24); p.lineTo(-34, 38); p.lineTo(-30, 18); p.quadraticCurveTo(-40, 10, -40, -6); }); break;
+    case 'fb': path((p) => { p.arc(0, 0, 42, 0, Math.PI * 2); }, true); c.fillStyle = '#fff'; c.font = 'bold 84px Arial, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText('f', 8, 38); break;
+    case 'gear': path((p) => { p.arc(0, 0, 14, 0, Math.PI * 2); for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4; p.moveTo(Math.cos(a) * 28, Math.sin(a) * 28); p.lineTo(Math.cos(a) * 42, Math.sin(a) * 42); } p.moveTo(28, 0); p.arc(0, 0, 28, 0, Math.PI * 2); }); break;
     case 'drop': path((p) => { p.moveTo(0, -44); p.quadraticCurveTo(-38, 0, -30, 18); p.quadraticCurveTo(-22, 42, 0, 42); p.quadraticCurveTo(22, 42, 30, 18); p.quadraticCurveTo(38, 0, 0, -44); }); break;
   }
   c.restore();

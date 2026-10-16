@@ -25,7 +25,7 @@ const fromLocal = (v: string) => new Date(Date.parse(v + ':00Z') - 8 * 3600_000)
 const fn = callFn;
 
 export default function Marketing() {
-  const { db } = useAuth(); const company = { ...db.settings.company, email: db.settings.marketing?.email || 'info@topmop.ph', website: db.settings.marketing?.website ?? 'https://www.topmop.ph' }; const mode = db.settings.marketing?.mode ?? 'off';
+  const { db } = useAuth(); const company = { ...db.settings.company, email: db.settings.marketing?.email || 'info@topmop.ph', phone: db.settings.marketing?.phone || '+63 919 318 5860', facebook: db.settings.marketing?.facebook ?? 'Topmop Ph', website: db.settings.marketing?.website ?? 'https://www.topmop.ph' }; const mode = db.settings.marketing?.mode ?? 'off';
   const [tone, setTone] = useState<string>('Default'); const [ask, setAsk] = useState(''); const [askKind, setAskKind] = useState('Other'); const [askAt, setAskAt] = useState(''); const [posts, setPosts] = useState<Post[]>([]); const [busy, setBusy] = useState<string>(); const [add, setAdd] = useState(false); const [tab, setTab] = useState<'todo' | 'posted' | 'library'>('todo');
   const load = useCallback(async () => { const { data } = await supabase().from('marketing_posts').select('*').order('scheduled_at', { ascending: true }).limit(300); setPosts((data ?? []) as Post[]); }, []);
   useEffect(() => { if (!CLOUD) return; load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, [load]);
@@ -83,7 +83,7 @@ export default function Marketing() {
   );
 }
 
-type Company = { name: string; phone: string; email: string; tagline?: string; website?: string };
+type Company = { name: string; phone: string; email: string; tagline?: string; website?: string; facebook?: string };
 const BLANK: GraphicSpec = { on: false, headline: '', sub: '', points: [], style: 'auto' };
 
 function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChanged: () => void }) {
@@ -181,7 +181,10 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
                     <details className="full" style={{ gridColumn: '1 / -1' }}>
                       <summary className="small" style={{ cursor: 'pointer', fontWeight: 600 }}>Poster details (ribbon, places, banner, steps, dates)</summary>
                       <div className="form-grid" style={{ marginTop: 8 }}>
-                        <Field label="Coloured first line"><input value={pst.kicker} maxLength={28} onChange={(e) => setP({ kicker: e.target.value })} /></Field>
+                        <Field label="Label (e.g. Professional)"><input value={pst.kicker} maxLength={28} onChange={(e) => setP({ kicker: e.target.value })} /></Field>
+                        <Field label="Under the service name"><input value={pst.subtitle} maxLength={34} onChange={(e) => setP({ subtitle: e.target.value })} placeholder="Exterior & interior" /></Field>
+                        <Field label="Place (tag on the photo)"><input value={pst.location} maxLength={30} onChange={(e) => setP({ location: e.target.value })} placeholder="Ayala Westgrove" /></Field>
+                        <Field label="Place, second line"><input value={pst.location_sub} maxLength={30} onChange={(e) => setP({ location_sub: e.target.value })} placeholder="Silang, Cavite" /></Field>
                         <Field label="Ribbon (offer)"><input value={pst.badge} maxLength={24} onChange={(e) => setP({ badge: e.target.value })} placeholder="FREE" /></Field>
                         <Field label="Under the ribbon" className="full"><input value={pst.badge_sub} maxLength={36} onChange={(e) => setP({ badge_sub: e.target.value })} placeholder="Ocular visit & quotation" /></Field>
                         <Field label="Places (comma separated)" className="full"><input value={pst.areas.join(', ')} onChange={(e) => setP({ areas: e.target.value.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 4) })} /></Field>
