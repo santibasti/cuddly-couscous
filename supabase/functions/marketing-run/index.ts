@@ -12,7 +12,7 @@ const db = () => createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KE
 const DONE = ['Work Completed', 'Leaving Site', 'Arrived at HQ', 'Closed'];
 const TOPIC_TO_KIND: Record<string, string> = { 'Tips & tricks': 'Tip', 'Completed jobs': 'Completed job', 'Promos': 'Promo', 'Seasonal': 'Seasonal', 'Company news': 'Other' };
 
-interface Cfg { mode?: 'off' | 'approve' | 'auto'; per_week?: number; days?: number[]; time?: string; topics?: string[]; voice?: string; tone?: string; website?: string; brief?: string }
+interface Cfg { mode?: 'off' | 'approve' | 'auto'; per_week?: number; days?: number[]; time?: string; topics?: string[]; voice?: string; tone?: string; website?: string; brief?: string; email?: string }
 type Sb = ReturnType<typeof db>;
 
 /** The next `n` slots (UTC ISO strings) on the chosen weekdays at the chosen Manila time, after `after`. */
@@ -43,7 +43,7 @@ async function write(sb: Sb, cfg: Cfg, kind: string, ctx: string, recent: string
   const system = `You are the social media writer for ${co.name || 'TopMop Window Cleaning Solutions Corp.'}, a professional window, glass, solar panel and property-care cleaning company in the Philippines. Write ONE Facebook Page post.
 Voice: ${cfg.voice || 'easy to read; natural English with a light Filipino touch (Taglish is fine)'}.
 Tone: ${cfg.tone && cfg.tone !== 'Mixed' ? cfg.tone : 'friendly and professional; vary the mood naturally from post to post'}. Let the tone show in the words, never state it.
-Rules: 2–6 short lines, a clear hook in the first line, 0–3 relevant emojis, 2–4 hashtags at the end, a soft call to action (message us for a free quote). Never invent prices, discounts, awards, statistics, client names, addresses or promises. Do not mention anything you were not told. No markdown.
+Rules: 2–6 short lines, a clear hook in the first line, 0–3 relevant emojis, 2–4 hashtags at the end, a soft call to action (message us for a free quote). Never invent prices, discounts, awards, statistics, client names, addresses or promises. Do not mention anything you were not told. TopMop does NOT do high-rise work: never mention high-rise buildings, tall towers, rope access, harnesses or fall protection. No markdown.
 ${cfg.brief ? 'COMPANY KNOWLEDGE (authoritative — write only from these facts; if something is not here, do not claim it):\n' + cfg.brief.slice(0, 7000) : ''}
 ${notes ? 'More company facts:\n' + notes : ''}
 Do not repeat these recent posts:\n${recent.slice(0, 8).map((t) => '- ' + t.slice(0, 120)).join('\n') || '(none yet)'}
@@ -140,7 +140,7 @@ async function topUp(sb: Sb, cfg: Cfg, forceCount?: number, ask?: { prompt: stri
     if (ask) ctx = `The owner has asked for this specific post. Follow the request closely, using only the company knowledge and what the request itself says. Do not add facts that are in neither.\nOWNER REQUEST: ${ask.prompt.slice(0, 1200)}\n${ctx.startsWith('A job we just finished') ? ctx : ''}`;
     if (!ask && kind === 'Seasonal') ctx = `Write a seasonal post for the Philippines for ${month} (weather, typhoon/rainy season, dust/summer, holidays) tied to cleaning or property care.`;
     if (!ask && kind === 'Promo') ctx = 'Write a soft promotional post inviting people to book a free ocular visit or quotation. Do not mention any price or discount.';
-    if (!ask && kind === 'Other') ctx = 'Write a short company post: our trained team, safety first (harness and fall protection), eco-safe products, or why regular cleaning protects glass and solar panels.';
+    if (!ask && kind === 'Other') ctx = 'Write a short company post: our professional, trained crews, careful and tidy work, eco-safe products, or why regular cleaning protects glass and solar panels.';
     const { text, graphic, media_ids } = await write(sb, cfg, kind, ctx, recent, photoIds.length ? [] : library);
     recent.unshift(text);
     await sb.from('marketing_posts').insert({ kind, text, graphic, media_ids, photo_ids: photoIds, job_id: jobId, scheduled_at: at, status: cfg.mode === 'auto' ? 'Approved' : 'Idea', by_ai: true });

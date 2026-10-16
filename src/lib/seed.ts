@@ -46,7 +46,7 @@ export function seedDB(): DB {
   const settings: Settings = {
     company: {
       name: 'TopMop Window Cleaning Solutions Corp.', tin: '000-000-000-000',
-      address: 'Metro Manila, Philippines', phone: '+63 900 000 0000', email: 'hello@topmop.example',
+      address: 'Metro Manila, Philippines', phone: '+63 900 000 0000', email: 'info@topmop.ph',
       tagline: 'Specialized exterior cleaning & property care',
     },
     vat_rate: 12, quote_validity_days: 30, payment_terms_days: 30, std_hours_per_day: 8, monthly_divisor_days: 26, grace_minutes: 5,
@@ -61,7 +61,7 @@ export function seedDB(): DB {
     channels: { email: true, sms: false, whatsapp: true },
     pay_by_day: true,
     fb_ai: { mode: 'off', notes: '' },
-    marketing: { mode: 'off', per_week: 2, days: [2, 5], time: '10:00', topics: ['Tips & tricks', 'Completed jobs', 'Seasonal', 'Promos'], voice: '' },
+    marketing: { mode: 'off', per_week: 2, days: [2, 5], time: '10:00', topics: ['Tips & tricks', 'Completed jobs', 'Seasonal', 'Promos'], voice: '', email: 'info@topmop.ph', website: 'https://www.topmop.ph' },
     client_sms: { enabled: false, day_before_time: '17:00', morning_time: '07:00' },
     reminder_days: { quote_expiry: 5, doc_expiry: 30, chemical_expiry: 30, invoice_due: 5, maintenance: 7 },
     glass_group_size: 4,

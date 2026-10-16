@@ -25,7 +25,7 @@ const fromLocal = (v: string) => new Date(Date.parse(v + ':00Z') - 8 * 3600_000)
 const fn = callFn;
 
 export default function Marketing() {
-  const { db } = useAuth(); const company = { ...db.settings.company, website: db.settings.marketing?.website ?? 'https://www.topmop.ph' }; const mode = db.settings.marketing?.mode ?? 'off';
+  const { db } = useAuth(); const company = { ...db.settings.company, email: db.settings.marketing?.email || 'info@topmop.ph', website: db.settings.marketing?.website ?? 'https://www.topmop.ph' }; const mode = db.settings.marketing?.mode ?? 'off';
   const [tone, setTone] = useState<string>('Default'); const [ask, setAsk] = useState(''); const [askKind, setAskKind] = useState('Other'); const [askAt, setAskAt] = useState(''); const [posts, setPosts] = useState<Post[]>([]); const [busy, setBusy] = useState<string>(); const [add, setAdd] = useState(false); const [tab, setTab] = useState<'todo' | 'posted' | 'library'>('todo');
   const load = useCallback(async () => { const { data } = await supabase().from('marketing_posts').select('*').order('scheduled_at', { ascending: true }).limit(300); setPosts((data ?? []) as Post[]); }, []);
   useEffect(() => { if (!CLOUD) return; load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, [load]);

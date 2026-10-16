@@ -102,6 +102,7 @@ function Rates({ s }: { s: Settings }) {
               </div>
             </Field>
             <Field label="Company knowledge for the AI (it writes only from this)" className="full" hint="Services and how you do them, who you serve, areas, safety, what makes TopMop different, and what NOT to claim. Check it carefully — every post is built on this."><textarea rows={12} value={draft.marketing?.brief ?? ''} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, brief: e.target.value } })} placeholder="Press “Read my website” to fill this in, then correct it." /></Field>
+            <Field label="Email shown on posters"><input type="email" value={draft.marketing?.email ?? 'info@topmop.ph'} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, email: e.target.value } })} /></Field>
             <Field label="Mood / tone of the posts"><select value={draft.marketing?.tone ?? 'Mixed'} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, tone: e.target.value } })}>{TONES.map((t) => <option key={t} value={t}>{t === 'Mixed' ? 'Mixed — let the AI vary it' : t}</option>)}</select></Field>
             <Field label="Voice and rules (optional)" className="full"><textarea rows={3} value={draft.marketing?.voice ?? ''} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, voice: e.target.value } })} placeholder="e.g. Friendly Taglish, always mention free ocular visits, never post about competitors." /></Field>
           </div>
@@ -204,7 +205,7 @@ function Permissions({ access }: { access: Settings['access'] }) {
   );
 }
 
-const MKT_DEFAULT = { mode: 'off' as const, per_week: 2, days: [2, 5], time: '10:00', topics: ['Tips & tricks', 'Completed jobs', 'Seasonal', 'Promos'], voice: '' };
+const MKT_DEFAULT = { mode: 'off' as const, per_week: 2, days: [2, 5], time: '10:00', topics: ['Tips & tricks', 'Completed jobs', 'Seasonal', 'Promos'], voice: '', email: 'info@topmop.ph' };
 
 export default function Admin() {
   const { db, can } = useAuth();
