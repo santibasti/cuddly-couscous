@@ -5,14 +5,14 @@ import { renderTemplate } from './marketingtemplate';
 
 export type GraphicStyle = 'auto' | 'template' | 'poster' | 'tip' | 'promo' | 'seasonal' | 'job';
 export interface GraphicSpec { on: boolean; headline: string; sub: string; points: string[]; style: GraphicStyle; poster?: PosterSpec }
-export const STYLE_LABEL: Record<GraphicStyle, string> = { auto: 'Automatic (TopMop service poster)', template: 'TopMop service poster (light)', poster: 'Dark poster', tip: 'Simple tip card', promo: 'Simple free-quote card', seasonal: 'Simple seasonal card', job: 'Simple job card' };
+export const STYLE_LABEL: Record<GraphicStyle, string> = { auto: 'Automatic (dark poster)', poster: 'Dark poster', template: 'Light service poster (optional)', tip: 'Simple tip card', promo: 'Simple free-quote card', seasonal: 'Simple seasonal card', job: 'Simple job card' };
 const NAVY = '#0b2545', NAVY2 = '#13427a', CYAN = '#1fb6c9', GOLD = '#f5b83d', WHITE = '#ffffff';
 const FONT = '"Segoe UI", "Helvetica Neue", Arial, sans-serif';
 export const SIZE = 1080;
 
 export const resolveStyle = (kind: string, s: GraphicStyle, hasPhotos: boolean): Exclude<GraphicStyle, 'auto' | 'template' | 'poster'> | 'poster' | 'template' => {
   void kind; void hasPhotos;
-  if (s === 'auto' || s === 'template') return 'template';
+  if (s === 'auto' || s === 'poster') return 'poster';
   return s;
 };
 const TAG: Record<Exclude<GraphicStyle, 'auto' | 'template' | 'poster'>, string> = { tip: 'CLEANING TIP', promo: 'FREE QUOTE', seasonal: 'SEASON TIP', job: 'JOB UPDATE' };
