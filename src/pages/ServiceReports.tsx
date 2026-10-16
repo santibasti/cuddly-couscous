@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Modal, PageHead, SignaturePad, attempt, toast } from '@/components/ui';
+import { EnhanceToggle } from '@/components/EnhanceToggle';
 import { AiRephrase } from '@/components/AiRephrase';
 import { DataTable } from '@/components/DataTable';
 import { LOGO_SMALL_URL } from '@/lib/logo';
@@ -127,6 +128,7 @@ function ReportEditor({ id }: { id: string }) {
                 <input ref={gal} type="file" accept="image/*" multiple className="hide" onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
                 <button className="btn primary" disabled={!!busy} onClick={() => cam.current?.click()}>Take a photo</button>
                 <button className="btn" disabled={!!busy} onClick={() => gal.current?.click()}>Choose photos</button>
+                <EnhanceToggle />
                 {busy && <span className="small muted">{busy}</span>}
               </div>
             )}

@@ -1,5 +1,6 @@
 // Photo library: every job photo in one place (instead of a chat group), filtered by job, client, type or tag.
 // Files live in the private Storage bucket 'job-photos'; the phone's location data is removed when a photo is added.
+import { EnhanceToggle } from '@/components/EnhanceToggle';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
@@ -84,6 +85,7 @@ export default function PhotoLibrary() {
               <input ref={gal} type="file" accept="image/*" multiple className="hide" onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
               <button className="btn primary" disabled={!!busy} onClick={() => cam.current?.click()}>Take a photo</button>
               <button className="btn" disabled={!!busy} onClick={() => gal.current?.click()}>Choose from gallery</button>
+              <EnhanceToggle />
               {busy && <span className="small muted">{busy}</span>}
               <span className="small muted">Photos are resized, and the phone's location data is removed.</span>
             </div>
