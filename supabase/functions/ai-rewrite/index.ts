@@ -30,7 +30,10 @@ Deno.serve(async (req) => {
 Rules: keep every fact, number, date, name and measurement exactly as given; do not invent details; keep the same language as the input; keep the line structure (a blank line separates paragraphs, a line starting with "- " is a bullet) unless asked otherwise. ${selection ? 'The text is a fragment of a longer passage, so return only the rewritten fragment.' : ''} Reply with the rewritten text only, no quotes, no preface, no explanation.`;
   const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({ model: env('AI_REWRITE_MODEL') || 'claude-haiku-5-5', max_tokens: 1500, system, messages: [{ role: 'user', content: src }] }) });
-  if (!res.ok) return json({ error: `The AI could not answer (${res.status}).` }, 502);
+  if (!res.ok) {
+    const detail = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? '';
+    return json({ error: `The AI could not answer (${res.status}). ${detail}`.trim() }, 502);
+  }
   const out = (await res.json()) as { content?: { type: string; text?: string }[] };
   const result = (out.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('').trim();
   if (!result) return json({ error: 'The AI returned nothing. Try again.' }, 502);
