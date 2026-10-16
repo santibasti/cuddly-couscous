@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
-import { Badge, Card, Field, Modal, PageHead, attempt, toast } from '@/components/ui';
+import { Badge, Card, Field, Modal, PageHead, SignaturePad, attempt, toast } from '@/components/ui';
 import { AiRephrase } from '@/components/AiRephrase';
 import { DataTable } from '@/components/DataTable';
 import { LOGO_SMALL_URL } from '@/lib/logo';
-import { FREQUENCIES, SECTION_TITLES, arrangePhotos, buildSections, createServiceReport, parseBody, setReportStatus, updateServiceReport } from '@/lib/servicereport';
+import { FREQUENCIES, SECTION_TITLES, arrangePhotos, buildSections, createServiceReport, parseBody, setReportStatus, signServiceReport, updateServiceReport } from '@/lib/servicereport';
 import { addJobPhoto, photoDataUrls, photoUrls } from '@/lib/photos';
 import { buildServiceReportPdf, serviceReportFilename } from '@/lib/servicereportpdf';
 import { fmtDate } from '@/lib/util';
@@ -59,7 +59,7 @@ function ReportEditor({ id }: { id: string }) {
   const saved = (db.service_reports ?? []).find((r) => r.id === id && !r.deleted_at);
   const [r, setR] = useState<ServiceReport | undefined>(saved); const [dirty, setDirty] = useState(false);
   const [urls, setUrls] = useState<Record<string, string>>({}); const [group, setGroup] = useState<ReportPhoto['group']>('Before'); const [busy, setBusy] = useState<string>();
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview] = useState(false); const [signing, setSigning] = useState(false); const [sig, setSig] = useState<string>();
   const areas = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const cam = useRef<HTMLInputElement>(null); const gal = useRef<HTMLInputElement>(null);
   useEffect(() => { if (saved && !dirty) setR(saved); }, [saved, dirty]);
@@ -82,6 +82,7 @@ function ReportEditor({ id }: { id: string }) {
     setBusy(undefined); if (added.length) set({ photos: [...r.photos, ...added] });
   };
   const download = () => attempt(async () => {
+    if (!r.signature) throw new Error('TopMop must sign this report before it can be downloaded or shared.');
     const images = await photoDataUrls(r.photos); const blob = await buildServiceReportPdf(r, { company: db.settings.company, clientName: client?.name ?? '', images });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = serviceReportFilename(r); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
   });
@@ -91,11 +92,16 @@ function ReportEditor({ id }: { id: string }) {
       <PageHead title={<>{r.number} <Badge tone={locked ? 'green' : 'amber'}>{r.status}</Badge></>} sub={<>{job ? `${job.number} · ` : ''}{client?.name}{dirty ? ' · unsaved changes' : ''}</>}>
         <Link to="/service-reports" className="btn">← Reports</Link>
         <button className="btn" onClick={() => setPreview((v) => !v)}>{preview ? 'Edit' : 'Preview'}</button>
-        <button className="btn" onClick={download}>Download PDF</button>
+        {r.signature ? <button className="btn" onClick={download}>Download PDF</button> : can('jobs.all') ? <button className="btn primary" onClick={() => { if (dirty) save(); setSig(undefined); setSigning(true); }}>Sign as TopMop</button> : <span className="small muted">Waiting for TopMop's signature before it can be downloaded</span>}
         {mayEdit && !locked && <button className="btn primary" disabled={!dirty} onClick={save}>Save</button>}
         {mayEdit && !locked && <button className="btn navy" onClick={() => { if (dirty) save(); attempt(() => setReportStatus(r.id, 'Final'), 'Report marked final'); }}>Mark final</button>}
         {mayEdit && locked && can('jobs.all') && <button className="btn" onClick={() => attempt(() => setReportStatus(r.id, 'Draft'), 'Report reopened')}>Reopen</button>}
       </PageHead>
+      {signing && (
+        <Modal title="Sign this report for TopMop" onClose={() => setSigning(false)} footer={<><button className="btn" onClick={() => setSigning(false)}>Cancel</button><button className="btn primary" disabled={!sig} onClick={() => { if (attempt(() => signServiceReport(r.id, sig!), 'Report signed. You can now download it.')) { setSigning(false); setDirty(false); } }}>Sign and finalize</button></>}>
+          <div className="stack"><div className="small muted">Signing locks the report and lets you download and share the PDF. To change it later, reopen it (the signature is cleared).</div><SignaturePad value={sig} onChange={setSig} /></div>
+        </Modal>
+      )}
       {preview ? <ReportPreview r={r} client={client?.name ?? ''} urls={urls} company={db.settings.company} /> : (
         <div className="stack">
           <Card title="Project information">
@@ -173,6 +179,7 @@ function ReportPreview({ r, client, urls, company }: { r: ServiceReport; client:
         </div></div>}
       {show('completion')}
       <div className="pd-foot"><span>{r.number} · {company.name}</span><span>Prepared by TopMop</span></div>
+      {r.signature && <div className="pd-sign"><img src={r.signature} alt="TopMop signature" style={{ height: 54 }} /><div className="pd-small">Signed for TopMop · {r.signed_at ? fmtDate(r.signed_at) : ''}</div></div>}
     </div></div>
   );
 }

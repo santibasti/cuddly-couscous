@@ -865,6 +865,7 @@ export interface ServiceReport extends Base {
   service_codes: ServiceCode[];
   sections: ReportSection[]; photos: ReportPhoto[];
   prepared_by?: string; status: 'Draft' | 'Final'; finalized_at?: string;
+  signature?: string; signed_by?: string; signed_at?: string; // TopMop's signature (PNG data URL); the report can be downloaded only once signed
 }
 export interface JobOrder extends Base {
   number: string;                 // JO-2026-0001 (the same number for every version of one order)

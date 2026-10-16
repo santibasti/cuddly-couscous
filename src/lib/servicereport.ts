@@ -207,6 +207,14 @@ export function setReportStatus(id: string, status: 'Draft' | 'Final') {
   const job = db().jobs.find((j) => j.id === r.job_id); if (!job || !canWork(job)) fail('Only the assigned Team Leader or Admin / Operations can change this report.');
   if (status === 'Final' && !r.sections.some((s) => s.body.trim())) fail('The report is empty.');
   if (status === 'Draft' && !store.can('jobs.all')) fail('Only Admin / Operations can reopen a final report.');
-  return store.update('service_reports', id, { status, finalized_at: status === 'Final' ? new Date().toISOString() : undefined } as never, 'approve', `Service report ${r.number} marked ${status}`);
+  return store.update('service_reports', id, { status, finalized_at: status === 'Final' ? new Date().toISOString() : undefined, ...(status === 'Draft' ? { signature: undefined, signed_by: undefined, signed_at: undefined } : {}) } as never, 'approve', `Service report ${r.number} marked ${status}`);
+}
+export function signServiceReport(id: string, signature: string) {
+  const r = db().service_reports.find((x) => x.id === id && !x.deleted_at) ?? fail('Service report not found.');
+  if (!store.can('jobs.all')) fail('Only Admin / Operations can sign a service report for TopMop.');
+  if (!signature) fail('Please sign first.');
+  if (!r.sections.some((s) => s.body.trim())) fail('The report is empty.');
+  const now = new Date().toISOString();
+  return store.update('service_reports', id, { status: 'Final', finalized_at: r.finalized_at ?? now, signature, signed_by: store.user?.name, signed_at: now } as never, 'approve', `Service report ${r.number} signed by TopMop`);
 }
 export const reportsOfJob = (d: Pick<DB, 'service_reports'>, jobId: string) => (d.service_reports ?? []).filter((r) => r.job_id === jobId && !r.deleted_at);
