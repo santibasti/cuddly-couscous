@@ -1,3 +1,4 @@
+import { TONES } from '@/lib/marketingtone';
 import { DEFAULT_DISCLAIMER, DEFAULT_INTRO, DEFAULT_METHODOLOGY } from '@/lib/quote-text';
 import { CLOUD } from '@/lib/cloud';
 import { useState } from 'react';
@@ -86,6 +87,7 @@ function Rates({ s }: { s: Settings }) {
             <Field label="Post time (Manila)"><input type="time" value={draft.marketing?.time ?? '10:00'} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, time: e.target.value || '10:00' } })} /></Field>
             <Field label="Days" className="full"><div className="chips" role="group">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => { const cur = draft.marketing?.days ?? MKT_DEFAULT.days; return <button key={d} type="button" className={cur.includes(i) ? 'on' : ''} onClick={() => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, days: cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort() } })}>{d}</button>; })}</div></Field>
             <Field label="What to post about" className="full"><div className="chips" role="group">{['Tips & tricks', 'Completed jobs', 'Seasonal', 'Promos', 'Company news'].map((t) => { const cur = draft.marketing?.topics ?? MKT_DEFAULT.topics; return <button key={t} type="button" className={cur.includes(t) ? 'on' : ''} onClick={() => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, topics: cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t] } })}>{t}</button>; })}</div></Field>
+            <Field label="Mood / tone of the posts"><select value={draft.marketing?.tone ?? 'Mixed'} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, tone: e.target.value } })}>{TONES.map((t) => <option key={t} value={t}>{t === 'Mixed' ? 'Mixed — let the AI vary it' : t}</option>)}</select></Field>
             <Field label="Voice and rules (optional)" className="full"><textarea rows={3} value={draft.marketing?.voice ?? ''} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, voice: e.target.value } })} placeholder="e.g. Friendly Taglish, always mention free ocular visits, never post about competitors." /></Field>
           </div>
         </div>

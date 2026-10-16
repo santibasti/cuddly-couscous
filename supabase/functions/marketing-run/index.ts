@@ -12,7 +12,7 @@ const db = () => createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KE
 const DONE = ['Work Completed', 'Leaving Site', 'Arrived at HQ', 'Closed'];
 const TOPIC_TO_KIND: Record<string, string> = { 'Tips & tricks': 'Tip', 'Completed jobs': 'Completed job', 'Promos': 'Promo', 'Seasonal': 'Seasonal', 'Company news': 'Other' };
 
-interface Cfg { mode?: 'off' | 'approve' | 'auto'; per_week?: number; days?: number[]; time?: string; topics?: string[]; voice?: string }
+interface Cfg { mode?: 'off' | 'approve' | 'auto'; per_week?: number; days?: number[]; time?: string; topics?: string[]; voice?: string; tone?: string }
 type Sb = ReturnType<typeof db>;
 
 /** The next `n` slots (UTC ISO strings) on the chosen weekdays at the chosen Manila time, after `after`. */
@@ -27,15 +27,17 @@ function slots(cfg: Cfg, n: number, after: number): string[] {
 }
 
 interface Graphic { on: boolean; headline: string; sub: string; points: string[]; style: 'auto' }
-async function write(sb: Sb, cfg: Cfg, kind: string, ctx: string, recent: string[]): Promise<{ text: string; graphic: Graphic }> {
+interface Lib { id: string; description: string; tags: string[] }
+async function write(sb: Sb, cfg: Cfg, kind: string, ctx: string, recent: string[], lib: Lib[] = []): Promise<{ text: string; graphic: Graphic; media_ids: string[] }> {
   const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle();
   const co = st?.data?.company ?? {}; const notes = st?.data?.fb_ai?.notes ?? '';
   const system = `You are the social media writer for ${co.name || 'TopMop Window Cleaning Solutions Corp.'}, a professional window, glass, solar panel and property-care cleaning company in the Philippines. Write ONE Facebook Page post.
-Voice: ${cfg.voice || 'friendly, professional, easy to read; natural English with a light Filipino touch (Taglish is fine)'}.
+Voice: ${cfg.voice || 'easy to read; natural English with a light Filipino touch (Taglish is fine)'}.
+Tone: ${cfg.tone && cfg.tone !== 'Mixed' ? cfg.tone : 'friendly and professional; vary the mood naturally from post to post'}. Let the tone show in the words, never state it.
 Rules: 2–6 short lines, a clear hook in the first line, 0–3 relevant emojis, 2–4 hashtags at the end, a soft call to action (message us for a free quote). Never invent prices, discounts, awards, statistics, client names, addresses or promises. Do not mention anything you were not told. No markdown.
 ${notes ? 'Company facts:\n' + notes : ''}
 Do not repeat these recent posts:\n${recent.slice(0, 8).map((t) => '- ' + t.slice(0, 120)).join('\n') || '(none yet)'}
-Reply with JSON only, no markdown fence: {"text":"the post","graphic":{"headline":"max 7 words, punchy","sub":"max 14 words","points":["up to 3 short points of max 8 words each — only for tips, otherwise an empty list"]}}. The graphic words are printed on an image, so keep them short, with no hashtags or emojis.`;
+Reply with JSON only, no markdown fence: {"text":"the post","graphic":{"headline":"max 7 words, punchy","sub":"max 14 words","points":["up to 3 short points of max 8 words each — only for tips, otherwise an empty list"]}}. The graphic words are printed on an image, so keep them short, with no hashtags or emojis.${lib.length ? ` Add "media_ids":[...] to the JSON: pick up to 2 photos from the library below that genuinely fit THIS post, or an empty list if none fit. Never pick a photo that does not match the topic.\nPhoto library (id | what it shows | tags):\n${lib.map((m) => `${m.id} | ${m.description} | ${m.tags.join(', ')}`).join('\n')}` : ''}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({ model: env('MARKETING_MODEL') || 'claude-sonnet-5-5', max_tokens: 700, system, messages: [{ role: 'user', content: `Post type: ${kind}.\n${ctx}` }] }) });
   if (!res.ok) { const d = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? ''; throw new Error(`AI ${res.status}. ${d}`.trim()); }
@@ -46,14 +48,17 @@ Reply with JSON only, no markdown fence: {"text":"the post","graphic":{"headline
     const j = JSON.parse(t.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as { text?: string; graphic?: { headline?: string; sub?: string; points?: unknown } };
     if (j.text) {
       const g = j.graphic ?? {};
-      return { text: String(j.text).trim(), graphic: { on: true, headline: String(g.headline ?? '').slice(0, 70), sub: String(g.sub ?? '').slice(0, 110), points: Array.isArray(g.points) ? g.points.slice(0, 3).map((x) => String(x).slice(0, 60)) : [], style: 'auto' } };
+      const pick = (Array.isArray((j as { media_ids?: unknown }).media_ids) ? (j as { media_ids: unknown[] }).media_ids : []).map(String).filter((id) => lib.some((m) => m.id === id)).slice(0, 2);
+      return { text: String(j.text).trim(), media_ids: pick, graphic: { on: true, headline: String(g.headline ?? '').slice(0, 70), sub: String(g.sub ?? '').slice(0, 110), points: Array.isArray(g.points) ? g.points.slice(0, 3).map((x) => String(x).slice(0, 60)) : [], style: 'auto' } };
     }
   } catch { /* the model answered with plain text */ }
-  return { text: t, graphic: { on: true, headline: t.split('\n')[0].replace(/[#@]\S+/g, '').slice(0, 60).trim(), sub: '', points: [], style: 'auto' } };
+  return { text: t, media_ids: [], graphic: { on: true, headline: t.split('\n')[0].replace(/[#@]\S+/g, '').slice(0, 60).trim(), sub: '', points: [], style: 'auto' } };
 }
 
 /** Makes drafts so that about two weeks ahead are always planned. */
 async function topUp(sb: Sb, cfg: Cfg, forceCount?: number) {
+  const { data: libRows } = await sb.from('marketing_media').select('id, description, tags, used_count, quality').is('deleted_at', null).eq('ok_to_use', true).gte('quality', 3).order('used_count').order('created_at', { ascending: false }).limit(40);
+  const library: Lib[] = (libRows ?? []).map((m) => ({ id: m.id, description: m.description, tags: m.tags ?? [] }));
   if (!env('ANTHROPIC_API_KEY')) return { made: 0, note: 'ANTHROPIC_API_KEY is not set' };
   const perWeek = Math.min(7, Math.max(1, cfg.per_week ?? 2));
   const { data: open } = await sb.from('marketing_posts').select('scheduled_at, text, kind, job_id').in('status', ['Idea', 'Approved']);
@@ -89,15 +94,16 @@ async function topUp(sb: Sb, cfg: Cfg, forceCount?: number) {
     if (kind === 'Seasonal') ctx = `Write a seasonal post for the Philippines for ${month} (weather, typhoon/rainy season, dust/summer, holidays) tied to cleaning or property care.`;
     if (kind === 'Promo') ctx = 'Write a soft promotional post inviting people to book a free ocular visit or quotation. Do not mention any price or discount.';
     if (kind === 'Other') ctx = 'Write a short company post: our trained team, safety first (harness and fall protection), eco-safe products, or why regular cleaning protects glass and solar panels.';
-    const { text, graphic } = await write(sb, cfg, kind, ctx, recent);
+    const { text, graphic, media_ids } = await write(sb, cfg, kind, ctx, recent, photoIds.length ? [] : library);
     recent.unshift(text);
-    await sb.from('marketing_posts').insert({ kind, text, graphic, photo_ids: photoIds, job_id: jobId, scheduled_at: at, status: cfg.mode === 'auto' ? 'Approved' : 'Idea', by_ai: true });
+    await sb.from('marketing_posts').insert({ kind, text, graphic, media_ids, photo_ids: photoIds, job_id: jobId, scheduled_at: at, status: cfg.mode === 'auto' ? 'Approved' : 'Idea', by_ai: true });
+    for (const id of media_ids) { const row = libRows?.find((m) => m.id === id); await sb.from('marketing_media').update({ used_count: (row?.used_count ?? 0) + 1, last_used_at: new Date().toISOString() }).eq('id', id); if (row) { row.used_count++; library.sort((a, b) => (libRows?.find((m) => m.id === a.id)?.used_count ?? 0) - (libRows?.find((m) => m.id === b.id)?.used_count ?? 0)); } }
     made++;
   }
   return { made };
 }
 
-async function fbPost(sb: Sb, p: { id: string; text: string; photo_ids: string[]; image_path?: string | null }) {
+async function fbPost(sb: Sb, p: { id: string; text: string; photo_ids: string[]; media_ids?: string[]; image_path?: string | null }) {
   const token = env('FB_PAGE_TOKEN');
   if (!token) throw new Error('FB_PAGE_TOKEN is not set yet.');
   const media: { media_fbid: string }[] = [];
@@ -108,6 +114,10 @@ async function fbPost(sb: Sb, p: { id: string; text: string; photo_ids: string[]
     media.push({ media_fbid: j.id });
   };
   if (p.image_path) { const { data: g } = await sb.storage.from('marketing-graphics').createSignedUrl(p.image_path, 600); if (g?.signedUrl) await up(g.signedUrl); }
+  if (p.media_ids?.length) {
+    const { data: lm } = await sb.from('marketing_media').select('id, path').in('id', p.media_ids).eq('ok_to_use', true).is('deleted_at', null);
+    for (const x of lm ?? []) { const { data: g } = await sb.storage.from('marketing-graphics').createSignedUrl(x.path, 600); if (g?.signedUrl) await up(g.signedUrl); }
+  }
   if (p.photo_ids?.length) {
     const { data: ph } = await sb.from('job_photos').select('id, path, client_ok').in('id', p.photo_ids).eq('client_ok', true).is('deleted_at', null);
     for (const x of ph ?? []) {
@@ -125,7 +135,7 @@ async function fbPost(sb: Sb, p: { id: string; text: string; photo_ids: string[]
 }
 
 async function publish(sb: Sb, id: string) {
-  const { data: p } = await sb.from('marketing_posts').select('id, text, photo_ids, image_path, status').eq('id', id).maybeSingle();
+  const { data: p } = await sb.from('marketing_posts').select('id, text, photo_ids, media_ids, image_path, status').eq('id', id).maybeSingle();
   if (!p || (p.status !== 'Approved' && p.status !== 'Failed')) return { ok: false, error: 'Only an approved post can be posted.' };
   try {
     const fb = await fbPost(sb, p);
@@ -140,7 +150,7 @@ async function publish(sb: Sb, id: string) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-  const body = (await req.json().catch(() => ({}))) as { action?: string; count?: number; id?: string };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; count?: number; id?: string; tone?: string };
   const sb = db();
   const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle();
   const cfg = (st?.data?.marketing ?? {}) as Cfg;
@@ -149,7 +159,7 @@ Deno.serve(async (req) => {
     const { data: ok } = await asUser.rpc('can_manage_marketing');
     if (ok !== true) return json({ error: 'Not allowed' }, 403);
     if (body.action === 'post_now') { const r = await publish(sb, String(body.id ?? '')); return json(r, r.ok ? 200 : 502); }
-    try { return json(await topUp(sb, { ...cfg, mode: cfg.mode === 'auto' ? 'auto' : 'approve' }, Math.min(5, Math.max(1, body.count ?? 3)))); } catch (e) { return json({ error: (e as Error).message }, 502); }
+    try { return json(await topUp(sb, { ...cfg, tone: body.tone || cfg.tone, mode: cfg.mode === 'auto' ? 'auto' : 'approve' }, Math.min(5, Math.max(1, body.count ?? 3)))); } catch (e) { return json({ error: (e as Error).message }, 502); }
   }
   // scheduled tick (cron): drafts are only made, and approved posts only published, while the Marketing AI is switched on
   if (!cfg.mode || cfg.mode === 'off') return json({ note: 'Marketing AI is off' });

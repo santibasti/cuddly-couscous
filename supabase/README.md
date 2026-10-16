@@ -165,3 +165,8 @@ Writes posts for your Page (tips, recently finished jobs, seasonal and promo pos
 4. Admin → Rates & settings → **Marketing AI**: choose the mode, days, time and topics. Review posts under **Marketing AI** in the menu.
 
 Only photos marked "client agreed to marketing use" in the Photo Library are ever attached, and the AI is never given client names, addresses or prices.
+
+### Marketing photo library and mood
+- Marketing AI → **Photo library**: upload photos; `supabase functions deploy ai-photo-tag` lets the AI describe each one and flag faces, plates or house numbers (needs migration `0060` and `ANTHROPIC_API_KEY`). The AI picks fitting photos for new posts from the ones marked OK to use; you can also add photos to any post by hand.
+- Admin → Marketing AI → **Mood / tone** sets how posts sound (or let it vary); the Marketing page also has a one-off mood picker, and every post has a mood row inside ✨ Rephrase with AI.
+- Redeploy `marketing-run` after pulling: `supabase functions deploy marketing-run --no-verify-jwt`.

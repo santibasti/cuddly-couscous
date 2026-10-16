@@ -2,10 +2,11 @@
 import { useState } from 'react';
 import { CLOUD, supabase } from '@/lib/cloud';
 import { Modal, toast } from '@/components/ui';
+import { TONES } from '@/lib/marketingtone';
 
 const MODES: [string, string][] = [['clearer', 'Make clearer'], ['professional', 'More professional'], ['shorter', 'Shorter'], ['simpler', 'Simpler words'], ['fix', 'Fix spelling & grammar']];
 
-export function AiRephrase({ value, area, onApply }: { value: string; area: () => HTMLTextAreaElement | null; onApply: (next: string) => void }) {
+export function AiRephrase({ value, area, onApply, tones }: { value: string; area: () => HTMLTextAreaElement | null; onApply: (next: string) => void; tones?: boolean }) {
   const [open, setOpen] = useState(false); const [busy, setBusy] = useState(false);
   const [range, setRange] = useState<[number, number]>([0, 0]); const [result, setResult] = useState(''); const [custom, setCustom] = useState('');
   const original = value.slice(range[0], range[1]);
@@ -36,6 +37,7 @@ export function AiRephrase({ value, area, onApply }: { value: string; area: () =
           <div className="stack">
             <div><div className="small muted">{range[1] - range[0] < value.length ? 'Your highlighted words' : 'The whole section'}</div><div className="pd-card" style={{ whiteSpace: 'pre-wrap', maxHeight: 140, overflow: 'auto' }}>{original}</div></div>
             <div className="chips" role="group" aria-label="How to rephrase">{MODES.map(([k, l]) => <button key={k} type="button" disabled={busy} onClick={() => run(k)}>{l}</button>)}</div>
+            {tones && <div><div className="small muted">Change the mood</div><div className="chips" role="group" aria-label="Mood">{TONES.filter((t) => t !== 'Mixed').map((t) => <button key={t} type="button" disabled={busy} onClick={() => run('custom', `Rewrite it in a ${t.toLowerCase()} tone, keeping every fact the same`)}>{t}</button>)}</div></div>}
             <div className="row"><input style={{ flex: 1 }} placeholder="Or tell the AI what to change…" value={custom} maxLength={300} onChange={(e) => setCustom(e.target.value)} /><button className="btn" disabled={busy || !custom.trim()} onClick={() => run('custom', custom)}>Go</button></div>
             {busy && <div className="small muted">Rephrasing…</div>}
             {result && <div><div className="small muted">Suggested wording — you can still edit it after using it</div><div className="pd-card" style={{ whiteSpace: 'pre-wrap' }}>{result}</div></div>}

@@ -6,11 +6,14 @@ import { Badge, Card, Field, Modal, PageHead, toast } from '@/components/ui';
 import { AiRephrase } from '@/components/AiRephrase';
 import { CLOUD, supabase } from '@/lib/cloud';
 import { photoDataUrls, photoUrls } from '@/lib/photos';
+import { callFn } from '@/lib/fnclient';
+import { LibraryPicker, MarketingLibrary, mediaUrls } from '@/components/MarketingLibrary';
+import { TONES } from '@/lib/marketingtone';
 import { GraphicSpec, GraphicStyle, STYLE_LABEL, canvasBlob, renderGraphic } from '@/lib/marketinggraphic';
 import { fmtStamp } from '@/lib/util';
 
 type Status = 'Idea' | 'Approved' | 'Posted' | 'Failed' | 'Rejected';
-interface Post { id: string; kind: string; text: string; photo_ids: string[]; job_id: string | null; graphic: GraphicSpec | null; image_path: string | null; scheduled_at: string; status: Status; by_ai: boolean; fb_post_id: string | null; posted_at: string | null; error: string | null }
+interface Post { id: string; kind: string; text: string; photo_ids: string[]; media_ids: string[]; job_id: string | null; graphic: GraphicSpec | null; image_path: string | null; scheduled_at: string; status: Status; by_ai: boolean; fb_post_id: string | null; posted_at: string | null; error: string | null }
 const TONE: Record<Status, string> = { Idea: 'amber', Approved: 'blue', Posted: 'green', Failed: 'red', Rejected: 'gray' };
 const LABEL: Record<Status, string> = { Idea: 'Needs your approval', Approved: 'Approved — will post', Posted: 'Posted', Failed: 'Failed', Rejected: 'Rejected' };
 const KINDS = ['Tip', 'Completed job', 'Promo', 'Seasonal', 'Other'];
@@ -18,23 +21,18 @@ const KINDS = ['Tip', 'Completed job', 'Promo', 'Seasonal', 'Other'];
 const toLocal = (iso: string) => { const d = new Date(Date.parse(iso) + 8 * 3600_000); return d.toISOString().slice(0, 16); };       // Manila wall clock for <input type=datetime-local>
 const fromLocal = (v: string) => new Date(Date.parse(v + ':00Z') - 8 * 3600_000).toISOString();
 
-async function fn<T>(name: string, body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase().functions.invoke(name, { body });
-  if (error) { let msg = error.message; try { const b = await (error as { context?: Response }).context?.json(); if (b?.error) msg = b.error; } catch { /* generic */ } throw new Error(msg); }
-  const d = data as { error?: string }; if (d?.error) throw new Error(d.error);
-  return data as T;
-}
+const fn = callFn;
 
 export default function Marketing() {
   const { db } = useAuth(); const company = db.settings.company; const mode = db.settings.marketing?.mode ?? 'off';
-  const [posts, setPosts] = useState<Post[]>([]); const [busy, setBusy] = useState<string>(); const [add, setAdd] = useState(false); const [tab, setTab] = useState<'todo' | 'posted'>('todo');
+  const [tone, setTone] = useState<string>('Default'); const [posts, setPosts] = useState<Post[]>([]); const [busy, setBusy] = useState<string>(); const [add, setAdd] = useState(false); const [tab, setTab] = useState<'todo' | 'posted' | 'library'>('todo');
   const load = useCallback(async () => { const { data } = await supabase().from('marketing_posts').select('*').order('scheduled_at', { ascending: true }).limit(300); setPosts((data ?? []) as Post[]); }, []);
   useEffect(() => { if (!CLOUD) return; load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, [load]);
   if (!CLOUD) return <div className="alert warn">Marketing AI works in the live app only (it needs the cloud connection and the Facebook Page).</div>;
 
   const generate = async () => {
     setBusy('The AI is writing posts…');
-    try { const r = await fn<{ made?: number; note?: string }>('marketing-run', { action: 'generate', count: 3 }); toast(r.made ? `${r.made} new post${r.made === 1 ? '' : 's'} written — review them below` : (r.note ?? 'Nothing new was written'), r.made ? 'ok' : 'err'); await load(); }
+    try { const r = await fn<{ made?: number; note?: string }>('marketing-run', { action: 'generate', count: 3, tone: tone === 'Default' ? undefined : tone }); toast(r.made ? `${r.made} new post${r.made === 1 ? '' : 's'} written — review them below` : (r.note ?? 'Nothing new was written'), r.made ? 'ok' : 'err'); await load(); }
     catch (e) { toast(e instanceof Error ? e.message : 'Could not write posts', 'err'); } finally { setBusy(undefined); }
   };
   const todo = posts.filter((p) => p.status === 'Idea' || p.status === 'Approved' || p.status === 'Failed');
@@ -44,6 +42,7 @@ export default function Marketing() {
   return (
     <>
       <PageHead title="Marketing AI" sub={mode === 'off' ? 'Switched off — turn it on in Admin → Settings → Marketing AI. You can still write posts by hand or ask the AI for ideas.' : mode === 'auto' ? 'Auto: approved posts go to your Facebook Page on schedule.' : 'The AI drafts posts and waits for your approval before anything is published.'}>
+        <select value={tone} onChange={(e) => setTone(e.target.value)} aria-label="Mood of the new posts" title="Mood of the new posts"><option value="Default">Mood: {db.settings.marketing?.tone ?? 'Mixed'} (default)</option>{TONES.map((t) => <option key={t} value={t}>{t === 'Mixed' ? 'Mixed' : t}</option>)}</select>
         <button className="btn primary" disabled={!!busy} onClick={generate}>✨ Write 3 ideas now</button>
         <button className="btn" onClick={() => setAdd(true)}>New post</button>
         <Link to="/admin" className="btn">Settings</Link>
@@ -53,10 +52,12 @@ export default function Marketing() {
       <div className="chips" role="tablist" style={{ marginBottom: 12 }}>
         <button type="button" className={tab === 'todo' ? 'on' : ''} onClick={() => setTab('todo')}>Upcoming ({todo.length})</button>
         <button type="button" className={tab === 'posted' ? 'on' : ''} onClick={() => setTab('posted')}>Posted & rejected ({done.length})</button>
+        <button type="button" className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>📷 Photo library</button>
       </div>
       <div className="stack">
-        {(tab === 'todo' ? todo : done).map((p) => <PostCard key={p.id} p={p} company={company} onChanged={load} />)}
-        {!(tab === 'todo' ? todo : done).length && <Card><div className="muted small">{tab === 'todo' ? 'No upcoming posts. Tap “Write 3 ideas now”, or switch the Marketing AI on in Admin so it keeps the schedule filled.' : 'Nothing posted yet.'}</div></Card>}
+        {tab === 'library' && <MarketingLibrary />}
+        {tab !== 'library' && (tab === 'todo' ? todo : done).map((p) => <PostCard key={p.id} p={p} company={company} onChanged={load} />)}
+        {tab !== 'library' && !(tab === 'todo' ? todo : done).length && <Card><div className="muted small">{tab === 'todo' ? 'No upcoming posts. Tap “Write 3 ideas now”, or switch the Marketing AI on in Admin so it keeps the schedule filled.' : 'Nothing posted yet.'}</div></Card>}
       </div>
       {add && <NewPost onClose={() => setAdd(false)} onSaved={load} />}
     </>
@@ -67,18 +68,22 @@ type Company = { name: string; phone: string; email: string };
 const BLANK: GraphicSpec = { on: false, headline: '', sub: '', points: [], style: 'auto' };
 
 function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChanged: () => void }) {
-  const [text, setText] = useState(p.text); const [at, setAt] = useState(toLocal(p.scheduled_at)); const [photos, setPhotos] = useState<string[]>(p.photo_ids); const [urls, setUrls] = useState<Record<string, string>>({});
+  const [text, setText] = useState(p.text); const [at, setAt] = useState(toLocal(p.scheduled_at)); const [photos, setPhotos] = useState<string[]>(p.photo_ids); const [media, setMedia] = useState<string[]>(p.media_ids ?? []); const [mUrls, setMUrls] = useState<Record<string, string>>({}); const [picker, setPicker] = useState(false); const [urls, setUrls] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false); const area = useRef<HTMLTextAreaElement>(null);
   const [g, setG] = useState<GraphicSpec>(p.graphic ?? BLANK); const cv = useRef<HTMLCanvasElement>(null); const photoRows = useRef<{ id: string; path: string }[]>([]); const dataCache = useRef<Record<string, string>>({});
   const gKey = JSON.stringify(g); const gDirty = gKey !== JSON.stringify(p.graphic ?? BLANK); const needsImage = g.on && (!p.image_path || gDirty);
   const editable = p.status === 'Idea' || p.status === 'Approved' || p.status === 'Failed';
-  const dirty = text !== p.text || at !== toLocal(p.scheduled_at) || photos.join() !== p.photo_ids.join() || gDirty || needsImage;
-  useEffect(() => { setText(p.text); setAt(toLocal(p.scheduled_at)); setPhotos(p.photo_ids); setG(p.graphic ?? BLANK); }, [p.id, p.text, p.scheduled_at, p.photo_ids.join(), JSON.stringify(p.graphic)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = text !== p.text || at !== toLocal(p.scheduled_at) || photos.join() !== p.photo_ids.join() || media.join() !== (p.media_ids ?? []).join() || gDirty || needsImage;
+  useEffect(() => { setText(p.text); setAt(toLocal(p.scheduled_at)); setPhotos(p.photo_ids); setMedia(p.media_ids ?? []); setG(p.graphic ?? BLANK); }, [p.id, p.text, p.scheduled_at, p.photo_ids.join(), (p.media_ids ?? []).join(), JSON.stringify(p.graphic)]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!p.photo_ids.length) return;
     supabase().from('job_photos').select('id, path').in('id', p.photo_ids).then(async ({ data }) => { photoRows.current = (data ?? []) as { id: string; path: string }[]; setUrls(await photoUrls(photoRows.current)); });
   }, [p.photo_ids.join()]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!media.length) return;
+    supabase().from('marketing_media').select('id, path, thumb_path').in('id', media).then(async ({ data }) => setMUrls(await mediaUrls((data ?? []).map((m) => ({ id: m.id as string, path: (m.thumb_path ?? m.path) as string })))));
+  }, [media.join()]); // eslint-disable-line react-hooks/exhaustive-deps
   const draw = async (c: HTMLCanvasElement) => {
     const want = photos.map((id) => photoRows.current.find((r) => r.id === id)).filter(Boolean) as { id: string; path: string }[];
     const need = want.filter((r) => !dataCache.current[r.id]); if (need.length) Object.assign(dataCache.current, await photoDataUrls(need));
@@ -100,7 +105,7 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
     try {
       const extra: Record<string, unknown> = { graphic: g };
       if (g.on) { if (needsImage) extra.image_path = await uploadGraphic(); } else extra.image_path = null;
-      return await patch({ text: text.trim(), scheduled_at: fromLocal(at), photo_ids: photos, ...extra }, 'Saved');
+      return await patch({ text: text.trim(), scheduled_at: fromLocal(at), photo_ids: photos, media_ids: media, ...extra }, 'Saved');
     } catch (e) { toast(e instanceof Error ? e.message : 'Could not save the graphic', 'err'); return false; }
   };
   const approve = async () => { if (dirty && !(await save())) return; await patch({ status: 'Approved', error: null }, 'Approved — it will be posted at the scheduled time'); };
@@ -115,7 +120,7 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
 
   return (
     <Card title={<span className="row" style={{ gap: 8 }}><Badge tone={TONE[p.status]}>{LABEL[p.status]}</Badge><Badge tone="gray">{p.kind}</Badge>{p.by_ai && <span className="small muted">✨ written by AI</span>}</span>}
-      actions={editable ? <div className="row"><AiRephrase value={text} area={() => area.current} onApply={setText} /></div> : undefined}>
+      actions={editable ? <div className="row"><AiRephrase value={text} area={() => area.current} onApply={setText} tones /></div> : undefined}>
       <div className="stack">
         {editable ? <textarea ref={area} rows={Math.min(12, Math.max(5, text.split('\n').length + 1))} style={{ width: '100%' }} value={text} maxLength={2000} onChange={(e) => setText(e.target.value)} /> : <div style={{ whiteSpace: 'pre-wrap' }}>{p.text}</div>}
         {photos.length > 0 && (
@@ -124,6 +129,17 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
             {editable && <button type="button" className="btn sm danger" style={{ position: 'absolute', top: 2, right: 2, padding: '0 6px' }} aria-label="Remove photo" onClick={() => setPhotos(photos.filter((x) => x !== id))}>×</button>}
           </div>)}</div>
         )}
+        {(media.length > 0 || editable) && (
+          <div className="row" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+            {media.map((id) => <div key={id} style={{ position: 'relative' }}>
+              {mUrls[id] ? <img src={mUrls[id]} alt="" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 6 }} /> : <div style={{ width: 96, height: 96, borderRadius: 6, background: '#eef3f7' }} />}
+              {editable && <button type="button" className="btn sm danger" style={{ position: 'absolute', top: 2, right: 2, padding: '0 6px' }} aria-label="Remove photo" onClick={() => setMedia(media.filter((x) => x !== id))}>×</button>}
+            </div>)}
+            {editable && <button type="button" className="btn sm" onClick={() => setPicker(true)}>📷 Add from library</button>}
+            {media.length > 0 && !editable && <span className="small muted">Photos from the library</span>}
+          </div>
+        )}
+        {picker && <LibraryPicker chosen={media} onPick={setMedia} onClose={() => setPicker(false)} />}
         {editable && (
           <div className="card" style={{ padding: 12 }}>
             <label className="check"><input type="checkbox" checked={g.on} onChange={(e) => setG({ ...g, on: e.target.checked, headline: g.headline || text.split('\n')[0].replace(/[#@]\S+/g, '').slice(0, 60).trim() })} /><b>🎨 Add a TopMop graphic</b> <span className="small muted">— a branded picture with the headline, posted with the text</span></label>
