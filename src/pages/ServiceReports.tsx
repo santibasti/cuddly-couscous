@@ -8,7 +8,7 @@ import { EnhanceToggle } from '@/components/EnhanceToggle';
 import { AiRephrase } from '@/components/AiRephrase';
 import { DataTable } from '@/components/DataTable';
 import { LOGO_SMALL_URL } from '@/lib/logo';
-import { FREQUENCIES, SECTION_TITLES, arrangePhotos, buildSections, createServiceReport, parseBody, deleteServiceReport, setReportStatus, signServiceReport, updateServiceReport } from '@/lib/servicereport';
+import { FREQUENCIES, SECTION_TITLES, arrangePhotos, buildSections, createServiceReport, parseBody, deleteServiceReport, serviceDatesText, serviceDays, setReportStatus, signServiceReport, updateServiceReport } from '@/lib/servicereport';
 import { addJobPhoto, photoDataUrls, photoUrls } from '@/lib/photos';
 import { buildServiceReportPdf, serviceReportFilename } from '@/lib/servicereportpdf';
 import { fmtDate } from '@/lib/util';
@@ -39,7 +39,7 @@ function ReportList() {
             { key: 'number', header: 'Report', value: (r) => r.number, render: (r) => <b>{r.number}</b> },
             { key: 'job', header: 'Booking', value: (r) => label(r.job_id) },
             { key: 'title', header: 'Service', value: (r) => r.title },
-            { key: 'date', header: 'Service date', value: (r) => r.service_date ?? '', render: (r) => (r.service_date ? fmtDate(r.service_date) : '—') },
+            { key: 'date', header: 'Service date', value: (r) => r.service_date ?? '', render: (r) => serviceDatesText(r) || '—' },
             { key: 'photos', header: 'Photos', num: true, value: (r) => r.photos.length },
             { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <Badge tone={r.status === 'Final' ? 'green' : 'amber'}>{r.status}</Badge> },
             { key: 'created', header: 'Created', value: (r) => r.created_at, render: (r) => fmtDate(r.created_at.slice(0, 10)) },
@@ -70,7 +70,7 @@ function ReportEditor({ id }: { id: string }) {
   const job = db.jobs.find((j) => j.id === r.job_id); const client = db.clients.find((c) => c.id === r.client_id);
   const locked = r.status === 'Final'; const mayEdit = !!job && (can('jobs.all') || can('dispatch.run'));
   const set = (p: Partial<ServiceReport>) => { setR({ ...r, ...p }); setDirty(true); };
-  const save = () => { if (attempt(() => updateServiceReport(r.id, { title: r.title, location: r.location, team: r.team, service_date: r.service_date, frequency: r.frequency, service_codes: r.service_codes, sections: r.sections, photos: r.photos }), 'Report saved')) setDirty(false); };
+  const save = () => { if (attempt(() => updateServiceReport(r.id, { title: r.title, location: r.location, team: r.team, service_date: r.service_date, service_end_date: r.service_end_date, frequency: r.frequency, service_codes: r.service_codes, sections: r.sections, photos: r.photos }), 'Report saved')) setDirty(false); };
   const setSec = (key: string, body: string) => set({ sections: r.sections.map((s) => (s.key === key ? { ...s, body } : s)) });
   const resetSec = (key: string) => { const t = buildSections(r.service_codes, r.frequency).find((s) => s.key === key); if (t) setSec(key, t.body); };
   const rebuild = () => { if (!confirm('Replace all section texts with the template for the selected services? Your edits to the sections will be lost.')) return; set({ sections: buildSections(r.service_codes, r.frequency) as ReportSection[] }); };
@@ -117,7 +117,8 @@ function ReportEditor({ id }: { id: string }) {
               <Field label="Client"><input disabled value={client?.name ?? ''} /></Field>
               <Field label="Project / service"><input disabled={locked} value={r.title} onChange={(e) => set({ title: e.target.value })} /></Field>
               <Field label="Location" className="full"><input disabled={locked} value={r.location} onChange={(e) => set({ location: e.target.value })} /></Field>
-              <Field label="Service date"><input type="date" disabled={locked} value={r.service_date ?? ''} onChange={(e) => set({ service_date: e.target.value || undefined })} /></Field>
+              <Field label="Start date"><input type="date" disabled={locked} value={r.service_date ?? ''} onChange={(e) => set({ service_date: e.target.value || undefined, ...(r.service_end_date && e.target.value && r.service_end_date < e.target.value ? { service_end_date: undefined } : {}) })} /></Field>
+              <Field label="End date" hint={serviceDays(r) > 1 ? `${serviceDays(r)} days in total` : 'Leave empty for a one-day job.'}><input type="date" disabled={locked} min={r.service_date ?? undefined} value={r.service_end_date ?? ''} onChange={(e) => set({ service_end_date: e.target.value || undefined })} /></Field>
               <Field label="Maintenance frequency"><select disabled={locked} value={r.frequency} onChange={(e) => set({ frequency: e.target.value })}>{FREQUENCIES.map((f) => <option key={f}>{f}</option>)}</select></Field>
               <Field label="Team assigned" className="full"><input disabled={locked} value={r.team} onChange={(e) => set({ team: e.target.value })} /></Field>
               <Field label="Services in this report" className="full" hint="The section texts come from a template for each service. Change the services, then use “Rebuild sections”.">
@@ -180,7 +181,7 @@ function ReportPreview({ r, client, urls, company }: { r: ServiceReport; client:
         <div className="pd-title"><div className="t1">SERVICE ACCOMPLISHMENT REPORT</div><div className="no">{r.number}</div><div className="s">{fmtDate(r.report_date)}</div></div>
       </div>
       <div className="pd-h">1. Project information</div>
-      <div className="pd-card"><dl className="kv"><dt>Client</dt><dd>{client}</dd><dt>Project</dt><dd>{r.title}</dd><dt>Location</dt><dd>{r.location || '—'}</dd><dt>Service date</dt><dd>{r.service_date ? fmtDate(r.service_date) : '—'}</dd><dt>Team</dt><dd>{r.team || '—'}</dd></dl></div>
+      <div className="pd-card"><dl className="kv"><dt>Client</dt><dd>{client}</dd><dt>Project</dt><dd>{r.title}</dd><dt>Location</dt><dd>{r.location || '—'}</dd><dt>Service date</dt><dd>{serviceDatesText(r) || '—'}</dd><dt>Team</dt><dd>{r.team || '—'}</dd></dl></div>
       {['scope', 'prework', 'method', 'findings', 'limits', 'recs', 'equipment', 'safety'].map(show)}
       {r.photos.length > 0 && <div><div className="pd-h">{++n}. Photo documentation</div>
         <div style={{ display: 'grid', gap: 12 }}>

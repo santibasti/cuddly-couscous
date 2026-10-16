@@ -1,5 +1,6 @@
 // Service Accomplishment Report: a simplified, per-service report tagged to a booking. The sections are filled from a template for each
 // service on the booking, the crew edits them, adds photos (before / after / detail) and the PDF lays everything out automatically.
+import { fmtDate } from './util';
 import { store, RuleError } from './store';
 import type { DB, Job, ReportPhoto, ReportSection, ServiceReport } from './types';
 
@@ -183,6 +184,11 @@ export function arrangePhotos(photos: ReportPhoto[]): { pairs: [ReportPhoto, Rep
 const teamOf = (d: DB, job: Job) => [job.leader_id, ...job.crew_ids].filter(Boolean).map((id) => d.employees.find((e) => e.id === id)?.full_name).filter(Boolean).join(', ');
 const canWork = (job: Job) => store.can('jobs.all') || (store.can('dispatch.run') && !!store.user?.employee_id && (job.leader_id === store.user.employee_id || job.crew_ids.includes(store.user.employee_id)));
 
+/** Number of calendar days a project runs (start and end both count); 1 when there is no end date. */
+export const serviceDays = (r: Pick<ServiceReport, 'service_date' | 'service_end_date'>) => (r.service_date && r.service_end_date && r.service_end_date > r.service_date ? Math.round((Date.parse(r.service_end_date) - Date.parse(r.service_date)) / 86400000) + 1 : 1);
+/** "5 Nov 2026" or "5 Nov 2026 – 7 Nov 2026 (3 days)" */
+export const serviceDatesText = (r: Pick<ServiceReport, 'service_date' | 'service_end_date'>) => (!r.service_date ? '' : serviceDays(r) > 1 ? `${fmtDate(r.service_date)} – ${fmtDate(r.service_end_date!)} (${serviceDays(r)} days)` : fmtDate(r.service_date));
+
 // SR-<booking number>, e.g. SR-JOB-2026-0007; a second report on the same booking gets -2, -3 …
 export const reportNumber = (d: Pick<DB, 'service_reports'>, jobNumber: string) => {
   const base = `SR-${jobNumber}`; const n = (d.service_reports ?? []).filter((r) => r.number === base || /^-\d+$/.test(r.number.slice(base.length)) && r.number.startsWith(base)).length;
@@ -197,11 +203,11 @@ export function createServiceReport(jobId: string): ServiceReport {
   const names = codes.map((c) => d.services.find((s) => s.code === c)?.name ?? c).join(', ');
   return store.insert('service_reports', {
     number: reportNumber(d, job.number), job_id: job.id, client_id: job.client_id, title: names, location: [site?.name, site?.address].filter(Boolean).join(', ') || client?.address || '',
-    team: teamOf(d, job), service_date: job.start_at.slice(0, 10), report_date: new Date().toISOString().slice(0, 10), frequency: 'One-time',
+    team: teamOf(d, job), service_date: job.start_at.slice(0, 10), service_end_date: job.end_at && job.end_at.slice(0, 10) > job.start_at.slice(0, 10) ? job.end_at.slice(0, 10) : undefined, report_date: new Date().toISOString().slice(0, 10), frequency: 'One-time',
     service_codes: codes, sections: buildSections(codes), photos: [], prepared_by: store.user?.name, status: 'Draft',
   } as never, `Service report started for ${job.number}`) as ServiceReport;
 }
-export function updateServiceReport(id: string, patch: Partial<Pick<ServiceReport, 'title' | 'location' | 'team' | 'service_date' | 'frequency' | 'service_codes' | 'sections' | 'photos'>>) {
+export function updateServiceReport(id: string, patch: Partial<Pick<ServiceReport, 'title' | 'location' | 'team' | 'service_date' | 'service_end_date' | 'frequency' | 'service_codes' | 'sections' | 'photos'>>) {
   const r = db().service_reports.find((x) => x.id === id && !x.deleted_at) ?? fail('Service report not found.');
   const job = db().jobs.find((j) => j.id === r.job_id); if (!job || !canWork(job)) fail('Only the assigned Team Leader or Admin / Operations can edit this report.');
   if (r.status === 'Final') fail('A final report is locked. Reopen it first.');

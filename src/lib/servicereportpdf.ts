@@ -1,6 +1,6 @@
 // Service Accomplishment Report PDF (A4): simplified sections, photos laid out automatically (Before / After pairs, then a grid).
 import { logoDataUrl } from './logo';
-import { arrangePhotos, parseBody } from './servicereport';
+import { arrangePhotos, parseBody, serviceDatesText } from './servicereport';
 import { fmtDate } from './util';
 import type { ReportPhoto, ServiceReport, Settings } from './types';
 
@@ -33,7 +33,7 @@ export async function buildServiceReportPdf(r: ServiceReport, o: { company: Sett
 
   // 1. project information
   section('Project information');
-  const info: [string, string][] = [['Client', o.clientName], ['Project', r.title], ['Location', r.location], ['Service date', r.service_date ? fmtDate(r.service_date) : ''], ['Team assigned', r.team], ['Frequency', r.frequency]];
+  const info: [string, string][] = [['Client', o.clientName], ['Project', r.title], ['Location', r.location], ['Service date', serviceDatesText(r)], ['Team assigned', r.team], ['Frequency', r.frequency]];
   for (const [k, v] of info) { if (!v) continue; const l = lines(v, CW - 38, 10); need(l.length * 4.8 + 2); txt(k, M + 2, y, { size: 9, bold: true, color: MUTED }); l.forEach((x, i) => txt(x, M + 36, y + i * 4.8, { size: 10 })); y += l.length * 4.8 + 1.6; }
   y += 3;
 

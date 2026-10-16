@@ -861,7 +861,7 @@ export interface ServiceReport extends Base {
   number: string;                  // SR-JOB-2026-0001 (SR- + the booking number)
   job_id: string; client_id: string;
   title: string; location: string; team: string;
-  service_date?: string; report_date: string; frequency: string;
+  service_date?: string; service_end_date?: string; report_date: string; frequency: string; // service_end_date: last day of a multi-day project
   service_codes: ServiceCode[];
   sections: ReportSection[]; photos: ReportPhoto[];
   prepared_by?: string; status: 'Draft' | 'Final'; finalized_at?: string;
