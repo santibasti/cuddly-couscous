@@ -25,7 +25,7 @@ const fn = callFn;
 
 export default function Marketing() {
   const { db } = useAuth(); const company = db.settings.company; const mode = db.settings.marketing?.mode ?? 'off';
-  const [tone, setTone] = useState<string>('Default'); const [posts, setPosts] = useState<Post[]>([]); const [busy, setBusy] = useState<string>(); const [add, setAdd] = useState(false); const [tab, setTab] = useState<'todo' | 'posted' | 'library'>('todo');
+  const [tone, setTone] = useState<string>('Default'); const [ask, setAsk] = useState(''); const [askKind, setAskKind] = useState('Other'); const [askAt, setAskAt] = useState(''); const [posts, setPosts] = useState<Post[]>([]); const [busy, setBusy] = useState<string>(); const [add, setAdd] = useState(false); const [tab, setTab] = useState<'todo' | 'posted' | 'library'>('todo');
   const load = useCallback(async () => { const { data } = await supabase().from('marketing_posts').select('*').order('scheduled_at', { ascending: true }).limit(300); setPosts((data ?? []) as Post[]); }, []);
   useEffect(() => { if (!CLOUD) return; load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, [load]);
   if (!CLOUD) return <div className="alert warn">Marketing AI works in the live app only (it needs the cloud connection and the Facebook Page).</div>;
@@ -34,6 +34,13 @@ export default function Marketing() {
     setBusy('The AI is writing posts…');
     try { const r = await fn<{ made?: number; note?: string }>('marketing-run', { action: 'generate', count: 3, tone: tone === 'Default' ? undefined : tone }); toast(r.made ? `${r.made} new post${r.made === 1 ? '' : 's'} written — review them below` : (r.note ?? 'Nothing new was written'), r.made ? 'ok' : 'err'); await load(); }
     catch (e) { toast(e instanceof Error ? e.message : 'Could not write posts', 'err'); } finally { setBusy(undefined); }
+  };
+  const writeFromPrompt = async () => {
+    setBusy('The AI is writing your post…');
+    try {
+      const r = await fn<{ made?: number; note?: string }>('marketing-run', { action: 'generate', prompt: ask.trim(), kind: askKind, at: askAt ? fromLocal(askAt) : undefined, tone: tone === 'Default' ? undefined : tone });
+      toast(r.made ? 'Your post is ready — review it below' : (r.note ?? 'Nothing was written'), r.made ? 'ok' : 'err'); if (r.made) { setAsk(''); setTab('todo'); } await load();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Could not write the post', 'err'); } finally { setBusy(undefined); }
   };
   const todo = posts.filter((p) => p.status === 'Idea' || p.status === 'Approved' || p.status === 'Failed');
   const done = posts.filter((p) => p.status === 'Posted' || p.status === 'Rejected').sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at));
@@ -49,7 +56,18 @@ export default function Marketing() {
       </PageHead>
       {busy && <div className="alert">{busy}</div>}
       {waiting > 0 && <div className="alert warn">{waiting} post{waiting === 1 ? '' : 's'} waiting for your approval.</div>}
-      <div className="chips" role="tablist" style={{ marginBottom: 12 }}>
+      <Card title="Ask the AI for a specific post">
+        <div className="stack">
+          <textarea rows={3} style={{ width: '100%' }} maxLength={1200} value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="Tell the AI what to post. e.g. “Announce that we now clean solar panels for warehouses in Laguna, mention the free ocular visit, upbeat tone.”" />
+          <div className="row" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'flex-end' }}>
+            <Field label="Type"><select value={askKind} onChange={(e) => setAskKind(e.target.value)}>{[['Other', 'General'], ['Tip', 'Tip'], ['Promo', 'Promo'], ['Seasonal', 'Seasonal'], ['Completed job', 'Completed job']].map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+            <Field label="Post on (optional, Manila time)"><input type="datetime-local" value={askAt} onChange={(e) => setAskAt(e.target.value)} /></Field>
+            <button className="btn primary" disabled={!!busy || ask.trim().length < 8} onClick={writeFromPrompt}>✨ Write this post</button>
+          </div>
+          <div className="small muted">It uses your company knowledge and the mood chosen at the top. The post lands in Upcoming for you to review. Leave the time empty and it takes the next free slot.</div>
+        </div>
+      </Card>
+      <div className="chips" role="tablist" style={{ margin: '12px 0' }}>
         <button type="button" className={tab === 'todo' ? 'on' : ''} onClick={() => setTab('todo')}>Upcoming ({todo.length})</button>
         <button type="button" className={tab === 'posted' ? 'on' : ''} onClick={() => setTab('posted')}>Posted & rejected ({done.length})</button>
         <button type="button" className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>📷 Photo library</button>

@@ -93,7 +93,7 @@ async function learn(website: string): Promise<string> {
 }
 
 /** Makes drafts so that about two weeks ahead are always planned. */
-async function topUp(sb: Sb, cfg: Cfg, forceCount?: number) {
+async function topUp(sb: Sb, cfg: Cfg, forceCount?: number, ask?: { prompt: string; kind?: string; at?: string }) {
   const { data: libRows } = await sb.from('marketing_media').select('id, description, tags, used_count, quality').is('deleted_at', null).eq('ok_to_use', true).gte('quality', 3).order('used_count').order('created_at', { ascending: false }).limit(40);
   const library: Lib[] = (libRows ?? []).map((m) => ({ id: m.id, description: m.description, tags: m.tags ?? [] }));
   if (!env('ANTHROPIC_API_KEY')) return { made: 0, note: 'ANTHROPIC_API_KEY is not set' };
@@ -104,7 +104,7 @@ async function topUp(sb: Sb, cfg: Cfg, forceCount?: number) {
   const want = forceCount ?? Math.max(0, perWeek * 2 - (open ?? []).filter((p) => Date.parse(p.scheduled_at) > Date.now()).length);
   if (!want) return { made: 0 };
   const taken = new Set((open ?? []).map((p) => p.scheduled_at));
-  const free = slots(cfg, want + taken.size + 4, Date.now()).filter((s) => !taken.has(s)).slice(0, want);
+  const free = ask?.at && Date.parse(ask.at) > Date.now() ? [new Date(ask.at).toISOString()] : slots(cfg, want + taken.size + 4, Date.now()).filter((s) => !taken.has(s)).slice(0, want);
   const topics = (cfg.topics?.length ? cfg.topics : Object.keys(TOPIC_TO_KIND)).map((t) => TOPIC_TO_KIND[t]).filter(Boolean);
   const usedJobs = new Set([...(open ?? []), ...(past ?? [])].map((p) => p.job_id).filter(Boolean));
   const { data: svc } = await sb.from('services').select('code, name');
@@ -112,7 +112,7 @@ async function topUp(sb: Sb, cfg: Cfg, forceCount?: number) {
   const month = new Date(Date.now() + 8 * 3600_000).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
   let made = 0;
   for (const [i, at] of free.entries()) {
-    let kind = topics[(recent.length + i) % topics.length] ?? 'Tip';
+    let kind = ask ? (['Tip', 'Completed job', 'Promo', 'Seasonal', 'Other'].includes(ask.kind ?? '') ? (ask.kind as string) : 'Other') : (topics[(recent.length + i) % topics.length] ?? 'Tip');
     let ctx = `Pick something useful for property owners and facility managers. Current month: ${month}.`;
     let jobId: string | null = null; let photoIds: string[] = [];
     if (kind === 'Completed job') {
@@ -128,9 +128,10 @@ async function topUp(sb: Sb, cfg: Cfg, forceCount?: number) {
       }
       if (!jobId) kind = 'Tip';
     }
-    if (kind === 'Seasonal') ctx = `Write a seasonal post for the Philippines for ${month} (weather, typhoon/rainy season, dust/summer, holidays) tied to cleaning or property care.`;
-    if (kind === 'Promo') ctx = 'Write a soft promotional post inviting people to book a free ocular visit or quotation. Do not mention any price or discount.';
-    if (kind === 'Other') ctx = 'Write a short company post: our trained team, safety first (harness and fall protection), eco-safe products, or why regular cleaning protects glass and solar panels.';
+    if (ask) ctx = `The owner has asked for this specific post. Follow the request closely, using only the company knowledge and what the request itself says. Do not add facts that are in neither.\nOWNER REQUEST: ${ask.prompt.slice(0, 1200)}\n${ctx.startsWith('A job we just finished') ? ctx : ''}`;
+    if (!ask && kind === 'Seasonal') ctx = `Write a seasonal post for the Philippines for ${month} (weather, typhoon/rainy season, dust/summer, holidays) tied to cleaning or property care.`;
+    if (!ask && kind === 'Promo') ctx = 'Write a soft promotional post inviting people to book a free ocular visit or quotation. Do not mention any price or discount.';
+    if (!ask && kind === 'Other') ctx = 'Write a short company post: our trained team, safety first (harness and fall protection), eco-safe products, or why regular cleaning protects glass and solar panels.';
     const { text, graphic, media_ids } = await write(sb, cfg, kind, ctx, recent, photoIds.length ? [] : library);
     recent.unshift(text);
     await sb.from('marketing_posts').insert({ kind, text, graphic, media_ids, photo_ids: photoIds, job_id: jobId, scheduled_at: at, status: cfg.mode === 'auto' ? 'Approved' : 'Idea', by_ai: true });
@@ -187,7 +188,7 @@ async function publish(sb: Sb, id: string) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-  const body = (await req.json().catch(() => ({}))) as { action?: string; count?: number; id?: string; tone?: string; website?: string };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; count?: number; id?: string; tone?: string; website?: string; prompt?: string; kind?: string; at?: string };
   const sb = db();
   const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle();
   const cfg = (st?.data?.marketing ?? {}) as Cfg;
@@ -197,7 +198,7 @@ Deno.serve(async (req) => {
     if (ok !== true) return json({ error: 'Not allowed' }, 403);
     if (body.action === 'learn') { try { return json({ brief: await learn(String(body.website ?? cfg.website ?? 'https://www.topmop.ph')) }); } catch (e) { return json({ error: (e as Error).message }, 502); } }
     if (body.action === 'post_now') { const r = await publish(sb, String(body.id ?? '')); return json(r, r.ok ? 200 : 502); }
-    try { return json(await topUp(sb, { ...cfg, tone: body.tone || cfg.tone, mode: cfg.mode === 'auto' ? 'auto' : 'approve' }, Math.min(5, Math.max(1, body.count ?? 3)))); } catch (e) { return json({ error: (e as Error).message }, 502); }
+    try { return json(await topUp(sb, { ...cfg, tone: body.tone || cfg.tone, mode: cfg.mode === 'auto' ? 'auto' : 'approve' }, Math.min(5, Math.max(1, body.prompt ? 1 : (body.count ?? 3))), body.prompt?.trim() ? { prompt: body.prompt, kind: body.kind, at: body.at } : undefined)); } catch (e) { return json({ error: (e as Error).message }, 502); }
   }
   // scheduled tick (cron): drafts are only made, and approved posts only published, while the Marketing AI is switched on
   if (!cfg.mode || cfg.mode === 'off') return json({ note: 'Marketing AI is off' });
