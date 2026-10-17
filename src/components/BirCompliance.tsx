@@ -1,10 +1,11 @@
 // Finance → BIR compliance: the Summary List of Sales (SLS) and Summary List of Purchases (SLP) of a tax month, ready to key into RELIEF,
 // with what still needs fixing, and a VAT reconciliation. Built from approved invoices and expenses; nothing is invented.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { store, useAuth } from '@/lib/store';
 import { Badge, Card, Stat, Tabs, attempt } from '@/components/ui';
 import { exportCsv, exportXlsx, type ExportTable } from '@/lib/export';
+import { listReceipts, type Receipt } from '@/lib/receipts';
 import { buildSlp, buildSls, fmtTin, groupSlsByBuyer, reconcile, reliefDate, slpIssues, slpTotals, slsIncluded, slsIssues, slsTotals, type Flag, type SalesClass, type SlpRow, type SlsRow } from '@/lib/bir';
 import { money, today } from '@/lib/util';
 
@@ -22,8 +23,10 @@ export function BirCompliance() {
   const [month, setMonth] = useState(today().slice(0, 7)); const [sub, setSub] = useState<Sub>('sls');
   const [byBuyer, setByBuyer] = useState(false); const [onlyFix, setOnlyFix] = useState(false);
   const edit = can('reports.finance');
-  const sls = useMemo(() => buildSls(db, month), [db, month]); const slp = useMemo(() => buildSlp(db, month), [db, month]);
-  const st = slsTotals(sls); const pt = slpTotals(slp); const rec = useMemo(() => reconcile(db, month), [db, month]);
+  const [rcs, setRcs] = useState<Receipt[]>([]);
+  useEffect(() => { let off = false; listReceipts().then((r) => { if (!off) setRcs(r); }).catch(() => undefined); return () => { off = true; }; }, []);   // scanned receipts decided "BIR only" join the purchases list
+  const sls = useMemo(() => buildSls(db, month), [db, month]); const slp = useMemo(() => buildSlp(db, month, rcs), [db, month, rcs]);
+  const st = slsTotals(sls); const pt = slpTotals(slp); const rec = useMemo(() => reconcile(db, month, rcs), [db, month, rcs]);
   const co = db.settings.company;
 
   const setBir = (patch: Partial<NonNullable<typeof db.settings.bir>>) => attempt(() => { store.require('reports.finance'); store.patchSettings({ bir: { ...(db.settings.bir ?? {}), ...patch } }, 'Updated BIR compliance settings'); });
@@ -114,7 +117,7 @@ export function BirCompliance() {
                   <td><b>{r.supplier}</b> <Badge tone={r.vat_status === 'VAT' ? 'blue' : 'gray'}>{r.vat_status}</Badge><div className="small muted">{r.address || 'no address'}</div></td>
                   <td className="num">{money(r.gross)}</td><td className="num">{money(r.exempt)}</td><td className="num">{money(r.zero)}</td><td className="num">{money(r.taxable)}</td><td className="num">{money(r.services)}</td><td className="num">{money(r.capital)}</td><td className="num">{money(r.goods)}</td><td className="num">{money(r.input_vat)}</td>
                   <td style={{ minWidth: 240 }}>{r.skipped && <Badge tone="gray">Left out</Badge>}<Flags flags={r.flags} /></td>
-                  {edit && <td><button className="btn sm" onClick={() => toggle('slp_skip', r.id)}>{r.skipped ? 'Put back' : 'Leave out'}</button><div><Link className="small" to="/finance?tab=expenses">Edit expense</Link></div></td>}
+                  {edit && <td><button className="btn sm" onClick={() => toggle('slp_skip', r.id)}>{r.skipped ? 'Put back' : 'Leave out'}</button><div><Link className="small" to={r.id.startsWith('rc:') ? '/receipts' : '/finance?tab=expenses'}>{r.id.startsWith('rc:') ? 'Open receipt' : 'Edit expense'}</Link></div></td>}
                 </tr>
               ))}
               {!shownSlp.length && <tr><td colSpan={14} className="muted" style={{ padding: 16 }}>No purchase records for this month{onlyFix ? ' that need fixing' : ''}. Only approved expenses count.</td></tr>}

@@ -14,9 +14,9 @@ export interface Receipt {
   payment_method: string | null; category: string | null; job_id: string | null; description: string | null; notes: string | null;
   image_path: string | null; image_data?: string | null; ocr: { unreadable: string[]; low_confidence: string[]; notes: string; buyer?: { name: string | null; tin: string | null; address: string | null } } | null;
   status: 'Captured' | 'Posted'; expense_id: string | null;
-  bir_use: boolean | null; confirmed_by: string | null; confirmed_at: string | null;
+  bir_mode: 'yes' | 'no' | 'both' | null; confirmed_by: string | null; confirmed_at: string | null;
 }
-export type ReceiptDraft = Omit<Receipt, 'id' | 'created_at' | 'created_by' | 'status' | 'expense_id' | 'image_path' | 'image_data' | 'bir_use' | 'confirmed_by' | 'confirmed_at'>;
+export type ReceiptDraft = Omit<Receipt, 'id' | 'created_at' | 'created_by' | 'status' | 'expense_id' | 'image_path' | 'image_data' | 'bir_mode' | 'confirmed_by' | 'confirmed_at'>;
 export interface Reading { fields: Partial<Record<string, string | number | null>>; unreadable: string[]; low_confidence: string[]; notes: string; rotate?: number; buyer?: { name: string | null; tin: string | null; address: string | null } }
 
 export const FIELD_LABEL: Record<string, string> = {
@@ -112,7 +112,7 @@ export async function saveNewReceipt(d: ReceiptDraft, scan: { blob: Blob; dataUr
   const id = crypto.randomUUID();
   if (!CLOUD) {
     const small = await shrink(scan.dataUrl, 900);
-    const rec: Receipt = { id, created_at: new Date().toISOString(), ...d, image_path: null, image_data: small, status: 'Captured', expense_id: null, bir_use: null, ...conf };
+    const rec: Receipt = { id, created_at: new Date().toISOString(), ...d, image_path: null, image_data: small, status: 'Captured', expense_id: null, bir_mode: null, ...conf };
     demoSave([rec, ...demoLoad()]); return rec;
   }
   const path = `${(d.receipt_date ?? new Date().toISOString().slice(0, 10)).slice(0, 7)}/${id}.jpg`;

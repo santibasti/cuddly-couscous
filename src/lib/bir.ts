@@ -86,38 +86,50 @@ export interface SlpRow {
 
 const isPurchase = (e: Expense, month: string) => e.approval === 'Approved' && !e.reversed && e.category !== 'Payroll' && e.source !== 'payroll' && e.date.slice(0, 7) === month;
 
-/** Purchases of a tax month: approved, un-reversed expenses (payroll is not a purchase), one record per supplier invoice, never merged. */
-export function buildSlp(db: DB, month: string): SlpRow[] {
+interface SlpSource { id: string; date: string; supplier: string; tin: string; address: string; invoice: string; vat_status?: SlpRow['vat_status']; kind?: SlpRow['kind']; amount: number; vat: number; skipped: boolean; notes?: Flag[] }
+function slpRow(e: SlpSource): SlpRow {
+  const flags: Flag[] = [...(e.notes ?? [])];
+  const assumed = !e.vat_status;
+  const status = e.vat_status ?? (e.vat > 0 ? 'VAT' : 'Non-VAT');
+  const kind = e.kind ?? 'Goods'; const tin = e.tin.trim(); const invoice = e.invoice.trim();
+  if (!tin) flags.push({ level: 'error', text: "No supplier TIN. Take it from the supplier's invoice / official receipt; never invent one." });
+  else if (!tinOk(tin)) flags.push({ level: 'warn', text: 'The TIN does not look like 9 digits (+ branch code).' });
+  if (!e.address.trim()) flags.push({ level: 'error', text: 'No supplier address.' });
+  if (!invoice) flags.push({ level: 'warn', text: 'No supplier invoice / receipt number. Input VAT cannot be claimed without a proper invoice.' });
+  if (assumed) flags.push({ level: 'warn', text: `Supplier VAT status not set: treated as ${status}.` });
+  if (!e.kind && status === 'VAT') flags.push({ level: 'info', text: 'Purchase type not set: counted as goods other than capital goods.' });
+  let exempt = 0, zero = 0, taxable = 0, creditable = 0;
+  if (status === 'VAT') {
+    taxable = round2(e.amount - e.vat);
+    if (e.vat <= 0) flags.push({ level: 'warn', text: 'VAT supplier but no input VAT recorded. Check the invoice.' });
+    if (tin && tinOk(tin) && invoice) creditable = e.vat; else if (e.vat > 0) flags.push({ level: 'warn', text: 'Input VAT is not counted as creditable until the supplier TIN and invoice number are complete.' });
+  } else {
+    if (e.vat > 0) flags.push({ level: 'error', text: `Input VAT of ${e.vat.toFixed(2)} is recorded for a ${status} supplier. It is not creditable: correct the record.` });
+    if (status === 'Zero-rated') zero = e.amount; else exempt = e.amount;
+  }
+  return {
+    id: e.id, date: e.date, supplier: e.supplier.trim(), tin, address: e.address.trim(), invoice, vat_status: status, kind, skipped: e.skipped,
+    gross: e.amount, exempt, zero, taxable, services: status === 'VAT' && kind === 'Services' ? taxable : 0, capital: status === 'VAT' && kind === 'Capital goods' ? taxable : 0, goods: status === 'VAT' && kind === 'Goods' ? taxable : 0,
+    input_vat: creditable, vat_recorded: e.vat, flags,
+  };
+}
+
+/** A scanned receipt as the SLP needs it. Receipts decided "BIR only" are not expenses, so they come in here instead of through the expense list. */
+export interface BirReceipt { id: string; receipt_date: string | null; supplier_name: string | null; supplier_tin: string | null; supplier_address: string | null; receipt_no: string | null; supplier_vat: SlpRow['vat_status'] | null; total_amount: number | null; vat_amount: number | null; bir_mode: 'yes' | 'no' | 'both' | null; status: string }
+
+/** Purchases of a tax month: approved, un-reversed expenses (payroll is not a purchase), one record per supplier invoice, never merged, plus scanned receipts marked "BIR only". */
+export function buildSlp(db: DB, month: string, receipts: BirReceipt[] = []): SlpRow[] {
   const bir = db.settings.bir ?? {};
   const rows: SlpRow[] = [];
   for (const e of live(db.expenses)) {
     if (!isPurchase(e, month)) continue;
-    const flags: Flag[] = [];
-    const assumed = !e.supplier_vat;
-    const status = e.supplier_vat ?? (e.vat > 0 ? 'VAT' : 'Non-VAT');
-    const kind = e.purchase_kind ?? 'Goods';
-    const tin = (e.supplier_tin ?? '').trim(); const invoice = (e.supplier_invoice_no ?? '').trim();
-    if (e.bir_use === false) flags.push({ level: 'info', text: 'Marked "not for BIR" when the receipt was posted, so it is left out of this list.' });
-    if (!tin) flags.push({ level: 'error', text: "No supplier TIN. Take it from the supplier's invoice / official receipt; never invent one." });
-    else if (!tinOk(tin)) flags.push({ level: 'warn', text: 'The TIN does not look like 9 digits (+ branch code).' });
-    if (!(e.supplier_address ?? '').trim()) flags.push({ level: 'error', text: 'No supplier address.' });
-    if (!invoice) flags.push({ level: 'warn', text: 'No supplier invoice / receipt number. Input VAT cannot be claimed without a proper invoice.' });
-    if (assumed) flags.push({ level: 'warn', text: `Supplier VAT status not set: treated as ${status}.` });
-    if (!e.purchase_kind && status === 'VAT') flags.push({ level: 'info', text: 'Purchase type not set: counted as goods other than capital goods.' });
-    let exempt = 0, zero = 0, taxable = 0, creditable = 0;
-    if (status === 'VAT') {
-      taxable = round2(e.amount - e.vat);
-      if (e.vat <= 0) flags.push({ level: 'warn', text: 'VAT supplier but no input VAT recorded. Check the invoice.' });
-      if (tin && tinOk(tin) && invoice) creditable = e.vat; else if (e.vat > 0) flags.push({ level: 'warn', text: 'Input VAT is not counted as creditable until the supplier TIN and invoice number are complete.' });
-    } else {
-      if (e.vat > 0) flags.push({ level: 'error', text: `Input VAT of ${e.vat.toFixed(2)} is recorded for a ${status} supplier. It is not creditable: correct the expense.` });
-      if (status === 'Zero-rated') zero = e.amount; else exempt = e.amount;
-    }
-    rows.push({
-      id: e.id, date: e.date, supplier: (e.supplier_name || e.payee || '').trim(), tin, address: (e.supplier_address ?? '').trim(), invoice, vat_status: status, kind, skipped: !!bir.slp_skip?.includes(e.id) || e.bir_use === false,
-      gross: e.amount, exempt, zero, taxable, services: status === 'VAT' && kind === 'Services' ? taxable : 0, capital: status === 'VAT' && kind === 'Capital goods' ? taxable : 0, goods: status === 'VAT' && kind === 'Goods' ? taxable : 0,
-      input_vat: creditable, vat_recorded: e.vat, flags,
-    });
+    rows.push(slpRow({ id: e.id, date: e.date, supplier: e.supplier_name || e.payee || '', tin: e.supplier_tin ?? '', address: e.supplier_address ?? '', invoice: e.supplier_invoice_no ?? '', vat_status: e.supplier_vat, kind: e.purchase_kind, amount: e.amount, vat: e.vat,
+      skipped: !!bir.slp_skip?.includes(e.id) || e.bir_use === false, notes: e.bir_use === false ? [{ level: 'info', text: 'Marked "No" (expense only) when the receipt was posted, so it is left out of this list.' }] : [] }));
+  }
+  for (const r of receipts) {
+    if (r.bir_mode !== 'yes' || r.status !== 'Posted' || !r.receipt_date || r.receipt_date.slice(0, 7) !== month || !r.total_amount) continue;
+    rows.push(slpRow({ id: `rc:${r.id}`, date: r.receipt_date, supplier: r.supplier_name ?? '', tin: r.supplier_tin ?? '', address: r.supplier_address ?? '', invoice: r.receipt_no ?? '', vat_status: r.supplier_vat ?? undefined, amount: r.total_amount, vat: r.supplier_vat === 'VAT' ? (r.vat_amount ?? 0) : 0,
+      skipped: !!bir.slp_skip?.includes(`rc:${r.id}`), notes: [{ level: 'info', text: 'From a scanned receipt marked "BIR only": it is not counted as an expense.' }] }));
   }
   return rows.sort((a, b) => a.date.localeCompare(b.date) || a.supplier.localeCompare(b.supplier));
 }
@@ -128,10 +140,10 @@ export const slpTotals = (rows: SlpRow[]) => {
 };
 
 /** Output VAT against input VAT for the month, and how far each side is from the records it was built from. */
-export function reconcile(db: DB, month: string) {
-  const st = slsTotals(buildSls(db, month)); const pt = slpTotals(buildSlp(db, month));
+export function reconcile(db: DB, month: string, receipts: BirReceipt[] = []) {
+  const st = slsTotals(buildSls(db, month)); const pt = slpTotals(buildSlp(db, month, receipts));
   const invoiceVat = round2((live(db.invoices) as Invoice[]).filter((i) => i.status === 'Approved' && i.issue_date.slice(0, 7) === month).reduce((a, i) => a + invoiceTotals(i).vat, 0));
-  const expenseVat = round2(live(db.expenses).filter((e) => isPurchase(e, month)).reduce((a, e) => a + e.vat, 0));
+  const expenseVat = round2(live(db.expenses).filter((e) => isPurchase(e, month)).reduce((a, e) => a + e.vat, 0) + buildSlp({ ...db, expenses: [] }, month, receipts).reduce((a, r) => a + r.vat_recorded, 0));
   return {
     output_tax: st.output_tax, input_vat: pt.input_vat, payable: round2(st.output_tax - pt.input_vat),
     invoice_vat: invoiceVat, output_gap: round2(invoiceVat - st.output_tax),

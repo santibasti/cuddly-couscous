@@ -52,3 +52,13 @@ describe('BIR compliance lists', () => {
     expect(r.invoice_vat).toBe(480); expect(r.output_gap).toBe(0); expect(r.expense_vat).toBe(300); expect(r.not_credited).toBe(180);
   });
 });
+
+describe('BIR-only receipts', () => {
+  it('a receipt marked "yes" joins the SLP without being an expense, "no" and "both" do not duplicate', () => {
+    const r = (id: string, mode: 'yes' | 'no' | 'both') => ({ id, receipt_date: '2026-10-12', supplier_name: 'Petron', supplier_tin: '104-033-517-001', supplier_address: 'Makati', receipt_no: 'SI-9', supplier_vat: 'VAT' as const, total_amount: 600, vat_amount: 64.29, bir_mode: mode, status: 'Posted' });
+    const rows = buildSlp(db, '2026-10', [r('a', 'yes'), r('b', 'no'), r('c', 'both')]);
+    expect(rows.filter((x) => x.id.startsWith('rc:')).map((x) => x.id)).toEqual(['rc:a']);
+    const row = rows.find((x) => x.id === 'rc:a')!; expect(row.input_vat).toBe(64.29); expect(row.taxable).toBe(535.71);
+    expect(reconcile(db, '2026-10', [r('a', 'yes')]).input_vat).toBe(184.29);
+  });
+});
