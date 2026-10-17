@@ -97,6 +97,7 @@ export function buildSlp(db: DB, month: string): SlpRow[] {
     const status = e.supplier_vat ?? (e.vat > 0 ? 'VAT' : 'Non-VAT');
     const kind = e.purchase_kind ?? 'Goods';
     const tin = (e.supplier_tin ?? '').trim(); const invoice = (e.supplier_invoice_no ?? '').trim();
+    if (e.bir_use === false) flags.push({ level: 'info', text: 'Marked "not for BIR" when the receipt was posted, so it is left out of this list.' });
     if (!tin) flags.push({ level: 'error', text: "No supplier TIN. Take it from the supplier's invoice / official receipt; never invent one." });
     else if (!tinOk(tin)) flags.push({ level: 'warn', text: 'The TIN does not look like 9 digits (+ branch code).' });
     if (!(e.supplier_address ?? '').trim()) flags.push({ level: 'error', text: 'No supplier address.' });
@@ -113,7 +114,7 @@ export function buildSlp(db: DB, month: string): SlpRow[] {
       if (status === 'Zero-rated') zero = e.amount; else exempt = e.amount;
     }
     rows.push({
-      id: e.id, date: e.date, supplier: (e.supplier_name || e.payee || '').trim(), tin, address: (e.supplier_address ?? '').trim(), invoice, vat_status: status, kind, skipped: !!bir.slp_skip?.includes(e.id),
+      id: e.id, date: e.date, supplier: (e.supplier_name || e.payee || '').trim(), tin, address: (e.supplier_address ?? '').trim(), invoice, vat_status: status, kind, skipped: !!bir.slp_skip?.includes(e.id) || e.bir_use === false,
       gross: e.amount, exempt, zero, taxable, services: status === 'VAT' && kind === 'Services' ? taxable : 0, capital: status === 'VAT' && kind === 'Capital goods' ? taxable : 0, goods: status === 'VAT' && kind === 'Goods' ? taxable : 0,
       input_vat: creditable, vat_recorded: e.vat, flags,
     });

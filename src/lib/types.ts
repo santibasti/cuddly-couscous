@@ -784,6 +784,7 @@ export interface Expense extends Base {
   paid_by_employee?: string; reimbursed_at?: string; reimbursed_by?: string; reimbursed_via?: string;
   /** BIR Summary List of Purchases: the supplier's registered details, as printed on the supplier's invoice / official receipt */
   supplier_name?: string; supplier_tin?: string; supplier_address?: string; supplier_vat?: 'VAT' | 'Non-VAT' | 'Zero-rated' | 'Exempt'; supplier_invoice_no?: string; purchase_kind?: 'Goods' | 'Services' | 'Capital goods';
+  bir_use?: boolean | null;   // false: decided not for BIR filing (left out of the SLP)
 }
 export interface PettyCashEntry extends Base {
   date: string;

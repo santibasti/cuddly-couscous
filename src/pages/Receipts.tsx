@@ -1,7 +1,7 @@
 // Receipts: photograph an official receipt, the AI reads what BIR filing needs (supplier, TIN, address, VAT, amounts), a person checks it,
 // and the scan is kept, so a fading or damaged receipt no longer loses its details. Posting a receipt creates the expense (and feeds the SLP).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth, live } from '@/lib/store';
+import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Modal, PageHead, Stat, attempt, toast } from '@/components/ui';
 import { CLOUD } from '@/lib/cloud';
 import { saveExpense } from '@/lib/actions';
@@ -16,8 +16,8 @@ const METHODS: ExpenseMethod[] = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Cr
 const num = (v: string): number | null => (v.trim() === '' ? null : Number(v.replace(/[^\d.\-]/g, '')) || 0);
 
 function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRotate }: { initial?: Receipt; seed?: ReceiptDraft; scan?: { blob: Blob; dataUrl: string }; reading?: { busy: boolean; error?: string }; others: Receipt[]; onClose: () => void; onSaved: () => void; onRotate?: () => void }) {
-  const { db, can } = useAuth();
-  const [d, setD] = useState<ReceiptDraft>(initial ? { ...initial } : blankDraft()); const [busy, setBusy] = useState(false);
+  const { db, can, user } = useAuth();
+  const [d, setD] = useState<ReceiptDraft>(initial ? { ...initial } : blankDraft()); const [busy, setBusy] = useState(false); const [confirmed, setConfirmed] = useState(false); const [askBir, setAskBir] = useState(false);
   const [img, setImg] = useState(scan?.dataUrl ?? ''); const [zoom, setZoom] = useState(false);
   useEffect(() => { if (initial) void scanUrl(initial).then(setImg); }, [initial?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (scan) setImg(scan.dataUrl); }, [scan?.dataUrl]);
@@ -33,17 +33,17 @@ function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRota
   const save = async () => {
     setBusy(true);
     try {
-      if (initial) await updateReceipt(initial.id, { ...d }); else await saveNewReceipt(d, scan!);
+      if (initial) await updateReceipt(initial.id, { ...d }); else await saveNewReceipt(d, scan!, user?.name ?? user?.email ?? 'Scanner');
       toast(initial ? 'Receipt updated' : 'Receipt saved with its scan', 'ok'); onSaved(); onClose();
     } catch (e) { toast(e instanceof Error ? e.message : 'Could not save the receipt', 'err'); }
     setBusy(false);
   };
-  const post = () => {
+  const post = (bir: boolean) => {
     if (!initial) return; if (!d.total_amount) return toast('Enter the total amount first.', 'err');
     const e = attempt(() => saveExpense({ date: d.receipt_date ?? today(), payee: d.supplier_name ?? 'Receipt', category: (d.category as ExpenseCategory) ?? 'Other', job_id: d.job_id ?? undefined, branch_id: db.branches[0].id, amount: d.total_amount!, vat: d.supplier_vat === 'VAT' ? (d.vat_amount ?? 0) : 0, wht: 0,
       method: ((d.payment_method as ExpenseMethod) ?? 'Cash'), approval: 'Pending', paid: true, petty_cash: false, recurring: null, notes: `Scanned receipt ${d.receipt_no ?? ''}${d.description ? ` · ${d.description}` : ''}`.trim(),
-      supplier_name: d.supplier_name ?? undefined, supplier_tin: d.supplier_tin ?? undefined, supplier_address: d.supplier_address ?? undefined, supplier_vat: (d.supplier_vat as ReceiptVat | null) ?? undefined, supplier_invoice_no: d.receipt_no ?? undefined }), 'Posted as an expense, pending approval') as { id: string } | undefined;
-    if (e) void updateReceipt(initial.id, { ...d, status: 'Posted', expense_id: e.id }).then(() => { onSaved(); onClose(); });
+      supplier_name: d.supplier_name ?? undefined, supplier_tin: d.supplier_tin ?? undefined, supplier_address: d.supplier_address ?? undefined, supplier_vat: (d.supplier_vat as ReceiptVat | null) ?? undefined, supplier_invoice_no: d.receipt_no ?? undefined, bir_use: bir }), 'Posted as an expense, pending approval') as { id: string } | undefined;
+    if (e) void updateReceipt(initial.id, { ...d, status: 'Posted', expense_id: e.id, bir_use: bir }).then(() => { onSaved(); onClose(); });
   };
   const errors = checks.filter((c) => c.level === 'error').length;
 
@@ -52,8 +52,8 @@ function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRota
       <button className="btn" onClick={onClose}>{locked ? 'Close' : 'Cancel'}</button>
       {initial && !locked && can('receipts.manage') && <button className="btn danger" disabled={busy} onClick={async () => { if (!confirm('Delete this receipt and its scan record? It goes to the recycle bin.')) return; try { await deleteReceipt(initial.id); toast('Receipt deleted', 'ok'); onSaved(); onClose(); } catch (e) { toast(e instanceof Error ? e.message : 'Could not delete', 'err'); } }}>Delete</button>}
       {initial && img && <a className="btn" href={img} download={`receipt-${d.receipt_no ?? initial.id.slice(0, 6)}.jpg`}>Download scan</a>}
-      {!locked && <button className="btn" disabled={busy || reading?.busy} onClick={save}>{initial ? 'Save changes' : 'Save receipt'}</button>}
-      {initial && !locked && !own && can('expenses.edit') && <button className="btn primary" disabled={busy} onClick={post}>Post as expense</button>}
+      {!locked && <button className="btn primary" disabled={busy || reading?.busy || (!initial && !confirmed)} title={!initial && !confirmed ? 'Tick the box to confirm the details first' : undefined} onClick={save}>{initial ? 'Save changes' : 'Save receipt'}</button>}
+      {initial && !locked && !own && can('expenses.edit') && <button className="btn primary" disabled={busy} onClick={() => setAskBir(true)}>Post as expense</button>}
     </>}>
       <div className="rc-grid">
         <div className="rc-scan">
@@ -84,6 +84,9 @@ function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRota
             <Field label="Related job (optional)" className="full"><select disabled={locked} value={d.job_id ?? ''} onChange={(e) => set('job_id', e.target.value || null)}><option value="">— overhead —</option>{live(db.jobs).sort((a, b) => b.start_at.localeCompare(a.start_at)).slice(0, 80).map((j) => <option key={j.id} value={j.id}>{j.number} · {db.clients.find((c) => c.id === j.client_id)?.name}</option>)}</select></Field>
             <Field label="What was bought" className="full">{text('description', 'description')}</Field>
           </div>
+          {!initial && <label className="check rc-confirm"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> <span><b>I checked every detail against the receipt.</b> Supplier, TIN, address, receipt no., date and amounts match what is printed. <small>Saved under {user?.name ?? 'your name'}.</small></span></label>}
+          {initial && <div className="small muted">{initial.confirmed_by ? `Details confirmed by ${initial.confirmed_by}${initial.confirmed_at ? ` on ${fmtDate(initial.confirmed_at.slice(0, 10))}` : ''}.` : 'Not confirmed by the scanner.'}</div>}
+          {initial && initial.status === 'Posted' && can('receipts.manage') && <BirChoice r={initial} onSaved={onSaved} />}
           <div className="stack" style={{ gap: 4 }}>
             {checks.map((c: Check, i) => <div key={i} className="small" style={{ color: c.level === 'error' ? 'var(--red)' : c.level === 'warn' ? 'var(--amber)' : 'var(--muted)' }}>{c.level === 'error' ? '⛔' : c.level === 'warn' ? '⚠️' : 'ℹ️'} {c.text}</div>)}
             {!checks.length && <div className="small" style={{ color: 'var(--green)' }}>✓ Everything BIR needs is on this receipt.</div>}
@@ -91,7 +94,31 @@ function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRota
           </div>
         </div>
       </div>
+      {askBir && (
+        <Modal title="Use this receipt for BIR filing?" onClose={() => setAskBir(false)} footer={<button className="btn" onClick={() => setAskBir(false)}>Cancel</button>}>
+          <div className="stack">
+            <div>Posting creates the expense for <b>{d.supplier_name ?? 'this supplier'}</b> ({money(d.total_amount ?? 0)}). You decide now whether it goes on the BIR Summary List of Purchases. You can change this later while the expense is not yet approved.</div>
+            {!readyForBir(checks) && <div className="alert warn small">This receipt still has missing details (⛔). BIR needs the supplier TIN, address and receipt number.</div>}
+            <div className="row"><button className="btn primary lg" onClick={() => { setAskBir(false); post(true); }}>Yes, use it for BIR</button><button className="btn lg" onClick={() => { setAskBir(false); post(false); }}>No, expense only</button></div>
+          </div>
+        </Modal>
+      )}
     </Modal>
+  );
+}
+
+function BirChoice({ r, onSaved }: { r: Receipt; onSaved: () => void }) {
+  const set = async (v: boolean) => {
+    try {
+      if (r.expense_id) { const e = attempt(() => store.update('expenses', r.expense_id!, { bir_use: v } as never), 'Updated'); if (!e) return; }
+      await updateReceipt(r.id, { bir_use: v }); toast(v ? 'Marked for BIR filing' : 'Marked as not for BIR', 'ok'); onSaved();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Could not update', 'err'); }
+  };
+  return (
+    <div className="card" style={{ padding: 10 }}>
+      <b>Use for BIR filing?</b> <span className="small muted">{r.bir_use === null ? 'Not decided yet.' : r.bir_use ? 'Yes: it goes on the Summary List of Purchases.' : 'No: expense only.'}</span>
+      <div className="row" style={{ marginTop: 6 }}><button className={`btn sm${r.bir_use === true ? ' primary' : ''}`} onClick={() => set(true)}>Yes</button><button className={`btn sm${r.bir_use === false ? ' primary' : ''}`} onClick={() => set(false)}>No</button></div>
+    </div>
   );
 }
 
@@ -157,8 +184,8 @@ export default function Receipts() {
         <input type="month" style={{ width: 180 }} value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Month" />
         <input placeholder="Search supplier, TIN, receipt no." value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 280 }} />
         <select style={{ width: 200 }} value={only} onChange={(e) => setOnly(e.target.value as typeof only)}><option value="">All receipts</option><option value="fix">Need attention</option><option value="posted">Posted as expense</option></select>
-        <button className="btn" onClick={() => exportCsv({ title: `Receipts ${month}`, headers: ['Date', 'Supplier', 'TIN', 'Address', 'Receipt no.', 'VAT status', 'Total', 'VATable sales', 'VAT', 'Exempt', 'Zero-rated', 'Category', 'BIR ready', 'Status'], types: ['text', 'text', 'text', 'text', 'text', 'text', 'money', 'money', 'money', 'money', 'money', 'text', 'text', 'text'],
-          rows: shown.map((r) => [r.receipt_date ?? '', r.supplier_name ?? '', fmtTin(r.supplier_tin ?? ''), r.supplier_address ?? '', r.receipt_no ?? '', r.supplier_vat ?? '', r.total_amount ?? 0, r.vatable_sales ?? 0, r.vat_amount ?? 0, r.exempt_amount ?? 0, r.zero_rated_amount ?? 0, r.category ?? '', readyForBir(checkReceipt(r, rows, r.id)) ? 'Yes' : 'No', r.status]) })}>Export CSV</button>
+        <button className="btn" onClick={() => exportCsv({ title: `Receipts ${month}`, headers: ['Date', 'Supplier', 'TIN', 'Address', 'Receipt no.', 'VAT status', 'Total', 'VATable sales', 'VAT', 'Exempt', 'Zero-rated', 'Category', 'Use for BIR', 'Status'], types: ['text', 'text', 'text', 'text', 'text', 'text', 'money', 'money', 'money', 'money', 'money', 'text', 'text', 'text'],
+          rows: shown.map((r) => [r.receipt_date ?? '', r.supplier_name ?? '', fmtTin(r.supplier_tin ?? ''), r.supplier_address ?? '', r.receipt_no ?? '', r.supplier_vat ?? '', r.total_amount ?? 0, r.vatable_sales ?? 0, r.vat_amount ?? 0, r.exempt_amount ?? 0, r.zero_rated_amount ?? 0, r.category ?? '', r.status !== 'Posted' ? '' : r.bir_use === true ? 'Yes' : r.bir_use === false ? 'No' : 'Not decided', r.status]) })}>Export CSV</button>
       </div>
       {err && <div className="alert warn">{err}</div>}
       {!CLOUD && <div className="alert info small" style={{ marginBottom: 10 }}>Demo mode: scans are kept in this browser only. On the live site they go to private storage and the AI reads them.</div>}
@@ -186,7 +213,11 @@ function Row({ r, all, onOpen }: { r: Receipt; all: Receipt[]; onOpen: () => voi
       <td>{r.receipt_no || <span className="muted">—</span>}<div className="small muted">{r.doc_type}</div></td>
       <td>{r.supplier_vat ? <Badge tone={r.supplier_vat === 'VAT' ? 'blue' : 'gray'}>{r.supplier_vat}</Badge> : <span className="muted">—</span>}</td>
       <td className="num">{r.total_amount === null ? '—' : money(r.total_amount)}</td><td className="num">{r.vatable_sales ? money(r.vatable_sales) : '—'}</td><td className="num">{r.vat_amount ? money(r.vat_amount) : '—'}</td>
-      <td title={ready ? 'Has everything BIR needs' : checks.filter((c) => c.level === 'error').map((c) => c.text).join('\n')}>{ready ? <Badge tone="green">Yes</Badge> : <Badge tone="red">No</Badge>}{r.status === 'Posted' && <div className="small muted">posted</div>}</td>
+      <td title={ready ? 'Has everything BIR needs' : checks.filter((c) => c.level === 'error').map((c) => c.text).join('\n')}>
+        {r.status !== 'Posted' ? <><span className="muted">—</span><div className="small muted">{ready ? 'complete' : 'incomplete'} · not posted</div></>
+          : r.bir_use === true ? <><Badge tone="green">Yes</Badge>{!ready && <div className="small" style={{ color: 'var(--red)' }}>incomplete</div>}</>
+          : r.bir_use === false ? <Badge tone="gray">No</Badge> : <Badge tone="amber">Decide</Badge>}
+      </td>
     </tr>
   );
 }

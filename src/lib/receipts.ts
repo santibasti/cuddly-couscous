@@ -14,8 +14,9 @@ export interface Receipt {
   payment_method: string | null; category: string | null; job_id: string | null; description: string | null; notes: string | null;
   image_path: string | null; image_data?: string | null; ocr: { unreadable: string[]; low_confidence: string[]; notes: string; buyer?: { name: string | null; tin: string | null; address: string | null } } | null;
   status: 'Captured' | 'Posted'; expense_id: string | null;
+  bir_use: boolean | null; confirmed_by: string | null; confirmed_at: string | null;
 }
-export type ReceiptDraft = Omit<Receipt, 'id' | 'created_at' | 'created_by' | 'status' | 'expense_id' | 'image_path' | 'image_data'>;
+export type ReceiptDraft = Omit<Receipt, 'id' | 'created_at' | 'created_by' | 'status' | 'expense_id' | 'image_path' | 'image_data' | 'bir_use' | 'confirmed_by' | 'confirmed_at'>;
 export interface Reading { fields: Partial<Record<string, string | number | null>>; unreadable: string[]; low_confidence: string[]; notes: string; rotate?: number; buyer?: { name: string | null; tin: string | null; address: string | null } }
 
 export const FIELD_LABEL: Record<string, string> = {
@@ -106,16 +107,17 @@ export async function listReceipts(): Promise<Receipt[]> {
 }
 const cols = (d: ReceiptDraft) => ({ receipt_date: d.receipt_date, doc_type: d.doc_type, receipt_no: d.receipt_no, supplier_name: d.supplier_name, supplier_tin: d.supplier_tin, supplier_address: d.supplier_address, supplier_vat: d.supplier_vat, total_amount: d.total_amount, vatable_sales: d.vatable_sales, vat_amount: d.vat_amount, exempt_amount: d.exempt_amount, zero_rated_amount: d.zero_rated_amount, payment_method: d.payment_method, category: d.category, job_id: d.job_id, description: d.description, notes: d.notes, ocr: d.ocr });
 
-export async function saveNewReceipt(d: ReceiptDraft, scan: { blob: Blob; dataUrl: string }): Promise<Receipt> {
+export async function saveNewReceipt(d: ReceiptDraft, scan: { blob: Blob; dataUrl: string }, confirmedBy: string): Promise<Receipt> {
+  const conf = { confirmed_by: confirmedBy, confirmed_at: new Date().toISOString() };
   const id = crypto.randomUUID();
   if (!CLOUD) {
     const small = await shrink(scan.dataUrl, 900);
-    const rec: Receipt = { id, created_at: new Date().toISOString(), ...d, image_path: null, image_data: small, status: 'Captured', expense_id: null };
+    const rec: Receipt = { id, created_at: new Date().toISOString(), ...d, image_path: null, image_data: small, status: 'Captured', expense_id: null, bir_use: null, ...conf };
     demoSave([rec, ...demoLoad()]); return rec;
   }
   const path = `${(d.receipt_date ?? new Date().toISOString().slice(0, 10)).slice(0, 7)}/${id}.jpg`;
   const up = await supabase().storage.from('receipts').upload(path, scan.blob, { contentType: 'image/jpeg' }); if (up.error) throw new Error(up.error.message);
-  const { data, error } = await supabase().from('receipts').insert({ id, ...cols(d), image_path: path, status: 'Captured' }).select('*').single();
+  const { data, error } = await supabase().from('receipts').insert({ id, ...cols(d), ...conf, image_path: path, status: 'Captured' }).select('*').single();
   if (error) throw new Error(error.message); return data as Receipt;
 }
 export async function updateReceipt(id: string, patch: Partial<Receipt>): Promise<void> {
