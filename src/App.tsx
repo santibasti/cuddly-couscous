@@ -14,6 +14,7 @@ import { AvailabilityPrompt } from '@/components/AvailabilityPrompt';
 import { fmtStamp } from '@/lib/util';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
+const Receipts = lazy(() => import('@/pages/Receipts'));
 const Today = lazy(() => import('@/pages/Today'));
 const Maintenance = lazy(() => import('@/pages/Maintenance'));
 const Clients = lazy(() => import('@/pages/Clients'));
@@ -62,6 +63,7 @@ const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: st
   { to: '/sales', key: 'sales', label: 'Quotations', icon: 'sales' },
   { to: '/inbox', key: 'inbox', label: 'Facebook Inbox', icon: 'clients' },
   { to: '/marketing', key: 'marketing', label: 'Marketing AI', icon: 'reports' },
+  { to: '/receipts', key: 'receipts', label: 'Receipts', icon: 'camera', group: 'Finance & People' },
   { to: '/finance', key: 'finance', label: 'Finance', icon: 'finance', group: 'Finance & People' },
   { to: '/payroll', key: 'payroll', label: 'Payroll', icon: 'payroll' },
   { to: '/employees', key: 'employees', label: 'Employees', icon: 'employees' },
@@ -164,6 +166,7 @@ function Shell() {
           <Routes>
             <Route path="/dashboard" element={<Guard area="dashboard"><Dashboard /></Guard>} />
             <Route path="/today" element={<Guard area="today"><Today /></Guard>} />
+            <Route path="/receipts" element={<Guard area="receipts"><Receipts /></Guard>} />
             <Route path="/maintenance" element={<Guard area="maintenance"><Maintenance /></Guard>} />
             <Route path="/clients" element={<Guard area="clients"><Clients /></Guard>} />
             <Route path="/clients/:id" element={<Guard area="clients"><ClientDetail /></Guard>} />

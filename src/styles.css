@@ -1007,3 +1007,10 @@ body:not(.dark) .rt-truck { background: #fff; } .rt-truck svg { width: 18px; hei
 .tdy-steps { grid-template-columns: repeat(6, 1fr); } .tdy-steps li::before { display: none; } .tdy-steps li i.hq { width: auto; height: auto; border: 0; font-size: 13px; font-style: normal; background: none; filter: grayscale(1); } .tdy-steps li.done i.hq { filter: none; }
 .tdy-steps li { font-size: 10px; }
 @media (prefers-reduced-motion: reduce) { .tdy-motiv, .tdy-spark, .rt-fill, .rt-truck, .tdy-live i { animation: none !important; } }
+
+/* Receipts */
+.rc-grid { display: grid; grid-template-columns: minmax(240px, 380px) 1fr; gap: 18px; align-items: start; } @media (max-width: 800px) { .rc-grid { grid-template-columns: 1fr; } }
+.rc-scan { position: sticky; top: 0; display: flex; flex-direction: column; gap: 6px; max-height: 80vh; overflow: auto; border-radius: 12px; background: rgba(120,140,170,.1); padding: 8px; }
+.rc-scan img { width: 100%; height: auto; border-radius: 8px; cursor: zoom-in; } .rc-scan img.zoom { width: 190%; max-width: none; cursor: zoom-out; }
+.rc-thumb { display: inline-block; width: 46px; height: 58px; object-fit: cover; border-radius: 6px; background: rgba(120,140,170,.2); vertical-align: middle; }
+.rc-reading { display: flex; align-items: center; gap: 10px; } .rc-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: rcSpin .8s linear infinite; display: inline-block; } @keyframes rcSpin { to { transform: rotate(360deg); } }
