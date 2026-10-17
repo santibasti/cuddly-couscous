@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth, live, store } from '@/lib/store';
 import { EmployeeCard } from '@/components/EmployeeCard';
+import { TopThree } from '@/components/TopThree';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { bulkApproveAttendance, clockIn, clockOut, decideAttendance, decideCorrection, manualAttendance, requestCorrection } from '@/lib/actions';
@@ -132,11 +133,13 @@ export default function Attendance() {
       </PageHead>
       <Tabs tabs={[...(employee && can('attendance.own') ? [{ id: 'me' as const, label: 'My clock' }] : []), ...(canView ? [{ id: 'daily' as const, label: 'Daily crew attendance' }, { id: 'corrections' as const, label: 'Corrections', count: pendingCorr.length }] : [])]} value={tab} onChange={(t) => { setTab(t); setSp({ tab: t }); }} />
 
+      {tab === 'me' && employee && <TopThree meId={employee.id} />}
       {tab === 'me' && employee && <MyClock emp={employee} />}
       {tab === 'me' && !employee && <div className="alert warn">Your user account is not linked to an employee record.</div>}
 
       {tab === 'daily' && canView && (
         <>
+          <TopThree meId={employee?.id} />
           <div className="grid g4 keep2" style={{ marginBottom: 12 }}>
             <Stat k="Present / clocked in" v={present} s={`of ${rows.filter((r) => !r.isRest).length} scheduled`} tone="good" /><Stat k="Late" v={late} tone={late ? 'warn' : undefined} />
             <Stat k="No record" v={date <= T ? missing : 0} tone={missing && date <= T ? 'bad' : undefined} /><Stat k="Awaiting approval" v={rows.filter((r) => r.a?.approval === 'Pending').length} tone="warn" />

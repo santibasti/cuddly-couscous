@@ -902,3 +902,15 @@ body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small {
 .ec-lines { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 8px 0 0; padding-top: 10px; border-top: 1px dashed var(--line); }
 .ec-lines div { display: grid; } .ec-lines dt { font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; opacity: .6; } .ec-lines dd { margin: 0; font-weight: 700; font-size: 14px; color: var(--head); }
 .ec-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* attendance: Top 3 podium */
+.top3 { border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px 16px; margin-bottom: 14px; background: radial-gradient(900px 220px at 50% -40px, rgba(18, 167, 216, .18), transparent 70%), linear-gradient(180deg, rgba(245, 184, 61, .07), transparent 50%), var(--panel); box-shadow: 0 6px 22px rgba(11, 37, 69, .10); }
+.top3-head { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; } .top3-head b { font-size: 17px; color: var(--head); } .top3-trophy { font-size: 28px; filter: drop-shadow(0 2px 4px rgba(245, 184, 61, .5)); }
+.top3-row { display: flex; justify-content: center; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.top3-card { position: relative; display: grid; justify-items: center; gap: 4px; text-align: center; min-width: 190px; flex: 1 1 190px; max-width: 260px; padding: 22px 12px 14px; border-radius: 16px; border: 1.5px solid color-mix(in srgb, var(--medal) 60%, transparent); background: linear-gradient(180deg, color-mix(in srgb, var(--medal) 16%, transparent), transparent 70%), var(--panel); box-shadow: 0 8px 20px rgba(11, 37, 69, .12); }
+.top3-card.r1 { order: 2; padding-top: 30px; box-shadow: 0 12px 30px color-mix(in srgb, var(--medal) 45%, transparent); transform: translateY(-6px); } .top3-card.r2 { order: 1; } .top3-card.r3 { order: 3; }
+.top3-card .avatar { box-shadow: 0 0 0 4px var(--panel), 0 0 0 7px var(--medal), 0 8px 18px rgba(11, 37, 69, .3); }
+.top3-rank { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--medal); color: #0b2545; font-weight: 900; font-size: 13px; padding: 3px 12px; border-radius: 999px; box-shadow: 0 3px 8px rgba(0, 0, 0, .25); }
+.top3-name { color: var(--head); font-size: 15px; margin-top: 6px; line-height: 1.2; } .top3-num { font-size: 13px; color: var(--head); } .top3-num b { font-size: 17px; }
+.top3-card.me { outline: 3px solid var(--green); } .top3-you { font-weight: 800; font-size: 13px; color: var(--green); }
+@media (max-width: 640px) { .top3-card.r1, .top3-card.r2, .top3-card.r3 { order: 0; transform: none; max-width: none; } }
