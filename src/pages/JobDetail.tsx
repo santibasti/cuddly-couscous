@@ -18,6 +18,7 @@ import { FollowUpBanner } from '@/components/workflow/Satisfaction';
 import { WorkflowPanel } from '@/components/workflow/WorkflowPanel';
 import { JobOrderPanel } from '@/components/JobOrderPanel';
 import { ReportIncidentModal } from '@/components/workflow/Incidents';
+import { deleteBooking } from '@/lib/deletion';
 import { overrideJobStatus } from '@/lib/workflow';
 import { serviceReportPdf } from '@/lib/export';
 import { fmtDateTime, fmtStamp, money, nowLocal } from '@/lib/util';
@@ -63,6 +64,7 @@ export default function JobDetail() {
         {can('jobs.edit') && !locked && <button className="btn" onClick={() => setEdit(true)}><Icon name="edit" />Edit / reassign</button>}
         {can('jobs.edit') && j.status === 'Pending' && <button className="btn" onClick={() => attempt(() => setJobStatus(j.id, 'Confirmed'), 'Job confirmed')}>Confirm</button>}
         {can('jobs.edit') && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status) && <button className="btn danger" onClick={async () => { const r = await ask('Cancel job', 'Reason for cancellation'); if (r) attempt(() => setJobStatus(j.id, 'Cancelled', r), 'Job cancelled'); }}>Cancel</button>}
+        {user?.role === 'owner' && <button className="btn danger" onClick={async () => { const r = await ask('Delete booking ' + j.number, 'This removes the booking even if it has started. The crew, vehicle and equipment are released. Reason', { required: true }); if (r && attempt(() => deleteBooking(j.id, r), 'Booking deleted — crew and equipment released')) nav('/jobs'); }}><Icon name="trash" />Delete (Owner)</button>}
         {(can('jobs.all') || can('dispatch.run')) && (() => { const sr = reportsOfJob(db, j.id)[0]; return sr ? <Link to={`/service-reports/${sr.id}`} className="btn">Service report {sr.number}</Link> : <button className="btn" onClick={() => { const r = attempt(() => createServiceReport(j.id), 'Service report started'); if (r) nav(`/service-reports/${(r as { id: string }).id}`); }}>Make service report</button>; })()}
         {(can('photos.manage') || can('jobs.mine')) && <Link to={`/photos?job=${j.id}`} className="btn"><Icon name="camera" />Photos</Link>}
         {(can('dispatch.run') || can('incidents.manage')) && <button className="btn" onClick={() => setInc(true)}><Icon name="alert" />Report incident</button>}

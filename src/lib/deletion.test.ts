@@ -40,3 +40,19 @@ describe('deleting clients and inventory', () => {
     D.deleteItem(fresh.id, 'test'); expect(db().items.find((i) => i.id === fresh.id)!.deleted_at).toBeTruthy();
   });
 });
+
+describe('owner deletes a started booking', () => {
+  it('releases crew and equipment, owner only', async () => {
+    await store.login('owner@topmop.ph', 'topmop123');
+    const emp = db().employees.find((e) => e.department === 'Field Operations')!;
+    const c = db().clients[0]; const s = db().sites.find((x) => x.client_id === c.id) ?? db().sites[0];
+    const j = A.saveJob({ client_id: c.id, site_id: s.id, branch_id: db().branches[0].id, service_codes: ['WALL'], scope: 'x', start_at: '2032-03-03T08:00', end_at: '2032-03-03T12:00', status: 'Confirmed', leader_id: emp.id, crew_ids: [], equipment_ids: [], materials: [], contract_amount: 0, checklist: [] } as never) as { id: string };
+    store.update('jobs', j.id, { status: 'In Progress' } as never);
+    expect(() => D.deleteBooking(j.id, '')).toThrow(/reason/i);
+    D.deleteBooking(j.id, 'test booking');
+    const after = db().jobs.find((x) => x.id === j.id)!;
+    expect(after.deleted_at).toBeTruthy(); expect(after.leader_id).toBeFalsy();
+    await store.login('ops@topmop.ph', 'topmop123');
+    expect(() => D.deleteBooking(db().jobs[0].id, 'x')).toThrow(/Only the Owner/);
+  });
+});

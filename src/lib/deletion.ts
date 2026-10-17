@@ -4,6 +4,7 @@
 import { store, RuleError } from './store';
 import type { DB, TableName } from './types';
 import { isDone } from './business';
+import { performReturn } from './actions';
 
 const fail = (m: string): never => { throw new RuleError(m); };
 const live = <X extends { deleted_at?: string | null }>(a: X[] | undefined) => (a ?? []).filter((x) => !x.deleted_at);
@@ -62,4 +63,43 @@ export function deleteItem(id: string, reason: string) {
   if (plan.blockers.length) fail(`${i.name} cannot be deleted: it has ${plan.blockers.join('; ')}. Keep it for the record and set its stock to zero by adjustment instead.`);
   if (!reason.trim()) fail('Give a reason for the deletion.');
   store.withReason(reason.trim(), () => store.remove('items', id));
+}
+
+/**
+ * Owner only: delete a booking even after it has started (test bookings). The crew, vehicle and equipment are released at once,
+ * anything still checked out for it is returned, and its job order, workflow and service report go to the Recycle bin with it.
+ * A job with an approved invoice or a verified payment is refused: that money history must stay.
+ */
+export function planBookingDelete(db: DB, jobId: string): DeletePlan {
+  const blockers: string[] = []; const cascade: DeletePlan['cascade'] = []; const counts: string[] = [];
+  const inv = live(db.invoices).filter((i) => i.job_id === jobId && i.status !== 'Draft' && i.status !== 'Reversed'); if (inv.length) blockers.push(`${plural(inv.length, 'approved invoice')} (billing history)`);
+  const invIds = new Set(live(db.invoices).filter((i) => i.job_id === jobId).map((i) => i.id));
+  const pay = live(db.payments).filter((p) => !p.reversed && (p.job_id === jobId || (p.invoice_id && invIds.has(p.invoice_id)))); if (pay.length) blockers.push(plural(pay.length, 'recorded payment'));
+  if (blockers.length) return { blockers, cascade, counts };
+  const add = (table: TableName, rows: { id: string }[], label: string) => { rows.forEach((r) => cascade.push({ table, id: r.id })); if (rows.length) counts.push(plural(rows.length, label)); };
+  add('job_orders', live(db.job_orders).filter((o) => o.job_id === jobId), 'Job Order');
+  add('workflows', live(db.workflows).filter((w) => w.job_id === jobId), 'job workflow');
+  add('service_reports', live(db.service_reports).filter((r) => r.job_id === jobId), 'service report');
+  add('invoices', live(db.invoices).filter((i) => i.job_id === jobId && (i.status === 'Draft' || i.status === 'Reversed')), 'draft invoice');
+  return { blockers, cascade, counts };
+}
+
+export function deleteBooking(id: string, reason: string) {
+  if (store.user?.role !== 'owner') fail('Only the Owner can delete a booking.');
+  const db = store.getDB(); const j = live(db.jobs).find((x) => x.id === id) ?? fail('Booking not found.');
+  const plan = planBookingDelete(db, id);
+  if (plan.blockers.length) fail(`${j.number} cannot be deleted: it has ${plan.blockers.join('; ')}. That history must stay — cancel the booking instead.`);
+  if (!reason.trim()) fail('Give a reason for the deletion.');
+  const held = [...(j.leader_id ? [j.leader_id] : []), ...j.crew_ids];
+  const names = held.map((e) => db.employees.find((x) => x.id === e)?.full_name ?? e).join(', ');
+  store.withReason(reason.trim(), () => {
+    for (const c of live(db.checkouts).filter((x) => x.job_id === id)) {
+      if (c.status === 'Released') performReturn(c.id, { condition: 'Good', damage_notes: '', missing: '' });
+      else if (c.status === 'Requested') store.update('checkouts', c.id, { status: 'Rejected', note: `Booking ${j.number} deleted` } as never, 'update', `Equipment request cancelled — booking ${j.number} deleted`);
+    }
+    store.update('jobs', id, { leader_id: undefined, crew_ids: [], vehicle_id: undefined, equipment_ids: [] } as never, 'update', `Booking ${j.number} deleted — released ${names || 'no crew'}${j.vehicle_id || j.equipment_ids.length ? ' and its vehicle / equipment' : ''}`);
+    for (const x of plan.cascade) store.remove(x.table, x.id, { cascade: true });
+    store.remove('jobs', id, { cascade: true });
+  });
+  return plan;
 }
