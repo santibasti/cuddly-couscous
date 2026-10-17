@@ -782,6 +782,8 @@ export interface Expense extends Base {
   reversed?: boolean;
   /** an employee paid this out of pocket: Finance pays them back (reimbursed_* is filled in when done) */
   paid_by_employee?: string; reimbursed_at?: string; reimbursed_by?: string; reimbursed_via?: string;
+  /** BIR Summary List of Purchases: the supplier's registered details, as printed on the supplier's invoice / official receipt */
+  supplier_name?: string; supplier_tin?: string; supplier_address?: string; supplier_vat?: 'VAT' | 'Non-VAT' | 'Zero-rated' | 'Exempt'; supplier_invoice_no?: string; purchase_kind?: 'Goods' | 'Services' | 'Capital goods';
 }
 export interface PettyCashEntry extends Base {
   date: string;
@@ -930,6 +932,8 @@ export interface Settings {
   pay_by_day?: boolean;
   fb_ai?: { mode: 'off' | 'suggest' | 'auto'; notes: string };
   /** Marketing AI: writes and posts to the Facebook Page. approve = I approve each post, auto = posts go out on schedule. */
+  /** BIR compliance tab: how a sale is classified on the SLS when it is not plain VATable, and rows left out of the lists (by record id) */
+  bir?: { sls_class?: Record<string, 'vatable' | 'zero' | 'exempt'>; sls_skip?: string[]; slp_skip?: string[] };
   marketing?: { mode: 'off' | 'approve' | 'auto'; per_week: number; days: number[]; time: string; topics: string[]; voice: string; tone?: string; website?: string; brief?: string; email?: string; phone?: string; facebook?: string };
   client_sms?: { enabled: boolean; day_before_time: string; morning_time: string };
   reminder_days: { quote_expiry: number; doc_expiry: number; chemical_expiry: number; invoice_due: number; maintenance: number };

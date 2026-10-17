@@ -954,3 +954,4 @@ body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small {
 .jchip .jl3 { font-size: 11px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 720px) { .cal.month .jchip .jl3 { display: none; } }
 .jchip .jl3 { white-space: normal; overflow: visible; line-height: 1.25; margin-top: 1px; overflow-wrap: anywhere; }
+.tbl.bir td.num, .tbl.bir th.num { white-space: nowrap; } .tbl.bir td:nth-child(3) { white-space: nowrap; } .tbl.bir { font-size: 13px; }

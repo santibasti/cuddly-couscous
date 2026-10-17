@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
+import { BirCompliance } from '@/components/BirCompliance';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { confirmationOf, paymentPlanLabel, paymentCounts, paymentPending, paymentStatusLabel, isDone, AGING_BUCKETS, aggregateProfit, agingBucket, docTotals, invoiceBalance, invoiceSettled, invoiceState, invoiceTotals, jobProfitRows, profitAndLoss, serviceProfitRows, discountAggregate, discountRows, type AgingBucket, type DiscountAgg, type DiscountRow, type DiscountView } from '@/lib/business';
@@ -12,7 +13,7 @@ import type { ChequeStatus, Expense, ExpenseCategory, ExpenseMethod, Invoice, Pa
 
 const METHODS: ExpenseMethod[] = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Credit Card', 'Other'];
 const CATEGORIES: ExpenseCategory[] = ['Payroll', 'Fuel', 'Materials', 'Equipment Repair', 'Transportation', 'Marketing', 'Rent', 'Utilities', 'Government Fees', 'Subcontractor', 'Toll & Parking', 'Meals & Snacks', 'Other'];
-type Tab = 'overview' | 'invoices' | 'receivables' | 'payments' | 'expenses' | 'profit' | 'discounts';
+type Tab = 'overview' | 'invoices' | 'receivables' | 'payments' | 'expenses' | 'profit' | 'discounts' | 'bir';
 
 /* ---------- Invoice editor ---------- */
 function InvoiceModal({ initial, onClose }: { initial?: Invoice; onClose: () => void }) {
@@ -44,6 +45,7 @@ function InvoiceModal({ initial, onClose }: { initial?: Invoice; onClose: () => 
 function ExpenseModal({ initial, onClose }: { initial?: Expense; onClose: () => void }) {
   const { db } = useAuth();
   const f = useObj<Omit<Expense, 'id' | 'created_at' | 'updated_at' | 'created_by'>>(() => initial ?? { date: today(), payee: '', category: 'Materials', branch_id: db.branches[0].id, amount: 0, vat: 0, wht: 0, method: 'Cash', approval: 'Pending', paid: true, petty_cash: false, recurring: null });
+  const prior = f.v.payee.trim().length > 2 ? [...live(db.expenses)].filter((x) => x.supplier_tin && x.payee.trim().toLowerCase() === f.v.payee.trim().toLowerCase()).sort((a, b) => b.date.localeCompare(a.date))[0] : undefined;
   return (
     <Modal title={initial ? 'Edit expense' : 'New expense'} size="wide" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => {
       if (!f.v.payee.trim()) return attempt(() => { throw new Error('Payee is required.'); });
@@ -58,6 +60,18 @@ function ExpenseModal({ initial, onClose }: { initial?: Expense; onClose: () => 
         <Field label="Recurring"><select value={f.v.recurring ?? ''} onChange={(e) => f.set('recurring', (e.target.value || null) as Expense['recurring'])}><option value="">One-time</option><option value="monthly">Monthly</option></select></Field>
         <div className="row" style={{ alignSelf: 'end' }}><label className="check"><input type="checkbox" checked={f.v.paid} onChange={(e) => f.set('paid', e.target.checked)} />Paid</label><label className="check"><input type="checkbox" checked={f.v.petty_cash} onChange={(e) => f.set('petty_cash', e.target.checked)} />Petty cash</label></div>
         <Field label="Notes" className="full"><input value={f.v.notes ?? ''} onChange={(e) => f.set('notes', e.target.value)} /></Field>
+        <details className="full card" style={{ padding: 10 }} open={!!(f.v.supplier_tin || f.v.supplier_vat)}>
+          <summary><b>BIR details</b> <span className="small muted">— the supplier's registered details for the Summary List of Purchases (copy them from the supplier's invoice / official receipt)</span></summary>
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <Field label="Supplier registered name"><input value={f.v.supplier_name ?? ''} placeholder={f.v.payee} onChange={(e) => f.set('supplier_name', e.target.value)} /></Field>
+            <Field label="Supplier TIN"><input value={f.v.supplier_tin ?? ''} placeholder="000-000-000-00000" onChange={(e) => f.set('supplier_tin', e.target.value)} /></Field>
+            <Field label="Supplier address" className="full"><input value={f.v.supplier_address ?? ''} onChange={(e) => f.set('supplier_address', e.target.value)} /></Field>
+            <Field label="Supplier invoice / receipt no."><input value={f.v.supplier_invoice_no ?? ''} onChange={(e) => f.set('supplier_invoice_no', e.target.value)} /></Field>
+            <Field label="Supplier VAT status"><select value={f.v.supplier_vat ?? ''} onChange={(e) => f.set('supplier_vat', (e.target.value || undefined) as Expense['supplier_vat'])}><option value="">— not set —</option><option value="VAT">VAT-registered</option><option value="Non-VAT">Non-VAT</option><option value="Zero-rated">Zero-rated</option><option value="Exempt">VAT-exempt</option></select></Field>
+            <Field label="Purchase type"><select value={f.v.purchase_kind ?? ''} onChange={(e) => f.set('purchase_kind', (e.target.value || undefined) as Expense['purchase_kind'])}><option value="">— not set —</option><option value="Goods">Goods (other than capital goods)</option><option value="Services">Services</option><option value="Capital goods">Capital goods</option></select></Field>
+            {prior && !f.v.supplier_tin && <div className="full"><button type="button" className="btn sm" onClick={() => { f.set('supplier_name', prior.supplier_name); f.set('supplier_tin', prior.supplier_tin); f.set('supplier_address', prior.supplier_address); f.set('supplier_vat', prior.supplier_vat); f.set('purchase_kind', prior.purchase_kind); }}>Use the details from the last expense for “{f.v.payee}”</button></div>}
+          </div>
+        </details>
         <div className="full row"><PhotoInput label={f.v.receipt ? 'Replace receipt' : 'Upload receipt'} accept="image/*" onAdd={(d) => f.set('receipt', d)} />{f.v.receipt && <img src={f.v.receipt} alt="receipt" style={{ height: 60, borderRadius: 4 }} />}</div>
       </div>
     </Modal>
@@ -69,7 +83,7 @@ export default function Finance() {
   const { db, can } = useAuth();
   const [sp, setSp] = useSearchParams();
   const T = today();
-  const allowed = (t: Tab) => (t === 'expenses' ? can('expenses.view') : t === 'profit' ? can('profit.view') : can('invoices.view'));
+  const allowed = (t: Tab) => (t === 'bir' ? can('reports.finance') : t === 'expenses' ? can('expenses.view') : t === 'profit' ? can('profit.view') : can('invoices.view'));
   const first: Tab = can('invoices.view') ? 'overview' : can('expenses.view') ? 'expenses' : 'profit';
   const [tab, setTabS] = useState<Tab>(((sp.get('tab') as Tab) && allowed(sp.get('tab') as Tab) ? (sp.get('tab') as Tab) : first));
   const setTab = (t: Tab) => { setTabS(t); setSp({ tab: t }, { replace: true }); };
@@ -103,6 +117,7 @@ export default function Finance() {
   const tabs: { id: Tab; label: string; count?: number }[] = [
     ...(can('invoices.view') ? [{ id: 'overview' as Tab, label: 'Overview' }, { id: 'invoices' as Tab, label: 'Invoices', count: invoices.length }, { id: 'receivables' as Tab, label: 'Receivables & aging', count: open.length }, { id: 'payments' as Tab, label: 'Payments' }] : []),
     ...(can('expenses.view') ? [{ id: 'expenses' as Tab, label: 'Expenses & petty cash' }] : []), ...(can('profit.view') ? [{ id: 'profit' as Tab, label: 'Profitability' }, { id: 'discounts' as Tab, label: 'Discounts', count: db.discount_requests.filter((r) => r.status === 'Pending Admin Approval' && !r.deleted_at).length || undefined }] : []),
+    ...(can('reports.finance') ? [{ id: 'bir' as Tab, label: 'BIR compliance' }] : []),
   ];
 
   /* profitability data */
@@ -123,6 +138,7 @@ export default function Finance() {
         {can('expenses.edit') && <button className="btn" onClick={() => setExp('new')}><Icon name="plus" />New expense</button>}
       </PageHead>
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
+      {tab === 'bir' && can('reports.finance') && <BirCompliance />}
 
       {tab === 'overview' && (
         <div className="stack">
