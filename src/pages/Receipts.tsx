@@ -190,7 +190,7 @@ export default function Receipts() {
   const gYes = grp('Yes — BIR only', (r) => r.bir_mode === 'yes' && decided(r)); const gBoth = grp('Both — expense and BIR', (r) => r.bir_mode === 'both' && decided(r)); const gNo = grp('No — expense only', (r) => r.bir_mode === 'no' && decided(r));
   const gWait = grp('Not decided yet', (r) => !decided(r));
   const grand = grp('GRAND TOTAL', () => true);
-  const forBir = { total: round2(gYes.total + gBoth.total), vat: round2(gYes.vat + gBoth.vat), vatable: round2(gYes.vatable + gBoth.vatable), n: gYes.n + gBoth.n };
+  const forBir = gYes;
 
   return (
     <>
@@ -218,7 +218,7 @@ export default function Receipts() {
         <div className="tbl-wrap"><table className="tbl"><thead><tr><th>BIR use</th><th className="num">Receipts</th><th className="num">Total amount</th><th className="num">VATable sales</th><th className="num">Input VAT</th></tr></thead><tbody>
           {[gYes, gBoth, gNo, gWait].map((g) => <tr key={g.label}><td>{g.label}</td><td className="num">{g.n}</td><td className="num">{money(g.total)}</td><td className="num">{money(g.vatable)}</td><td className="num">{money(g.vat)}</td></tr>)}
           <tr style={{ fontWeight: 800 }}><td>{grand.label}</td><td className="num">{grand.n}</td><td className="num">{money(grand.total)}</td><td className="num">{money(grand.vatable)}</td><td className="num">{money(grand.vat)}</td></tr>
-          <tr style={{ color: 'var(--green)', fontWeight: 700 }}><td>For BIR filing (Yes + Both)</td><td className="num">{forBir.n}</td><td className="num">{money(forBir.total)}</td><td className="num">{money(forBir.vatable)}</td><td className="num">{money(forBir.vat)}</td></tr>
+          <tr style={{ color: 'var(--green)', fontWeight: 700 }}><td>For BIR filing (Yes only)</td><td className="num">{forBir.n}</td><td className="num">{money(forBir.total)}</td><td className="num">{money(forBir.vatable)}</td><td className="num">{money(forBir.vat)}</td></tr>
         </tbody></table></div>
         <div className="small muted" style={{ padding: 10 }}>Totals follow the month, search and filter above, so they match the list below. Input VAT counts only receipts from VAT-registered suppliers. The four groups add up to the grand total.</div>
       </Card>
