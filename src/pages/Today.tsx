@@ -1,10 +1,9 @@
 // Happening today: a live board of every job going on today: where, for whom, the final billing, who is on site and who is absent,
 // the vehicle used, and when the crew arrived at and left the site.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth, live } from '@/lib/store';
 import { Avatar } from '@/components/EmployeeCard';
-import { PageHead, Stat } from '@/components/ui';
 import { finalContract, invoiceBalance } from '@/lib/business';
 import { fmtDate, fmtTime, money, nowLocal, today } from '@/lib/util';
 import type { DB, Employee, Job, JobWorkflow } from '@/lib/types';
@@ -55,12 +54,52 @@ const mood = (owner: boolean, done: number, total: number, onSite: number, absen
   : done === total ? (owner ? `All ${total} job${total === 1 ? '' : 's'} are done today, worth ${money}. Well done, boss! 🎉` : `All ${total} job${total === 1 ? '' : 's'} done today. Excellent work, team! 🎉`)
   : onSite ? (owner ? `${onSite} crew${onSite === 1 ? ' is' : 's are'} out earning for TopMop right now — ${total} job${total === 1 ? '' : 's'} today, ${money} to bill.` : `${onSite} crew${onSite === 1 ? ' is' : 's are'} working on site right now. Keep up the great work!`)
   : absent ? (owner ? 'Part of the team is out today, and the rest are covering. Remember to thank them.' : 'Some of the team is out today. Thank you to everyone covering.') : '';
-function Motivation({ owner, done, total, onSite, absent, money, now }: { owner: boolean; done: number; total: number; onSite: number; absent: number; money: string; now: string }) {
+/** Counts up to a number when it changes (whole numbers and pesos), so the board feels alive. */
+function useCountUp(target: number, ms = 900) {
+  const [v, setV] = useState(0); const from = useRef(0);
+  useEffect(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setV(target); from.current = target; return; }
+    const start = performance.now(); const a = from.current; let raf = 0;
+    const tick = (t: number) => { const k = Math.min(1, (t - start) / ms); const e = 1 - Math.pow(1 - k, 3); setV(a + (target - a) * e); if (k < 1) raf = requestAnimationFrame(tick); else from.current = target; };
+    raf = requestAnimationFrame(tick); return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return v;
+}
+const greet = (now: string) => { const h = +now.slice(11, 13); return h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
+function Ring({ done, total }: { done: number; total: number }) {
+  const pct = total ? done / total : 0; const r = 46, c = 2 * Math.PI * r; const n = useCountUp(done);
+  return (
+    <div className="tdy-ring" title={`${done} of ${total} jobs done`}>
+      <svg viewBox="0 0 110 110"><circle cx="55" cy="55" r={r} className="bg" /><circle cx="55" cy="55" r={r} className="fg" style={{ strokeDasharray: c, strokeDashoffset: c * (1 - pct) }} /></svg>
+      <div><b>{Math.round(n)}<small>/{total}</small></b><span>jobs done</span></div>
+    </div>
+  );
+}
+function Hero({ name, owner, done, total, onSite, absent, money, now, day }: { name: string; owner: boolean; done: number; total: number; onSite: number; absent: number; money: string; now: string; day: string }) {
   const slot = Math.floor(wall(now) / (30 * 60000)); const list = owner ? OWNER_MESSAGES : TEAM_MESSAGES; const text = list[slot % list.length]; const extra = mood(owner, done, total, onSite, absent, money);
   return (
-    <div className="tdy-motiv" key={slot}>
-      <span className="tdy-spark">{owner ? '👑' : '✨'}</span>
-      <div><b>{text}</b>{extra && <small>{extra}</small>}</div>
+    <section className="tdy-hero">
+      <div className="tdy-hero-l">
+        <span className="tdy-live"><i />LIVE</span>
+        <h1>{greet(now)}{name ? `, ${name}` : ''} <span className="wave">👋</span></h1>
+        <p>{fmtDate(day)} · {fmtTime(now)} Manila time</p>
+      </div>
+      <blockquote className="tdy-quote" key={slot}>
+        <span className="qm">“</span>
+        <b>{text}</b>
+        {extra && <small>{extra}</small>}
+      </blockquote>
+      <Ring done={done} total={total} />
+    </section>
+  );
+}
+function Kpi({ icon, label, value, sub, tone, fmt, bar }: { icon: string; label: string; value: number; sub: string; tone: string; fmt?: (n: number) => string; bar?: number }) {
+  const n = useCountUp(value);
+  return (
+    <div className={`tdy-kpi k-${tone}`}>
+      <span className="ic">{icon}</span>
+      <div className="kv"><small>{label}</small><b>{fmt ? fmt(n) : Math.round(n)}</b><em>{sub}</em></div>
+      {bar !== undefined && <i className="bar"><u style={{ width: `${Math.min(100, Math.max(0, bar * 100))}%` }} /></i>}
     </div>
   );
 }
@@ -118,16 +157,16 @@ export default function Today() {
   const present = cards.reduce((a, c) => a + c.crew.filter((m) => m.state === 'present').length, 0);
   const absent = cards.reduce((a, c) => a + c.crew.filter((m) => m.state === 'absent').length, 0);
   const billing = cards.reduce((a, c) => a + c.fc.payableTotal, 0);
+  const doneCount = cards.filter((c) => ['back', 'declined'].includes(c.stage)).length;
 
   return (
     <>
-      <PageHead title={<>Happening today <span className="tdy-live"><i />LIVE</span></>} sub={`${fmtDate(day)} · updated ${fmtTime(now)} (Manila)`} />
-      <Motivation owner={user?.role === 'owner'} money={showMoney ? money(billing) : 'today’s work'} done={cards.filter((c) => ['back', 'declined'].includes(c.stage)).length} total={cards.length} onSite={onSite} absent={absent} now={now} />
-      <div className="grid g4 keep2" style={{ marginBottom: 16 }}>
-        <Stat k="Jobs today" v={String(cards.length)} s={`${cards.filter((c) => ['left', 'finished', 'back'].includes(c.stage)).length} finished`} tone="navy" />
-        <Stat k="On site right now" v={String(onSite)} s="Arrived, not yet left" tone={onSite ? 'good' : 'navy'} />
-        <Stat k="Staff present · absent" v={`${present} · ${absent}`} s="Across today's jobs" tone={absent ? 'warn' : 'good'} />
-        {showMoney ? <Stat k="Final billing today" v={money(billing)} s="Including approved additional work" tone="navy" /> : <Stat k="Not yet started" v={String(cards.filter((c) => ['scheduled', 'late'].includes(c.stage)).length)} s="Waiting to dispatch" tone="navy" />}
+      <Hero name={(user?.name ?? '').replace(/^(mr|ms|mrs)\.?\s+/i, '').split(' ')[0]} owner={user?.role === 'owner'} money={showMoney ? money(billing) : 'today’s work'} done={doneCount} total={cards.length} onSite={onSite} absent={absent} now={now} day={day} />
+      <div className="tdy-kpis">
+        <Kpi icon="🗓️" label="Jobs today" value={cards.length} sub={`${doneCount} finished`} tone="blue" bar={cards.length ? doneCount / cards.length : 0} />
+        <Kpi icon="📍" label="On site right now" value={onSite} sub={onSite ? 'Crews working or arrived' : 'Nobody on site'} tone="green" bar={cards.length ? onSite / cards.length : 0} />
+        <Kpi icon="👷" label="Staff present · absent" value={present} fmt={(n) => `${Math.round(n)} · ${absent}`} sub="Across today's jobs" tone={absent ? 'amber' : 'teal'} bar={present + absent ? present / (present + absent) : 0} />
+        {showMoney ? <Kpi icon="💰" label="Final billing today" value={billing} fmt={(n) => money(n)} sub="Including approved additional work" tone="gold" /> : <Kpi icon="⏳" label="Not yet started" value={cards.filter((c) => ['scheduled', 'late'].includes(c.stage)).length} sub="Waiting to dispatch" tone="gold" />}
       </div>
 
       {!cards.length && <div className="card"><div className="empty" style={{ padding: 40, textAlign: 'center' }}>Nothing is scheduled for today.<div className="small muted">Jobs booked for today appear here as soon as they are on the calendar.</div></div></div>}

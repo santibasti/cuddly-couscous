@@ -1016,3 +1016,33 @@ body:not(.dark) .rt-truck { background: #fff; } .rt-truck svg { width: 18px; hei
 .rc-reading { display: flex; align-items: center; gap: 10px; } .rc-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: rcSpin .8s linear infinite; display: inline-block; } @keyframes rcSpin { to { transform: rotate(360deg); } }
 .rc-confirm { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border-radius: 12px; border: 1.5px dashed var(--amber, #f5b83d); background: rgba(245,184,61,.08); } .rc-confirm input { margin-top: 4px; width: 20px; height: 20px; } .rc-confirm small { opacity: .7; }
 .rc-dup { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 700; color: #3b2a00; background: #f5b83d; border-radius: 999px; padding: 1px 8px; }
+
+/* Happening today: hero + KPI tiles */
+.tdy-hero { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.6fr) auto; gap: 24px; align-items: center; padding: 26px 30px; margin-bottom: 18px; border-radius: 24px; color: #fff;
+  background: radial-gradient(900px 300px at 85% -20%, rgba(31,182,201,.55), transparent 60%), radial-gradient(600px 260px at 0% 120%, rgba(245,184,61,.28), transparent 60%), linear-gradient(135deg, #0b2545 0%, #13427a 55%, #0e6f9e 100%);
+  box-shadow: 0 18px 50px rgba(8,25,55,.45); border: 1px solid rgba(255,255,255,.14); }
+.tdy-hero::before, .tdy-hero::after { content: ''; position: absolute; border-radius: 50%; pointer-events: none; filter: blur(2px); }
+.tdy-hero::before { width: 260px; height: 260px; right: -60px; top: -90px; background: radial-gradient(circle, rgba(255,255,255,.16), transparent 70%); animation: tdyFloat 9s ease-in-out infinite; }
+.tdy-hero::after { width: 180px; height: 180px; left: 38%; bottom: -90px; background: radial-gradient(circle, rgba(46,229,157,.2), transparent 70%); animation: tdyFloat 11s ease-in-out infinite reverse; }
+@keyframes tdyFloat { 50% { transform: translate(14px, 10px) scale(1.06); } }
+.tdy-hero > * { position: relative; z-index: 1; }
+.tdy-hero-l h1 { margin: 10px 0 4px; font-size: 30px; line-height: 1.1; letter-spacing: -.01em; font-weight: 800; } .tdy-hero-l p { margin: 0; opacity: .8; font-size: 14px; }
+.tdy-hero .tdy-live { margin: 0; } .wave { display: inline-block; animation: tdyWave 2.6s ease-in-out infinite; transform-origin: 70% 70%; } @keyframes tdyWave { 0%, 60%, 100% { transform: rotate(0); } 10%, 30% { transform: rotate(14deg); } 20%, 40% { transform: rotate(-8deg); } 50% { transform: rotate(10deg); } }
+.tdy-quote { margin: 0; padding: 16px 20px 16px 52px; border-radius: 18px; background: rgba(255,255,255,.1); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.18); position: relative; animation: tdyFade .8s ease both; }
+.tdy-quote .qm { position: absolute; left: 14px; top: -6px; font-size: 64px; line-height: 1; font-family: Georgia, serif; color: #f5b83d; opacity: .9; }
+.tdy-quote b { display: block; font-size: 16.5px; line-height: 1.4; font-weight: 700; } .tdy-quote small { display: block; margin-top: 8px; font-size: 12.5px; opacity: .85; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.2); }
+.tdy-ring { position: relative; width: 132px; height: 132px; flex: none; } .tdy-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.tdy-ring circle { fill: none; stroke-width: 9; stroke-linecap: round; } .tdy-ring .bg { stroke: rgba(255,255,255,.18); } .tdy-ring .fg { stroke: #2ee59d; transition: stroke-dashoffset 1.4s cubic-bezier(.2,.8,.2,1); filter: drop-shadow(0 0 6px rgba(46,229,157,.7)); }
+.tdy-ring > div { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; } .tdy-ring b { font-size: 30px; font-weight: 800; line-height: 1; } .tdy-ring b small { font-size: 15px; opacity: .7; font-weight: 600; } .tdy-ring span { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; opacity: .75; margin-top: 4px; }
+.tdy-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.tdy-kpi { --kc: #4f8df0; position: relative; overflow: hidden; display: flex; align-items: center; gap: 14px; padding: 16px 18px 20px; border-radius: 18px; background: linear-gradient(160deg, rgba(255,255,255,.08), rgba(255,255,255,.02)); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 8px 24px rgba(0,0,0,.2); transition: transform .18s, box-shadow .18s; }
+body:not(.dark) .tdy-kpi { background: #fff; border-color: var(--line); box-shadow: 0 6px 20px rgba(11,37,69,.08); }
+.tdy-kpi:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(0,0,0,.28); }
+.tdy-kpi::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, var(--kc), transparent); }
+.tdy-kpi .ic { flex: none; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 24px; background: color-mix(in srgb, var(--kc) 22%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--kc) 45%, transparent) inset; }
+.tdy-kpi .kv { display: flex; flex-direction: column; min-width: 0; } .tdy-kpi small { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; opacity: .7; } .tdy-kpi b { font-size: 28px; font-weight: 800; line-height: 1.15; letter-spacing: -.01em; white-space: nowrap; } .tdy-kpi em { font-style: normal; font-size: 12px; opacity: .65; }
+.tdy-kpi .bar { position: absolute; left: 18px; right: 18px; bottom: 8px; height: 4px; border-radius: 4px; background: rgba(120,140,170,.2); overflow: hidden; } .tdy-kpi .bar u { display: block; height: 100%; border-radius: 4px; background: var(--kc); transition: width 1.2s ease; text-decoration: none; }
+.k-blue { --kc: #4f8df0; } .k-green { --kc: #2ee59d; } .k-teal { --kc: #1fb6c9; } .k-amber { --kc: #f5b83d; } .k-gold { --kc: #f5b83d; }
+@media (max-width: 1100px) { .tdy-hero { grid-template-columns: 1fr auto; } .tdy-quote { grid-column: 1 / -1; order: 3; } .tdy-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .tdy-hero { grid-template-columns: 1fr; padding: 20px; } .tdy-ring { justify-self: start; width: 110px; height: 110px; } .tdy-hero-l h1 { font-size: 24px; } .tdy-kpi b { font-size: 22px; } .tdy-kpi { padding: 12px 12px 18px; gap: 10px; } .tdy-kpi .ic { width: 38px; height: 38px; font-size: 19px; } }
+@media (prefers-reduced-motion: reduce) { .tdy-hero::before, .tdy-hero::after, .wave, .tdy-quote { animation: none !important; } }
