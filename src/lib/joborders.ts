@@ -18,6 +18,11 @@ const event = (o: JobOrder, action: string, note?: string) => [...o.history, { a
  */
 export function syncJobOrders(jobId?: string) {
   if (!store.can('joborders.manage')) return;
+  // a corrected booking date updates the order in place (it is not a change the client needs a new version for)
+  for (const job of db().jobs.filter((j) => !j.deleted_at && (!jobId || j.id === jobId))) {
+    const o = headOrder(db(), job.id); const bd = job.booking_date ?? job.created_at.slice(0, 10);
+    if (o && o.content.booking_date !== bd) store.system('job_orders', o.id, { content: { ...o.content, booking_date: bd } } as never, `Booking date of ${o.number} updated`);
+  }
   for (const step of planJobOrders(db(), jobId)) {
     try {
       if (step.kind === 'create') {

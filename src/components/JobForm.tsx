@@ -21,7 +21,8 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
   const [newSite, setNewSite] = useState(false);
   const q = fromQuoteId ? db.quotations.find((x) => x.id === fromQuoteId) : undefined;
   const day = defaultStart ?? addDays(today(), 1);
-  const f = useObj<Form>(() => initial ? { ...initial } : {
+  const f = useObj<Form>(() => initial ? { ...initial, booking_date: initial.booking_date ?? initial.created_at.slice(0, 10) } : {
+    booking_date: today(),
     client_id: q?.client_id ?? live(db.clients).find((c) => c.status === 'Active')?.id ?? '', site_id: q?.site_id ?? '', quotation_id: q?.id, branch_id: db.branches[0].id,
     service_codes: q ? [...new Set(q.items.map((i) => i.service_code))] : ['GLASS_EXT'], scope: q?.scope ?? '', start_at: `${day}T08:00`, end_at: `${day}T17:00`, status: 'Pending',
     leader_id: undefined, crew_ids: [], vehicle_id: undefined, equipment_ids: [], materials: [], ppe: ['Hard hat', 'Safety boots', 'Gloves', 'Safety goggles'], checklist: [], findings: '', damage_report: '', equipment_condition_notes: '',
@@ -61,6 +62,7 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
       <div className="form-grid">
         <Field label="Client" required><select value={v.client_id} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', ''); }}>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
         <Field label="Job site" required hint={v.client_id && !sites.length ? 'This client has no service site yet.' : undefined}><div className="row" style={{ gap: 6 }}><select style={{ flex: 1 }} {...f.bind('site_id')}><option value="">— select —</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{v.client_id && can('clients.edit') && <button type="button" className="btn sm" onClick={() => setNewSite(true)}>+ Site</button>}</div></Field>
+        <Field label="Booking date" hint="The day the client booked. Change it if the booking is entered later than it was made."><input type="date" value={v.booking_date ?? ''} onChange={(e) => f.set('booking_date', e.target.value || undefined)} /></Field>
         <Field label="Start"><input type="datetime-local" step={900} {...f.bind('start_at')} /></Field>
         <Field label="End"><input type="datetime-local" step={900} {...f.bind('end_at')} /></Field>
         <div className="full"><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Services</div><div className="row">{live(db.services).map((s) => <label key={s.code} className="check"><input type="checkbox" checked={v.service_codes.includes(s.code)} onChange={() => toggle('service_codes', s.code)} />{s.name}</label>)}</div></div>

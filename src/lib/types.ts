@@ -196,6 +196,7 @@ export interface Job extends Base {
   branch_id: string;
   service_codes: ServiceCode[];
   scope: string;
+  booking_date?: string; // YYYY-MM-DD: the day the client booked (set on the booking form; the Job Order shows it)
   start_at: string; // YYYY-MM-DDTHH:mm
   end_at: string;
   status: JobStatus;

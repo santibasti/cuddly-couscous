@@ -49,7 +49,7 @@ export function buildContent(db: DB, job: Job): JobOrderContent {
     client_address: (c?.address || c?.billing_address || '').trim() || undefined,
     disclaimer: (approvedQ?.disclaimer?.trim() || defaultDisclaimer(s)) || undefined,
     location: { name: site?.name ?? '', address: site?.address ?? '', contact_person: site?.contact_person || c?.contact_person || '', contact_mobile: site?.contact_mobile || c?.mobile || '' },
-    booking_date: job.created_at.slice(0, 10), service_date: job.start_at.slice(0, 10), arrival_from: start, arrival_to: addMin(start, 30), duration_hours: hours,
+    booking_date: job.booking_date ?? job.created_at.slice(0, 10), service_date: job.start_at.slice(0, 10), arrival_from: start, arrival_to: addMin(start, 30), duration_hours: hours,
     service_types: job.service_codes.map((code) => db.services.find((x) => x.code === code)?.name ?? code),
     scope: (approvedQ?.scope || job.scope || '').trim(),
     items: approvedQ ? approvedQ.items.map(line) : [],
