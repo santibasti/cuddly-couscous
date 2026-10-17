@@ -987,3 +987,23 @@ body:not(.dark) .tdy-card { background: #fff; border-color: var(--line); box-sha
 .tdy-car { font-size: 14px; } .tdy-car small { opacity: .6; }
 .tdy-bill { display: flex; flex-direction: column; align-items: flex-end; } .tdy-bill small { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; opacity: .65; } .tdy-bill b { font-size: 22px; font-weight: 800; } .tdy-bill em { font-style: normal; font-size: 11px; opacity: .7; }
 @media (max-width: 520px) { .tdy-grid { grid-template-columns: 1fr; } .tdy-big b { font-size: 16px; } }
+
+/* Happening today: animated route + motivation */
+.tdy-motiv { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; padding: 14px 18px; border-radius: 16px; background: linear-gradient(110deg, rgba(31,182,201,.22), rgba(245,184,61,.16), rgba(46,229,157,.16)); background-size: 200% 100%; animation: tdyShift 14s ease-in-out infinite alternate, tdyFade .8s ease both; border: 1px solid rgba(255,255,255,.14); }
+body:not(.dark) .tdy-motiv { border-color: var(--line); }
+.tdy-motiv b { font-size: 16px; display: block; } .tdy-motiv small { display: block; margin-top: 2px; opacity: .8; font-size: 12.5px; }
+.tdy-spark { font-size: 26px; animation: tdyBob 2.4s ease-in-out infinite; }
+@keyframes tdyShift { to { background-position: 100% 0; } } @keyframes tdyFade { from { opacity: 0; transform: translateY(6px); } } @keyframes tdyBob { 50% { transform: translateY(-4px) rotate(8deg); } }
+.tdy-route { position: relative; padding-top: 22px; }
+.rt-line { position: absolute; left: 8.333%; right: 8.333%; top: 18px; height: 4px; border-radius: 4px; background: repeating-linear-gradient(90deg, rgba(140,160,190,.45) 0 8px, transparent 8px 14px); }
+.rt-fill { position: absolute; left: 0; top: -1px; height: 6px; border-radius: 6px; background: linear-gradient(90deg, var(--ac), #2ee59d); transition: width 1.2s ease; box-shadow: 0 0 10px var(--ac); }
+.tdy-route.moving .rt-fill { background-size: 24px 100%; background-image: repeating-linear-gradient(115deg, rgba(255,255,255,.55) 0 6px, transparent 6px 12px), linear-gradient(90deg, var(--ac), #2ee59d); animation: tdyRoad .8s linear infinite; }
+@keyframes tdyRoad { to { background-position: 24px 0, 0 0; } }
+.rt-truck { position: absolute; top: -20px; width: 30px; height: 30px; margin-left: -15px; transition: left 1.2s ease; color: var(--ac); background: var(--tdy-bg, #0b2545); border-radius: 50%; border: 2px solid var(--ac); display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 10px rgba(0,0,0,.35); z-index: 2; }
+body:not(.dark) .rt-truck { background: #fff; } .rt-truck svg { width: 18px; height: 18px; } .rt-truck.back svg { transform: scaleX(-1); }
+.tdy-route.moving .rt-truck { animation: tdyDrive 1s ease-in-out infinite; }
+@keyframes tdyDrive { 50% { transform: translateY(-3px); } }
+.tdy-route.home .rt-truck { animation: tdyHome 1.6s ease-in-out infinite; } @keyframes tdyHome { 50% { transform: scale(1.15); box-shadow: 0 0 0 8px rgba(46,229,157,.2); } }
+.tdy-steps { grid-template-columns: repeat(6, 1fr); } .tdy-steps li::before { display: none; } .tdy-steps li i.hq { width: auto; height: auto; border: 0; font-size: 13px; font-style: normal; background: none; filter: grayscale(1); } .tdy-steps li.done i.hq { filter: none; }
+.tdy-steps li { font-size: 10px; }
+@media (prefers-reduced-motion: reduce) { .tdy-motiv, .tdy-spark, .rt-fill, .rt-truck, .tdy-live i { animation: none !important; } }
