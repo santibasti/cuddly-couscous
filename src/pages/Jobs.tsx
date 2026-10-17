@@ -67,9 +67,12 @@ export default function Jobs() {
     attempt(() => moveJob(id, `${d}${j.start_at.slice(10)}`), `Rescheduled to ${fmtDate(d)}`);
   };
   const svcShort = (j: Job) => { const n = db.services.find((x) => x.code === j.service_codes[0])?.name ?? ''; return n.replace(/ Cleaning.*$/i, '').replace(/^Exterior\/Interior /, '').slice(0, 16); };
+  const first = (id: string) => (db.employees.find((e) => e.id === id)?.full_name ?? '').replace(/^(Mr|Ms|Mrs)\.?\s+/i, '').split(' ')[0];
+  const crewLine = (j: Job) => { const ids = [...(j.leader_id ? [j.leader_id] : []), ...j.crew_ids]; const shown = ids.slice(0, 4).map(first).filter(Boolean).join(', '); return ids.length ? shown + (ids.length > 4 ? ` +${ids.length - 4}` : '') : 'No crew yet'; };
+  const carName = (j: Job) => db.assets.find((a) => a.id === j.vehicle_id)?.name ?? '';
   const chip = (j: Job) => (
-    <Link key={j.id} to={`/jobs/${j.id}`} className={`jchip k-${kindOf(j.status)}`} draggable={edit && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)} onDragStart={(e) => e.dataTransfer.setData('text/job', j.id)} title={`${j.number} · ${cn(j.client_id)} · ${j.status}`}>
-      <Glyph k={kindOf(j.status)} /><span className="jt"><span className="jl1"><b>{fmtTime(j.start_at)}</b><em>{j.back_job_id ? '↩ Back job' : svcShort(j)}</em></span><span className="jl2">{cn(j.client_id)}</span></span>
+    <Link key={j.id} to={`/jobs/${j.id}`} className={`jchip k-${kindOf(j.status)}`} draggable={edit && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)} onDragStart={(e) => e.dataTransfer.setData('text/job', j.id)} title={`${j.number} · ${cn(j.client_id)} · ${j.status}\nTeam: ${[...(j.leader_id ? [j.leader_id] : []), ...j.crew_ids].map((id) => db.employees.find((e) => e.id === id)?.full_name ?? id).join(', ') || 'none yet'}\nVehicle: ${carName(j) || 'none'}`}>
+      <Glyph k={kindOf(j.status)} /><span className="jt"><span className="jl1"><b>{fmtTime(j.start_at)}</b><em>{j.back_job_id ? '↩ Back job' : svcShort(j)}</em></span><span className="jl2">{cn(j.client_id)}</span><span className="jl3">👤 {crewLine(j)}</span>{carName(j) && <span className="jl3">🚚 {carName(j)}</span>}</span>
     </Link>
   );
   const offCount = jobs.filter(isOff).length;

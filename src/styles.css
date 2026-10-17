@@ -951,3 +951,6 @@ body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small {
 .jmore { border: 1px dashed var(--line); background: transparent; color: var(--muted); border-radius: 8px; padding: 4px; font-size: 12px; font-weight: 650; cursor: pointer; font-family: inherit; } .jmore:hover { color: var(--head); border-color: var(--cyan); }
 .jlegend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-top: 10px; font-size: 12.5px; } .jlegend > span { display: inline-flex; align-items: center; gap: 6px; } .jlegend .jg { width: 20px; height: 20px; } .jlegend .jg svg { width: 12px; height: 12px; }
 @media (max-width: 720px) { .cal.month .jchip { padding: 2px; border-radius: 6px; height: 10px; border-left-width: 3px; } .cal.month .jchip .jt, .cal.month .jchip .jg { display: none; } .cal.month .cell { min-height: 70px; } .cal.month .jmore { font-size: 10px; padding: 0; } .cal.week .cell { min-height: 60px; } }
+.jchip .jl3 { font-size: 11px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) { .cal.month .jchip .jl3 { display: none; } }
+.jchip .jl3 { white-space: normal; overflow: visible; line-height: 1.25; margin-top: 1px; overflow-wrap: anywhere; }
