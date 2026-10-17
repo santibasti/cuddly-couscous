@@ -820,6 +820,7 @@ export function syncBackJobs() {
 }
 const CONFIRM_LIVE: Job['status'][] = ['Confirmed', 'Dispatch Checklist Pending'];
 export function runAutomations() {
+  if (!store.isFresh()) return; // opened from the saved copy: wait for the server's data first
   releaseCancelledJobs();
   syncBackJobs();
   syncFollowUps();

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { store, useAuth, useBoot } from '@/lib/store';
 import { CLOUD } from '@/lib/cloud';
@@ -14,34 +14,38 @@ import { AvailabilityPrompt } from '@/components/AvailabilityPrompt';
 import { fmtStamp } from '@/lib/util';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
-import Maintenance from '@/pages/Maintenance';
-import Clients from '@/pages/Clients';
-import ClientDetail from '@/pages/ClientDetail';
-import Sales from '@/pages/Sales';
-import QuoteEditor from '@/pages/QuoteEditor';
+const Maintenance = lazy(() => import('@/pages/Maintenance'));
+const Clients = lazy(() => import('@/pages/Clients'));
+const ClientDetail = lazy(() => import('@/pages/ClientDetail'));
+const Sales = lazy(() => import('@/pages/Sales'));
+const QuoteEditor = lazy(() => import('@/pages/QuoteEditor'));
 import Jobs from '@/pages/Jobs';
-import JobDetail from '@/pages/JobDetail';
+const JobDetail = lazy(() => import('@/pages/JobDetail'));
 import Attendance from '@/pages/Attendance';
-import Employees from '@/pages/Employees';
-import EmployeeDetail from '@/pages/EmployeeDetail';
-import Payroll from '@/pages/Payroll';
-import PayrollDetail from '@/pages/PayrollDetail';
-import Inventory from '@/pages/Inventory';
-import Assets from '@/pages/Assets';
-import Finance from '@/pages/Finance';
-import Reports from '@/pages/Reports';
-import Admin from '@/pages/Admin';
-import Notifications from '@/pages/Notifications';
-import Portal from '@/pages/Portal';
-import JobOrderPublic from '@/pages/JobOrderPublic';
-import QuotePublic from '@/pages/QuotePublic';
-import JobOrderPage from '@/pages/JobOrderPage';
-import CrewJobOrderPage from '@/pages/CrewJobOrderPage';
-import QuotePreviewPage from '@/pages/QuotePreviewPage';
-import Inbox from '@/pages/Inbox';
-import Marketing from '@/pages/Marketing';
-import PhotoLibrary from '@/pages/PhotoLibrary';
-import ServiceReports from '@/pages/ServiceReports';
+const Employees = lazy(() => import('@/pages/Employees'));
+const EmployeeDetail = lazy(() => import('@/pages/EmployeeDetail'));
+const Payroll = lazy(() => import('@/pages/Payroll'));
+const PayrollDetail = lazy(() => import('@/pages/PayrollDetail'));
+const Inventory = lazy(() => import('@/pages/Inventory'));
+const Assets = lazy(() => import('@/pages/Assets'));
+const Finance = lazy(() => import('@/pages/Finance'));
+const Reports = lazy(() => import('@/pages/Reports'));
+const Admin = lazy(() => import('@/pages/Admin'));
+const Notifications = lazy(() => import('@/pages/Notifications'));
+const Portal = lazy(() => import('@/pages/Portal'));
+const JobOrderPublic = lazy(() => import('@/pages/JobOrderPublic'));
+const QuotePublic = lazy(() => import('@/pages/QuotePublic'));
+const JobOrderPage = lazy(() => import('@/pages/JobOrderPage'));
+const CrewJobOrderPage = lazy(() => import('@/pages/CrewJobOrderPage'));
+const QuotePreviewPage = lazy(() => import('@/pages/QuotePreviewPage'));
+const Inbox = lazy(() => import('@/pages/Inbox'));
+const Marketing = lazy(() => import('@/pages/Marketing'));
+const PhotoLibrary = lazy(() => import('@/pages/PhotoLibrary'));
+const ServiceReports = lazy(() => import('@/pages/ServiceReports'));
+
+/** After the first screen is up, quietly fetch the other pages' code in the background so the first tap on each menu item is instant. */
+const PRELOAD = [() => import('@/pages/Clients'), () => import('@/pages/Sales'), () => import('@/pages/QuoteEditor'), () => import('@/pages/JobDetail'), () => import('@/pages/Employees'), () => import('@/pages/ServiceReports'), () => import('@/pages/PhotoLibrary'), () => import('@/pages/Inventory'), () => import('@/pages/Finance'), () => import('@/pages/Payroll'), () => import('@/pages/Reports'), () => import('@/pages/Admin'), () => import('@/pages/Marketing'), () => import('@/pages/Inbox'), () => import('@/pages/Maintenance'), () => import('@/pages/Assets')];
+function preloadPages() { const ric = (window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback ?? ((f: () => void) => setTimeout(f, 300)); PRELOAD.forEach((load, i) => setTimeout(() => ric(() => { load().catch(() => undefined); }), 2500 + i * 250)); }
 
 const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: string; group?: string }[] = [
   { to: '/dashboard', key: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'Overview' },
@@ -83,11 +87,12 @@ function Shell() {
   const [open, setOpen] = useState(false);
   const [, setTick] = useState(0);
   const [bell, setBell] = useState(false);
+  useEffect(() => { preloadPages(); }, []);
   const bellRef = useRef<HTMLDivElement>(null);
   useEffect(() => setOpen(false), [loc.pathname]);
   useEffect(() => {
-    runAutomations();
-    const t = setInterval(runAutomations, 60000);
+    store.whenFresh(runAutomations);
+    const t = setInterval(() => { if (store.isFresh()) runAutomations(); }, 60000);
     return () => clearInterval(t);
   }, [user?.id]);
   useEffect(() => {
@@ -153,6 +158,7 @@ function Shell() {
         </header>
         <main className="content">
           <AvailabilityPrompt />
+          <Suspense fallback={<div className="page-loading" role="status">Loading…</div>}>
           <Routes>
             <Route path="/dashboard" element={<Guard area="dashboard"><Dashboard /></Guard>} />
             <Route path="/maintenance" element={<Guard area="maintenance"><Maintenance /></Guard>} />
@@ -184,6 +190,7 @@ function Shell() {
             <Route path="/admin" element={<Guard area="admin"><Admin /></Guard>} />
             <Route path="*" element={<Navigate to={homeFor(any)} replace />} />
           </Routes>
+          </Suspense>
           <div className="small muted" style={{ marginTop: 24, textAlign: 'center' }}>TopMop Operations • {CLOUD ? 'Connected to Supabase' : 'Demo data stored in this browser'} • Last sync {fmtStamp(new Date().toISOString())} <Badge tone="teal">{CLOUD ? 'live' : 'demo mode'}</Badge></div>
         </main>
       </div>
@@ -206,6 +213,7 @@ export default function App() {
   if (boot === 'booting') return <div style={{ display: 'grid', placeItems: 'center', height: '100vh', font: '15px system-ui', color: '#0B2545' }}>Loading TopMop…</div>;
   return (
     <>
+      <Suspense fallback={<div className="page-loading" role="status">Loading…</div>}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/portal/*" element={<Portal />} />
@@ -213,6 +221,7 @@ export default function App() {
         <Route path="/q/:token" element={<QuotePublic />} />
         <Route path="/*" element={user ? <Shell /> : <Navigate to="/login" replace />} />
       </Routes>
+      </Suspense>
       {user && <InstallPrompt />}
       <UpdateBanner />
       <Overlays />

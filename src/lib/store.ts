@@ -60,7 +60,11 @@ class Store {
     if (CLOUD) {
       this._db = emptyDB(); this.baseline = this._db; this.bootStatus = 'booting';
       syncHub.setFlusher(() => this.flushCloud());
-      if (typeof window !== 'undefined') setInterval(() => { void this.refreshCloud(); }, 45000);
+      if (typeof window !== 'undefined') {
+        setInterval(() => { void this.refreshCloud(); }, 90000);
+        // coming back to the app: pull the latest at once if the data is a little old
+        document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - this.lastFresh > 30000) void this.refreshCloud(); });
+      }
       void this.bootCloud();
       return;
     }
@@ -82,6 +86,15 @@ class Store {
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     if (!uid && offline) { try { uid = localStorage.getItem('topmop-last-user'); } catch { /* noop */ } }
     if (uid) {
+      // open at once from the copy saved on this device and bring in the latest from the server in the background (the first sign-in on a device still waits for the data)
+      const snap = offline ? undefined : await kvGet<{ at: string; db: DB }>(`snap:${uid}`).catch(() => undefined);
+      if (snap?.db) {
+        this._db = { ...snap.db, version: 1 }; this.baseline = this._db; this.sessionUser = uid;
+        try { await this.restoreLocal(uid); } catch { /* the saved copy still opens */ }
+        this.bootStatus = 'ready'; this.listeners.forEach((l) => l());
+        void this.freshen(uid);
+        return;
+      }
       try { await this.afterSignIn(uid); }
       catch (e) {
         if (isNetworkError(e) && !(await this.openOffline(uid))) { /* nothing saved on this device yet: show the sign-in page */ }
@@ -90,12 +103,36 @@ class Store {
     }
     this.bootStatus = 'ready'; this.listeners.forEach((l) => l());
   }
+  /** Background step after opening from the saved copy: load the latest data and swap it in unless this person already has unsent changes (the regular refresh retries then). */
+  private async freshen(uid: string) {
+    try {
+      const [prof, db] = await Promise.all([fetchProfile(uid), fetchAll()]);
+      if (!prof || !prof.active) { try { await signOut(); } catch { /* noop */ } this._db = emptyDB(); this.baseline = this._db; this.sessionUser = null; this.pool = {}; this.journal = []; this.listeners.forEach((l) => l()); return; }
+      try { localStorage.setItem('topmop-last-user', uid); } catch { /* noop */ }
+      if (this._db === this.baseline && !this.flushing && syncHub.getSnapshot().pending === 0) {
+        this._db = { ...db, notifications: this._db.notifications, version: this._db.version + 1 }; this.baseline = this._db; this.saveSnapshot(); this.listeners.forEach((l) => l());
+      }
+      this.markFresh();
+      for (const k of ['QT', 'JOB', 'INV', 'OR', 'EMP', 'INC', 'DR', 'BJ', 'OV', 'JO', 'MT', 'SR']) void this.refill(k);
+    } catch (e) {
+      if (!isNetworkError(e)) { try { await signOut(); } catch { /* noop */ } this._db = emptyDB(); this.baseline = this._db; this.sessionUser = null; this.pool = {}; this.journal = []; this.listeners.forEach((l) => l()); }
+      /* offline or slow: the saved copy stays and the regular refresh tries again */
+    }
+  }
+  private lastFresh = 0;
+  private freshWaiters = new Set<() => void>();
+  private markFresh() { this.lastFresh = Date.now(); const w = [...this.freshWaiters]; this.freshWaiters.clear(); w.forEach((f) => { try { f(); } catch { /* a waiter must not stop the others */ } }); }
+  /** True once the data on screen is the server's (or this is the offline / demo copy). Automations wait for this so they never work on a stale saved copy. */
+  isFresh = () => !CLOUD || this.lastFresh > 0;
+  /** Run `fn` now if the data is fresh, otherwise as soon as it is. */
+  whenFresh(fn: () => void) { if (this.isFresh()) fn(); else this.freshWaiters.add(fn); }
   /** No connection: open from the copy saved on this device, then send the queued changes when the connection returns. */
   private async openOffline(uid: string): Promise<boolean> {
     const snap = await kvGet<{ at: string; db: DB }>(`snap:${uid}`);
     if (!snap?.db) return false;
     this._db = { ...snap.db, version: 1 }; this.baseline = this._db; this.sessionUser = uid;
     await this.restoreLocal(uid);
+    this.markFresh();
     this.listeners.forEach((l) => l());
     return true;
   }
@@ -120,6 +157,7 @@ class Store {
     await this.restoreLocal(uid);
     for (const k of ['QT', 'JOB', 'INV', 'OR', 'EMP', 'INC', 'DR', 'BJ', 'OV', 'JO', 'MT', 'SR']) void this.refill(k);
     this.saveSnapshot();
+    this.markFresh();
     this.listeners.forEach((l) => l());
   }
   private async refill(kind: string) {
@@ -171,7 +209,7 @@ class Store {
   private async refreshCloud() {
     if (!CLOUD || !this.sessionUser || this.flushing || syncHub.getSnapshot().pending > 0 || this._db !== this.baseline || (typeof document !== 'undefined' && document.hidden)) return;
     const ver = this._db.version;
-    try { const db = await fetchAll(); if (this._db.version === ver && this._db === this.baseline && !this.flushing) { this._db = { ...db, notifications: this._db.notifications, version: ver }; this.baseline = this._db; this.saveSnapshot(); this.listeners.forEach((l) => l()); } } catch { /* offline: try again later */ }
+    try { const db = await fetchAll(); this.lastFresh = Date.now(); if (this._db.version === ver && this._db === this.baseline && !this.flushing) { this._db = { ...db, notifications: this._db.notifications, version: ver }; this.baseline = this._db; this.saveSnapshot(); this.listeners.forEach((l) => l()); } } catch { /* offline: try again later */ }
   }
 
   /* ---- subscription ---- */
