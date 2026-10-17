@@ -25,33 +25,41 @@ function stageOf(j: Job, w: JobWorkflow | undefined, now: string): Stage {
   return now > j.start_at && j.start_at.slice(0, 10) === now.slice(0, 10) && wall(now) - wall(j.start_at) > 15 * 60000 ? 'late' : 'scheduled';
 }
 
-const MESSAGES = [
+const TEAM_MESSAGES = [
   'Every spotless window starts with a team that shows up. Thank you for showing up today.',
   'Kaya natin ‘to! Clean work, safe work, proud work.',
-  'Quality is what the client remembers long after the job is done.',
   'Safety first, shine second. Everybody goes home safe today.',
   'Great teams make hard jobs look easy. That’s TopMop.',
-  'Small details, big impressions. Take pride in every panel.',
   'Be the crew the client talks about. Be on time, be polite, be thorough.',
-  'Your work makes a building look new again. That’s something to be proud of.',
-  'Teamwork makes the long days short. Look out for each other.',
   'Salamat sa sipag at tiyaga! Every job done well builds our name.',
-  'Check twice, clean once. Excellence is a habit.',
-  'A smile and a clean finish. That’s how we earn the next booking.',
-  'Hydrate, stretch, stay alert. A safe crew is a strong crew.',
-  'Do it right the first time. Your effort shows in the shine.',
-  'Today’s jobs are tomorrow’s referrals. Let’s make them count.',
 ];
-const mood = (done: number, total: number, onSite: number, absent: number) =>
-  !total ? 'A quiet day is a great time to prepare equipment and follow up with clients.'
-  : done === total ? `All ${total} job${total === 1 ? '' : 's'} done today. Excellent work, team! 🎉`
-  : onSite ? `${onSite} crew${onSite === 1 ? ' is' : 's are'} working on site right now. Keep up the great work!`
-  : absent ? 'Some of the team is out today. Thank you to everyone covering. We’ve got this together.' : '';
-function Motivation({ done, total, onSite, absent, now }: { done: number; total: number; onSite: number; absent: number; now: string }) {
-  const slot = Math.floor(wall(now) / (30 * 60000)); const text = MESSAGES[slot % MESSAGES.length]; const extra = mood(done, total, onSite, absent);
+const OWNER_MESSAGES = [
+  'Every crew on the road today exists because you took the leap and built TopMop. Be proud of that.',
+  'You are not just cleaning windows. You are creating jobs and putting food on your crew’s tables.',
+  'Great companies are built one reliable day at a time. Today is another brick.',
+  'Your standards set the tone. When you care about quality, the whole team learns to.',
+  'Growth feels slow while you are in it. Look back a year and see how far TopMop has come.',
+  'Salamat sa tiyaga, boss. The late nights and hard decisions are building something real.',
+  'Lead with trust, check with systems. That is how a business grows beyond one person.',
+  'Every repeat client is proof that your work and your people are trusted.',
+  'Rest is part of the work too. A clear head makes better decisions than a tired one.',
+  'Kaya mo ‘to. Hard days build the owner you will be proud of next year.',
+  'A clean finish today is tomorrow’s referral. Your reputation is growing while you work.',
+  'You built a system so the work runs even when you are not on every site. That is real leadership.',
+  'Celebrate the small wins, a job done safely, a happy client, a crew member who grew.',
+  'Your team watches how you handle pressure. Calm and clear is contagious.',
+  'One more job done well is one more step toward the company you are building.',
+];
+const mood = (owner: boolean, done: number, total: number, onSite: number, absent: number, money: string) =>
+  !total ? (owner ? 'No jobs today. A good day to follow up quotations and rest a little.' : 'A quiet day is a great time to prepare equipment and follow up with clients.')
+  : done === total ? (owner ? `All ${total} job${total === 1 ? '' : 's'} are done today, worth ${money}. Well done, boss! 🎉` : `All ${total} job${total === 1 ? '' : 's'} done today. Excellent work, team! 🎉`)
+  : onSite ? (owner ? `${onSite} crew${onSite === 1 ? ' is' : 's are'} out earning for TopMop right now — ${total} job${total === 1 ? '' : 's'} today, ${money} to bill.` : `${onSite} crew${onSite === 1 ? ' is' : 's are'} working on site right now. Keep up the great work!`)
+  : absent ? (owner ? 'Part of the team is out today, and the rest are covering. Remember to thank them.' : 'Some of the team is out today. Thank you to everyone covering.') : '';
+function Motivation({ owner, done, total, onSite, absent, money, now }: { owner: boolean; done: number; total: number; onSite: number; absent: number; money: string; now: string }) {
+  const slot = Math.floor(wall(now) / (30 * 60000)); const list = owner ? OWNER_MESSAGES : TEAM_MESSAGES; const text = list[slot % list.length]; const extra = mood(owner, done, total, onSite, absent, money);
   return (
     <div className="tdy-motiv" key={slot}>
-      <span className="tdy-spark">✨</span>
+      <span className="tdy-spark">{owner ? '👑' : '✨'}</span>
       <div><b>{text}</b>{extra && <small>{extra}</small>}</div>
     </div>
   );
@@ -89,7 +97,7 @@ function crewOf(db: DB, j: Job, w: JobWorkflow | undefined, day: string): Member
 }
 
 export default function Today() {
-  const { db, can } = useAuth();
+  const { db, can, user } = useAuth();
   const [now, setNow] = useState(nowLocal());
   useEffect(() => { const t = setInterval(() => setNow(nowLocal()), 30_000); return () => clearInterval(t); }, []);
   const day = now.slice(0, 10) || today();
@@ -114,7 +122,7 @@ export default function Today() {
   return (
     <>
       <PageHead title={<>Happening today <span className="tdy-live"><i />LIVE</span></>} sub={`${fmtDate(day)} · updated ${fmtTime(now)} (Manila)`} />
-      <Motivation done={cards.filter((c) => ['back', 'declined'].includes(c.stage)).length} total={cards.length} onSite={onSite} absent={absent} now={now} />
+      <Motivation owner={user?.role === 'owner'} money={showMoney ? money(billing) : 'today’s work'} done={cards.filter((c) => ['back', 'declined'].includes(c.stage)).length} total={cards.length} onSite={onSite} absent={absent} now={now} />
       <div className="grid g4 keep2" style={{ marginBottom: 16 }}>
         <Stat k="Jobs today" v={String(cards.length)} s={`${cards.filter((c) => ['left', 'finished', 'back'].includes(c.stage)).length} finished`} tone="navy" />
         <Stat k="On site right now" v={String(onSite)} s="Arrived, not yet left" tone={onSite ? 'good' : 'navy'} />
