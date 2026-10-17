@@ -163,7 +163,7 @@ export default function Receipts() {
       {err && <div className="alert warn">{err}</div>}
       {!CLOUD && <div className="alert info small" style={{ marginBottom: 10 }}>Demo mode: scans are kept in this browser only. On the live site they go to private storage and the AI reads them.</div>}
       <Card flush>
-        <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Scan</th><th>Date</th><th>Supplier · TIN</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VAT amt</th><th>Status</th></tr></thead>
+        <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Scan</th><th>Date</th><th>Supplier · TIN · Address</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VAT amt</th><th>Status</th></tr></thead>
           <tbody>
             {shown.map((r) => <Row key={r.id} r={r} all={rows} onOpen={() => setOpen(r)} />)}
             {!shown.length && <tr><td colSpan={8} className="muted" style={{ padding: 20 }}>{loading ? 'Loading…' : 'No receipts here yet. Tap “Scan a receipt” and take a clear photo of the whole receipt.'}</td></tr>}
@@ -182,7 +182,7 @@ function Row({ r, all, onOpen }: { r: Receipt; all: Receipt[]; onOpen: () => voi
     <tr onClick={onOpen} style={{ cursor: 'pointer' }}>
       <td>{src ? <img src={src} alt="" className="rc-thumb" /> : <span className="rc-thumb" />}</td>
       <td>{r.receipt_date ? fmtDate(r.receipt_date) : <span className="muted">—</span>}</td>
-      <td><b>{r.supplier_name || <span className="muted">no name</span>}</b><div className="small muted">{fmtTin(r.supplier_tin ?? '') || 'no TIN'}</div></td>
+      <td><b>{r.supplier_name || <span className="muted">no name</span>}</b><div className="small muted">{fmtTin(r.supplier_tin ?? '') || 'no TIN'}</div><div className="small muted">{r.supplier_address || 'no address'}</div></td>
       <td>{r.receipt_no || <span className="muted">—</span>}<div className="small muted">{r.doc_type}</div></td>
       <td>{r.supplier_vat ? <Badge tone={r.supplier_vat === 'VAT' ? 'blue' : 'gray'}>{r.supplier_vat}</Badge> : <span className="muted">—</span>}</td>
       <td className="num">{r.total_amount === null ? '—' : money(r.total_amount)}</td><td className="num">{r.vat_amount ? money(r.vat_amount) : '—'}</td>
