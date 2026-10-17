@@ -5,6 +5,7 @@ import { deleteClient, planClientDelete } from '@/lib/deletion';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj, ask } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { ClientForm } from './Clients';
+import { PastBillsCard } from '@/components/PastBills';
 import { ClientLifetimeCard } from '@/components/FollowUps';
 import { paymentStatusLabel, docTotals, invoiceBalance, invoiceState, invoiceTotals, isDone, isOpen } from '@/lib/business';
 import { fmtDate, fmtDateTime, fmtStamp, money, sum, today } from '@/lib/util';
@@ -99,6 +100,7 @@ export default function ClientDetail() {
             </dl>
           </Card>
           <div className="stack">
+            <PastBillsCard client={c} canEdit={can('clients.edit')} />
             <Card title="Access instructions & notes"><p style={{ margin: 0 }}><b>Access:</b> {c.access_instructions || '—'}</p><p style={{ marginBottom: 0 }}><b>Notes:</b> {c.notes || '—'}</p></Card>
             {can('clients.tax') && <Card title="Tax information"><dl className="kv"><dt>TIN</dt><dd>{c.tin || '—'}</dd><dt>VAT status</dt><dd>{c.vat_status}</dd><dt>Withholding tax</dt><dd>{c.withholding_rate ? `${c.withholding_rate}%` : 'None'} {c.withholding_notes && <span className="muted">— {c.withholding_notes}</span>}</dd></dl></Card>}
           </div>

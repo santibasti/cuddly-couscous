@@ -32,6 +32,8 @@ export type ClientType =
   | 'Auto Dealership' | 'Hospitality' | 'Church' | 'Industrial' | 'School / Institution';
 export type ClientStatus = 'Active' | 'Prospect' | 'Inactive';
 
+/** A bill from before this system: kept on the client so a repeat quotation can start from it. */
+export interface PastBill { id: string; date: string; ref: string; total: number; items: QuoteItem[]; notes: string }
 export interface Client extends Base, GeoFields {
   name: string;
   contact_person: string;
@@ -48,6 +50,7 @@ export interface Client extends Base, GeoFields {
   withholding_rate: number; // % expected to be withheld by client on services (0 if none)
   withholding_notes: string;
   branch_id: string;
+  past_bills?: PastBill[]; // bills from before the system started (entered by hand)
   vip?: boolean; vip_note?: string; // VIP client: shown on the Job Order; the note is for the crew ("greet at the lobby" …)
 }
 

@@ -133,7 +133,7 @@ export default function QuoteEditor() {
         </Card>
 
         {v.client_id && <RepeatClientCard clientId={v.client_id} currentId={existing?.id} readOnly={readOnly} hasItems={v.items.length > 0}
-          onRepeat={(q) => { setItems(q.items.map((i) => ({ ...i }))); if (!v.scope.trim()) f.set('scope', q.scope); f.set('payment_option', q.payment_option); toast(`Copied the items from ${q.number}`, 'ok'); }}
+          onRepeat={(r) => { setItems(r.items.map((i) => ({ ...i }))); if (r.scope && !v.scope.trim()) f.set('scope', r.scope); if (r.payment_option) f.set('payment_option', r.payment_option as Form['payment_option']); toast(`Copied the items from ${r.label}`, 'ok'); }}
           onMention={(t) => { const cur = (v.intro ?? defaultIntro(db.settings)).trim(); if (!cur.includes(t)) f.set('intro', `${cur}\n\n${t}`); toast('Added to the introduction', 'ok'); }} />}
 
         <Card title="Line items">
