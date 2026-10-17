@@ -180,7 +180,8 @@ export function arriveAtSite(id: string, f: CheckInForm) {
   if (notClocked.length) fail(`These crew members have not clocked in yet: ${notClocked.map((e) => db().employees.find((x) => x.id === e)?.full_name ?? 'Unknown employee').join(', ')}. They must clock in on their Attendance page first — or mark them absent with a reason.`);
   for (const e of f.present) {
     const att = clocked(e)!;
-    if (!att.job_id || !att.field_work) store.update('attendance', att.id, { job_id: job.id, field_work: true }, 'update', `Attendance linked to ${job.number} at site check-in`);
+    // an attendance record the office already approved is locked (corrections only): it stays as it is, the check-in itself records who was on site
+    if (att.approval !== 'Approved' && (!att.job_id || !att.field_work)) store.update('attendance', att.id, { job_id: job.id, field_work: true }, 'update', `Attendance linked to ${job.number} at site check-in`);
   }
   store.update('workflows', id, { arr_at: at, arr_by: uidNow(), arr_contact_name: f.contact_name.trim(), arr_contact_mobile: f.contact_mobile, arr_notes: f.notes, arr_crew_present: f.present, arr_crew_absent: f.absent } as never, 'update', `${job.number}: checked in at site ${at.slice(11)}, attendance confirmed`);
   setStatus(db().jobs.find((j) => j.id === job.id)!, 'On Site');
