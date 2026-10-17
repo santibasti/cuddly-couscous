@@ -4,7 +4,7 @@ import { EMPTY_POSTER, renderPoster, type PosterSpec } from './marketingposter';
 import { renderTemplate } from './marketingtemplate';
 
 export type GraphicStyle = 'auto' | 'template' | 'poster' | 'tip' | 'promo' | 'seasonal' | 'job';
-export interface GraphicSpec { on: boolean; headline: string; sub: string; points: string[]; style: GraphicStyle; poster?: PosterSpec }
+export interface GraphicSpec { on: boolean; headline: string; sub: string; points: string[]; style: GraphicStyle; poster?: PosterSpec; own?: boolean /* the picture is one the user uploaded (image_path), not drawn by the app */ }
 export const STYLE_LABEL: Record<GraphicStyle, string> = { auto: 'Automatic (dark poster)', poster: 'Dark poster', template: 'Light service poster (optional)', tip: 'Simple tip card', promo: 'Simple free-quote card', seasonal: 'Simple seasonal card', job: 'Simple job card' };
 const NAVY = '#0b2545', NAVY2 = '#13427a', CYAN = '#1fb6c9', GOLD = '#f5b83d', WHITE = '#ffffff';
 const FONT = '"Segoe UI", "Helvetica Neue", Arial, sans-serif';

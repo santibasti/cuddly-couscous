@@ -94,7 +94,9 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
   const setP = (v: Partial<typeof pst>) => setG({ ...g, poster: { ...pst, ...v } });
   const setFeat = (i: number, v: Partial<{ icon: IconName; label: string }>) => { const f = [0, 1, 2].map((k) => pst.features[k] ?? { icon: 'check' as IconName, label: '' }); f[i] = { ...f[i], ...v }; setP({ features: f }); };
   const setCard = (i: number, v: Partial<{ label: string; value: string }>) => { const c = [0, 1].map((k) => pst.cards[k] ?? { label: '', value: '' }); c[i] = { ...c[i], ...v }; setP({ cards: c }); };
-  const gKey = JSON.stringify(g); const gDirty = gKey !== JSON.stringify(p.graphic ?? BLANK); const needsImage = g.on && (!p.image_path || gDirty);
+  const gKey = JSON.stringify(g); const gDirty = gKey !== JSON.stringify(p.graphic ?? BLANK); const needsImage = g.on && !g.own && (!p.image_path || gDirty);
+  const [ownUrl, setOwnUrl] = useState<string>(''); const ownFile = useRef<HTMLInputElement>(null);
+  useEffect(() => { let off = false; setOwnUrl(''); if (p.graphic?.own && p.image_path) supabase().storage.from('marketing-graphics').createSignedUrl(p.image_path, 3600).then(({ data }) => { if (!off && data?.signedUrl) setOwnUrl(data.signedUrl); }); return () => { off = true; }; }, [p.image_path, p.graphic?.own]); // eslint-disable-line react-hooks/exhaustive-deps
   const editable = p.status === 'Idea' || p.status === 'Approved' || p.status === 'Failed';
   const dirty = text !== p.text || at !== toLocal(p.scheduled_at) || photos.join() !== p.photo_ids.join() || media.join() !== (p.media_ids ?? []).join() || gDirty || needsImage;
   useEffect(() => { setText(p.text); setAt(toLocal(p.scheduled_at)); setPhotos(p.photo_ids); setMedia(p.media_ids ?? []); setG(p.graphic ?? BLANK); }, [p.id, p.text, p.scheduled_at, p.photo_ids.join(), (p.media_ids ?? []).join(), JSON.stringify(p.graphic)]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -119,6 +121,19 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
     const c = document.createElement('canvas'); await draw(c); const blob = await canvasBlob(c); const path = `${p.id}/${Date.now()}.png`;
     const { error } = await supabase().storage.from('marketing-graphics').upload(path, blob, { contentType: 'image/png' }); if (error) throw new Error(error.message); return path;
   };
+  /** The user's own picture or flyer goes up as it is (only shrunk to 1600 px and re-encoded, which also drops GPS data); it replaces the TopMop graphic. */
+  const uploadOwn = async (file: File) => {
+    try {
+      if (!file.type.startsWith('image/')) throw new Error('Choose a picture (JPG or PNG).');
+      const bmp = await createImageBitmap(file); const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+      const png = file.type === 'image/png'; const blob = await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Could not read the picture'))), png ? 'image/png' : 'image/jpeg', 0.92));
+      const path = `${p.id}/own-${Date.now()}.${png ? 'png' : 'jpg'}`;
+      const { error } = await supabase().storage.from('marketing-graphics').upload(path, blob, { contentType: blob.type }); if (error) throw new Error(error.message);
+      const next = { ...g, on: false, own: true }; setG(next); await patch({ graphic: next, image_path: path }, 'Your picture is attached — it will be posted instead of an AI graphic');
+    } catch (e) { toast(e instanceof Error ? e.message : 'Could not upload the picture', 'err'); }
+  };
+  const removeOwn = async () => { const next = { ...g, own: false }; setG(next); await patch({ graphic: next, image_path: null }, 'Your picture was removed'); };
   const downloadGraphic = async () => { const c = document.createElement('canvas'); await draw(c); const a = document.createElement('a'); a.href = URL.createObjectURL(await canvasBlob(c)); a.download = 'topmop-post.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); };
 
   const patch = async (v: Record<string, unknown>, ok: string) => {
@@ -129,7 +144,7 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
   const save = async () => {
     try {
       const extra: Record<string, unknown> = { graphic: g };
-      if (g.on) { if (needsImage) extra.image_path = await uploadGraphic(); } else extra.image_path = null;
+      if (g.own) { /* the uploaded picture stays */ } else if (g.on) { if (needsImage) extra.image_path = await uploadGraphic(); } else extra.image_path = null;
       return await patch({ text: text.trim(), scheduled_at: fromLocal(at), photo_ids: photos, media_ids: media, ...extra }, 'Saved');
     } catch (e) { toast(e instanceof Error ? e.message : 'Could not save the graphic', 'err'); return false; }
   };
@@ -167,7 +182,18 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
         {picker && <LibraryPicker chosen={media} onPick={setMedia} onClose={() => setPicker(false)} />}
         {editable && (
           <div className="card" style={{ padding: 12 }}>
-            <label className="check"><input type="checkbox" checked={g.on} onChange={(e) => setG({ ...g, on: e.target.checked, headline: g.headline || text.split('\n')[0].replace(/[#@]\S+/g, '').slice(0, 60).trim() })} /><b>🎨 Add a TopMop graphic</b> <span className="small muted">— a branded picture with the headline, posted with the text</span></label>
+            <div className="row" style={{ flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
+              <input ref={ownFile} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void uploadOwn(f); }} />
+              <button type="button" className="btn sm" disabled={busy} onClick={() => ownFile.current?.click()}>📤 {g.own ? 'Replace my own picture' : 'Upload my own picture / flyer'}</button>
+              <span className="small muted">Use your own design instead of a TopMop graphic — it is posted as it is.</span>
+            </div>
+            {g.own && (
+              <div className="row" style={{ alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
+                {ownUrl ? <img src={ownUrl} alt="Your picture" style={{ width: 180, height: 'auto', borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,.2)' }} /> : <div style={{ width: 180, height: 220, borderRadius: 8, background: '#eef3f7' }} />}
+                <div className="stack"><b>Your own picture is attached</b><button type="button" className="btn sm danger" disabled={busy} onClick={removeOwn}>Remove it</button></div>
+              </div>
+            )}
+            <label className="check"><input type="checkbox" checked={g.on} onChange={(e) => setG({ ...g, own: false, on: e.target.checked, headline: g.headline || text.split('\n')[0].replace(/[#@]\S+/g, '').slice(0, 60).trim() })} /><b>🎨 Add a TopMop graphic</b> <span className="small muted">— a branded picture with the headline, posted with the text</span></label>
             {g.on && (
               <div className="stack" style={{ marginTop: 10 }}>
                 <div className="row" style={{ flexWrap: 'wrap', alignItems: 'flex-start', gap: 14 }}>
