@@ -8,7 +8,7 @@ import { saveExpense } from '@/lib/actions';
 import { exportCsv } from '@/lib/export';
 import { blankDraft, checkReceipt, deleteReceipt, draftFromReading, forAi, isOwnDocument, listReceipts, prepareScan, readReceipt, readyForBir, rotateScan, saveNewReceipt, scanUrl, updateReceipt, type Check, type Receipt, type ReceiptDraft, type ReceiptVat } from '@/lib/receipts';
 import { fmtTin } from '@/lib/bir';
-import { fmtDate, money, today } from '@/lib/util';
+import { fmtDate, money, round2, today } from '@/lib/util';
 import type { ExpenseCategory, ExpenseMethod } from '@/lib/types';
 
 const CATEGORIES: ExpenseCategory[] = ['Fuel', 'Materials', 'Equipment Repair', 'Transportation', 'Marketing', 'Rent', 'Utilities', 'Government Fees', 'Subcontractor', 'Toll & Parking', 'Meals & Snacks', 'Other'];
@@ -184,6 +184,14 @@ export default function Receipts() {
   const inMonth = rows.filter((r) => (r.receipt_date ?? r.created_at).slice(0, 7) === month);
   const total = inMonth.reduce((a, r) => a + (r.total_amount ?? 0), 0); const vat = inMonth.reduce((a, r) => a + (r.supplier_vat === 'VAT' ? (r.vat_amount ?? 0) : 0), 0);
 
+  type G = { label: string; n: number; total: number; vatable: number; vat: number };
+  const grp = (label: string, f: (r: Receipt) => boolean): G => { const rs = shown.filter(f); return { label, n: rs.length, total: round2(rs.reduce((a, r) => a + (r.total_amount ?? 0), 0)), vatable: round2(rs.reduce((a, r) => a + (r.vatable_sales ?? 0), 0)), vat: round2(rs.reduce((a, r) => a + (r.supplier_vat === 'VAT' ? (r.vat_amount ?? 0) : 0), 0)) }; };
+  const decided = (r: Receipt) => r.status === 'Posted' && !!r.bir_mode;
+  const gYes = grp('Yes — BIR only', (r) => r.bir_mode === 'yes' && decided(r)); const gBoth = grp('Both — expense and BIR', (r) => r.bir_mode === 'both' && decided(r)); const gNo = grp('No — expense only', (r) => r.bir_mode === 'no' && decided(r));
+  const gWait = grp('Not decided yet', (r) => !decided(r));
+  const grand = grp('GRAND TOTAL', () => true);
+  const forBir = { total: round2(gYes.total + gBoth.total), vat: round2(gYes.vat + gBoth.vat), vatable: round2(gYes.vatable + gBoth.vatable), n: gYes.n + gBoth.n };
+
   return (
     <>
       <PageHead title="Receipts" sub="Photograph a receipt: the app reads the supplier, TIN, address, VAT and amounts, and keeps the scan.">
@@ -202,14 +210,24 @@ export default function Receipts() {
         <input placeholder="Search supplier, TIN, receipt no." value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 280 }} />
         <select style={{ width: 200 }} value={only} onChange={(e) => setOnly(e.target.value as typeof only)}><option value="">All receipts</option><option value="fix">Need attention</option><option value="posted">Posted</option></select>
         <button className="btn" disabled={!shown.some((r) => r.bir_mode === 'yes')} title="Exports only the receipts marked Yes (BIR only) for the month shown" onClick={() => exportCsv({ title: `BIR receipts ${month}`, headers: ['Date', 'Supplier', 'TIN', 'Address', 'Receipt no.', 'VAT status', 'Total', 'VATable sales', 'VAT', 'Exempt', 'Zero-rated', 'Category', 'Use for BIR', 'Status'], types: ['text', 'text', 'text', 'text', 'text', 'text', 'money', 'money', 'money', 'money', 'money', 'text', 'text', 'text'],
-          rows: shown.filter((r) => r.bir_mode === 'yes').map((r) => [r.receipt_date ?? '', r.supplier_name ?? '', fmtTin(r.supplier_tin ?? ''), r.supplier_address ?? '', r.receipt_no ?? '', r.supplier_vat ?? '', r.total_amount ?? 0, r.vatable_sales ?? 0, r.vat_amount ?? 0, r.exempt_amount ?? 0, r.zero_rated_amount ?? 0, r.category ?? '', r.status !== 'Posted' ? '' : r.bir_mode === 'yes' ? 'Yes (BIR only)' : r.bir_mode === 'no' ? 'No (expense only)' : r.bir_mode === 'both' ? 'Both' : 'Not decided', r.status]) })}>Export CSV (BIR: Yes only)</button>
+          totals: ['TOTAL (Yes)', '', '', '', '', '', gYes.total, gYes.vatable, gYes.vat, 0, 0, '', '', ''], rows: shown.filter((r) => r.bir_mode === 'yes').map((r) => [r.receipt_date ?? '', r.supplier_name ?? '', fmtTin(r.supplier_tin ?? ''), r.supplier_address ?? '', r.receipt_no ?? '', r.supplier_vat ?? '', r.total_amount ?? 0, r.vatable_sales ?? 0, r.vat_amount ?? 0, r.exempt_amount ?? 0, r.zero_rated_amount ?? 0, r.category ?? '', r.status !== 'Posted' ? '' : r.bir_mode === 'yes' ? 'Yes (BIR only)' : r.bir_mode === 'no' ? 'No (expense only)' : r.bir_mode === 'both' ? 'Both' : 'Not decided', r.status]) })}>Export CSV (BIR: Yes only)</button>
       </div>
       {err && <div className="alert warn">{err}</div>}
       {!CLOUD && <div className="alert info small" style={{ marginBottom: 10 }}>Demo mode: scans are kept in this browser only. On the live site they go to private storage and the AI reads them.</div>}
+      <Card title="Totals" flush>
+        <div className="tbl-wrap"><table className="tbl"><thead><tr><th>BIR use</th><th className="num">Receipts</th><th className="num">Total amount</th><th className="num">VATable sales</th><th className="num">Input VAT</th></tr></thead><tbody>
+          {[gYes, gBoth, gNo, gWait].map((g) => <tr key={g.label}><td>{g.label}</td><td className="num">{g.n}</td><td className="num">{money(g.total)}</td><td className="num">{money(g.vatable)}</td><td className="num">{money(g.vat)}</td></tr>)}
+          <tr style={{ fontWeight: 800 }}><td>{grand.label}</td><td className="num">{grand.n}</td><td className="num">{money(grand.total)}</td><td className="num">{money(grand.vatable)}</td><td className="num">{money(grand.vat)}</td></tr>
+          <tr style={{ color: 'var(--green)', fontWeight: 700 }}><td>For BIR filing (Yes + Both)</td><td className="num">{forBir.n}</td><td className="num">{money(forBir.total)}</td><td className="num">{money(forBir.vatable)}</td><td className="num">{money(forBir.vat)}</td></tr>
+        </tbody></table></div>
+        <div className="small muted" style={{ padding: 10 }}>Totals follow the month, search and filter above, so they match the list below. Input VAT counts only receipts from VAT-registered suppliers. The four groups add up to the grand total.</div>
+      </Card>
+      <div style={{ height: 14 }} />
       <Card flush>
         <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Scan</th><th>Date</th><th>Supplier · TIN · Address</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VATable sales</th><th className="num">VAT</th><th>BIR</th></tr></thead>
           <tbody>
             {shown.map((r) => <Row key={r.id} r={r} all={rows} onOpen={() => setOpen(r)} />)}
+            {shown.length > 0 && <tr style={{ fontWeight: 800 }}><td colSpan={5}>Grand total ({grand.n})</td><td className="num">{money(grand.total)}</td><td className="num">{money(grand.vatable)}</td><td className="num">{money(grand.vat)}</td><td /></tr>}
             {!shown.length && <tr><td colSpan={9} className="muted" style={{ padding: 20 }}>{loading ? 'Loading…' : 'No receipts here yet. Tap “Scan a receipt” and take a clear photo of the whole receipt.'}</td></tr>}
           </tbody></table></div>
       </Card>
