@@ -86,6 +86,14 @@ export default function Marketing() {
 type Company = { name: string; phone: string; email: string; tagline?: string; website?: string; facebook?: string };
 const BLANK: GraphicSpec = { on: false, headline: '', sub: '', points: [], style: 'auto' };
 
+/** The user's own picture: shrunk to 1600 px and re-encoded (which also drops GPS data). */
+async function ownImageBlob(file: File): Promise<{ blob: Blob; ext: string }> {
+  const bmp = await createImageBitmap(file); const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+  const png = file.type === 'image/png'; const blob = await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Could not read the picture'))), png ? 'image/png' : 'image/jpeg', 0.92));
+  return { blob, ext: png ? 'png' : 'jpg' };
+}
+
 function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChanged: () => void }) {
   const [text, setText] = useState(p.text); const [at, setAt] = useState(toLocal(p.scheduled_at)); const [photos, setPhotos] = useState<string[]>(p.photo_ids); const [media, setMedia] = useState<string[]>(p.media_ids ?? []); const [mUrls, setMUrls] = useState<Record<string, string>>({}); const mediaRows = useRef<{ id: string; path: string }[]>([]); const mediaCache = useRef<Record<string, string>>({}); const [picker, setPicker] = useState(false); const [urls, setUrls] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false); const area = useRef<HTMLTextAreaElement>(null);
@@ -125,10 +133,7 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
   const uploadOwn = async (file: File) => {
     try {
       if (!file.type.startsWith('image/')) throw new Error('Choose a picture (JPG or PNG).');
-      const bmp = await createImageBitmap(file); const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-      const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
-      const png = file.type === 'image/png'; const blob = await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Could not read the picture'))), png ? 'image/png' : 'image/jpeg', 0.92));
-      const path = `${p.id}/own-${Date.now()}.${png ? 'png' : 'jpg'}`;
+      const { blob, ext } = await ownImageBlob(file); const path = `${p.id}/own-${Date.now()}.${ext}`;
       const { error } = await supabase().storage.from('marketing-graphics').upload(path, blob, { contentType: blob.type }); if (error) throw new Error(error.message);
       const next = { ...g, on: false, own: true }; setG(next); await patch({ graphic: next, image_path: path }, 'Your picture is attached — it will be posted instead of an AI graphic');
     } catch (e) { toast(e instanceof Error ? e.message : 'Could not upload the picture', 'err'); }
@@ -259,10 +264,20 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
 }
 
 function NewPost({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [kind, setKind] = useState('Tip'); const [text, setText] = useState(''); const [at, setAt] = useState(toLocal(new Date(Date.now() + 86400_000).toISOString())); const [busy, setBusy] = useState(false);
+  const [kind, setKind] = useState('Tip'); const [text, setText] = useState(''); const [at, setAt] = useState(toLocal(new Date(Date.now() + 86400_000).toISOString())); const [busy, setBusy] = useState(false); const [pic, setPic] = useState<File | null>(null); const [preview, setPreview] = useState('');
+  useEffect(() => { if (!pic) { setPreview(''); return; } const u = URL.createObjectURL(pic); setPreview(u); return () => URL.revokeObjectURL(u); }, [pic]);
   const save = async () => {
     setBusy(true);
-    const { error } = await supabase().from('marketing_posts').insert({ kind, text: text.trim(), scheduled_at: fromLocal(at), status: 'Idea', by_ai: false });
+    const id = crypto.randomUUID(); const row: Record<string, unknown> = { id, kind, text: text.trim(), scheduled_at: fromLocal(at), status: 'Idea', by_ai: false };
+    try {
+      if (pic) {
+        if (!pic.type.startsWith('image/')) throw new Error('Choose a picture (JPG or PNG).');
+        const { blob, ext } = await ownImageBlob(pic); const path = `${id}/own-${Date.now()}.${ext}`;
+        const up = await supabase().storage.from('marketing-graphics').upload(path, blob, { contentType: blob.type }); if (up.error) throw new Error(up.error.message);
+        row.image_path = path; row.graphic = { ...BLANK, own: true };
+      }
+    } catch (e) { setBusy(false); toast(e instanceof Error ? e.message : 'Could not upload the picture', 'err'); return; }
+    const { error } = await supabase().from('marketing_posts').insert(row);
     setBusy(false); if (error) { toast(error.message, 'err'); return; } toast('Post added — approve it when it is ready', 'ok'); onSaved(); onClose();
   };
   return (
@@ -271,6 +286,12 @@ function NewPost({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
         <Field label="Type"><select value={kind} onChange={(e) => setKind(e.target.value)}>{KINDS.map((k) => <option key={k}>{k}</option>)}</select></Field>
         <Field label="Post on (Manila time)"><input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} /></Field>
         <Field label="Text" className="full"><textarea rows={7} value={text} maxLength={2000} onChange={(e) => setText(e.target.value)} placeholder="Write the post, or leave it to the AI with “Write 3 ideas now”." /></Field>
+        <Field label="Your own picture / flyer (optional)" className="full">
+          <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+            <input type="file" accept="image/*" onChange={(e) => setPic(e.target.files?.[0] ?? null)} />
+            {preview && <img src={preview} alt="Your picture" style={{ width: 120, height: 'auto', borderRadius: 8 }} />}
+          </div>
+        </Field>
       </div>
     </Modal>
   );
