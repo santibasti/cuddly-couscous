@@ -1,7 +1,8 @@
 import { RatingCard } from '@/components/RatingCard';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useAuth, live } from '@/lib/store';
+import { useAuth, live, store } from '@/lib/store';
+import { EmployeeCard } from '@/components/EmployeeCard';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { bulkApproveAttendance, clockIn, clockOut, decideAttendance, decideCorrection, manualAttendance, requestCorrection } from '@/lib/actions';
@@ -102,7 +103,7 @@ export default function Attendance() {
   const canView = can('attendance.view');
   const [tab, setTab] = useState<'me' | 'daily' | 'corrections'>((sp.get('tab') as never) || (employee && can('attendance.own') && !canView ? 'me' : canView ? 'daily' : 'me'));
   const [date, setDate] = useState(today());
-  const [manual, setManual] = useState(false);
+  const [manual, setManual] = useState(false); const [view, setView] = useState<'cards' | 'table'>('cards');
   const approve = can('attendance.approve');
   const emps = live(db.employees).filter((e) => e.status !== 'inactive');
   const T = today();
@@ -140,6 +141,26 @@ export default function Attendance() {
             <Stat k="Present / clocked in" v={present} s={`of ${rows.filter((r) => !r.isRest).length} scheduled`} tone="good" /><Stat k="Late" v={late} tone={late ? 'warn' : undefined} />
             <Stat k="No record" v={date <= T ? missing : 0} tone={missing && date <= T ? 'bad' : undefined} /><Stat k="Awaiting approval" v={rows.filter((r) => r.a?.approval === 'Pending').length} tone="warn" />
           </div>
+          <div className="row" style={{ marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
+            <input type="date" value={date} max={T} onChange={(e) => setDate(e.target.value)} aria-label="Date" style={{ width: 'auto' }} /><button className="btn sm" onClick={() => setDate(addDays(date, -1))}>◀</button><button className="btn sm" onClick={() => setDate(addDays(date, 1))} disabled={date >= T}>▶</button>
+            <div className="chips" role="group" aria-label="View" style={{ marginTop: 0, marginLeft: 'auto' }}><button type="button" className={view === 'cards' ? 'on' : ''} onClick={() => setView('cards')}>Cards</button><button type="button" className={view === 'table' ? 'on' : ''} onClick={() => setView('table')}>Table</button></div>
+            {approve && pendingAtt.length > 0 && <button className="btn sm primary" onClick={() => { bulkApproveAttendance(pendingAtt.map((r) => r.a!.id)); }}><Icon name="check" />Approve {pendingAtt.length} completed</button>}
+          </div>
+          {view === 'cards' && (
+            <div className="ecards">
+              {rows.map((r) => {
+                const lateNow = !!r.a && r.a.late_min > db.settings.grace_minutes;
+                const [status, tone] = r.a?.clock_out ? ['Clocked out', 'green'] : r.a?.clock_in ? [lateNow ? 'On duty · late' : 'On duty', lateNow ? 'amber' : 'teal'] : r.isRest ? ['Rest day', 'blue'] : r.hol ? [`${r.hol.kind} holiday`, 'blue'] : date <= T ? ['No record', 'red'] : ['Scheduled', 'gray'];
+                return (
+                  <EmployeeCard key={r.e.id} emp={r.e} status={status} tone={tone}
+                    onUpload={can('employees.edit') ? (url) => attempt(() => store.update('employees', r.e.id, { avatar: url }), 'Photo saved') : undefined}
+                    lines={[{ k: 'In', v: r.a?.clock_in ? fmtTime(r.a.clock_in) : '—' }, { k: 'Out', v: r.a?.clock_out ? fmtTime(r.a.clock_out) : '—' }, { k: 'Hours', v: r.a ? String(r.a.worked_hours ?? 0) : '—' }, { k: 'Job site', v: r.site }]}
+                    actions={approve && r.a?.approval === 'Pending' ? <><button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></> : r.a ? <Badge>{r.a.approval}</Badge> : undefined} />
+                );
+              })}
+            </div>
+          )}
+          {view === 'table' && (
           <Card flush>
             <DataTable
               rows={rows} rowKey={(r) => r.e.id} exportTitle={`Daily attendance ${date}`} pageSize={25}
@@ -157,6 +178,7 @@ export default function Attendance() {
               ]}
             />
           </Card>
+          )}
         </>
       )}
 

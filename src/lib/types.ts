@@ -258,6 +258,7 @@ export interface Employee extends Base {
   rest_day: number; // 0=Sun..6=Sat
   /** 1–5 star rating from the monthly scorecard (last 3 months), kept on the record so the employee can see their own. */
   rating?: number; rating_parts?: RatingParts; rating_at?: string;
+  avatar?: string; // small square photo (data URL) shown on the attendance cards
 }
 
 export interface Attendance extends Base {

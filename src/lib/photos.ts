@@ -2,6 +2,13 @@
 import { CLOUD, supabase } from './cloud';
 
 /** Re-draws the picture on a canvas: this resizes it and drops all hidden data (GPS position, camera details). */
+/** A face-sized square picture (256 px, centred crop) as a data URL — for employee avatars. Also drops hidden data such as GPS. */
+export async function avatarDataUrl(file: File): Promise<string> {
+  const bmp = await createImageBitmap(file); const side = Math.min(bmp.width, bmp.height); const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+  c.getContext('2d')!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 256, 256);
+  return c.toDataURL('image/jpeg', 0.82);
+}
+
 const KEY = 'topmop-photo-enhance';
 export const getEnhance = () => { try { return localStorage.getItem(KEY) !== 'off'; } catch { return true; } };
 export const setEnhance = (on: boolean) => { try { localStorage.setItem(KEY, on ? 'on' : 'off'); } catch { /* not saved */ } };
