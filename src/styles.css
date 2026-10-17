@@ -1070,3 +1070,13 @@ body:not(.dark) .tdy-kpi { background: #fff; border-color: var(--line); box-shad
 .dash-dark .exec-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 @media (max-width: 1350px) { .dash-dark .exec-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 720px) { .dash-dark .exec-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Dashboard (all roles): modern stat tiles, rows and cards */
+.dash-dark .stat { position: relative; overflow: hidden; border-radius: 16px; border: 1px solid rgba(255,255,255,.12); background: linear-gradient(160deg, rgba(255,255,255,.08), rgba(255,255,255,.02)); box-shadow: 0 8px 22px rgba(0,0,0,.18); transition: transform .18s, box-shadow .18s; animation: dashUp .5s ease both; text-decoration: none; }
+body:not(.dark) .dash-dark .stat { background: #fff; border-color: var(--line); box-shadow: 0 6px 18px rgba(11,37,69,.08); }
+.dash-dark a.stat:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(0,0,0,.3); }
+.dash-dark .stat::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, var(--teal, #0e9aa7), transparent); }
+.dash-dark .stat.good::before { background: linear-gradient(90deg, #2ee59d, transparent); } .dash-dark .stat.warn::before { background: linear-gradient(90deg, #f5b83d, transparent); } .dash-dark .stat.bad::before { background: linear-gradient(90deg, #ef5b5b, transparent); } .dash-dark .stat.navy::before { background: linear-gradient(90deg, #4f8df0, transparent); }
+.dash-dark .stat .v { font-size: 28px; font-weight: 800; letter-spacing: -.01em; }
+.dash-dark .list li { transition: background .15s; } .dash-dark .list li:hover { background: rgba(120,140,170,.1); }
+@media (prefers-reduced-motion: reduce) { .dash-dark .stat { animation: none !important; } }

@@ -246,7 +246,21 @@ export default function Dashboard() {
       )}
       <p className="small muted" style={{ marginTop: 10 }}>Reference: {nowLocal().replace('T', ' ')} Manila. Revenue is billed (invoiced) net of VAT; “Expected” counts approved quotations not yet invoiced.</p>
     </>;
-  if (mine) return (<><PageHead title="Dashboard" sub={`${fmtDate(from)} – ${fmtDate(to)} • live from operations data`} />{inbox}{filterBar}{legacy}</>);
+  if (mine) return (
+    <>
+      <DashHero name={(user?.name ?? '').replace(/^(mr|ms|mrs)\.?\s+/i, '').split(' ')[0]} exec={false} k={k} jobsToday={d.todayJobs.length} jobsDone={d.todayJobs.filter((j) => isDone(j.status)).length} inField={d.todayJobs.filter((j) => FIELD_JOB.includes(j.status)).length} can={can} range={`${fmtDate(from)} – ${fmtDate(to)}`} />
+      <div className="dash-dark">
+        {inbox}
+        <div className="dash-toolbar no-print">
+          <div className="dash-pills">{PRESETS.map(([k2, l]) => <button key={k2} type="button" className={preset === k2 ? 'on' : ''} onClick={() => { setPreset(k2); setRange(presetRange(k2)); }}>{l}</button>)}</div>
+          <button type="button" className={`btn sm${showFilters || activeFilters ? ' primary' : ''}`} onClick={() => setShowFilters(!showFilters)}>⚙ Filters{activeFilters ? ` · ${activeFilters}` : ''}</button>
+          {anyFilter && <button type="button" className="btn sm" onClick={clear}>Clear</button>}
+        </div>
+        {showFilters && filterBar}
+        {legacy}
+      </div>
+    </>
+  );
 
   const cards: { k: string; v: ReactNode; s?: ReactNode; to?: string; cls?: string; pending?: boolean }[] = [
     ...(exec ? [
