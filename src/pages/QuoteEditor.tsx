@@ -1,3 +1,4 @@
+import { PackageTiles, ServiceTiles } from '@/components/ServiceTiles';
 import { PAYMENT_OPTIONS, SERVICE_METHOD_DEFAULTS, syncMethodSections, defaultCrew, defaultDisclaimer, defaultIntro, defaultMethodology, durationText, manpowerText } from '@/lib/quote-text';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -133,8 +134,11 @@ export default function QuoteEditor() {
         <Card title="Line items">
           {!readOnly && (
             <div className="filterbar" style={{ marginTop: 0 }}>
-              <Field label="Add from price list"><select value={svc} onChange={(e) => { const c = e.target.value as ServiceCode; setSvc(c); const d = db.services.find((s) => s.code === c)!; setQty(d.package_qty ?? Math.max(d.minimum_qty, 1)); }}>{live(db.services).map((s) => <option key={s.code} value={s.code}>{s.name}{s.custom_quote ? ' (custom)' : ''}</option>)}</select></Field>
-              {pkgOptions.length > 0 && <Field label="Glass package"><select value={pkg?.id ?? ''} onChange={(e) => { setPkgId(e.target.value); const p = pkgOptions.find((x) => x.id === e.target.value); if (p) setQty(p.qty); }}>{pkgOptions.map((p) => <option key={p.id} value={p.id}>{money(p.price)} for {p.qty} panels · {money(p.excess_rate)}/panel in excess of {p.qty}</option>)}</select></Field>}
+              <div className="full" style={{ flex: '1 1 100%' }}>
+                <div className="small muted" style={{ fontWeight: 600 }}>Add from price list — tap a service</div>
+                <ServiceTiles services={live(db.services)} value={svc} onPick={(c) => { setSvc(c as ServiceCode); const d = db.services.find((s) => s.code === c)!; setQty(d.package_qty ?? Math.max(d.minimum_qty, 1)); }} />
+              </div>
+              {pkgOptions.length > 0 && <div style={{ flex: '1 1 100%' }}><div className="small muted" style={{ fontWeight: 600 }}>Glass package — tap one</div><PackageTiles options={pkgOptions} value={pkg?.id ?? ''} onPick={(id) => { setPkgId(id); const p = pkgOptions.find((x) => x.id === id); if (p) setQty(p.qty); }} /></div>}
               <Field label={`Quantity (${def.unit}s)`}><input type="number" min="1" value={qty} onChange={(e) => setQty(+e.target.value)} /></Field>
               <button className="btn navy" onClick={() => addPriced(svc, qty, pkg)}><Icon name="plus" />Add with pricing rules</button>
               {(svc === 'GLASS_EXT' || svc === 'GLASS_INT') && <button className="btn" onClick={() => setCalc(true)}>Panel counter…</button>}
