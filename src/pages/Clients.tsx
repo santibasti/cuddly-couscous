@@ -47,6 +47,12 @@ export function ClientForm({ initial, onClose }: { initial?: Client; onClose: ()
         <Field label="Status"><select {...f.bind('status')}>{STATUSES.map((t) => <option key={t}>{t}</option>)}</select></Field>
         <Field label="Address" className="full"><input {...f.bind('address')} /></Field>
         <Field label="Billing address" className="full"><input {...f.bind('billing_address')} placeholder="Same as address if blank" /></Field>
+        <Field label="VIP client" className="full" hint="A VIP flag shows on the Job Order for the crew and the office.">
+          <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+            <label className="check"><input type="checkbox" checked={!!f.v.vip} onChange={(e) => f.set('vip', e.target.checked)} />⭐ This is a VIP client</label>
+            {f.v.vip && <input style={{ flex: 1, minWidth: 220 }} maxLength={120} placeholder="Note for the crew (e.g. greet at the lobby, no work before 9 AM)" value={f.v.vip_note ?? ''} onChange={(e) => f.set('vip_note', e.target.value)} />}
+          </div>
+        </Field>
         <Field label="Access instructions"><textarea {...f.bind('access_instructions')} /></Field>
         <Field label="Notes"><textarea {...f.bind('notes')} /></Field>
         {!initial && (
@@ -137,7 +143,7 @@ export default function Clients() {
           </>}
           actions={admin ? <button className="btn sm primary" onClick={exportList} title="Download the filtered list as Excel">Export filtered list (Excel)</button> : undefined}
           cols={[
-            { key: 'name', header: 'Client', render: ({ c }) => <div><b>{c.name}</b><div className="small muted">{c.contact_person}</div></div>, value: ({ c }) => c.name + ' ' + c.contact_person },
+            { key: 'name', header: 'Client', render: ({ c }) => <div><b>{c.name}</b>{c.vip && <span className="vipstar" title="VIP client">⭐ VIP</span>}<div className="small muted">{c.contact_person}</div></div>, value: ({ c }) => c.name + ' ' + c.contact_person },
             { key: 'type', header: 'Type', render: ({ c }) => <Badge tone="blue">{c.type}</Badge>, value: ({ c }) => c.type },
             { key: 'status', header: 'Status', render: ({ c }) => <Badge>{c.status}</Badge>, value: ({ c }) => c.status },
             { key: 'mobile', header: 'Mobile', value: ({ c }) => c.mobile },

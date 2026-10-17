@@ -1,9 +1,10 @@
+import { RepeatClientCard } from '@/components/RepeatClientCard';
 import { PackageTiles, ServiceTiles } from '@/components/ServiceTiles';
 import { PAYMENT_OPTIONS, SERVICE_METHOD_DEFAULTS, syncMethodSections, defaultCrew, defaultDisclaimer, defaultIntro, defaultMethodology, durationText, manpowerText } from '@/lib/quote-text';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
-import { Badge, Card, Field, Icon, Modal, PageHead, attempt, ask, useObj } from '@/components/ui';
+import { Badge, Card, Field, Icon, Modal, PageHead, attempt, ask, toast, useObj } from '@/components/ui';
 import { countPanels, docTotals, priceService, type GlassRow } from '@/lib/business';
 import { directInvoiceOf, duplicateQuotation, invoiceFromQuotation, quoteLink, saveQuotation, setQuoteStatus } from '@/lib/actions';
 import { quotationPdf, shareTextQuote } from '@/lib/export';
@@ -130,6 +131,10 @@ export default function QuoteEditor() {
             <Field label="Scope of work" className="full"><textarea disabled={readOnly} {...f.bind('scope')} placeholder="Describe the work, areas, exclusions and access requirements…" /></Field>
           </div>
         </Card>
+
+        {v.client_id && <RepeatClientCard clientId={v.client_id} currentId={existing?.id} readOnly={readOnly} hasItems={v.items.length > 0}
+          onRepeat={(q) => { setItems(q.items.map((i) => ({ ...i }))); if (!v.scope.trim()) f.set('scope', q.scope); f.set('payment_option', q.payment_option); toast(`Copied the items from ${q.number}`, 'ok'); }}
+          onMention={(t) => { const cur = (v.intro ?? defaultIntro(db.settings)).trim(); if (!cur.includes(t)) f.set('intro', `${cur}\n\n${t}`); toast('Added to the introduction', 'ok'); }} />}
 
         <Card title="Line items">
           {!readOnly && (

@@ -48,6 +48,7 @@ export interface Client extends Base, GeoFields {
   withholding_rate: number; // % expected to be withheld by client on services (0 if none)
   withholding_notes: string;
   branch_id: string;
+  vip?: boolean; vip_note?: string; // VIP client: shown on the Job Order; the note is for the crew ("greet at the lobby" …)
 }
 
 /** Saved map position of an address. `approximate` = the city / area centre; `mapped` = a street-level position; `unmapped` = needs Admin correction (never blocks a booking). */
@@ -836,6 +837,8 @@ export interface JobOrderContent {
   client: { name: string; contact_person: string; email?: string };
   /** client's own address (kept outside `client` so adding it never creates a spurious revised version of an order already sent) */
   client_address?: string;
+  /** set when the client is a VIP (the text is the client's VIP note, or "VIP client"); kept out of the revision key so flagging a client never creates a revised order */
+  vip?: string;
   /** service disclaimer from the approved quotation (company default when it has none) */
   disclaimer?: string;
   location: { name: string; address: string; contact_person: string; contact_mobile: string };

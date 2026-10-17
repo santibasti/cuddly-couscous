@@ -928,3 +928,6 @@ body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small {
 .rbar { height: 8px; border-radius: 999px; background: rgba(130, 150, 170, .25); margin-top: 6px; overflow: hidden; } .rbar span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #52c75a, #12a7d8); }
 .rawards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; } .raward { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; }
 .page-loading { display: grid; place-items: center; min-height: 40vh; color: var(--head); opacity: .7; font-weight: 600; }
+
+.pd-banner.vip { background: linear-gradient(90deg, #f5b83d, #f7d57a); color: #3a2a00; border: 1px solid #d99a14; font-weight: 800; letter-spacing: .02em; }
+.vipstar { color: #d99a14; margin-left: 4px; }

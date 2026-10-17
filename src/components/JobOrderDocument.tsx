@@ -9,7 +9,7 @@ import { LineItems, TermsList } from './LineItems';
 const t12 = (hm: string) => { const h = +hm.slice(0, 2); return `${((h + 11) % 12) + 1}:${hm.slice(3, 5)} ${h >= 12 ? 'PM' : 'AM'}`; };
 type View = Pick<JobOrder, 'number' | 'version' | 'status' | 'issued_on'> & { content: JobOrderContent };
 
-export function JobOrderDocument({ order }: { order: View }) {
+export function JobOrderDocument({ order, showVip = true }: { order: View; showVip?: boolean }) {
   const c = order.content;
   return (
     <div className="pd">
@@ -18,6 +18,7 @@ export function JobOrderDocument({ order }: { order: View }) {
           <div><div className="pd-co">{c.company.name}</div><div className="s">{c.company.tagline}</div><div className="s">{c.company.address}</div><div className="s">{c.company.phone} · {c.company.email}{c.company.tin ? ` · TIN ${c.company.tin}` : ''}</div></div></div>
         <div className="pd-title"><div className="t1">JOB ORDER</div><div className="t2">CONFIRMATION</div><div className="no">{orderLabel(order)}</div><div className="s">Issued {fmtDate(order.issued_on)}</div></div>
       </div>
+      {showVip && c.vip && <div className="pd-banner vip">⭐ VIP CLIENT{c.vip !== 'VIP client' ? ` — ${c.vip}` : ' — please give extra care and attention'}</div>}
       {order.status === 'Superseded' && <div className="pd-banner bad">SUPERSEDED — a newer version of this Job Order has been issued. Please use the latest version.</div>}
       {(order.status === 'Draft' || order.status === 'Revised') && <div className="pd-banner">DRAFT — not yet sent to the client</div>}
       <p className="pd-lead">This document confirms your scheduled service. It is not an invoice, an official receipt or a new quotation.</p>

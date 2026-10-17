@@ -36,7 +36,7 @@ export default function JobOrderPublic() {
       {o === null && <div className="alert warn"><b>This link is not available.</b> It may have expired, or the Job Order was not sent yet. Please contact us for a new link.{setup && <div className="small" style={{ marginTop: 6 }}>Technical detail for the TopMop administrator: {setup}. Run the latest database update (supabase db push, migration 0021).</div>}</div>}
       {o && <>
         <div className="pubbar no-print"><span className="muted small">Job Order Confirmation</span><span className="row" style={{ gap: 6 }}><button className="btn sm" onClick={() => window.print()}>Print</button><button className="btn primary sm" onClick={download}>Download PDF</button></span></div>
-        <div className="pubsheet"><JobOrderDocument order={o} /></div>
+        <div className="pubsheet"><JobOrderDocument order={o} showVip={false} /></div>
       </>}
     </div>
   );

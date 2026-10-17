@@ -66,7 +66,7 @@ export default function ClientDetail() {
 
   return (
     <>
-      <PageHead title={c.name} sub={<><Badge tone="blue">{c.type}</Badge> <Badge>{c.status}</Badge> · {c.contact_person} · {c.mobile}</>}>
+      <PageHead title={c.name} sub={<>{c.vip && <Badge tone="amber">⭐ VIP</Badge>} <Badge tone="blue">{c.type}</Badge> <Badge>{c.status}</Badge> · {c.contact_person} · {c.mobile}</>}>
         <Link to="/clients" className="btn">← Clients</Link>
         {can('clients.edit') && <button className="btn" onClick={() => setEdit(true)}><Icon name="edit" />Edit</button>}
         {can('clients.delete') && <button className="btn danger" onClick={async () => {
