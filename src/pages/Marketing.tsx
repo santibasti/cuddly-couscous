@@ -105,6 +105,22 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
   const gKey = JSON.stringify(g); const gDirty = gKey !== JSON.stringify(p.graphic ?? BLANK); const needsImage = g.on && !g.own && (!p.image_path || gDirty);
   const [ownUrl, setOwnUrl] = useState<string>(''); const ownFile = useRef<HTMLInputElement>(null);
   useEffect(() => { let off = false; setOwnUrl(''); if (p.graphic?.own && p.image_path) supabase().storage.from('marketing-graphics').createSignedUrl(p.image_path, 3600).then(({ data }) => { if (!off && data?.signedUrl) setOwnUrl(data.signedUrl); }); return () => { off = true; }; }, [p.image_path, p.graphic?.own]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [review, setReview] = useState<null | 'approve' | 'post' | 'look'>(null); const [shots, setShots] = useState<string[]>([]); const [loadingShots, setLoadingShots] = useState(false);
+  const openReview = async (mode: 'approve' | 'post' | 'look') => {
+    setReview(mode); setShots([]); setLoadingShots(true);
+    try {
+      const out: string[] = [];
+      if (g.own) { if (ownUrl) out.push(ownUrl); }
+      else if (g.on) { const c = document.createElement('canvas'); await draw(c); out.push(c.toDataURL('image/jpeg', 0.92)); }
+      const wm = media.map((id) => mediaRows.current.find((r) => r.id === id)).filter(Boolean) as { id: string; path: string }[];
+      const needM = wm.filter((r) => !mediaCache.current[r.id]); if (needM.length) Object.assign(mediaCache.current, await mediaDataUrls(needM));
+      const want = photos.map((id) => photoRows.current.find((r) => r.id === id)).filter(Boolean) as { id: string; path: string }[];
+      const need = want.filter((r) => !dataCache.current[r.id]); if (need.length) Object.assign(dataCache.current, await photoDataUrls(need));
+      out.push(...wm.map((r) => mediaCache.current[r.id]), ...want.map((r) => dataCache.current[r.id]));
+      setShots(out.filter(Boolean));
+    } catch { toast('Could not load the full-size picture', 'err'); }
+    setLoadingShots(false);
+  };
   const editable = p.status === 'Idea' || p.status === 'Approved' || p.status === 'Failed';
   const dirty = text !== p.text || at !== toLocal(p.scheduled_at) || photos.join() !== p.photo_ids.join() || media.join() !== (p.media_ids ?? []).join() || gDirty || needsImage;
   useEffect(() => { setText(p.text); setAt(toLocal(p.scheduled_at)); setPhotos(p.photo_ids); setMedia(p.media_ids ?? []); setG(p.graphic ?? BLANK); }, [p.id, p.text, p.scheduled_at, p.photo_ids.join(), (p.media_ids ?? []).join(), JSON.stringify(p.graphic)]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -155,7 +171,6 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
   };
   const approve = async () => { if (dirty && !(await save())) return; await patch({ status: 'Approved', error: null }, 'Approved — it will be posted at the scheduled time'); };
   const postNow = async () => {
-    if (!confirm('Post this to your Facebook Page right now?')) return;
     if (dirty && !(await save())) return; if (p.status !== 'Approved' && !(await patch({ status: 'Approved', error: null }, 'Approved'))) return;
     setBusy(true);
     try { await fn('marketing-run', { action: 'post_now', id: p.id }); toast('Posted to your Facebook Page', 'ok'); } catch (e) { toast(e instanceof Error ? e.message : 'Could not post', 'err'); }
@@ -243,15 +258,31 @@ function PostCard({ p, company, onChanged }: { p: Post; company: Company; onChan
             )}
           </div>
         )}
+        {review && (
+          <Modal size="xl" title="Review the post before it goes out" onClose={() => setReview(null)} footer={<>
+            <button className="btn" onClick={() => setReview(null)}>{review === 'look' ? 'Close' : 'Back to editing'}</button>
+            {review === 'approve' && <button className="btn primary" disabled={busy || loadingShots} onClick={async () => { setReview(null); await approve(); }}>Looks good — Approve</button>}
+            {review === 'post' && <button className="btn navy" disabled={busy || loadingShots} onClick={async () => { setReview(null); await postNow(); }}>Looks good — Post now</button>}
+          </>}>
+            <div className="stack" style={{ gap: 14 }}>
+              {loadingShots && <div className="muted">Loading the full-size picture…</div>}
+              {shots.map((u, i) => <img key={i} src={u} alt={`Picture ${i + 1}`} style={{ width: '100%', maxWidth: 760, height: 'auto', alignSelf: 'center', borderRadius: 10, boxShadow: '0 2px 12px rgba(0,0,0,.25)' }} />)}
+              {!loadingShots && !shots.length && <div className="alert">No picture on this post — it will be posted as text only.</div>}
+              <div className="card" style={{ padding: 12, whiteSpace: 'pre-wrap' }}>{text}</div>
+              <div className="small muted">Scheduled for {fmtStamp(fromLocal(at))}</div>
+            </div>
+          </Modal>
+        )}
         {p.error && <div className="alert warn">Could not post: {p.error}</div>}
         {editable ? (
           <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
             <Field label="Post on (Manila time)"><input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} /></Field>
             <div className="row" style={{ flexWrap: 'wrap', gap: 8, alignSelf: 'flex-end' }}>
               {dirty && <button className="btn" disabled={busy} onClick={save}>Save</button>}
-              {p.status !== 'Approved' && <button className="btn primary" disabled={busy || !text.trim()} onClick={approve}>Approve</button>}
+              {p.status !== 'Approved' && <button className="btn primary" disabled={busy || !text.trim()} onClick={() => openReview('approve')}>Review &amp; approve</button>}
+              <button className="btn" disabled={busy} onClick={() => openReview('look')}>🔍 Preview</button>
               {p.status === 'Approved' && <button className="btn" disabled={busy} onClick={() => patch({ status: 'Idea' }, 'Moved back to needs approval')}>Unapprove</button>}
-              <button className="btn navy" disabled={busy || !text.trim()} onClick={postNow}>Post now</button>
+              <button className="btn navy" disabled={busy || !text.trim()} onClick={() => openReview('post')}>Post now</button>
               <button className="btn" onClick={copy}>Copy text</button>
               <button className="btn danger" disabled={busy} onClick={() => { if (confirm('Reject this post? It will not be published.')) patch({ status: 'Rejected' }, 'Rejected'); }}>Reject</button>
             </div>
