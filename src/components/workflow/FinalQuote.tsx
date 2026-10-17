@@ -222,12 +222,13 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
   const [declining, setDeclining] = useState(false);
   const [pdfImg, setPdfImg] = useState(false);
   const [name, setName] = useState(site?.contact_person ?? ''); const [sig, setSig] = useState<string>();
-  const [agree, setAgree] = useState(false); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false);
+  const [agree, setAgree] = useState(false); const [panelsOk, setPanelsOk] = useState(false);
+  const needsCount = job.service_codes.some((c) => c === 'GLASS_EXT' || c === 'GLASS_INT') && !wf.panels.length; const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false);
   const dr = useDraft(`d:${wf.id}:conf`, { name, sig }, (d) => { setName(d.name); setSig(d.sig); }, run && !signed);
   useEffect(() => { document.body.classList.add('noscroll'); return () => document.body.classList.remove('noscroll'); }, []);
   const close = () => { if (dr.dirty && !confirmLeave()) return; onClose(); };
   const geo = async () => { const g = await getGeo(); return { lat: g.lat, lng: g.lng, gps_note: g.lat === undefined ? 'Location unavailable on this device' : undefined, device: deviceInfo() }; };
-  const doApprove = async () => { setBusy(true); const g = await geo(); const r = attempt(() => approveFinalQuote(wf.id, { name, signature: sig, confirmed: agree, ...g }), hasAdds ? 'Final quote approved — additional work recorded as a change order' : 'Final quote signed'); setBusy(false); if (r) { dr.markSaved(); onClose(); } };
+  const doApprove = async () => { setBusy(true); const g = await geo(); const r = attempt(() => approveFinalQuote(wf.id, { name, signature: sig, confirmed: agree, panels_ok: panelsOk, ...g }), hasAdds ? 'Final quote approved — additional work recorded as a change order' : 'Final quote signed'); setBusy(false); if (r) { dr.markSaved(); onClose(); } };
   const doDecline = async () => { setBusy(true); const g = await geo(); const r = attempt(() => declineAdditionalWork(wf.id, { client_name: name, reason, ...g }), 'Additional work declined — recorded as offered and declined'); setBusy(false); if (r) { setMode(null); setReason(''); } };
   const doRevise = () => { if (attempt(() => requestFinalQuoteRevision(wf.id, reason), 'Revision requested')) onClose(); };
   const adds = signed ? approved : [];
@@ -295,6 +296,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
                 <Field label="Client name" required><input value={name} onChange={(e) => setName(e.target.value)} /></Field>
                 <div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Client signature</div><SignaturePad value={sig} onChange={setSig} /></div>
                 <Toggle checked={agree} onChange={setAgree}>{hasAdds ? 'I have reviewed the original quotation, the additional work and the final bill, and I approve them.' : 'I have reviewed the quotation and I agree to its scope, rates and terms.'}</Toggle>
+                {needsCount && <Toggle checked={panelsOk} onChange={setPanelsOk}>No panel count needed — the panels are as quoted and there are none beyond the quotation.</Toggle>}
                 <div className="small muted">Date, time, device and GPS location are recorded when you tap Approve.</div>
                 <div className="row"><button className="btn lg" onClick={() => setMode(null)}>Back</button><button className="btn primary lg" disabled={busy} onClick={doApprove}>{busy ? 'Saving…' : 'Approve & Sign'}</button></div>
               </div>

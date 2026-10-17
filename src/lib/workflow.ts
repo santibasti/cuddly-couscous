@@ -301,14 +301,14 @@ export function declineAdditionalWork(id: string, f: { client_name: string; reas
 }
 
 /** "Approve and Sign": the client signs the quotation / conforme (new or changed scope) and any additional work, saved as a linked variation / change order. */
-export function approveFinalQuote(id: string, f: { name: string; signature?: string; notes?: string; confirmed: boolean; lat?: number; lng?: number; gps_note?: string; device?: string }) {
+export function approveFinalQuote(id: string, f: { name: string; signature?: string; notes?: string; confirmed: boolean; panels_ok?: boolean; lat?: number; lng?: number; gps_note?: string; device?: string }) {
   const wf = getWf(id); const job = jobOf(wf);
   needRun(job);
   if (!wf.arr_at) fail('Check in at the site first.');
   if (wf.conf_at) fail('The scope is already approved.');
   const v = reviewDraft(job.id);
   if (v?.revision_open) fail('The client asked for a revision. Update the additional work and present it again before signing.');
-  if ((!isRecurringJob(db(), job) || wf.scope_changed) && hasGlass(job) && !wf.panels.length) fail('Count the glass panels (floor, side, external, internal) before the client signs.');
+  if ((!isRecurringJob(db(), job) || wf.scope_changed) && hasGlass(job) && !wf.panels.length && !f.panels_ok) fail('Count the glass panels (floor, side, external, internal) before the client signs, or confirm that there are no panels beyond the quotation.');
   const mq = db().quotations.find((x) => x.id === (wf.conf_quotation_id ?? job.quotation_id));
   for (const [idx, it] of (mq?.items ?? []).entries()) if (it.measure && !(v?.items ?? []).some((x) => x.from_measure === idx && x.qty > 0)) fail(`Enter the measured quantity for “${it.description}” in the additional work first — it is billed from the site measurement.`);
   if (!f.confirmed) fail('Confirm that the quotation and any additional work were reviewed with the client on site.');

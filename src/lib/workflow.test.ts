@@ -218,6 +218,14 @@ describe('Scope Approval: conditional', () => {
     expect(() => W.confirmScopeNoChanges(rec.wf.id)).toThrow(/already approved/);
   });
 
+  it('a glass job can be signed without a count when the leader confirms there are no extra panels', async () => {
+    await as('owner@topmop.ph');
+    const r = upToCheckIn('SC3b', db().employees[3].id, false);
+    store.update('jobs', r.job.id, { service_codes: ['GLASS_EXT'] } as never);
+    W.approveFinalQuote(r.wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true, panels_ok: true });
+    expect(wfOf(r.job.id).conf_at).toBeTruthy();
+  });
+
   it('glass jobs need the panel count before the client signs the new-job quotation', async () => {
     await as('owner@topmop.ph');
     const lead = db().employees[3].id;
