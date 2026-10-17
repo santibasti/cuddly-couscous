@@ -1046,3 +1046,27 @@ body:not(.dark) .tdy-kpi { background: #fff; border-color: var(--line); box-shad
 @media (max-width: 1100px) { .tdy-hero { grid-template-columns: 1fr auto; } .tdy-quote { grid-column: 1 / -1; order: 3; } .tdy-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .tdy-hero { grid-template-columns: 1fr; padding: 20px; } .tdy-ring { justify-self: start; width: 110px; height: 110px; } .tdy-hero-l h1 { font-size: 24px; } .tdy-kpi b { font-size: 22px; } .tdy-kpi { padding: 12px 12px 18px; gap: 10px; } .tdy-kpi .ic { width: 38px; height: 38px; font-size: 19px; } }
 @media (prefers-reduced-motion: reduce) { .tdy-hero::before, .tdy-hero::after, .wave, .tdy-quote { animation: none !important; } }
+
+/* Dashboard: hero, toolbar and livelier KPI tiles */
+.dash-hero { grid-template-columns: minmax(220px, 1fr) minmax(300px, 1.7fr) auto; }
+.dash-mid { display: flex; flex-direction: column; gap: 10px; padding: 14px 18px; border-radius: 18px; background: rgba(255,255,255,.1); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.18); }
+.dm-line { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: 14px; } .dm-line b { font-size: 16px; font-weight: 800; } .dm-line .warn { color: #ffd27a; }
+.dm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.dm-btn { display: inline-flex; align-items: center; padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; color: #0b2545; background: #fff; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,.2); transition: transform .15s, box-shadow .15s; } .dm-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.28); text-decoration: none; }
+.dash-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.dash-pills { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px; border-radius: 999px; background: rgba(120,140,170,.14); } .dash-pills button { border: 0; background: transparent; color: inherit; font: inherit; font-size: 12.5px; font-weight: 650; padding: 6px 14px; border-radius: 999px; cursor: pointer; opacity: .8; transition: background .15s, opacity .15s; } .dash-pills button:hover { opacity: 1; } .dash-pills button.on { background: var(--cyan, #1fb6c9); color: #fff; opacity: 1; box-shadow: 0 2px 8px rgba(31,182,201,.4); }
+.dash-dark .kpi { position: relative; overflow: hidden; animation: dashUp .55s ease both; animation-delay: calc(var(--i, 0) * 60ms); transition: transform .18s, box-shadow .18s, background .18s; }
+.dash-dark .kpi:hover { transform: translateY(-4px); box-shadow: 0 16px 34px rgba(0,0,0,.35); text-decoration: none; }
+.dash-dark .kpi .kic { position: absolute; right: 12px; top: 10px; font-size: 22px; opacity: .85; filter: drop-shadow(0 2px 6px rgba(0,0,0,.35)); }
+.dash-dark .kpi.glass { border: 1px solid rgba(255,255,255,.12); background: linear-gradient(160deg, rgba(255,255,255,.08), rgba(255,255,255,.02)); } .dash-dark .kpi.glass .v { font-size: 28px; font-weight: 800; letter-spacing: -.01em; }
+.dash-dark .kpi[class*="g-"]::after { content: ''; position: absolute; width: 150px; height: 150px; right: -50px; bottom: -70px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.22), transparent 70%); pointer-events: none; }
+.dash-dark .card { animation: dashUp .6s ease both; border-radius: 18px; } .dash-dark .card-h h3 { letter-spacing: .01em; }
+@keyframes dashUp { from { opacity: 0; transform: translateY(10px); } }
+@media (max-width: 1100px) { .dash-hero { grid-template-columns: 1fr auto; } .dash-mid { grid-column: 1 / -1; order: 3; } }
+@media (max-width: 560px) { .dash-hero { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .dash-dark .kpi, .dash-dark .card { animation: none !important; } }
+.dash-dark .kpi .k { padding-right: 34px; }
+.dm-btn, .dm-btn:hover { color: #0b2545 !important; }
+.dash-dark .exec-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1350px) { .dash-dark .exec-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .dash-dark .exec-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

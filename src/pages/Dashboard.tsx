@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Area, AreaChart, Bar as RBar, BarChart, Pie, PieChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts';
 import { live, useAuth } from '@/lib/store';
@@ -77,6 +77,8 @@ export default function Dashboard() {
   const d = useMemo(() => compute(db, from, to, { branch, service, client }, mine ? myEmp : undefined), [db, from, to, branch, service, client, mine, myEmp]);
 
   const inbox = <><DiscountInbox /><OcularWidget /><FollowUpWidget />{mine && <MaintWidget />}</>;
+  const [showFilters, setShowFilters] = useState(false);
+  const activeFilters = [branch, service, client, segment, stage, repeat, province, city].filter(Boolean).length;
   const filterBar = (
     <div className="filterbar no-print">
       <Field label="Period"><select value={preset} onChange={(e) => { setPreset(e.target.value); if (e.target.value !== 'custom') setRange(presetRange(e.target.value)); }}>{PRESETS.map(([k2, l]) => <option key={k2} value={k2}>{l}</option>)}<option value="custom">Custom…</option></select></Field>
@@ -266,17 +268,22 @@ export default function Dashboard() {
   const tone = (x: string) => (x === 'bad' ? 'bad' : x === 'warn' ? 'warn' : '');
   return (
     <>
-      <PageHead title="Executive dashboard" sub={`${fmtDate(from)} – ${fmtDate(to)} • live from operations data`} />
+      <DashHero name={(user?.name ?? '').replace(/^(mr|ms|mrs)\.?\s+/i, '').split(' ')[0]} exec={exec} k={k} jobsToday={ops.jobs.length} jobsDone={ops.jobs.filter((j) => isDone(j.status)).length} inField={ops.jobs.filter((j) => FIELD_JOB.includes(j.status)).length} can={can} range={`${fmtDate(from)} – ${fmtDate(to)}`} />
       <div className="dash-dark">
-      {filterBar}
+      <div className="dash-toolbar no-print">
+        <div className="dash-pills">{PRESETS.map(([k2, l]) => <button key={k2} type="button" className={preset === k2 ? 'on' : ''} onClick={() => { setPreset(k2); setRange(presetRange(k2)); }}>{l}</button>)}</div>
+        <button type="button" className={`btn sm${showFilters || activeFilters ? ' primary' : ''}`} onClick={() => setShowFilters(!showFilters)}>⚙ Filters{activeFilters ? ` · ${activeFilters}` : ''}</button>
+        {anyFilter && <button type="button" className="btn sm" onClick={clear}>Clear</button>}
+      </div>
+      {showFilters && filterBar}
       {exec && (
         <div className="hero-row">
-          {cards.filter((c) => c.cls?.startsWith('g-')).map((c) => <Link key={c.k} to={c.to ?? '/dashboard'} className={`kpi ${c.cls}`}><div className="k">{c.k}</div><div className={`v ${c.pending ? 'pending' : ''}`}>{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
+          {cards.filter((c) => c.cls?.startsWith('g-')).map((c, i) => <Link key={c.k} to={c.to ?? '/dashboard'} className={`kpi ${c.cls}`} style={{ ['--i' as string]: i }}><span className="kic">{ICON[c.k] ?? '📊'}</span><div className="k">{c.k}</div><div className={`v ${c.pending ? 'pending' : ''}`}>{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
           <div className="kpi glass ring-tile"><Ring pct={k.gross && k.gross !== 'pending' ? k.gross.margin : 0} color={C.cyan} /><div><div className="k">Gross margin</div><div className="s">{k.gross && k.gross !== 'pending' ? 'Actual costs, this month' : 'Pending Cost Data'}</div></div></div>
         </div>
       )}
       <div className="exec-grid">
-        {cards.filter((c) => !c.cls?.startsWith('g-')).map((c) => <Link key={c.k} to={c.to ?? '/dashboard'} className="kpi glass"><div className="k">{c.k}</div><div className="v">{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
+        {cards.filter((c) => !c.cls?.startsWith('g-')).map((c, i) => <Link key={c.k} to={c.to ?? '/dashboard'} className="kpi glass" style={{ ['--i' as string]: i + 4 }}><span className="kic">{ICON[c.k] ?? '📊'}</span><div className="k">{c.k}</div><div className="v">{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
       </div>
       <p className="small muted" style={{ marginTop: -6 }}>Cards show the current month / week. Client type, status, New/Repeat, service, branch and area filters apply to every number below; the period drives the map and area tables.</p>
 
@@ -346,6 +353,43 @@ export default function Dashboard() {
       {inbox}
       <details className="exec-details"><summary>Detailed operations & finance analytics</summary>{legacy}</details>
     </>
+  );
+}
+
+const ICON: Record<string, string> = { 'Revenue this month': '💰', 'Verified collections this month': '✅', 'Outstanding receivables': '🧾', 'Gross profit / margin': '📈', 'Confirmed jobs this week': '🗓️', 'Jobs in progress today': '🚚', 'Jobs completed this month': '🏁', 'New clients this month': '🤝', 'Repeat client rate': '🔁', 'Follow-ups due this week': '📞' };
+function useCount(target: number, ms = 900) {
+  const [v, setV] = useState(0); const from = useRef(0);
+  useEffect(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setV(target); from.current = target; return; }
+    const t0 = performance.now(); const a = from.current; let raf = 0;
+    const tick = (t: number) => { const q = Math.min(1, (t - t0) / ms); setV(a + (target - a) * (1 - Math.pow(1 - q, 3))); if (q < 1) raf = requestAnimationFrame(tick); else from.current = target; };
+    raf = requestAnimationFrame(tick); return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return v;
+}
+/** Top banner: greeting, the month's headline numbers in one sentence, today's progress ring and one-tap shortcuts. */
+function DashHero({ name, exec, k, jobsToday, jobsDone, inField, can, range }: { name: string; exec: boolean; k: ReturnType<typeof kpis>; jobsToday: number; jobsDone: number; inField: number; can: (p: string) => boolean; range: string }) {
+  const h = +nowLocal().slice(11, 13); const hello = h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  const pctDone = jobsToday ? jobsDone / jobsToday : 0; const r = 46, c = 2 * Math.PI * r; const n = useCount(jobsDone);
+  const rev = k.revenue ?? 0, col = k.collections ?? 0, over = k.overdue ?? 0;
+  const actions: [string, string, boolean][] = [['+ New quotation', '/sales/quote/new', can('sales.edit')], ['📅 Book a job', '/jobs', can('jobs.edit')], ['📷 Scan receipt', '/receipts', can('receipts.capture') || can('receipts.manage')], ['⚡ Happening today', '/today', true]];
+  return (
+    <section className="tdy-hero dash-hero">
+      <div className="tdy-hero-l">
+        <span className="tdy-live"><i />LIVE</span>
+        <h1>{hello}{name ? `, ${name}` : ''} <span className="wave">👋</span></h1>
+        <p>{exec ? 'Executive dashboard' : 'Dashboard'} · {range}</p>
+      </div>
+      <div className="dash-mid">
+        {exec && <div className="dm-line">💰 <span>Billed <b>{moneyShort(rev)}</b></span><span>Collected <b>{moneyShort(col)}</b></span>{over > 0 && <span className="warn">⚠ <b>{moneyShort(over)}</b> overdue</span>}</div>}
+        <div className="dm-line">🗓️ <span><b>{jobsToday}</b> job{jobsToday === 1 ? '' : 's'} today</span><span><b>{inField}</b> in the field</span><span><b>{jobsDone}</b> done</span></div>
+        <div className="dm-actions">{actions.filter((a) => a[2]).map(([l, to]) => <Link key={to} to={to} className="dm-btn">{l}</Link>)}</div>
+      </div>
+      <div className="tdy-ring" title={`${jobsDone} of ${jobsToday} jobs done today`}>
+        <svg viewBox="0 0 110 110"><circle cx="55" cy="55" r={r} className="bg" /><circle cx="55" cy="55" r={r} className="fg" style={{ strokeDasharray: c, strokeDashoffset: c * (1 - pctDone) }} /></svg>
+        <div><b>{Math.round(n)}<small>/{jobsToday}</small></b><span>done today</span></div>
+      </div>
+    </section>
   );
 }
 
