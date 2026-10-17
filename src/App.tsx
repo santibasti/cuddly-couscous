@@ -14,6 +14,7 @@ import { AvailabilityPrompt } from '@/components/AvailabilityPrompt';
 import { fmtStamp } from '@/lib/util';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
+const Today = lazy(() => import('@/pages/Today'));
 const Maintenance = lazy(() => import('@/pages/Maintenance'));
 const Clients = lazy(() => import('@/pages/Clients'));
 const ClientDetail = lazy(() => import('@/pages/ClientDetail'));
@@ -49,6 +50,7 @@ function preloadPages() { const ric = (window as unknown as { requestIdleCallbac
 
 const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: string; group?: string }[] = [
   { to: '/dashboard', key: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'Overview' },
+  { to: '/today', key: 'today', label: 'Happening Today', icon: 'dispatch' },
   { to: '/jobs', key: 'jobs', label: 'Jobs & Calendar', icon: 'calendar', group: 'Operations' },
   { to: '/service-reports', key: 'servicereports', label: 'Service Reports', icon: 'reports' },
   { to: '/photos', key: 'photos', label: 'Photo Library', icon: 'camera' },
@@ -161,6 +163,7 @@ function Shell() {
           <Suspense fallback={<div className="page-loading" role="status">Loading…</div>}>
           <Routes>
             <Route path="/dashboard" element={<Guard area="dashboard"><Dashboard /></Guard>} />
+            <Route path="/today" element={<Guard area="today"><Today /></Guard>} />
             <Route path="/maintenance" element={<Guard area="maintenance"><Maintenance /></Guard>} />
             <Route path="/clients" element={<Guard area="clients"><Clients /></Guard>} />
             <Route path="/clients/:id" element={<Guard area="clients"><ClientDetail /></Guard>} />

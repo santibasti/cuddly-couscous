@@ -131,6 +131,7 @@ export function permsFor(role: Role, overrides?: Record<Role, string[]>): Set<st
 /** Routes → the permission (any of) that unlocks them. */
 export const ROUTE_ACCESS: Record<string, string[]> = {
   dashboard: ['dashboard.view', 'dashboard.finance'],
+  today: ['dashboard.view', 'dashboard.finance'],
   clients: ['clients.view'],
   sales: ['sales.view'],
   inbox: ['inbox.manage'],
