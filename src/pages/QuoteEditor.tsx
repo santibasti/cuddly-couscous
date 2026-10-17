@@ -56,7 +56,7 @@ export default function QuoteEditor() {
   const [qty, setQty] = useState(31);
   const [note, setNote] = useState('');
   const f = useObj<Form>(() => existing ? { ...existing } : {
-    client_id: sp.get('client') ?? live(db.clients)[0]?.id ?? '', site_id: undefined, inquiry_id: sp.get('inquiry') ?? undefined, issue_date: today(), valid_until: addDays(today(), db.settings.quote_validity_days),
+    client_id: sp.get('client') ?? '', site_id: undefined, inquiry_id: sp.get('inquiry') ?? undefined, issue_date: today(), valid_until: addDays(today(), db.settings.quote_validity_days),
     scope: '', items: [], vat_mode: 'exclusive', vat_rate: db.settings.vat_rate, discount: 0, terms: db.settings.default_terms, payment_option: 'completion', crew_size: defaultCrew(db.settings), safety_officer: true, work_days: 1, disclaimer: defaultDisclaimer(db.settings), intro: defaultIntro(db.settings), methodology: defaultMethodology(db.settings), status: 'Draft', branch_id: db.branches[0].id,
   });
   const v = f.v;
@@ -125,7 +125,7 @@ export default function QuoteEditor() {
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
         <Card title="Client & scope">
           <div className="form-grid">
-            <Field label="Client" required><select value={v.client_id} disabled={readOnly} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', undefined); const c = db.clients.find((x) => x.id === e.target.value); if (c) f.set('vat_mode', c.vat_status === 'VAT-registered' ? 'exclusive' : 'none'); }}>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+            <Field label="Client" required><select value={v.client_id} disabled={readOnly} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', undefined); const c = db.clients.find((x) => x.id === e.target.value); if (c) f.set('vat_mode', c.vat_status === 'VAT-registered' ? 'exclusive' : 'none'); }}>{!v.client_id && <option value="">— choose a client —</option>}{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
             <Field label="Service location" hint={v.client_id && !sites.length ? 'This client has no service site yet.' : undefined}><div className="row" style={{ gap: 6 }}><select style={{ flex: 1 }} value={v.site_id ?? ''} disabled={readOnly} onChange={(e) => f.set('site_id', e.target.value || undefined)}><option value="">— select site —</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{v.client_id && !readOnly && can('clients.edit') && <button type="button" className="btn sm" onClick={() => setNewSite(true)}>+ Site</button>}</div></Field>
             <Field label="Issue date"><input type="date" disabled={readOnly} {...f.bind('issue_date')} /></Field>
             <Field label="Valid until"><input type="date" disabled={readOnly} {...f.bind('valid_until')} /></Field>
