@@ -12,11 +12,11 @@ export interface Receipt {
   supplier_name: string | null; supplier_tin: string | null; supplier_address: string | null; supplier_vat: ReceiptVat | null;
   total_amount: number | null; vatable_sales: number | null; vat_amount: number | null; exempt_amount: number | null; zero_rated_amount: number | null;
   payment_method: string | null; category: string | null; job_id: string | null; description: string | null; notes: string | null;
-  image_path: string | null; image_data?: string | null; ocr: { unreadable: string[]; low_confidence: string[]; notes: string } | null;
+  image_path: string | null; image_data?: string | null; ocr: { unreadable: string[]; low_confidence: string[]; notes: string; buyer?: { name: string | null; tin: string | null; address: string | null } } | null;
   status: 'Captured' | 'Posted'; expense_id: string | null;
 }
 export type ReceiptDraft = Omit<Receipt, 'id' | 'created_at' | 'created_by' | 'status' | 'expense_id' | 'image_path' | 'image_data'>;
-export interface Reading { fields: Partial<Record<string, string | number | null>>; unreadable: string[]; low_confidence: string[]; notes: string }
+export interface Reading { fields: Partial<Record<string, string | number | null>>; unreadable: string[]; low_confidence: string[]; notes: string; rotate?: number; buyer?: { name: string | null; tin: string | null; address: string | null } }
 
 export const FIELD_LABEL: Record<string, string> = {
   doc_type: 'Document type', receipt_no: 'Receipt / invoice no.', date: 'Date', supplier_name: 'Supplier name', supplier_tin: 'Supplier TIN', supplier_address: 'Supplier address', vat_status: 'VAT status',
@@ -29,7 +29,7 @@ export const blankDraft = (): ReceiptDraft => ({ receipt_date: null, doc_type: n
 export function draftFromReading(r: Reading): ReceiptDraft {
   const f = r.fields; const s = (k: string) => (f[k] === null || f[k] === undefined || f[k] === '' ? null : String(f[k])); const n = (k: string) => (typeof f[k] === 'number' ? (f[k] as number) : null);
   return { ...blankDraft(), receipt_date: s('date'), doc_type: s('doc_type'), receipt_no: s('receipt_no'), supplier_name: s('supplier_name'), supplier_tin: s('supplier_tin'), supplier_address: s('supplier_address'), supplier_vat: (s('vat_status') as ReceiptVat | null),
-    total_amount: n('total_amount'), vatable_sales: n('vatable_sales'), vat_amount: n('vat_amount'), exempt_amount: n('exempt_amount'), zero_rated_amount: n('zero_rated_amount'), payment_method: s('payment_method'), description: s('description'), ocr: { unreadable: r.unreadable, low_confidence: r.low_confidence, notes: r.notes } };
+    total_amount: n('total_amount'), vatable_sales: n('vatable_sales'), vat_amount: n('vat_amount'), exempt_amount: n('exempt_amount'), zero_rated_amount: n('zero_rated_amount'), payment_method: s('payment_method'), description: s('description'), ocr: { unreadable: r.unreadable, low_confidence: r.low_confidence, notes: r.notes, buyer: r.buyer } };
 }
 
 export interface Check { level: 'error' | 'warn' | 'info'; text: string; field?: string }
@@ -66,6 +66,22 @@ export async function prepareScan(file: File, enhance: boolean): Promise<{ blob:
   const dataUrl = await blobToDataUrl(blob);
   return { blob, dataUrl, base64: dataUrl.split(',')[1] ?? '' };
 }
+/** Turns the scan clockwise by 90 / 180 / 270 degrees (a photo taken sideways) and returns the new scan. */
+export async function rotateScan(dataUrl: string, deg: number): Promise<{ blob: Blob; dataUrl: string }> {
+  const img = new Image(); await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error('Could not read the picture')); img.src = dataUrl; });
+  const quarter = deg % 180 !== 0; const c = document.createElement('canvas'); c.width = quarter ? img.height : img.width; c.height = quarter ? img.width : img.height;
+  const x = c.getContext('2d')!; x.translate(c.width / 2, c.height / 2); x.rotate((deg * Math.PI) / 180); x.drawImage(img, -img.width / 2, -img.height / 2);
+  const blob = await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Could not rotate the picture'))), 'image/jpeg', 0.9));
+  return { blob, dataUrl: await blobToDataUrl(blob) };
+}
+/** Is this document TopMop's own invoice (a sale), not a purchase? Compares the seller with the company on file. */
+export function isOwnDocument(d: Pick<ReceiptDraft, 'supplier_name' | 'supplier_tin'>, company: { name: string; tin: string }): boolean {
+  const norm = (t: string | null | undefined) => (t ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const digits = (t: string | null | undefined) => (t ?? '').replace(/\D/g, '').slice(0, 9);
+  const n = norm(d.supplier_name); const mine = norm(company.name);
+  return (!!digits(d.supplier_tin) && digits(d.supplier_tin) === digits(company.tin)) || (!!n && (n.includes('topmop') || (!!mine && (n === mine || n.includes(mine.slice(0, 14))))));
+}
+
 /** A smaller copy for the AI (long side 1600 px) so the call stays quick. */
 export async function forAi(dataUrl: string): Promise<string> {
   const img = new Image(); await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error('Could not read the picture')); img.src = dataUrl; });

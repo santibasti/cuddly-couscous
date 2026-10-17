@@ -6,7 +6,7 @@ import { Badge, Card, Field, Modal, PageHead, Stat, attempt, toast } from '@/com
 import { CLOUD } from '@/lib/cloud';
 import { saveExpense } from '@/lib/actions';
 import { exportCsv } from '@/lib/export';
-import { blankDraft, checkReceipt, deleteReceipt, draftFromReading, forAi, listReceipts, prepareScan, readReceipt, readyForBir, saveNewReceipt, scanUrl, updateReceipt, type Check, type Receipt, type ReceiptDraft, type ReceiptVat } from '@/lib/receipts';
+import { blankDraft, checkReceipt, deleteReceipt, draftFromReading, forAi, isOwnDocument, listReceipts, prepareScan, readReceipt, readyForBir, rotateScan, saveNewReceipt, scanUrl, updateReceipt, type Check, type Receipt, type ReceiptDraft, type ReceiptVat } from '@/lib/receipts';
 import { fmtTin } from '@/lib/bir';
 import { fmtDate, money, today } from '@/lib/util';
 import type { ExpenseCategory, ExpenseMethod } from '@/lib/types';
@@ -15,11 +15,13 @@ const CATEGORIES: ExpenseCategory[] = ['Fuel', 'Materials', 'Equipment Repair', 
 const METHODS: ExpenseMethod[] = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Credit Card', 'Other'];
 const num = (v: string): number | null => (v.trim() === '' ? null : Number(v.replace(/[^\d.\-]/g, '')) || 0);
 
-function Editor({ initial, seed, scan, reading, others, onClose, onSaved }: { initial?: Receipt; seed?: ReceiptDraft; scan?: { blob: Blob; dataUrl: string }; reading?: { busy: boolean; error?: string }; others: Receipt[]; onClose: () => void; onSaved: () => void }) {
+function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRotate }: { initial?: Receipt; seed?: ReceiptDraft; scan?: { blob: Blob; dataUrl: string }; reading?: { busy: boolean; error?: string }; others: Receipt[]; onClose: () => void; onSaved: () => void; onRotate?: () => void }) {
   const { db, can } = useAuth();
   const [d, setD] = useState<ReceiptDraft>(initial ? { ...initial } : blankDraft()); const [busy, setBusy] = useState(false);
   const [img, setImg] = useState(scan?.dataUrl ?? ''); const [zoom, setZoom] = useState(false);
   useEffect(() => { if (initial) void scanUrl(initial).then(setImg); }, [initial?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (scan) setImg(scan.dataUrl); }, [scan?.dataUrl]);
+  const own = isOwnDocument(d, db.settings.company);
   useEffect(() => { if (seed && !reading?.busy) setD(seed); }, [seed, reading?.busy]); // the AI's reading arrives after the window opens
   const set = <K extends keyof ReceiptDraft>(k: K, v: ReceiptDraft[K]) => setD((cur) => ({ ...cur, [k]: v }));
   const checks = useMemo(() => checkReceipt(d, others, initial?.id), [d, others, initial?.id]);
@@ -51,15 +53,17 @@ function Editor({ initial, seed, scan, reading, others, onClose, onSaved }: { in
       {initial && !locked && can('receipts.manage') && <button className="btn danger" disabled={busy} onClick={async () => { if (!confirm('Delete this receipt and its scan record? It goes to the recycle bin.')) return; try { await deleteReceipt(initial.id); toast('Receipt deleted', 'ok'); onSaved(); onClose(); } catch (e) { toast(e instanceof Error ? e.message : 'Could not delete', 'err'); } }}>Delete</button>}
       {initial && img && <a className="btn" href={img} download={`receipt-${d.receipt_no ?? initial.id.slice(0, 6)}.jpg`}>Download scan</a>}
       {!locked && <button className="btn" disabled={busy || reading?.busy} onClick={save}>{initial ? 'Save changes' : 'Save receipt'}</button>}
-      {initial && !locked && can('expenses.edit') && <button className="btn primary" disabled={busy} onClick={post}>Post as expense</button>}
+      {initial && !locked && !own && can('expenses.edit') && <button className="btn primary" disabled={busy} onClick={post}>Post as expense</button>}
     </>}>
       <div className="rc-grid">
         <div className="rc-scan">
           {img ? <img src={img} alt="Receipt scan" className={zoom ? 'zoom' : ''} onClick={() => setZoom(!zoom)} title="Tap to zoom" /> : <div className="muted">No scan</div>}
           <div className="small muted">Tap the picture to zoom. The scan is kept with the record.</div>
+          {onRotate && !initial && <button type="button" className="btn sm" disabled={reading?.busy} onClick={onRotate}>↻ Turn 90° and read again</button>}
         </div>
         <div className="stack">
           {reading?.busy && <div className="alert info rc-reading"><span className="rc-spin" /> Reading the receipt…</div>}
+          {own && <div className="alert info small"><b>This is TopMop's own invoice (a sale), not a purchase.</b> The scan is kept as a copy of the invoice you issued, but it is not posted as an expense and does not go on the Summary List of Purchases.{d.ocr?.buyer?.name ? <> Sold to: <b>{d.ocr.buyer.name}</b>{d.ocr.buyer.tin ? ` · TIN ${d.ocr.buyer.tin}` : ''}{d.ocr.buyer.address ? ` · ${d.ocr.buyer.address}` : ''}.</> : null}</div>}
           {reading?.error && <div className="alert warn">{reading.error} You can still type the details below.</div>}
           {!initial && !CLOUD && <div className="alert info small">Demo mode: the AI reader works on the live site. Type the details below to try the rest.</div>}
           <div className="form-grid">
@@ -96,7 +100,7 @@ export default function Receipts() {
   const [rows, setRows] = useState<Receipt[]>([]); const [loading, setLoading] = useState(true); const [err, setErr] = useState('');
   const [month, setMonth] = useState(today().slice(0, 7)); const [q, setQ] = useState(''); const [only, setOnly] = useState<'' | 'fix' | 'posted'>('');
   const [open, setOpen] = useState<Receipt | null>(null);
-  const [draft, setDraft] = useState<{ d: ReceiptDraft; scan: { blob: Blob; dataUrl: string }; reading: { busy: boolean; error?: string } } | null>(null);
+  const [draft, setDraft] = useState<{ d: ReceiptDraft; scan: { blob: Blob; dataUrl: string; base64?: string }; reading: { busy: boolean; error?: string } } | null>(null);
   const [enhance, setEnhance] = useState(true); const file = useRef<HTMLInputElement>(null);
   const manage = can('receipts.manage');
   const load = useCallback(() => { listReceipts().then((r) => { setRows(r); setErr(''); }).catch((e) => setErr(e instanceof Error ? e.message : 'Could not load the receipts')).finally(() => setLoading(false)); }, []);
@@ -108,10 +112,22 @@ export default function Receipts() {
       const scan = await prepareScan(f, enhance);
       setDraft({ d: blankDraft(), scan, reading: { busy: CLOUD } });
       if (CLOUD) {
-        try { const r = await readReceipt(await forAi(scan.dataUrl)); setDraft((cur) => (cur ? { ...cur, d: draftFromReading(r), reading: { busy: false } } : cur)); }
+        try {
+          let r = await readReceipt(await forAi(scan.dataUrl)); let cur: { blob: Blob; dataUrl: string } = scan;
+          if (r.rotate) { cur = await rotateScan(scan.dataUrl, r.rotate); setDraft((x) => (x ? { ...x, scan: cur } : x)); r = await readReceipt(await forAi(cur.dataUrl)); }  // photographed sideways: turn it upright and read again
+          setDraft((x) => (x ? { ...x, scan: cur, d: draftFromReading(r), reading: { busy: false } } : x));
+        }
         catch (e) { setDraft((cur) => (cur ? { ...cur, reading: { busy: false, error: e instanceof Error ? e.message : 'The AI could not read this receipt.' } } : cur)); }
       }
     } catch (e) { toast(e instanceof Error ? e.message : 'Could not open the picture', 'err'); }
+  };
+
+  const turn = async () => {
+    if (!draft) return;
+    try {
+      const scan = await rotateScan(draft.scan.dataUrl, 90); setDraft({ ...draft, scan, reading: { busy: CLOUD } });
+      if (CLOUD) { const r = await readReceipt(await forAi(scan.dataUrl)); setDraft((x) => (x ? { ...x, scan, d: draftFromReading(r), reading: { busy: false } } : x)); }
+    } catch (e) { setDraft((x) => (x ? { ...x, reading: { busy: false, error: e instanceof Error ? e.message : 'The AI could not read this receipt.' } } : x)); }
   };
 
   const shown = rows.filter((r) => {
@@ -153,7 +169,7 @@ export default function Receipts() {
             {!shown.length && <tr><td colSpan={8} className="muted" style={{ padding: 20 }}>{loading ? 'Loading…' : 'No receipts here yet. Tap “Scan a receipt” and take a clear photo of the whole receipt.'}</td></tr>}
           </tbody></table></div>
       </Card>
-      {draft && <Editor seed={draft.d} scan={draft.scan} reading={draft.reading} others={rows} onClose={() => setDraft(null)} onSaved={load} key="new" />}
+      {draft && <Editor seed={draft.d} scan={draft.scan} reading={draft.reading} others={rows} onClose={() => setDraft(null)} onSaved={load} key="new" onRotate={() => void turn()} />}
       {open && <Editor initial={open} others={rows} onClose={() => setOpen(null)} onSaved={load} />}
     </>
   );

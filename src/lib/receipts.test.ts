@@ -26,3 +26,13 @@ describe('receipt checks', () => {
     expect(checkReceipt(d, [], undefined, '2026-10-17').some((x) => /Hard to read/.test(x.text))).toBe(true);
   });
 });
+
+describe('own invoices', () => {
+  it('recognises a TopMop invoice by name or TIN so it is not posted as a purchase', async () => {
+    const { isOwnDocument } = await import('./receipts');
+    const co = { name: 'TopMop Window Cleaning Solutions Corp.', tin: '697-690-108-00000' };
+    expect(isOwnDocument({ supplier_name: 'TOP MOP WINDOW CLEANING SOLUTIONS CORP.', supplier_tin: null }, co)).toBe(true);
+    expect(isOwnDocument({ supplier_name: 'Someone', supplier_tin: '697690108000' }, co)).toBe(true);
+    expect(isOwnDocument({ supplier_name: 'ABC Hardware', supplier_tin: '123-456-789-00000' }, co)).toBe(false);
+  });
+});

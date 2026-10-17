@@ -19,8 +19,10 @@ Deno.serve(async (req) => {
   const { image } = await req.json().catch(() => ({}));
   if (typeof image !== 'string' || image.length < 100) return json({ error: 'No photo received.' }, 400);
   if (image.length > 5_000_000) return json({ error: 'The photo is too large.' }, 400);
-  const system = `You read photographed Philippine official receipts, sales invoices and cash invoices for a bookkeeper preparing BIR filings. Transcribe ONLY what is actually printed or written and legible. If a value is erased, faded, cut off, hidden or not on the document, return null for it. NEVER guess, complete or invent a TIN, name, address, number, date or amount. Reply with JSON only:
-{"doc_type":"Official Receipt|Sales Invoice|Cash Invoice|Billing Invoice|Other|null",
+  const system = `You read photographed Philippine official receipts, sales invoices and cash invoices for a bookkeeper preparing BIR filings. Transcribe ONLY what is actually printed or written and legible. If a value is erased, faded, cut off, hidden or not on the document, return null for it. NEVER guess, complete or invent a TIN, name, address, number, date or amount. The photo may be sideways or upside down, taken at an angle, and parts may be handwritten (read neat handwriting too; if a handwritten value is not clearly legible, put the field in "low_confidence" or "unreadable"). Printed headers (business name, TIN, address, "NON-VAT Reg." / "VAT Reg.") belong to the SELLER; "Sold to", "Billed to" or "Delivered to" lines belong to the BUYER. Reply with JSON only:
+{"rotate":0|90|180|270 (degrees CLOCKWISE the photo must be turned so the text reads upright and left-to-right; 0 if it is already upright),
+"buyer_name":"the 'sold to' name as written or null","buyer_tin":"buyer TIN or null","buyer_address":"buyer address or null",
+"doc_type":"Official Receipt|Sales Invoice|Cash Invoice|Billing Invoice|Other|null",
 "receipt_no":"the OR / SI / invoice number as printed or null",
 "date":"YYYY-MM-DD or null",
 "supplier_name":"the registered business name of the seller (not the buyer) or null",
@@ -36,7 +38,7 @@ Deno.serve(async (req) => {
 "notes":"one short sentence about the condition of the receipt (faded, torn, folded, glare) or empty"}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: env('AI_RECEIPT_MODEL') || 'claude-sonnet-5-5', max_tokens: 1200, system, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: 'Read this receipt.' }] }] }),
+    body: JSON.stringify({ model: env('AI_RECEIPT_MODEL') || 'claude-sonnet-5-5', max_tokens: 1500, system, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: 'Read this receipt.' }] }] }),
   });
   if (!res.ok) {
     const detail = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? '';
@@ -55,6 +57,8 @@ Deno.serve(async (req) => {
         total_amount: money(j.total_amount), vatable_sales: money(j.vatable_sales), vat_amount: money(j.vat_amount), exempt_amount: money(j.exempt_amount), zero_rated_amount: money(j.zero_rated_amount),
         payment_method: text(j.payment_method, 20), description: text(j.description, 160),
       },
+      rotate: [90, 180, 270].includes(Number(j.rotate)) ? Number(j.rotate) : 0,
+      buyer: { name: text(j.buyer_name), tin: text(j.buyer_tin, 30), address: text(j.buyer_address, 240) },
       unreadable: names(j.unreadable), low_confidence: names(j.low_confidence), notes: text(j.notes, 160) ?? '',
     });
   } catch { return json({ error: 'The AI answer could not be read. Try again.' }, 502); }
