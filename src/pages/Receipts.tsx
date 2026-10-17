@@ -2,7 +2,7 @@
 // and the scan is kept, so a fading or damaged receipt no longer loses its details. Posting a receipt creates the expense (and feeds the SLP).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { store, useAuth, live } from '@/lib/store';
-import { Badge, Card, Field, Modal, PageHead, Stat, attempt, toast } from '@/components/ui';
+import { Badge, Card, Field, Icon, Modal, PageHead, Stat, attempt, toast } from '@/components/ui';
 import { CLOUD } from '@/lib/cloud';
 import { saveExpense } from '@/lib/actions';
 import { exportCsv } from '@/lib/export';
@@ -14,6 +14,17 @@ import type { ExpenseCategory, ExpenseMethod } from '@/lib/types';
 const CATEGORIES: ExpenseCategory[] = ['Fuel', 'Materials', 'Equipment Repair', 'Transportation', 'Marketing', 'Rent', 'Utilities', 'Government Fees', 'Subcontractor', 'Toll & Parking', 'Meals & Snacks', 'Other'];
 const METHODS: ExpenseMethod[] = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Credit Card', 'Other'];
 const num = (v: string): number | null => (v.trim() === '' ? null : Number(v.replace(/[^\d.\-]/g, '')) || 0);
+
+/** Deletes a receipt (to the recycle bin). A posted receipt takes its expense with it, unless the expense was already approved: that stays and must be reversed in Finance. */
+async function removeReceipt(r: Receipt): Promise<boolean> {
+  const exp = r.expense_id ? store.getDB().expenses.find((e) => e.id === r.expense_id && !e.deleted_at) : undefined;
+  if (exp && exp.approval === 'Approved') { toast('This receipt was posted as an expense that is already approved. Reverse the expense in Finance first, then delete the receipt.', 'err'); return false; }
+  if (!confirm(`Delete this receipt${r.supplier_name ? ` from ${r.supplier_name}` : ''}?${exp ? '\n\nIts expense (not yet approved) will be deleted too.' : ''}\n\nIt goes to the recycle bin.`)) return false;
+  try {
+    if (exp && !attempt(() => store.remove('expenses', exp.id), 'Expense deleted')) return false;
+    await deleteReceipt(r.id); toast('Receipt deleted', 'ok'); return true;
+  } catch (e) { toast(e instanceof Error ? e.message : 'Could not delete', 'err'); return false; }
+}
 
 function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRotate }: { initial?: Receipt; seed?: ReceiptDraft; scan?: { blob: Blob; dataUrl: string }; reading?: { busy: boolean; error?: string }; others: Receipt[]; onClose: () => void; onSaved: () => void; onRotate?: () => void }) {
   const { db, can, user } = useAuth();
@@ -51,7 +62,7 @@ function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRota
   return (
     <Modal title={initial ? 'Receipt' : 'New receipt'} size="xl" onClose={onClose} footer={<>
       <button className="btn" onClick={onClose}>{locked ? 'Close' : 'Cancel'}</button>
-      {initial && !locked && can('receipts.manage') && <button className="btn danger" disabled={busy} onClick={async () => { if (!confirm('Delete this receipt and its scan record? It goes to the recycle bin.')) return; try { await deleteReceipt(initial.id); toast('Receipt deleted', 'ok'); onSaved(); onClose(); } catch (e) { toast(e instanceof Error ? e.message : 'Could not delete', 'err'); } }}>Delete</button>}
+      {initial && (can('receipts.manage') || (initial.status === 'Captured' && initial.created_by === user?.id)) && <button className="btn danger" disabled={busy} onClick={async () => { if (await removeReceipt(initial)) { onSaved(); onClose(); } }}>Delete</button>}
       {initial && img && <a className="btn" href={img} download={`receipt-${d.receipt_no ?? initial.id.slice(0, 6)}.jpg`}>Download scan</a>}
       {!locked && <button className="btn primary" disabled={busy || reading?.busy || (!initial && !confirmed)} title={!initial && !confirmed ? 'Tick the box to confirm the details first' : undefined} onClick={save}>{initial ? 'Save changes' : 'Save receipt'}</button>}
       {initial && !locked && !own && can('expenses.edit') && <button className="btn primary" disabled={busy} onClick={() => setAskBir(true)}>Post receipt</button>}
@@ -140,7 +151,7 @@ function BirChoice({ r, onSaved }: { r: Receipt; onSaved: () => void }) {
 }
 
 export default function Receipts() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [rows, setRows] = useState<Receipt[]>([]); const [loading, setLoading] = useState(true); const [err, setErr] = useState('');
   const [month, setMonth] = useState(today().slice(0, 7)); const [q, setQ] = useState(''); const [only, setOnly] = useState<'' | 'fix' | 'posted'>('');
   const [open, setOpen] = useState<Receipt | null>(null);
@@ -224,11 +235,11 @@ export default function Receipts() {
       </Card>
       <div style={{ height: 14 }} />
       <Card flush>
-        <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Scan</th><th>Date</th><th>Supplier · TIN · Address</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VATable sales</th><th className="num">VAT</th><th>BIR</th></tr></thead>
+        <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Scan</th><th>Date</th><th>Supplier · TIN · Address</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VATable sales</th><th className="num">VAT</th><th>BIR</th><th /></tr></thead>
           <tbody>
-            {shown.map((r) => <Row key={r.id} r={r} all={rows} onOpen={() => setOpen(r)} />)}
-            {shown.length > 0 && <tr style={{ fontWeight: 800 }}><td colSpan={5}>Grand total ({grand.n})</td><td className="num">{money(grand.total)}</td><td className="num">{money(grand.vatable)}</td><td className="num">{money(grand.vat)}</td><td /></tr>}
-            {!shown.length && <tr><td colSpan={9} className="muted" style={{ padding: 20 }}>{loading ? 'Loading…' : 'No receipts here yet. Tap “Scan a receipt” and take a clear photo of the whole receipt.'}</td></tr>}
+            {shown.map((r) => <Row key={r.id} r={r} all={rows} onOpen={() => setOpen(r)} canDelete={manage || (r.status === 'Captured' && r.created_by === user?.id)} onDelete={async () => { if (await removeReceipt(r)) load(); }} />)}
+            {shown.length > 0 && <tr style={{ fontWeight: 800 }}><td colSpan={5}>Grand total ({grand.n})</td><td className="num">{money(grand.total)}</td><td className="num">{money(grand.vatable)}</td><td className="num">{money(grand.vat)}</td><td /><td /></tr>}
+            {!shown.length && <tr><td colSpan={10} className="muted" style={{ padding: 20 }}>{loading ? 'Loading…' : 'No receipts here yet. Tap “Scan a receipt” and take a clear photo of the whole receipt.'}</td></tr>}
           </tbody></table></div>
       </Card>
       {draft && <Editor seed={draft.d} scan={draft.scan} reading={draft.reading} others={rows} onClose={() => setDraft(null)} onSaved={load} key="new" onRotate={() => void turn()} />}
@@ -237,7 +248,7 @@ export default function Receipts() {
   );
 }
 
-function Row({ r, all, onOpen }: { r: Receipt; all: Receipt[]; onOpen: () => void }) {
+function Row({ r, all, onOpen, canDelete, onDelete }: { r: Receipt; all: Receipt[]; onOpen: () => void; canDelete: boolean; onDelete: () => void }) {
   const [src, setSrc] = useState(''); const checks = checkReceipt(r, all, r.id); const ready = readyForBir(checks);
   useEffect(() => { void scanUrl(r).then(setSrc); }, [r.id, r.image_path]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
@@ -252,6 +263,7 @@ function Row({ r, all, onOpen }: { r: Receipt; all: Receipt[]; onOpen: () => voi
         {r.status !== 'Posted' ? <><span className="muted">—</span><div className="small muted">{ready ? 'complete' : 'incomplete'} · not posted</div></>
           : r.bir_mode ? <><Badge tone={r.bir_mode === 'no' ? 'gray' : 'green'}>{r.bir_mode === 'yes' ? 'Yes' : r.bir_mode === 'no' ? 'No' : 'Both'}</Badge>{r.bir_mode !== 'no' && !ready && <div className="small" style={{ color: 'var(--red)' }}>incomplete</div>}{r.bir_mode === 'yes' && <div className="small muted">not an expense</div>}</> : <Badge tone="amber">Decide</Badge>}
       </td>
+      <td>{canDelete && <button className="btn sm danger" title="Delete this receipt" aria-label="Delete receipt" onClick={(e) => { e.stopPropagation(); onDelete(); }}><Icon name="trash" /></button>}</td>
     </tr>
   );
 }
