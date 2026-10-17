@@ -914,3 +914,16 @@ body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small {
 .top3-name { color: var(--head); font-size: 15px; margin-top: 6px; line-height: 1.2; } .top3-num { font-size: 13px; color: var(--head); } .top3-num b { font-size: 17px; }
 .top3-card.me { outline: 3px solid var(--green); } .top3-you { font-weight: 800; font-size: 13px; color: var(--green); }
 @media (max-width: 640px) { .top3-card.r1, .top3-card.r2, .top3-card.r3 { order: 0; transform: none; max-width: none; } }
+
+/* recognition */
+.rbadges { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-top: 4px; }
+.rbadge { font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(18, 167, 216, .16); color: var(--head); border: 1px solid rgba(18, 167, 216, .35); white-space: nowrap; }
+.rbadge.perfect { background: rgba(245, 184, 61, .2); border-color: rgba(245, 184, 61, .5); } .rbadge.streak { background: rgba(240, 120, 60, .16); border-color: rgba(240, 120, 60, .4); } .rbadge.improved { background: rgba(82, 199, 90, .18); border-color: rgba(82, 199, 90, .45); }
+.rannounce { display: block; width: 100%; text-align: left; margin-bottom: 12px; padding: 12px 16px; border-radius: 14px; border: 1px solid rgba(245, 184, 61, .55); background: linear-gradient(90deg, rgba(245, 184, 61, .22), rgba(18, 167, 216, .12)); color: var(--head); cursor: pointer; font-size: 14.5px; }
+.rtabs button { font-size: 13.5px; }
+.rperson { display: flex; gap: 12px; align-items: center; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); } .rperson.me { outline: 2px solid var(--green); } .rperson .rbadges { justify-content: flex-start; } .rextra { margin-left: auto; text-align: right; } .rup { font-size: 17px; color: var(--green); }
+.praise-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.praise { margin: 0; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: linear-gradient(135deg, rgba(82, 199, 90, .10), rgba(18, 167, 216, .08)); } .praise blockquote { margin: 0 0 8px; font-size: 15px; line-height: 1.45; color: var(--head); font-style: italic; }
+.rcrew { display: flex; gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; } .rcrew-rank { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: var(--navy); color: #fff; flex: none; } .rscore { font-size: 22px; color: var(--head); } .rscore small { font-size: 12px; opacity: .6; }
+.rbar { height: 8px; border-radius: 999px; background: rgba(130, 150, 170, .25); margin-top: 6px; overflow: hidden; } .rbar span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #52c75a, #12a7d8); }
+.rawards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; } .raward { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; }

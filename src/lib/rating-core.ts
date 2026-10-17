@@ -2,6 +2,7 @@
 import type { DB, Employee, RatingParts } from './types';
 import { scorecard } from './business';
 import { addDays, monthStart, round2 } from './util';
+import { projection } from './recognition-core';
 
 const live = <X extends { deleted_at?: string | null }>(a: X[]) => a.filter((x) => !x.deleted_at);
 
@@ -62,7 +63,7 @@ export function motivation(rating: number | undefined, parts: RatingParts | unde
   return {
     headline: `${ratingLabel(rating)} · ${rating.toFixed(1)} / 5`,
     message: pick + after,
-    tip: band === 'top' && strong ? `Your strongest area is ${strong.name} — keep it up.` : focus ? `Focus today: ${focus.name}. ${focus.tip}` : strong ? `Your strongest area is ${strong.name}.` : undefined,
+    tip: band === 'top' && strong ? `Your strongest area is ${strong.name} — keep it up.` : focus ? `Focus today: ${focus.name}. ${focus.tip}${projection(focus.v!)}` : strong ? `Your strongest area is ${strong.name}.` : undefined,
   };
 }
 

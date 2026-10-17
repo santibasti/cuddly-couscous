@@ -3,9 +3,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth, live, store } from '@/lib/store';
 import { Avatar, EmployeeCard, StarRating } from '@/components/EmployeeCard';
-import { TopThree } from '@/components/TopThree';
+import { RecognitionHub } from '@/components/Recognition';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
+import { computeRecog } from '@/lib/recognition-core';
+import { Badges } from '@/components/Badges';
 import { setMyAvatar, bulkApproveAttendance, clockIn, clockOut, decideAttendance, decideCorrection, manualAttendance, requestCorrection } from '@/lib/actions';
 import { getGeo } from '@/lib/geo';
 import { LIVE_JOB } from '@/lib/business';
@@ -141,19 +143,20 @@ export default function Attendance() {
               <b style={{ fontSize: 17 }}>{employee.full_name}</b>
               <span className="small muted">{employee.position}</span>
               {employee.rating !== undefined && <span className="row" style={{ gap: 8 }}><StarRating value={employee.rating} size={18} /><b>{employee.rating.toFixed(1)}</b><span className="small muted">/ 5</span></span>}
+              {(() => { const rc = employee.recog ?? computeRecog(db, employee); return <><Badges recog={rc} /><span className="small">{rc.streak >= 1 ? `🔥 ${rc.streak} work day${rc.streak === 1 ? '' : 's'} on time in a row${rc.streak < 5 ? ` — ${5 - rc.streak} more for a streak badge` : ' — keep it going!'}` : 'Be on time today to start a streak 🔥'}</span>{rc.perfect && <span className="small">🏅 Perfect attendance so far this month!</span>}</>; })()}
               <span className="small muted">Tap the 📷 on your picture to upload your own photo{employee.avatar ? '' : ' — it shows on your attendance card and the Top 3 board'}.</span>
               {employee.avatar && <button className="btn sm" style={{ justifySelf: 'start' }} onClick={() => { if (confirm('Remove your photo?')) attempt(() => setMyAvatar(null), 'Photo removed'); }}>Remove my photo</button>}
             </div>
           </div>
         </Card>
       )}
-      {tab === 'me' && employee && <TopThree meId={employee.id} />}
+      {tab === 'me' && employee && <RecognitionHub meId={employee.id} />}
       {tab === 'me' && employee && <MyClock emp={employee} />}
       {tab === 'me' && !employee && <div className="alert warn">Your user account is not linked to an employee record.</div>}
 
       {tab === 'daily' && canView && (
         <>
-          <TopThree meId={employee?.id} />
+          <RecognitionHub meId={employee?.id} canAnnounce={can('performance.edit')} />
           <div className="grid g4 keep2" style={{ marginBottom: 12 }}>
             <Stat k="Present / clocked in" v={present} s={`of ${rows.filter((r) => !r.isRest).length} scheduled`} tone="good" /><Stat k="Late" v={late} tone={late ? 'warn' : undefined} />
             <Stat k="No record" v={date <= T ? missing : 0} tone={missing && date <= T ? 'bad' : undefined} /><Stat k="Awaiting approval" v={rows.filter((r) => r.a?.approval === 'Pending').length} tone="warn" />

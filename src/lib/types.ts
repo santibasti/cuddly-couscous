@@ -259,6 +259,7 @@ export interface Employee extends Base {
   /** 1–5 star rating from the monthly scorecard (last 3 months), kept on the record so the employee can see their own. */
   rating?: number; rating_parts?: RatingParts; rating_at?: string;
   avatar?: string; // small square photo (data URL) shown on the attendance cards
+  recog?: { month: string; prev?: number; delta?: number; streak: number; perfect: boolean; docs: number }; // badge data, kept up to date by Admin / HR sessions
 }
 
 export interface Attendance extends Base {

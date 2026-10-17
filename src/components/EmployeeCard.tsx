@@ -1,6 +1,7 @@
 // Premium attendance card for one employee: photo (or initials), name, star rating and today's clock status.
 import { useRef } from 'react';
 import { Badge, toast } from '@/components/ui';
+import { Badges } from '@/components/Badges';
 import { ratingLabel, ratingTone } from '@/lib/rating-core';
 import { avatarDataUrl } from '@/lib/photos';
 import type { Employee } from '@/lib/types';
@@ -46,6 +47,7 @@ export function EmployeeCard({ emp, status, tone, lines, actions, onUpload }: { 
           <Badge tone={ratingTone(emp.rating)}>{ratingLabel(emp.rating)}</Badge>
         </> : <span className="small muted">No rating yet — it starts once attendance is approved</span>}
       </div>
+      <Badges recog={emp.recog} />
       <dl className="ec-lines">{lines.map((l) => <div key={l.k}><dt>{l.k}</dt><dd>{l.v}</dd></div>)}</dl>
       {actions && <div className="ec-actions">{actions}</div>}
     </article>
