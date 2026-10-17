@@ -388,6 +388,8 @@ class Store {
     return kind === 'EMP' ? `TM-${String(n).padStart(3, '0')}` : `${kind}-${yr}-${String(n).padStart(4, '0')}`;
   }
   /* ---- automation helpers (system-attributed, not permission checked) ---- */
+  /** Changes this device's copy only — for a record the database function has already updated. */
+  patchLocal<T extends TableName>(table: T, id: string, patch: Partial<Rows[T]>) { this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? ({ ...r, ...patch } as Base) : r)) }) as DB); }
   system<T extends TableName>(table: T, id: string, patch: Partial<Rows[T]>, summary?: string) { this.soft.add(id); return this.update(table, id, patch, 'update', summary); }
   systemInsert<T extends TableName>(table: T, data: NewRow<T>, summary?: string) { const r = this.insert(table, data, summary); this.soft.add((r as Base).id); return r; }
   syncNotifications(list: Omit<Rows['notifications'], keyof Base | 'read_by'>[]) {

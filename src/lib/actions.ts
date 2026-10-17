@@ -1,5 +1,6 @@
 // Domain operations. Every function validates permissions and business rules, then writes through the audited store.
 import { store, RuleError } from './store';
+import { CLOUD, supabase } from './cloud';
 import type { DB, ExpenseCategory,
   Attendance, Checkout, ChequeStatus, Condition, Expense, Invoice, Job, JobStatus, MaintenanceTicket, Notification, PayMethod, PayrollAdjustment,
   Payment, Quotation, QuoteStatus, StockTx,
@@ -24,6 +25,17 @@ const fail = (m: string): never => { throw new RuleError(m); };
 export interface Geo { lat?: number; lng?: number }
 
 /* ================= Attendance ================= */
+/** The signed-in employee sets or removes their own photo (a small square picture as a data URL). */
+export async function setMyAvatar(dataUrl: string | null) {
+  const id = store.user?.employee_id; if (!id) throw new RuleError('Your login is not linked to an employee record.');
+  if (dataUrl && (!dataUrl.startsWith('data:image/') || dataUrl.length > 150_000)) throw new RuleError('That photo is too large. Try a smaller one.');
+  if (CLOUD) {
+    const { error } = await supabase().rpc('set_my_avatar', { p_avatar: dataUrl });
+    if (error) throw new RuleError(error.message);
+    store.patchLocal('employees', id, { avatar: dataUrl ?? undefined });
+  } else store.system('employees', id, { avatar: dataUrl ?? undefined }, 'Employee updated their photo');
+}
+
 export function clockIn(employeeId: string, geo: Geo, jobId?: string) {
   store.require('attendance.own');
   const d = db(); const emp = d.employees.find((e) => e.id === employeeId)!;

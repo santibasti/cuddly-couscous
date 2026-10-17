@@ -2,11 +2,11 @@ import { RatingCard } from '@/components/RatingCard';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth, live, store } from '@/lib/store';
-import { EmployeeCard } from '@/components/EmployeeCard';
+import { Avatar, EmployeeCard, StarRating } from '@/components/EmployeeCard';
 import { TopThree } from '@/components/TopThree';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
-import { bulkApproveAttendance, clockIn, clockOut, decideAttendance, decideCorrection, manualAttendance, requestCorrection } from '@/lib/actions';
+import { setMyAvatar, bulkApproveAttendance, clockIn, clockOut, decideAttendance, decideCorrection, manualAttendance, requestCorrection } from '@/lib/actions';
 import { getGeo } from '@/lib/geo';
 import { LIVE_JOB } from '@/lib/business';
 import { addDays, dow, fmtDate, fmtStamp, fmtTime, money, nowLocal, today } from '@/lib/util';
@@ -133,6 +133,20 @@ export default function Attendance() {
       </PageHead>
       <Tabs tabs={[...(employee && can('attendance.own') ? [{ id: 'me' as const, label: 'My clock' }] : []), ...(canView ? [{ id: 'daily' as const, label: 'Daily crew attendance' }, { id: 'corrections' as const, label: 'Corrections', count: pendingCorr.length }] : [])]} value={tab} onChange={(t) => { setTab(t); setSp({ tab: t }); }} />
 
+      {tab === 'me' && employee && (
+        <Card>
+          <div className="row" style={{ gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Avatar emp={employee} size={84} onUpload={(url) => attempt(() => setMyAvatar(url), 'Your photo is saved')} />
+            <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
+              <b style={{ fontSize: 17 }}>{employee.full_name}</b>
+              <span className="small muted">{employee.position}</span>
+              {employee.rating !== undefined && <span className="row" style={{ gap: 8 }}><StarRating value={employee.rating} size={18} /><b>{employee.rating.toFixed(1)}</b><span className="small muted">/ 5</span></span>}
+              <span className="small muted">Tap the 📷 on your picture to upload your own photo{employee.avatar ? '' : ' — it shows on your attendance card and the Top 3 board'}.</span>
+              {employee.avatar && <button className="btn sm" style={{ justifySelf: 'start' }} onClick={() => { if (confirm('Remove your photo?')) attempt(() => setMyAvatar(null), 'Photo removed'); }}>Remove my photo</button>}
+            </div>
+          </div>
+        </Card>
+      )}
       {tab === 'me' && employee && <TopThree meId={employee.id} />}
       {tab === 'me' && employee && <MyClock emp={employee} />}
       {tab === 'me' && !employee && <div className="alert warn">Your user account is not linked to an employee record.</div>}
@@ -156,7 +170,7 @@ export default function Attendance() {
                 const [status, tone] = r.a?.clock_out ? ['Clocked out', 'green'] : r.a?.clock_in ? [lateNow ? 'On duty · late' : 'On duty', lateNow ? 'amber' : 'teal'] : r.isRest ? ['Rest day', 'blue'] : r.hol ? [`${r.hol.kind} holiday`, 'blue'] : date <= T ? ['No record', 'red'] : ['Scheduled', 'gray'];
                 return (
                   <EmployeeCard key={r.e.id} emp={r.e} status={status} tone={tone}
-                    onUpload={can('employees.edit') ? (url) => attempt(() => store.update('employees', r.e.id, { avatar: url }), 'Photo saved') : undefined}
+                    onUpload={can('employees.edit') ? (url) => attempt(() => store.update('employees', r.e.id, { avatar: url }), 'Photo saved') : r.e.id === employee?.id ? (url) => attempt(() => setMyAvatar(url), 'Your photo is saved') : undefined}
                     lines={[{ k: 'In', v: r.a?.clock_in ? fmtTime(r.a.clock_in) : '—' }, { k: 'Out', v: r.a?.clock_out ? fmtTime(r.a.clock_out) : '—' }, { k: 'Hours', v: r.a ? String(r.a.worked_hours ?? 0) : '—' }, { k: 'Job site', v: r.site }]}
                     actions={approve && r.a?.approval === 'Pending' ? <><button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></> : r.a ? <Badge>{r.a.approval}</Badge> : undefined} />
                 );
