@@ -157,16 +157,16 @@ export default function Receipts() {
         <input type="month" style={{ width: 180 }} value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Month" />
         <input placeholder="Search supplier, TIN, receipt no." value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 280 }} />
         <select style={{ width: 200 }} value={only} onChange={(e) => setOnly(e.target.value as typeof only)}><option value="">All receipts</option><option value="fix">Need attention</option><option value="posted">Posted as expense</option></select>
-        <button className="btn" onClick={() => exportCsv({ title: `Receipts ${month}`, headers: ['Date', 'Supplier', 'TIN', 'Address', 'Receipt no.', 'VAT status', 'Total', 'VATable sales', 'VAT', 'Exempt', 'Zero-rated', 'Category', 'Status'], types: ['text', 'text', 'text', 'text', 'text', 'text', 'money', 'money', 'money', 'money', 'money', 'text', 'text'],
-          rows: shown.map((r) => [r.receipt_date ?? '', r.supplier_name ?? '', fmtTin(r.supplier_tin ?? ''), r.supplier_address ?? '', r.receipt_no ?? '', r.supplier_vat ?? '', r.total_amount ?? 0, r.vatable_sales ?? 0, r.vat_amount ?? 0, r.exempt_amount ?? 0, r.zero_rated_amount ?? 0, r.category ?? '', r.status]) })}>Export CSV</button>
+        <button className="btn" onClick={() => exportCsv({ title: `Receipts ${month}`, headers: ['Date', 'Supplier', 'TIN', 'Address', 'Receipt no.', 'VAT status', 'Total', 'VATable sales', 'VAT', 'Exempt', 'Zero-rated', 'Category', 'BIR ready', 'Status'], types: ['text', 'text', 'text', 'text', 'text', 'text', 'money', 'money', 'money', 'money', 'money', 'text', 'text', 'text'],
+          rows: shown.map((r) => [r.receipt_date ?? '', r.supplier_name ?? '', fmtTin(r.supplier_tin ?? ''), r.supplier_address ?? '', r.receipt_no ?? '', r.supplier_vat ?? '', r.total_amount ?? 0, r.vatable_sales ?? 0, r.vat_amount ?? 0, r.exempt_amount ?? 0, r.zero_rated_amount ?? 0, r.category ?? '', readyForBir(checkReceipt(r, rows, r.id)) ? 'Yes' : 'No', r.status]) })}>Export CSV</button>
       </div>
       {err && <div className="alert warn">{err}</div>}
       {!CLOUD && <div className="alert info small" style={{ marginBottom: 10 }}>Demo mode: scans are kept in this browser only. On the live site they go to private storage and the AI reads them.</div>}
       <Card flush>
-        <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Scan</th><th>Date</th><th>Supplier · TIN · Address</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VAT amt</th><th>Status</th></tr></thead>
+        <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Scan</th><th>Date</th><th>Supplier · TIN · Address</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VATable sales</th><th className="num">VAT</th><th>BIR</th></tr></thead>
           <tbody>
             {shown.map((r) => <Row key={r.id} r={r} all={rows} onOpen={() => setOpen(r)} />)}
-            {!shown.length && <tr><td colSpan={8} className="muted" style={{ padding: 20 }}>{loading ? 'Loading…' : 'No receipts here yet. Tap “Scan a receipt” and take a clear photo of the whole receipt.'}</td></tr>}
+            {!shown.length && <tr><td colSpan={9} className="muted" style={{ padding: 20 }}>{loading ? 'Loading…' : 'No receipts here yet. Tap “Scan a receipt” and take a clear photo of the whole receipt.'}</td></tr>}
           </tbody></table></div>
       </Card>
       {draft && <Editor seed={draft.d} scan={draft.scan} reading={draft.reading} others={rows} onClose={() => setDraft(null)} onSaved={load} key="new" onRotate={() => void turn()} />}
@@ -185,8 +185,8 @@ function Row({ r, all, onOpen }: { r: Receipt; all: Receipt[]; onOpen: () => voi
       <td><b>{r.supplier_name || <span className="muted">no name</span>}</b><div className="small muted">{fmtTin(r.supplier_tin ?? '') || 'no TIN'}</div><div className="small muted">{r.supplier_address || 'no address'}</div></td>
       <td>{r.receipt_no || <span className="muted">—</span>}<div className="small muted">{r.doc_type}</div></td>
       <td>{r.supplier_vat ? <Badge tone={r.supplier_vat === 'VAT' ? 'blue' : 'gray'}>{r.supplier_vat}</Badge> : <span className="muted">—</span>}</td>
-      <td className="num">{r.total_amount === null ? '—' : money(r.total_amount)}</td><td className="num">{r.vat_amount ? money(r.vat_amount) : '—'}</td>
-      <td>{r.status === 'Posted' ? <Badge tone="green">Posted</Badge> : ready ? <Badge tone="green">Ready</Badge> : <Badge tone="amber">Needs attention</Badge>}</td>
+      <td className="num">{r.total_amount === null ? '—' : money(r.total_amount)}</td><td className="num">{r.vatable_sales ? money(r.vatable_sales) : '—'}</td><td className="num">{r.vat_amount ? money(r.vat_amount) : '—'}</td>
+      <td title={ready ? 'Has everything BIR needs' : checks.filter((c) => c.level === 'error').map((c) => c.text).join('\n')}>{ready ? <Badge tone="green">Yes</Badge> : <Badge tone="red">No</Badge>}{r.status === 'Posted' && <div className="small muted">posted</div>}</td>
     </tr>
   );
 }
