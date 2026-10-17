@@ -1,4 +1,5 @@
-import { RepeatClientCard } from '@/components/RepeatClientCard';
+import { RepeatClientCard, type RepeatSource } from '@/components/RepeatClientCard';
+import { RepeatReviewModal } from '@/components/RepeatReview';
 import { PackageTiles, ServiceTiles } from '@/components/ServiceTiles';
 import { PAYMENT_OPTIONS, SERVICE_METHOD_DEFAULTS, syncMethodSections, defaultCrew, defaultDisclaimer, defaultIntro, defaultMethodology, durationText, manpowerText } from '@/lib/quote-text';
 import { useMemo, useState } from 'react';
@@ -48,7 +49,7 @@ export default function QuoteEditor() {
   const existing = id !== 'new' ? db.quotations.find((q) => q.id === id) : undefined;
   const locked = !!existing && existing.status !== 'Draft';
   const readOnly = locked || !can('sales.edit');
-  const [calc, setCalc] = useState(false);
+  const [calc, setCalc] = useState(false); const [repeatSrc, setRepeatSrc] = useState<RepeatSource | null>(null);
   const [pdfImg, setPdfImg] = useState(false);
   const [svc, setSvc] = useState<ServiceCode>('GLASS_EXT');
   const [newSite, setNewSite] = useState(false);
@@ -133,9 +134,11 @@ export default function QuoteEditor() {
         </Card>
 
         {v.client_id && <RepeatClientCard clientId={v.client_id} currentId={existing?.id} readOnly={readOnly} hasItems={v.items.length > 0}
-          onRepeat={(r) => { setItems(r.items.map((i) => ({ ...i }))); if (r.scope && !v.scope.trim()) f.set('scope', r.scope); if (r.payment_option) f.set('payment_option', r.payment_option as Form['payment_option']); toast(`Copied the items from ${r.label}`, 'ok'); }}
+          onRepeat={(r) => setRepeatSrc(r)}
           onMention={(t) => { const cur = (v.intro ?? defaultIntro(db.settings)).trim(); if (!cur.includes(t)) f.set('intro', `${cur}\n\n${t}`); toast('Added to the introduction', 'ok'); }} />}
 
+        {repeatSrc && <RepeatReviewModal source={repeatSrc} vat={{ mode: v.vat_mode, rate: v.vat_rate, discount: discountPesos }} onClose={() => setRepeatSrc(null)}
+          onApply={(r) => { setItems(r.items); if (r.scope && !v.scope.trim()) f.set('scope', r.scope); if (r.payment_option) f.set('payment_option', r.payment_option as Form['payment_option']); if (r.thanks) { const cur = (v.intro ?? defaultIntro(db.settings)).trim(); if (!cur.includes(r.thanks)) f.set('intro', `${cur}\n\n${r.thanks}`); } setRepeatSrc(null); toast(`Copied the lines from ${repeatSrc.label}`, 'ok'); }} />}
         <Card title="Line items">
           {!readOnly && (
             <div className="filterbar" style={{ marginTop: 0 }}>
