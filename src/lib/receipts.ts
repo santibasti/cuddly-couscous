@@ -35,7 +35,24 @@ export function draftFromReading(r: Reading): ReceiptDraft {
 
 export interface Check { level: 'error' | 'warn' | 'info'; text: string; field?: string }
 /** What still needs a person's eyes before the receipt is good for BIR: missing details, amounts that do not add up, a possible double entry. */
-export function checkReceipt(d: ReceiptDraft, others: Pick<Receipt, 'id' | 'supplier_tin' | 'receipt_no' | 'total_amount'>[] = [], selfId?: string, today = new Date().toISOString().slice(0, 10)): Check[] {
+export interface DupSource { id: string; supplier_name?: string | null; supplier_tin?: string | null; receipt_no?: string | null; total_amount?: number | null; receipt_date?: string | null }
+export interface Dup { where: 'receipt' | 'expense'; id: string; why: string }
+const nm = (t?: string | null) => (t ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const dg = (t?: string | null) => (t ?? '').replace(/\D/g, '').slice(0, 9);
+/** Entries that look like the same purchase: the same supplier with the same receipt number, or with the same date and amount. Looks at other receipts and at expenses. */
+export function duplicatesOf(d: DupSource, selfId: string | undefined, receipts: DupSource[], expenses: DupSource[] = []): Dup[] {
+  const same = (o: DupSource) => (dg(d.supplier_tin) && dg(o.supplier_tin) ? dg(d.supplier_tin) === dg(o.supplier_tin) : !!nm(d.supplier_name) && nm(d.supplier_name) === nm(o.supplier_name));
+  const out: Dup[] = [];
+  const test = (o: DupSource, where: Dup['where']) => {
+    if (o.id === selfId || !same(o)) return;
+    const sameNo = !!nm(d.receipt_no) && nm(d.receipt_no) === nm(o.receipt_no);
+    const sameDayAmt = !!d.receipt_date && d.receipt_date === o.receipt_date && !!d.total_amount && d.total_amount === o.total_amount;
+    if (sameNo || sameDayAmt) out.push({ where, id: o.id, why: sameNo ? `same supplier and receipt no. ${d.receipt_no}` : `same supplier, date and amount (${d.total_amount})` });
+  };
+  receipts.forEach((o) => test(o, 'receipt')); expenses.forEach((o) => test(o, 'expense'));
+  return out;
+}
+export function checkReceipt(d: ReceiptDraft, others: DupSource[] = [], selfId?: string, today = new Date().toISOString().slice(0, 10), expenses: DupSource[] = []): Check[] {
   const out: Check[] = [];
   const need = (v: unknown, field: string, text: string) => { if (v === null || v === undefined || String(v).trim() === '') out.push({ level: 'error', text, field }); };
   need(d.supplier_name, 'supplier_name', 'Supplier name is missing.'); need(d.supplier_tin, 'supplier_tin', 'Supplier TIN is missing. Type it only if you can see it; do not guess.'); need(d.supplier_address, 'supplier_address', 'Supplier address is missing.');
@@ -50,8 +67,8 @@ export function checkReceipt(d: ReceiptDraft, others: Pick<Receipt, 'id' | 'supp
   } else if (d.supplier_vat && (d.vat_amount ?? 0) > 0) out.push({ level: 'error', text: `A ${d.supplier_vat} supplier should not show VAT. Check the receipt.`, field: 'vat_amount' });
   if (d.ocr?.unreadable.length) out.push({ level: 'warn', text: `Hard to read on the scan: ${d.ocr.unreadable.map((x) => FIELD_LABEL[x] ?? x).join(', ')}. Check against the paper, or retake the photo in better light.` });
   if (d.ocr?.low_confidence.length) out.push({ level: 'info', text: `The AI was unsure about: ${d.ocr.low_confidence.map((x) => FIELD_LABEL[x] ?? x).join(', ')}.` });
-  const dup = others.find((o) => o.id !== selfId && d.receipt_no && o.receipt_no === d.receipt_no && (o.supplier_tin ?? '') === (d.supplier_tin ?? '') && (o.total_amount ?? 0) === (d.total_amount ?? 0));
-  if (dup) out.push({ level: 'warn', text: 'A receipt with the same supplier, number and amount is already scanned. Possible double entry.' });
+  const dups = duplicatesOf({ id: selfId ?? '', ...d }, selfId, others, expenses);
+  if (dups.length) out.push({ level: 'warn', text: `Possible double entry: ${dups.slice(0, 3).map((x) => `${x.where === 'receipt' ? 'another scanned receipt' : 'an expense'} with the ${x.why}`).join('; ')}. Check before posting.`, field: 'receipt_no' });
   return out;
 }
 export const readyForBir = (c: Check[]) => !c.some((x) => x.level === 'error');

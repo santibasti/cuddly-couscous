@@ -6,7 +6,7 @@ import { Badge, Card, Field, Icon, Modal, PageHead, Stat, attempt, toast } from 
 import { CLOUD } from '@/lib/cloud';
 import { saveExpense } from '@/lib/actions';
 import { exportCsv } from '@/lib/export';
-import { blankDraft, checkReceipt, deleteReceipt, draftFromReading, forAi, isOwnDocument, listReceipts, prepareScan, readReceipt, readyForBir, rotateScan, saveNewReceipt, scanUrl, updateReceipt, type Check, type Receipt, type ReceiptDraft, type ReceiptVat } from '@/lib/receipts';
+import { blankDraft, checkReceipt, duplicatesOf, deleteReceipt, draftFromReading, forAi, isOwnDocument, listReceipts, prepareScan, readReceipt, readyForBir, rotateScan, saveNewReceipt, scanUrl, updateReceipt, type Check, type Receipt, type ReceiptDraft, type ReceiptVat } from '@/lib/receipts';
 import { fmtTin } from '@/lib/bir';
 import { fmtDate, money, round2, today } from '@/lib/util';
 import type { ExpenseCategory, ExpenseMethod } from '@/lib/types';
@@ -14,6 +14,21 @@ import type { ExpenseCategory, ExpenseMethod } from '@/lib/types';
 const CATEGORIES: ExpenseCategory[] = ['Fuel', 'Materials', 'Equipment Repair', 'Transportation', 'Marketing', 'Rent', 'Utilities', 'Government Fees', 'Subcontractor', 'Toll & Parking', 'Meals & Snacks', 'Other'];
 const METHODS: ExpenseMethod[] = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Credit Card', 'Other'];
 const num = (v: string): number | null => (v.trim() === '' ? null : Number(v.replace(/[^\d.\-]/g, '')) || 0);
+
+type Db = ReturnType<typeof store.getDB>;
+/** Expenses as duplicate-check sources, leaving out the expense this receipt created. */
+const expenseSources = (db: Db, ownExpenseId?: string | null) => live(db.expenses).filter((e) => e.id !== ownExpenseId && !e.reversed).map((e) => ({ id: e.id, supplier_name: e.supplier_name || e.payee, supplier_tin: e.supplier_tin, receipt_no: e.supplier_invoice_no, total_amount: e.amount, receipt_date: e.date }));
+
+/** Takes a posted receipt back to "Captured" so it can be corrected: its expense (if not yet approved) is deleted, and it can be posted again afterwards. */
+async function unpostReceipt(r: Receipt): Promise<boolean> {
+  const exp = r.expense_id ? store.getDB().expenses.find((e) => e.id === r.expense_id && !e.deleted_at) : undefined;
+  if (exp && exp.approval === 'Approved') { toast('The expense from this receipt is already approved. Reverse the expense in Finance first, then unpost the receipt.', 'err'); return false; }
+  if (!confirm(`Unpost this receipt so you can correct it?${exp ? '\n\nIts expense (not yet approved) will be deleted, and you post it again when you are done.' : ''}`)) return false;
+  try {
+    if (exp && !attempt(() => store.remove('expenses', exp.id), 'Expense removed')) return false;
+    await updateReceipt(r.id, { status: 'Captured', expense_id: null, bir_mode: null }); toast('Receipt unposted. You can edit it now.', 'ok'); return true;
+  } catch (e) { toast(e instanceof Error ? e.message : 'Could not unpost', 'err'); return false; }
+}
 
 /** Deletes a receipt (to the recycle bin). A posted receipt takes its expense with it, unless the expense was already approved: that stays and must be reversed in Finance. */
 async function removeReceipt(r: Receipt): Promise<boolean> {
@@ -35,7 +50,8 @@ function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRota
   const own = isOwnDocument(d, db.settings.company);
   useEffect(() => { if (seed && !reading?.busy) setD(seed); }, [seed, reading?.busy]); // the AI's reading arrives after the window opens
   const set = <K extends keyof ReceiptDraft>(k: K, v: ReceiptDraft[K]) => setD((cur) => ({ ...cur, [k]: v }));
-  const checks = useMemo(() => checkReceipt(d, others, initial?.id), [d, others, initial?.id]);
+  const exps = useMemo(() => expenseSources(db, initial?.expense_id), [db.expenses, initial?.expense_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const checks = useMemo(() => checkReceipt(d, others, initial?.id, undefined, exps), [d, others, initial?.id, exps]);
   const bad = (f: string) => checks.find((c) => c.field === f && c.level !== 'info');
   const st = (f: string) => (bad(f) ? { borderColor: bad(f)!.level === 'error' ? 'var(--red)' : 'var(--amber)' } : undefined);
   const locked = initial?.status === 'Posted';
@@ -51,6 +67,7 @@ function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRota
   };
   const post = (mode: BirMode) => {
     if (!initial) return; if (!d.total_amount) return toast('Enter the total amount first.', 'err');
+    if (checks.some((c) => /double entry/.test(c.text)) && !confirm('This looks like a double entry of another receipt or expense. Post it anyway?')) return;
     if (mode === 'yes') { void updateReceipt(initial.id, { ...d, status: 'Posted', expense_id: null, bir_mode: 'yes' }).then(() => { toast('Kept for BIR only. It is not counted as an expense.', 'ok'); onSaved(); onClose(); }); return; }
     const e = attempt(() => saveExpense({ date: d.receipt_date ?? today(), payee: d.supplier_name ?? 'Receipt', category: (d.category as ExpenseCategory) ?? 'Other', job_id: d.job_id ?? undefined, branch_id: db.branches[0].id, amount: d.total_amount!, vat: d.supplier_vat === 'VAT' ? (d.vat_amount ?? 0) : 0, wht: 0,
       method: ((d.payment_method as ExpenseMethod) ?? 'Cash'), approval: 'Pending', paid: true, petty_cash: false, recurring: null, notes: `Scanned receipt ${d.receipt_no ?? ''}${d.description ? ` · ${d.description}` : ''}`.trim(),
@@ -62,6 +79,7 @@ function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRota
   return (
     <Modal title={initial ? 'Receipt' : 'New receipt'} size="xl" onClose={onClose} footer={<>
       <button className="btn" onClick={onClose}>{locked ? 'Close' : 'Cancel'}</button>
+      {initial && initial.status === 'Posted' && can('receipts.manage') && <button className="btn" disabled={busy} onClick={async () => { if (await unpostReceipt(initial)) { onSaved(); onClose(); } }}>Unpost to edit</button>}
       {initial && (can('receipts.manage') || (initial.status === 'Captured' && initial.created_by === user?.id)) && <button className="btn danger" disabled={busy} onClick={async () => { if (await removeReceipt(initial)) { onSaved(); onClose(); } }}>Delete</button>}
       {initial && img && <a className="btn" href={img} download={`receipt-${d.receipt_no ?? initial.id.slice(0, 6)}.jpg`}>Download scan</a>}
       {!locked && <button className="btn primary" disabled={busy || reading?.busy || (!initial && !confirmed)} title={!initial && !confirmed ? 'Tick the box to confirm the details first' : undefined} onClick={save}>{initial ? 'Save changes' : 'Save receipt'}</button>}
@@ -151,9 +169,9 @@ function BirChoice({ r, onSaved }: { r: Receipt; onSaved: () => void }) {
 }
 
 export default function Receipts() {
-  const { can, user } = useAuth();
+  const { can, user, db } = useAuth();
   const [rows, setRows] = useState<Receipt[]>([]); const [loading, setLoading] = useState(true); const [err, setErr] = useState('');
-  const [month, setMonth] = useState(today().slice(0, 7)); const [q, setQ] = useState(''); const [only, setOnly] = useState<'' | 'fix' | 'posted'>('');
+  const [month, setMonth] = useState(today().slice(0, 7)); const [q, setQ] = useState(''); const [only, setOnly] = useState<'' | 'fix' | 'posted' | 'dup'>('');
   const [open, setOpen] = useState<Receipt | null>(null);
   const [draft, setDraft] = useState<{ d: ReceiptDraft; scan: { blob: Blob; dataUrl: string; base64?: string }; reading: { busy: boolean; error?: string } } | null>(null);
   const [enhance, setEnhance] = useState(true); const file = useRef<HTMLInputElement>(null);
@@ -189,7 +207,7 @@ export default function Receipts() {
     const m = (r.receipt_date ?? r.created_at).slice(0, 7); if (month && m !== month) return false;
     if (q && !`${r.supplier_name ?? ''} ${r.supplier_tin ?? ''} ${r.receipt_no ?? ''} ${r.description ?? ''}`.toLowerCase().includes(q.toLowerCase())) return false;
     const fix = !readyForBir(checkReceipt(r, rows, r.id));
-    return only === 'fix' ? fix : only === 'posted' ? r.status === 'Posted' : true;
+    return only === 'fix' ? fix : only === 'posted' ? r.status === 'Posted' : only === 'dup' ? duplicatesOf(r, r.id, rows, expenseSources(db, r.expense_id)).length > 0 : true;
   });
   const fixCount = rows.filter((r) => (r.receipt_date ?? r.created_at).slice(0, 7) === month && !readyForBir(checkReceipt(r, rows, r.id))).length;
   const inMonth = rows.filter((r) => (r.receipt_date ?? r.created_at).slice(0, 7) === month);
@@ -219,7 +237,7 @@ export default function Receipts() {
       <div className="row" style={{ flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
         <input type="month" style={{ width: 180 }} value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Month" />
         <input placeholder="Search supplier, TIN, receipt no." value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 280 }} />
-        <select style={{ width: 200 }} value={only} onChange={(e) => setOnly(e.target.value as typeof only)}><option value="">All receipts</option><option value="fix">Need attention</option><option value="posted">Posted</option></select>
+        <select style={{ width: 200 }} value={only} onChange={(e) => setOnly(e.target.value as typeof only)}><option value="">All receipts</option><option value="fix">Need attention</option><option value="posted">Posted</option><option value="dup">Possible duplicates</option></select>
         <button className="btn" disabled={!shown.some((r) => r.bir_mode === 'yes')} title="Exports only the receipts marked Yes (BIR only) for the month shown" onClick={() => exportCsv({ title: `BIR receipts ${month}`, headers: ['Date', 'Supplier', 'TIN', 'Address', 'Receipt no.', 'VAT status', 'Total', 'VATable sales', 'VAT', 'Exempt', 'Zero-rated', 'Category', 'Use for BIR', 'Status'], types: ['text', 'text', 'text', 'text', 'text', 'text', 'money', 'money', 'money', 'money', 'money', 'text', 'text', 'text'],
           totals: ['TOTAL (Yes)', '', '', '', '', '', gYes.total, gYes.vatable, gYes.vat, 0, 0, '', '', ''], rows: shown.filter((r) => r.bir_mode === 'yes').map((r) => [r.receipt_date ?? '', r.supplier_name ?? '', fmtTin(r.supplier_tin ?? ''), r.supplier_address ?? '', r.receipt_no ?? '', r.supplier_vat ?? '', r.total_amount ?? 0, r.vatable_sales ?? 0, r.vat_amount ?? 0, r.exempt_amount ?? 0, r.zero_rated_amount ?? 0, r.category ?? '', r.status !== 'Posted' ? '' : r.bir_mode === 'yes' ? 'Yes (BIR only)' : r.bir_mode === 'no' ? 'No (expense only)' : r.bir_mode === 'both' ? 'Both' : 'Not decided', r.status]) })}>Export CSV (BIR: Yes only)</button>
       </div>
@@ -237,7 +255,7 @@ export default function Receipts() {
       <Card flush>
         <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Scan</th><th>Date</th><th>Supplier · TIN · Address</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VATable sales</th><th className="num">VAT</th><th>BIR</th><th /></tr></thead>
           <tbody>
-            {shown.map((r) => <Row key={r.id} r={r} all={rows} onOpen={() => setOpen(r)} canDelete={manage || (r.status === 'Captured' && r.created_by === user?.id)} onDelete={async () => { if (await removeReceipt(r)) load(); }} />)}
+            {shown.map((r) => <Row key={r.id} r={r} all={rows} exps={expenseSources(db, r.expense_id)} onOpen={() => setOpen(r)} canDelete={manage || (r.status === 'Captured' && r.created_by === user?.id)} onDelete={async () => { if (await removeReceipt(r)) load(); }} />)}
             {shown.length > 0 && <tr style={{ fontWeight: 800 }}><td colSpan={5}>Grand total ({grand.n})</td><td className="num">{money(grand.total)}</td><td className="num">{money(grand.vatable)}</td><td className="num">{money(grand.vat)}</td><td /><td /></tr>}
             {!shown.length && <tr><td colSpan={10} className="muted" style={{ padding: 20 }}>{loading ? 'Loading…' : 'No receipts here yet. Tap “Scan a receipt” and take a clear photo of the whole receipt.'}</td></tr>}
           </tbody></table></div>
@@ -248,15 +266,15 @@ export default function Receipts() {
   );
 }
 
-function Row({ r, all, onOpen, canDelete, onDelete }: { r: Receipt; all: Receipt[]; onOpen: () => void; canDelete: boolean; onDelete: () => void }) {
-  const [src, setSrc] = useState(''); const checks = checkReceipt(r, all, r.id); const ready = readyForBir(checks);
+function Row({ r, all, exps, onOpen, canDelete, onDelete }: { r: Receipt; all: Receipt[]; exps: ReturnType<typeof expenseSources>; onOpen: () => void; canDelete: boolean; onDelete: () => void }) {
+  const [src, setSrc] = useState(''); const checks = checkReceipt(r, all, r.id, undefined, exps); const ready = readyForBir(checks); const dup = duplicatesOf(r, r.id, all, exps);
   useEffect(() => { void scanUrl(r).then(setSrc); }, [r.id, r.image_path]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <tr onClick={onOpen} style={{ cursor: 'pointer' }}>
       <td>{src ? <img src={src} alt="" className="rc-thumb" /> : <span className="rc-thumb" />}</td>
       <td>{r.receipt_date ? fmtDate(r.receipt_date) : <span className="muted">—</span>}</td>
       <td><b>{r.supplier_name || <span className="muted">no name</span>}</b><div className="small muted">{fmtTin(r.supplier_tin ?? '') || 'no TIN'}</div><div className="small muted">{r.supplier_address || 'no address'}</div></td>
-      <td>{r.receipt_no || <span className="muted">—</span>}<div className="small muted">{r.doc_type}</div></td>
+      <td>{r.receipt_no || <span className="muted">—</span>}<div className="small muted">{r.doc_type}</div>{dup.length > 0 && <div className="rc-dup" title={dup.map((x) => `${x.where === 'receipt' ? 'Scanned receipt' : 'Expense'}: ${x.why}`).join('\n')}>⚠ Possible duplicate</div>}</td>
       <td>{r.supplier_vat ? <Badge tone={r.supplier_vat === 'VAT' ? 'blue' : 'gray'}>{r.supplier_vat}</Badge> : <span className="muted">—</span>}</td>
       <td className="num">{r.total_amount === null ? '—' : money(r.total_amount)}</td><td className="num">{r.vatable_sales ? money(r.vatable_sales) : '—'}</td><td className="num">{r.vat_amount ? money(r.vat_amount) : '—'}</td>
       <td title={ready ? 'Has everything BIR needs' : checks.filter((c) => c.level === 'error').map((c) => c.text).join('\n')}>

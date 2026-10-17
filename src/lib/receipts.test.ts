@@ -36,3 +36,17 @@ describe('own invoices', () => {
     expect(isOwnDocument({ supplier_name: 'ABC Hardware', supplier_tin: '123-456-789-00000' }, co)).toBe(false);
   });
 });
+
+describe('duplicates', () => {
+  const d = { ...full(), receipt_no: 'OR-77' };
+  it('flags the same supplier with the same receipt number, or the same date and amount, in receipts and expenses', async () => {
+    const { duplicatesOf } = await import('./receipts');
+    const me = { id: 'me', supplier_name: 'ABC Hardware', supplier_tin: '123-456-789-00000', receipt_no: 'OR-77', total_amount: 1120, receipt_date: '2026-10-10' };
+    expect(duplicatesOf(me, 'me', [me], [])).toEqual([]);
+    expect(duplicatesOf(me, 'me', [{ ...me, id: 'o', total_amount: 999 }], [])[0].why).toMatch(/receipt no/);
+    expect(duplicatesOf(me, 'me', [{ ...me, id: 'o', receipt_no: 'X' }], [])[0].why).toMatch(/date and amount/);
+    expect(duplicatesOf(me, 'me', [], [{ ...me, id: 'e1' }])[0].where).toBe('expense');
+    expect(duplicatesOf(me, 'me', [{ ...me, id: 'o', supplier_tin: '999-888-777-00000', supplier_name: 'Other' }], [])).toEqual([]);
+    void d;
+  });
+});
