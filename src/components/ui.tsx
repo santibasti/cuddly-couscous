@@ -148,8 +148,37 @@ export function Card({ title, actions, children, flush, className }: { title?: R
   );
 }
 
-export function PageHead({ title, sub, children }: { title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
-  return <div className="page-head"><div><h1>{title}</h1>{sub && <p>{sub}</p>}</div><div className="row">{children}</div></div>;
+export interface PageStat { icon: string; label: string; value: number; sub?: string; tone?: 'blue' | 'green' | 'teal' | 'amber' | 'gold' | 'red'; fmt?: (n: number) => string }
+function useCountUp(target: number, ms = 900) {
+  const [v, setV] = useState(0); const from = useRef(0);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setV(target); from.current = target; return; }
+    const t0 = performance.now(); const a = from.current; let raf = 0;
+    const tick = (t: number) => { const q = Math.min(1, (t - t0) / ms); setV(a + (target - a) * (1 - Math.pow(1 - q, 3))); if (q < 1) raf = requestAnimationFrame(tick); else from.current = target; };
+    raf = requestAnimationFrame(tick); return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return v;
+}
+function StatTile({ s, i }: { s: PageStat; i: number }) {
+  const n = useCountUp(s.value);
+  return (
+    <div className={`tdy-kpi k-${s.tone ?? 'blue'}`} style={{ animationDelay: `${i * 60}ms` }}>
+      <span className="ic">{s.icon}</span>
+      <div className="kv"><small>{s.label}</small><b>{s.fmt ? s.fmt(n) : Math.round(n)}</b>{s.sub && <em>{s.sub}</em>}</div>
+    </div>
+  );
+}
+/** Page banner: a gradient header with the page title, a one-line description, the page's action buttons, and optionally live number tiles underneath. */
+export function PageHead({ title, sub, children, icon, stats }: { title: ReactNode; sub?: ReactNode; children?: ReactNode; icon?: string; stats?: PageStat[] }) {
+  return (
+    <>
+      <div className="page-head ph-hero">
+        <div className="ph-l">{icon && <span className="ph-ic">{icon}</span>}<div><h1>{title}</h1>{sub && <p>{sub}</p>}</div></div>
+        <div className="row">{children}</div>
+      </div>
+      {stats && stats.length > 0 && <div className="ph-stats">{stats.map((x, i) => <StatTile key={x.label} s={x} i={i} />)}</div>}
+    </>
+  );
 }
 
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: string; count?: number }[]; value: T; onChange: (t: T) => void }) {

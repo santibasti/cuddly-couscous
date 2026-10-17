@@ -16,7 +16,7 @@ export default function Notifications() {
   rows.sort((a, b) => sevOrder[a.severity] - sevOrder[b.severity]);
   return (
     <>
-      <PageHead title="Notifications & automations" sub="In-app alerts generated from live data. External channels are queued per Admin settings (email / SMS / WhatsApp-ready).">
+      <PageHead icon="🔔" title="Notifications & automations" sub="In-app alerts generated from live data. External channels are queued per Admin settings (email / SMS / WhatsApp-ready).">
         <button className="btn" onClick={() => store.markRead(rows.map((n) => n.id))}>Mark all read</button>
       </PageHead>
       {can('followups.manage') && <Tabs tabs={[{ id: 'alerts' as const, label: 'Alerts' }, { id: 'followups' as const, label: 'Client follow-up tasks' }]} value={tab} onChange={(t) => setSp(t === 'alerts' ? {} : { tab: t })} />}

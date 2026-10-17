@@ -48,7 +48,12 @@ export default function Sales() {
 
   return (
     <>
-      <PageHead title="Sales pipeline & quotations" sub="Inquiry → Ocular Visit → Quotation → Client Approval → Booking">
+      <PageHead icon="💼" stats={[
+        { icon: '📨', label: 'Waiting for approval', value: quotes.filter((q) => q.status === 'Sent').length, sub: 'quotations sent', tone: 'amber' },
+        { icon: '💰', label: 'Pending value', value: sum(quotes.filter((q) => q.status === 'Sent'), total), sub: 'incl. VAT', tone: 'gold', fmt: (n) => money(n) },
+        { icon: '✅', label: 'Approved', value: won.length, sub: money(sum(won, total)), tone: 'green' },
+        { icon: '🎯', label: 'Win rate', value: won.length + lost.length ? (won.length / (won.length + lost.length)) * 100 : 0, sub: `${won.length} won · ${lost.length} lost`, tone: 'teal', fmt: (n) => `${Math.round(n)}%` },
+      ]} title="Sales pipeline & quotations" sub="Inquiry → Ocular Visit → Quotation → Client Approval → Booking">
         {canEdit && <button className="btn" onClick={() => setShow(true)}><Icon name="plus" />New inquiry</button>}
         {canEdit && <button className="btn primary" onClick={() => nav('/sales/quote/new')}><Icon name="plus" />New quotation</button>}
       </PageHead>

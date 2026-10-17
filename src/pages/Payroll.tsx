@@ -65,7 +65,7 @@ export default function Payroll() {
   const waiting = periods.filter((p) => p.status === 'For Approval');
   return (
     <>
-      <PageHead title="Payroll" sub="Attendance-driven payroll with approval workflow. Finalized periods are locked.">
+      <PageHead icon="💵" title="Payroll" sub="Attendance-driven payroll with approval workflow. Finalized periods are locked.">
         {can('payroll.edit') && <button className="btn primary" onClick={() => setShow(true)}><Icon name="plus" />New period</button>}
       </PageHead>
       {waiting.length > 0 && <div className="alert warn" style={{ marginBottom: 12 }}>{waiting.length} payroll period(s) awaiting approval: {waiting.map((p) => p.label).join('; ')}.</div>}

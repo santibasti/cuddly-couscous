@@ -59,7 +59,11 @@ export default function Employees() {
 
   return (
     <>
-      <PageHead title="Employees & performance" sub="Directory, compliance documents, training expiry and monthly scorecards.">
+      <PageHead icon="👷" stats={[
+        { icon: '👥', label: 'Employees', value: live(db.employees).length, sub: `${live(db.employees).filter((e) => e.department === 'Field Operations').length} in the field`, tone: 'blue' },
+        { icon: '📄', label: 'Documents expiring', value: live(db.employees).filter(expiring).length, sub: 'need renewal soon', tone: live(db.employees).filter(expiring).length ? 'amber' : 'green' },
+        { icon: '⭐', label: 'Average rating', value: (() => { const r = live(db.employees).map((e) => e.rating).filter((x): x is number => typeof x === 'number'); return r.length ? r.reduce((a, b) => a + b, 0) / r.length : 0; })(), sub: 'from scorecards', tone: 'gold', fmt: (n) => n.toFixed(1) },
+      ]} title="Employees & performance" sub="Directory, compliance documents, training expiry and monthly scorecards.">
         {can('employees.edit') && <button className="btn primary" onClick={() => setShow(true)}><Icon name="plus" />New employee</button>}
       </PageHead>
       <Tabs tabs={[{ id: 'directory', label: 'Directory', count: emps.length }, ...(can('performance.view') ? [{ id: 'scorecards' as const, label: 'Scorecards' }] : [])]} value={tab} onChange={setTab} />

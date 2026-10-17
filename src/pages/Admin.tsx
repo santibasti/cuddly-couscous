@@ -221,7 +221,7 @@ export default function Admin() {
   const logs = db.audit.filter((a) => (!tbl || a.table === tbl) && (!act || a.action === act));
   return (
     <>
-      <PageHead title="Administration" sub="Users, permissions, pricing, statutory rates, audit trail and recycle bin." />
+      <PageHead icon="⚙️" title="Administration" sub="Users, permissions, pricing, statutory rates, audit trail and recycle bin." />
       <Tabs tabs={[...(can('admin.users') ? [{ id: 'users' as const, label: 'Users', count: db.users.filter((u) => !u.deleted_at).length }, { id: 'perms' as const, label: 'Permissions' }] : []), ...(can('admin.settings') ? [{ id: 'pricing' as const, label: 'Service pricing' }, { id: 'rates' as const, label: 'Rates & settings' }] : []), ...(can('admin.audit') ? [{ id: 'audit' as const, label: 'Audit log' }] : []), ...(can('admin.users') ? [{ id: 'bin' as const, label: 'Recycle bin', count: bin.length }, { id: 'data' as const, label: 'Data & security' }] : [])]} value={tab} onChange={setTab} />
 
       {tab === 'users' && can('admin.users') && CLOUD && (() => {

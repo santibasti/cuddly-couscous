@@ -68,7 +68,7 @@ export default function PhotoLibrary() {
   if (!can('photos.manage') && !can('jobs.mine')) return <div className="alert warn">Your role does not have access to the photo library.</div>;
   return (
     <>
-      <PageHead title="Photo Library" sub="All job photos in one place — add them from the site, find them by job, type or tag." />
+      <PageHead icon="📷" title="Photo Library" sub="All job photos in one place — add them from the site, find them by job, type or tag." />
       {!CLOUD && <div className="alert info">The photo library works on the live system (connected to Supabase). Photos are not stored in this demo.</div>}
       {CLOUD && (
         <>

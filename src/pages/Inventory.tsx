@@ -117,7 +117,7 @@ export default function Inventory() {
 
   return (
     <>
-      <PageHead title="Inventory & materials" sub="Stock ledger with reservations, valuation, expiry tracking and approvals. Transactions are immutable — correct with reversals.">
+      <PageHead icon="📦" title="Inventory & materials" sub="Stock ledger with reservations, valuation, expiry tracking and approvals. Transactions are immutable — correct with reversals.">
         {edit && <button className="btn" onClick={() => setModal('item')}><Icon name="plus" />New item</button>}
         {can('inventory.request') && <button className="btn" onClick={() => setModal('request')}>Request materials</button>}
         {edit && <select value="" onChange={(e) => e.target.value && setModal({ kind: e.target.value as Kind })} style={{ width: 'auto' }} aria-label="Post transaction"><option value="">Post transaction…</option>{(Object.keys(KIND_LABEL) as Kind[]).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select>}

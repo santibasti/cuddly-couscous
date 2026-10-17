@@ -84,7 +84,12 @@ export default function Jobs() {
 
   return (
     <>
-      <PageHead title="Jobs & booking calendar" sub={mineOnly ? 'Your assigned jobs' : 'Schedule, assign crews and equipment. Drag a job to another day to reschedule — double-bookings are blocked.'}>
+      <PageHead icon="📅" stats={[
+        { icon: '🗓️', label: 'Today', value: jobs.filter((j) => j.start_at.startsWith(today()) && !isOff(j)).length, sub: 'jobs scheduled', tone: 'blue' },
+        { icon: '🚚', label: 'In the field', value: jobs.filter((j) => ['Dispatched', 'On Site', 'In Progress'].includes(j.status)).length, sub: 'dispatched or working', tone: 'green' },
+        { icon: '⏳', label: 'Next 7 days', value: jobs.filter((j) => j.start_at.slice(0, 10) > today() && j.start_at.slice(0, 10) <= addDays(today(), 7) && !isOff(j)).length, sub: 'upcoming bookings', tone: 'teal' },
+        { icon: '📋', label: 'This month', value: jobs.filter((j) => j.start_at.startsWith(today().slice(0, 7)) && !isOff(j)).length, sub: 'jobs booked', tone: 'gold' },
+      ]} title="Jobs & booking calendar" sub={mineOnly ? 'Your assigned jobs' : 'Schedule, assign crews and equipment. Drag a job to another day to reschedule — double-bookings are blocked.'}>
         {can('ocular.schedule') && <button className="btn" onClick={() => setOvForm({})}><Icon name="plus" />Schedule ocular visit</button>}
         {edit && <button className="btn primary" onClick={() => setForm({})}><Icon name="plus" />Book a job</button>}
       </PageHead>

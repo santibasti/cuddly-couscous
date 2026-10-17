@@ -126,7 +126,12 @@ export default function Clients() {
   const num = (k: keyof typeof EMPTY, label: string) => <label className="f"><span>{label}</span><input type="number" min={0} value={q[k]} onChange={(e) => set(k, e.target.value)} /></label>;
   return (
     <>
-      <PageHead title="Clients" sub="Client accounts, service sites, lifetime value and maintenance follow-ups.">
+      <PageHead icon="🤝" stats={[
+        { icon: '👥', label: 'Clients', value: live(db.clients).length, sub: `${live(db.clients).filter((c) => c.status === 'Active').length} active`, tone: 'blue' },
+        { icon: '⭐', label: 'VIP clients', value: live(db.clients).filter((c) => c.vip).length, sub: 'greeted specially', tone: 'gold' },
+        { icon: '🌱', label: 'Prospects', value: live(db.clients).filter((c) => c.status === 'Prospect').length, sub: 'not yet served', tone: 'teal' },
+        { icon: '🔁', label: 'Shown below', value: rows.length, sub: 'match your filters', tone: 'green' },
+      ]} title="Clients" sub="Client accounts, service sites, lifetime value and maintenance follow-ups.">
         {admin && <button className="btn" onClick={() => setIv(true)}>Follow-up intervals</button>}
         {can('clients.edit') && <button className="btn primary" onClick={() => setShow(true)}><Icon name="plus" />New client</button>}
       </PageHead>

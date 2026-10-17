@@ -143,7 +143,7 @@ export default function Assets() {
 
   return (
     <>
-      <PageHead title="Machines, equipment & vehicles" sub="Asset register with controlled out/in. An asset can never be checked out to two jobs at once.">
+      <PageHead icon="🛠️" title="Machines, equipment & vehicles" sub="Asset register with controlled out/in. An asset can never be checked out to two jobs at once.">
         {can('assets.request') && <button className="btn primary" onClick={() => setModal('request')}><Icon name="plus" />Request equipment</button>}
         {view && <button className="btn" onClick={() => setLabels(true)}><Icon name="qr" />QR labels</button>}
         {can('assets.edit') && <button className="btn" onClick={() => setModal('asset')}><Icon name="plus" />New asset</button>}

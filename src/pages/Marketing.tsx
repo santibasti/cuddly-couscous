@@ -49,7 +49,7 @@ export default function Marketing() {
 
   return (
     <>
-      <PageHead title="Marketing AI" sub={mode === 'off' ? 'Switched off — turn it on in Admin → Settings → Marketing AI. You can still write posts by hand or ask the AI for ideas.' : mode === 'auto' ? 'Auto: approved posts go to your Facebook Page on schedule.' : 'The AI drafts posts and waits for your approval before anything is published.'}>
+      <PageHead icon="📣" title="Marketing AI" sub={mode === 'off' ? 'Switched off — turn it on in Admin → Settings → Marketing AI. You can still write posts by hand or ask the AI for ideas.' : mode === 'auto' ? 'Auto: approved posts go to your Facebook Page on schedule.' : 'The AI drafts posts and waits for your approval before anything is published.'}>
         <select value={tone} onChange={(e) => setTone(e.target.value)} aria-label="Mood of the new posts" title="Mood of the new posts"><option value="Default">Mood: {db.settings.marketing?.tone ?? 'Mixed'} (default)</option>{TONES.map((t) => <option key={t} value={t}>{t === 'Mixed' ? 'Mixed' : t}</option>)}</select>
         <button className="btn primary" disabled={!!busy} onClick={generate}>✨ Write 3 ideas now</button>
         <button className="btn" onClick={() => setAdd(true)}>New post</button>

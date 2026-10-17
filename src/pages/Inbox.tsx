@@ -37,7 +37,7 @@ export default function Inbox() {
   if (!can('inbox.manage')) return <div className="alert warn">Your role does not have access to the Facebook inbox.</div>;
   return (
     <>
-      <PageHead title="Facebook Inbox" sub="Customer messages from your Facebook Page. The AI assistant drafts the replies and saves leads in TopMop." />
+      <PageHead icon="💬" title="Facebook Inbox" sub="Customer messages from your Facebook Page. The AI assistant drafts the replies and saves leads in TopMop." />
       {!CLOUD && <div className="alert info">The Facebook inbox works on the live system (connected to Supabase). In this demo there are no Facebook messages.</div>}
       {CLOUD && <div className="alert info" style={{ marginBottom: 12 }}>AI assistant mode: <b>{mode === 'off' ? 'Off — messages are only stored' : mode === 'suggest' ? 'Suggest — you approve every reply' : 'Auto — simple replies are sent right away'}</b>. Change it in Admin → Settings → Facebook AI assistant.</div>}
       {CLOUD && (

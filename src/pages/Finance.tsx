@@ -133,7 +133,12 @@ export default function Finance() {
 
   return (
     <>
-      <PageHead title="Finance" sub="Expected → billed → collected → paid, kept separate. Approved records are locked; corrections are made by reversal.">
+      <PageHead icon="💳" stats={can('invoices.view') && tab !== 'overview' ? [
+        { icon: '🧾', label: 'Receivables', value: receivable, sub: `${open.length} open invoices`, tone: 'blue', fmt: (n) => moneyShort(n) },
+        { icon: '⚠️', label: 'Overdue', value: sum(overdue, (i) => invoiceBalance(db, i)), sub: `${overdue.length} invoices`, tone: overdue.length ? 'red' : 'green', fmt: (n) => moneyShort(n) },
+        { icon: '📈', label: 'Revenue this month', value: cm.revenue, sub: 'billed, ex-VAT', tone: 'teal', fmt: (n) => moneyShort(n) },
+        { icon: '📝', label: 'Not yet invoiced', value: uninvoiced.length, sub: 'completed jobs', tone: uninvoiced.length ? 'amber' : 'green' },
+      ] : undefined} title="Finance" sub="Expected → billed → collected → paid, kept separate. Approved records are locked; corrections are made by reversal.">
         {can('invoices.edit') && <button className="btn primary" onClick={() => setInv('new')}><Icon name="plus" />New invoice</button>}
         {can('expenses.edit') && <button className="btn" onClick={() => setExp('new')}><Icon name="plus" />New expense</button>}
       </PageHead>

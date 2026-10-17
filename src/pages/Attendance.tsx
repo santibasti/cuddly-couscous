@@ -130,7 +130,7 @@ export default function Attendance() {
 
   return (
     <>
-      <PageHead title="Attendance" sub="GPS-stamped clock in/out, approvals and corrections — approved records flow straight into payroll.">
+      <PageHead icon="🕒" title="Attendance" sub="GPS-stamped clock in/out, approvals and corrections — approved records flow straight into payroll.">
         {approve && <button className="btn" onClick={() => setManual(true)}><Icon name="plus" />Manual entry</button>}
       </PageHead>
       <Tabs tabs={[...(employee && can('attendance.own') ? [{ id: 'me' as const, label: 'My clock' }] : []), ...(canView ? [{ id: 'daily' as const, label: 'Daily crew attendance' }, { id: 'corrections' as const, label: 'Corrections', count: pendingCorr.length }] : [])]} value={tab} onChange={(t) => { setTab(t); setSp({ tab: t }); }} />

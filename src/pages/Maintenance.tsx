@@ -33,7 +33,7 @@ export default function Maintenance() {
   const tabs: { id: Tab; label: string; count?: number }[] = [{ id: 'overview', label: 'Overview' }, { id: 'schedule', label: 'Schedule', count: st.open.length }, { id: 'assets', label: 'Assets' }, ...(manage ? [{ id: 'templates' as Tab, label: 'Checklists' }] : [])];
   return (
     <>
-      <PageHead title="Maintenance" sub="Preventive maintenance for vehicles and operating equipment — schedules, checklists, parts and history.">
+      <PageHead icon="🔧" title="Maintenance" sub="Preventive maintenance for vehicles and operating equipment — schedules, checklists, parts and history.">
         {request && <button className="btn" onClick={() => setAdding('request')}><span aria-hidden>⚠</span> Report an issue</button>}
         {manage && <button className="btn primary" onClick={() => setAdding('schedule')}>+ Schedule maintenance</button>}
       </PageHead>

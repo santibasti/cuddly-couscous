@@ -29,7 +29,7 @@ function ReportList() {
   const start = () => { const r = attempt(() => createServiceReport(job), 'Service report started') as ServiceReport | undefined; if (r?.id) nav(`/service-reports/${r.id}`); };
   return (
     <>
-      <PageHead title="Service Reports" sub="A report for each booking: scope, findings, recommendations and photos — filled from a template for every service.">
+      <PageHead icon="📝" title="Service Reports" sub="A report for each booking: scope, findings, recommendations and photos — filled from a template for every service.">
         {(can('jobs.all') || can('dispatch.run')) && <button className="btn primary" onClick={() => setPick(true)}>New service report</button>}
       </PageHead>
       <Card flush>
