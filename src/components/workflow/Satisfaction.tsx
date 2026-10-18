@@ -17,57 +17,55 @@ const TONE: Record<SatisfactionRating, string> = { 1: 'bad', 2: 'mid', 3: 'good'
  * three 1–5 questions (large buttons), then the overall smiley, then an optional comment.
  * A Not Satisfied answer or any 1–2 rating needs an issue category from the Team Leader and creates an Admin follow-up.
  */
+const FACES: [number, string, string][] = [[1, '😞', 'Poor'], [2, '😕', 'Fair'], [3, '🙂', 'Good'], [4, '😊', 'Very good'], [5, '🤩', 'Excellent']];
+/** One tap on the 5-face scale stands for all three questions and for the overall satisfaction (1–2 Not satisfied · 3–4 Satisfied · 5 Very satisfied). */
+const overallFrom = (n: number): SatisfactionRating => (n <= 2 ? 1 : n === 5 ? 3 : 2);
 export function SatisfactionCheck({ value, onChange, disabled, clientMode }: { value: Partial<SatisfactionInput>; onChange: (v: Partial<SatisfactionInput>) => void; disabled?: boolean; clientMode?: boolean }) {
   const r = value.rating;
+  const [more, setMore] = useState(false);
   const answered = SAT_QUESTIONS.every((q) => !!value[q.key]);
+  const overall = answered ? Math.round(SAT_QUESTIONS.reduce((a, q) => a + (value[q.key] as number), 0) / SAT_QUESTIONS.length) : 0;
   const low = needsFollowUp(value);
+  const pick = (n: number) => onChange({ ...value, q_quality: n, q_professionalism: n, q_communication: n, rating: overallFrom(n) });
+  const detail = (key: 'q_quality' | 'q_professionalism' | 'q_communication', n: number) => { const next = { ...value, [key]: n }; const vals = SAT_QUESTIONS.map((q) => next[q.key] as number); const avg = Math.round(vals.reduce((a, x) => a + x, 0) / vals.length); onChange({ ...next, rating: Math.min(...vals) <= 2 ? 1 : overallFrom(avg) }); };
   return (
     <div className="card satcheck" style={{ padding: 14 }}>
-      <div className="satq">Please rate today’s service</div>
-      <div className="scale-legend small muted" aria-hidden="true">1 Poor · 2 Fair · 3 Good · 4 Very Good · 5 Excellent</div>
-      {SAT_QUESTIONS.map((q) => (
-        <div key={q.key} className="satrow">
-          <div className="satqt">{q.text}</div>
-          <div className="scale5" role="radiogroup" aria-label={q.text}>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button key={n} type="button" role="radio" aria-checked={value[q.key] === n} aria-label={`${n} ${SCALE5[n - 1]}`} disabled={disabled} className={`s5 v${n} ${value[q.key] === n ? 'on' : ''}`} onClick={() => onChange({ ...value, [q.key]: n })}>
-                <b>{n}</b><span>{SCALE5[n - 1]}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-      {answered && (
-        <>
-          <div className="satq" style={{ marginTop: 16 }}>Overall, how satisfied are you with today’s service?</div>
-          <div className="smileys" role="radiogroup" aria-label="Overall satisfaction">
-            {RATINGS.map((n) => (
-              <button key={n} type="button" role="radio" aria-checked={r === n} disabled={disabled} className={`smiley ${TONE[n]} ${r === n ? 'on' : ''}`} onClick={() => onChange({ ...value, rating: n })}>
-                <span className="emo" aria-hidden="true">{RATING_EMOJI[n]}</span><span>{RATING_LABEL[n]}</span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+      {!clientMode && <div className="satq">How was our service today?</div>}
+      <div className="faces" role="radiogroup" aria-label="Rate today's service">
+        {FACES.map(([n, emo, label]) => (
+          <button key={n} type="button" role="radio" aria-checked={overall === n && !more} disabled={disabled} className={`face f${n} ${overall === n ? 'on' : ''}`} onClick={() => pick(n)}>
+            <span className="emo" aria-hidden="true">{emo}</span><b>{label}</b>
+          </button>
+        ))}
+      </div>
       {answered && r && (
-        <>
-          <div className="satq" style={{ marginTop: 16 }}>Would you recommend TopMop to your friends and family?</div>
-          <div className="smileys" role="radiogroup" aria-label="Would you recommend us">
-            {RECOMMEND.map(([k, emo, label, tone]) => (
-              <button key={k} type="button" role="radio" aria-checked={value.recommend === k} disabled={disabled} className={`smiley ${tone} ${value.recommend === k ? 'on' : ''}`} onClick={() => onChange({ ...value, recommend: k })}>
-                <span className="emo" aria-hidden="true">{emo}</span><span>{label}</span>
-              </button>
-            ))}
+        <div className="stack" style={{ marginTop: 14 }}>
+          <div>
+            <div className="satq" style={{ marginBottom: 6 }}>Would you recommend TopMop? <span className="small muted">(optional)</span></div>
+            <div className="smileys" role="radiogroup" aria-label="Would you recommend us">
+              {RECOMMEND.map(([k, emo, label, tone]) => (
+                <button key={k} type="button" role="radio" aria-checked={value.recommend === k} disabled={disabled} className={`smiley ${tone} ${value.recommend === k ? 'on' : ''}`} onClick={() => onChange({ ...value, recommend: value.recommend === k ? undefined : k })}>
+                  <span className="emo" aria-hidden="true">{emo}</span><span>{label}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </>
-      )}
-      {answered && r && (
-        <div className="stack" style={{ marginTop: 12 }}>
-          <Field label="Additional comment (optional)"><input disabled={disabled} value={value.comment ?? ''} onChange={(e) => onChange({ ...value, comment: e.target.value })} /></Field>
+          <Field label="Anything we should know? (optional)"><input disabled={disabled} value={value.comment ?? ''} onChange={(e) => onChange({ ...value, comment: e.target.value })} /></Field>
+          <button type="button" className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => setMore(!more)}>{more ? 'Hide' : 'Rate quality, crew and communication separately (optional)'}</button>
+          {more && SAT_QUESTIONS.map((q) => (
+            <div key={q.key} className="satrow">
+              <div className="satqt">{q.text}</div>
+              <div className="scale5" role="radiogroup" aria-label={q.text}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button key={n} type="button" role="radio" aria-checked={value[q.key] === n} aria-label={`${n} ${SCALE5[n - 1]}`} disabled={disabled} className={`s5 v${n} ${value[q.key] === n ? 'on' : ''}`} onClick={() => detail(q.key, n)}><b>{n}</b><span>{SCALE5[n - 1]}</span></button>
+                ))}
+              </div>
+            </div>
+          ))}
           {low && !clientMode && (
             <div className="alert err">
-              <b>Team Leader: choose the issue</b> (the client was not satisfied or gave a rating of 1–2 — the Owner / Admin is notified and a follow-up is created)
-              <div className="chips" role="group" aria-label="Issue category">{ISSUE_CATEGORIES.map((c) => <button key={c} type="button" disabled={disabled} className={value.issue_category === c ? 'on' : ''} onClick={() => onChange({ ...value, issue_category: c as IssueCategory })}>{c}</button>)}</div>
+              <b>Team Leader: choose the issue</b> (the client was not satisfied or gave a low rating — the Owner / Admin is notified and a follow-up is created)
+              <div className="chips" role="group" aria-label="Issue category">{ISSUE_CATEGORIES.map((c) => <button key={c} type="button" disabled={disabled} className={value.issue_category === c ? 'on' : ''} onClick={() => onChange({ ...value, issue_category: c })}>{c}</button>)}</div>
             </div>
           )}
         </div>
@@ -85,7 +83,7 @@ export function IssuePicker({ value, onChange }: { value: Partial<SatisfactionIn
   );
 }
 /** Everything the handover needs before the report can be signed. */
-export const satisfactionComplete = (s: Partial<SatisfactionInput>) => SAT_QUESTIONS.every((q) => !!s[q.key]) && !!s.rating && !!s.recommend && (!needsFollowUp(s) || !!s.issue_category);
+export const satisfactionComplete = (s: Partial<SatisfactionInput>) => SAT_QUESTIONS.every((q) => !!s[q.key]) && !!s.rating && (!needsFollowUp(s) || !!s.issue_category);
 
 export function FeedbackSummary({ fb }: { fb: ClientFeedback }) {
   return (

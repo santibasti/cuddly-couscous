@@ -1149,3 +1149,11 @@ body:not(.dark) .wk-team { background: #fff; border-color: var(--line); } .wk-te
 .wk-crew { display: flex; flex-wrap: wrap; gap: 5px; padding-top: 8px; border-top: 1px dashed rgba(120,140,170,.3); } .wk-crew span { font-size: 11.5px; padding: 2px 9px; border-radius: 999px; background: rgba(120,140,170,.18); }
 @media (max-width: 900px) { .wk-days { grid-template-columns: repeat(7, minmax(78px, 1fr)); overflow-x: auto; padding-bottom: 6px; } }
 @media (max-width: 560px) { .wk-tabs { border-radius: 18px; } .wk-tabs button { padding: 7px 12px; font-size: 12.5px; } .wk-teams { grid-template-columns: 1fr; } }
+
+/* Client satisfaction: one tap on five faces */
+.faces { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
+.face { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 4px 10px; border-radius: 16px; border: 2px solid rgba(120,140,170,.3); background: rgba(120,140,170,.1); color: inherit; font: inherit; cursor: pointer; min-height: 92px; transition: transform .15s, border-color .15s, background .15s; touch-action: manipulation; }
+.face .emo { font-size: 34px; line-height: 1; filter: grayscale(.6); transition: filter .15s, transform .15s; } .face b { font-size: 12.5px; }
+.face:hover { transform: translateY(-2px); } .face.on { transform: scale(1.04); border-color: var(--fc, #1fb6c9); background: color-mix(in srgb, var(--fc, #1fb6c9) 22%, transparent); } .face.on .emo { filter: none; transform: scale(1.12); }
+.face.f1 { --fc: #ef5b5b; } .face.f2 { --fc: #f08a4b; } .face.f3 { --fc: #f5b83d; } .face.f4 { --fc: #7bd88f; } .face.f5 { --fc: #2ee59d; }
+@media (max-width: 420px) { .face { min-height: 82px; padding: 10px 2px 8px; } .face .emo { font-size: 28px; } .face b { font-size: 11px; } }
