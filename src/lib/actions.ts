@@ -49,6 +49,16 @@ export function clockIn(employeeId: string, geo: Geo, jobId?: string) {
   if (existing) return store.update('attendance', existing.id, patch, 'update', `${emp.full_name} clocked in`);
   return store.insert('attendance', { employee_id: employeeId, date, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending', ...patch } as never, `${emp.full_name} clocked in ${at.slice(11)}`);
 }
+/** Owner only: take back a clock-in made by mistake (the record has no clock-out yet), so the person can clock in again properly. */
+export function undoClockIn(attendanceId: string) {
+  if (store.role !== 'owner') fail('Only the Owner can undo a clock-in.');
+  const a = db().attendance.find((x) => x.id === attendanceId && !x.deleted_at); if (!a) fail('Attendance record not found.');
+  if (!a!.clock_in) fail('This record has no clock-in.');
+  if (a!.clock_out) fail('This person already clocked out — file a correction instead.');
+  const emp = db().employees.find((e) => e.id === a!.employee_id);
+  store.remove('attendance', a!.id, { cascade: true });
+  return `${emp?.full_name ?? 'Employee'}'s clock-in was undone`;
+}
 export function clockOut(employeeId: string, geo: Geo) {
   store.require('attendance.own');
   const d = db(); const emp = d.employees.find((e) => e.id === employeeId)!;

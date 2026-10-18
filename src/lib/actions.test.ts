@@ -166,6 +166,23 @@ describe('business rules enforced by the store', () => {
     expect(() => m.A.requestCorrection({ employee_id: emp, date: '2026-01-05', clock_in: '2026-01-05T09:00', clock_out: '2026-01-05T08:00', reason: 'x' })).toThrow(/after clock-in/);
   });
 
+  it('the Owner can undo a mistaken clock-in (even if approved) so the person can clock in again', async () => {
+    await as('owner@topmop.ph');
+    const emp = db().employees.find((e) => e.status !== 'inactive' && !e.deleted_at)!.id;
+    const { today } = await import('./util');
+    for (const a of db().attendance.filter((x) => x.employee_id === emp && !x.deleted_at && x.date === today())) m.store.remove('attendance', a.id, { cascade: true });
+    m.A.clockIn(emp, {});
+    const rec = () => db().attendance.find((a) => a.employee_id === emp && !a.deleted_at && a.clock_in && !a.clock_out)!;
+    m.store.update('attendance', rec().id, { approval: 'Approved' } as never);
+    expect(() => m.store.remove('attendance', rec().id)).toThrow(/cannot be deleted/);
+    m.A.undoClockIn(rec().id);
+    expect(db().attendance.some((a) => a.employee_id === emp && !a.deleted_at && a.clock_in && !a.clock_out)).toBe(false);
+    m.A.clockIn(emp, {});
+    expect(rec()).toBeTruthy();
+    await as('leader@topmop.ph');
+    expect(() => m.A.undoClockIn(rec().id)).toThrow(/Only the Owner/);
+  });
+
   it('writes an audit entry for every mutation with before/after', async () => {
     await as('owner@topmop.ph');
     const n = db().audit.length;

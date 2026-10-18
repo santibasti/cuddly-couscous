@@ -8,7 +8,7 @@ import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, atte
 import { DataTable } from '@/components/DataTable';
 import { computeRecog } from '@/lib/recognition-core';
 import { Badges } from '@/components/Badges';
-import { setMyAvatar, bulkApproveAttendance, clockIn, clockOut, decideAttendance, decideCorrection, manualAttendance, requestCorrection } from '@/lib/actions';
+import { setMyAvatar, bulkApproveAttendance, clockIn, clockOut, undoClockIn, decideAttendance, decideCorrection, manualAttendance, requestCorrection } from '@/lib/actions';
 import { LIVE_JOB } from '@/lib/business';
 import { addDays, dow, fmtDate, fmtStamp, fmtTime, money, nowLocal, today } from '@/lib/util';
 import type { Attendance as Att, Employee } from '@/lib/types';
@@ -109,7 +109,7 @@ export default function Attendance() {
   const ownerClock = (e: Employee, a?: Att) => {
     if (user?.role !== 'owner' || date !== T) return null;
     if (!a?.clock_in) return <button className="btn sm primary" onClick={() => attempt(() => clockIn(e.id, {}), `${e.full_name} clocked in`)}>Clock in</button>;
-    if (!a.clock_out) return <button className="btn sm" onClick={() => attempt(() => clockOut(e.id, {}), `${e.full_name} clocked out`)}>Clock out</button>;
+    if (!a.clock_out) return <><button className="btn sm" onClick={() => attempt(() => clockOut(e.id, {}), `${e.full_name} clocked out`)}>Clock out</button><button className="btn sm" title="Remove this clock-in (made by mistake) so they can clock in again" onClick={() => { if (confirm(`Undo ${e.full_name}'s clock-in at ${fmtTime(a.clock_in!)}? They can then clock in again.`)) attempt(() => { undoClockIn(a.id); }, `${e.full_name}'s clock-in was undone`); }}>Undo</button></>;
     return null;
   };
   const emps = live(db.employees).filter((e) => e.status !== 'inactive');
