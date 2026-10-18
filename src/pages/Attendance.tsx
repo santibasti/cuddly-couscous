@@ -98,13 +98,20 @@ function Flags({ a, emp }: { a: Att; emp: Employee }) {
 }
 
 export default function Attendance() {
-  const { db, can, employee } = useAuth();
+  const { db, can, employee, user } = useAuth();
   const [sp, setSp] = useSearchParams();
   const canView = can('attendance.view');
   const [tab, setTab] = useState<'me' | 'daily' | 'corrections'>((sp.get('tab') as never) || (employee && can('attendance.own') && !canView ? 'me' : canView ? 'daily' : 'me'));
   const [date, setDate] = useState(today());
   const [manual, setManual] = useState(false); const [view, setView] = useState<'cards' | 'table'>('cards');
   const approve = can('attendance.approve');
+  /** Owner only: clock any employee in or out for today. */
+  const ownerClock = (e: Employee, a?: Att) => {
+    if (user?.role !== 'owner' || date !== T) return null;
+    if (!a?.clock_in) return <button className="btn sm primary" onClick={() => attempt(() => clockIn(e.id, {}), `${e.full_name} clocked in`)}>Clock in</button>;
+    if (!a.clock_out) return <button className="btn sm" onClick={() => attempt(() => clockOut(e.id, {}), `${e.full_name} clocked out`)}>Clock out</button>;
+    return null;
+  };
   const emps = live(db.employees).filter((e) => e.status !== 'inactive');
   const T = today();
 
@@ -172,7 +179,7 @@ export default function Attendance() {
                   <EmployeeCard key={r.e.id} emp={r.e} status={status} tone={tone}
                     onUpload={can('employees.edit') ? (url) => attempt(() => store.update('employees', r.e.id, { avatar: url }), 'Photo saved') : r.e.id === employee?.id ? (url) => attempt(() => setMyAvatar(url), 'Your photo is saved') : undefined}
                     lines={[{ k: 'In', v: r.a?.clock_in ? fmtTime(r.a.clock_in) : '—' }, { k: 'Out', v: r.a?.clock_out ? fmtTime(r.a.clock_out) : '—' }, { k: 'Hours', v: r.a ? String(r.a.worked_hours ?? 0) : '—' }, { k: 'Job site', v: r.site }]}
-                    actions={approve && r.a?.approval === 'Pending' ? <><button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></> : r.a ? <Badge>{r.a.approval}</Badge> : undefined} />
+                    actions={approve && r.a?.approval === 'Pending' ? <>{ownerClock(r.e, r.a)}<button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></> : <>{ownerClock(r.e, r.a)}{r.a ? <Badge>{r.a.approval}</Badge> : null}</>} />
                 );
               })}
             </div>
@@ -190,7 +197,7 @@ export default function Attendance() {
                 { key: 'hrs', header: 'Hours', num: true, value: (r) => r.a?.worked_hours ?? 0 },
                 { key: 'flags', header: 'Indicators', value: (r) => (r.a ? [r.a.kind, r.a.late_min > db.settings.grace_minutes ? 'late' : '', r.a.ot_min ? 'overtime' : '', r.a.field_work ? 'field work' : ''].join(' ') : r.isRest ? 'Rest day' : r.hol ? 'Holiday' : 'No record'), render: (r) => r.a ? <Flags a={r.a} emp={r.e} /> : r.isRest ? <Badge tone="blue">Rest day</Badge> : r.hol ? <Badge tone="blue">{r.hol.kind} holiday</Badge> : date < T ? <Badge tone="red">Absent / no record</Badge> : <Badge tone="amber">Not in</Badge> },
                 { key: 'appr', header: 'Approval', value: (r) => r.a?.approval ?? '', render: (r) => r.a ? <Badge>{r.a.approval}</Badge> : '' },
-                { key: 'actions', header: '', noExport: true, sortable: false, render: (r) => approve && r.a?.approval === 'Pending' ? <span className="row"><button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></span> : null },
+                { key: 'actions', header: '', noExport: true, sortable: false, render: (r) => approve && r.a?.approval === 'Pending' ? <span className="row">{ownerClock(r.e, r.a)}<button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></span> : ownerClock(r.e, r.a) },
               ]}
             />
           </Card>
