@@ -45,9 +45,21 @@ describe('business rules enforced by the store', () => {
     expect(() => m.A.moveJob(j.id, clash.start_at)).toThrow(/Double-booking/);
   });
 
+  /** The demo data only has equipment out on days with a job in progress; make sure there is one whatever day the tests run. */
+  const ensureActive = () => {
+    const have = db().checkouts.find((c) => c.status === 'Released' && db().jobs.find((j) => j.id === c.job_id)?.status === 'In Progress' && !c.deleted_at);
+    if (have) return have;
+    const job = db().jobs.find((j) => ['Pending', 'Confirmed'].includes(j.status) && j.leader_id && !j.deleted_at)!;
+    const asset = db().assets.find((a) => a.status === 'Available' && !a.deleted_at && !db().checkouts.some((c) => c.asset_id === a.id && ['Requested', 'Released'].includes(c.status)))!;
+    m.store.update('jobs', job.id, { status: 'In Progress' } as never);
+    const co = m.store.insert('checkouts', { asset_id: asset.id, job_id: job.id, requested_by: job.leader_id!, responsible_id: job.leader_id!, status: 'Requested', expected_return: `${job.end_at}`, out_condition: 'Good' } as never);
+    m.A.releaseCheckout(co.id, { condition: 'Good' });
+    return db().checkouts.find((c) => c.id === co.id)!;
+  };
+
   it('never releases one asset to two jobs at once', async () => {
     await as('owner@topmop.ph');
-    const active = db().checkouts.find((c) => c.status === 'Released')!;
+    const active = ensureActive();
     const other = db().jobs.find((j) => j.id !== active.job_id && ['Pending', 'Confirmed'].includes(j.status))!;
     const co = m.store.insert('checkouts', { asset_id: active.asset_id, job_id: other.id, requested_by: other.leader_id!, responsible_id: other.leader_id!, status: 'Requested', expected_return: `${other.end_at}`, out_in_photos: [] } as never);
     expect(() => m.A.releaseCheckout(co.id, { condition: 'Good' })).toThrow(/still checked out/);
@@ -55,7 +67,7 @@ describe('business rules enforced by the store', () => {
 
   it('an asset that is checked out cannot be marked Available by hand; returning it does', async () => {
     await as('owner@topmop.ph');
-    const active = db().checkouts.find((c) => c.status === 'Released' && db().jobs.find((j) => j.id === c.job_id)?.status === 'In Progress')!;
+    const active = ensureActive();
     expect(() => m.store.update('assets', active.asset_id, { status: 'Available' } as never)).toThrow(/checked out to JOB-.*Return it/);
     m.A.returnCheckout(active.id, { condition: 'Good', damage_notes: '', missing: '' });
     expect(db().assets.find((a) => a.id === active.asset_id)!.status).toBe('Available');

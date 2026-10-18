@@ -28,7 +28,15 @@ function scenario(label: string, leaderEmp: string, crew: string[] = []) {
 }
 const load = (items: CheckItem[]): CheckItem[] => items.map((i) => ({ ...i, out_ok: true, out_by: 'scan', loaded_qty: i.qty, ...(i.kind === 'material' ? { out_container: 'Good' as const } : { out_condition: 'Good' as const }) }));
 const prepForm = (wf: JobWorkflow, over: Record<string, unknown> = {}) => ({ items: load(wf.items), confirmed: true, ...over });
-const checkIn = (present: string[], over = {}) => ({ contact_name: 'Ms. Reyes', present, absent: [], ...over });
+/** Site check-in form. Everyone marked present must have clocked in already, so make sure they have today (the demo data only has some days). */
+const checkIn = (present: string[], over = {}) => {
+  for (const e of present) {
+    const rec = db().attendance.find((a) => a.employee_id === e && a.date === T() && !a.deleted_at);
+    if (!rec) store.insert('attendance', { employee_id: e, date: T(), kind: 'Present', clock_in: `${T()}T07:50`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending' } as never);
+    else if (!rec.clock_in) store.update('attendance', rec.id, { kind: 'Present', clock_in: `${T()}T07:50` } as never);
+  }
+  return { contact_name: 'Ms. Reyes', present, absent: [], ...over };
+};
 const retItems = (wf: JobWorkflow, f: (i: CheckItem) => Partial<CheckItem>) => db().workflows.find((w) => w.id === wf.id)!.items.map((i) => ({ ...i, ret_condition: 'Good' as const, returned_qty: i.kind === 'material' ? 0 : i.loaded_qty, ...f(i) }));
 const handover = { scope: 'Wall cleaning', findings: 'None', recs: 'None', limits: 'None', client_name: 'Ms. Reyes', client_sig: PNG, tm_name: 'Leader', tm_sig: PNG, satisfaction: { q_quality: 5, q_professionalism: 5, q_communication: 5, rating: 3 as const } };
 const priorJob = (label: string, jobId: string) => { const j = db().jobs.find((x) => x.id === jobId)!; store.insert('jobs', { ...j, id: undefined, number: `PRIOR-${label}`, status: 'Closed', start_at: '2029-01-02T08:00', end_at: '2029-01-02T17:00' } as never); };
