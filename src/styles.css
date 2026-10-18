@@ -1119,3 +1119,4 @@ body:not(.dark) .dash-dark .stat { background: #fff; border-color: var(--line); 
   .tdy-card { padding: 14px; border-radius: 16px; } .tdy-card h3 { font-size: 17px; } .tdy-big b { font-size: 15px; } .tdy-big { padding: 8px 10px; }
   .tdy-bill b { font-size: 19px; } .tdy-steps li { font-size: 9px; }
 }
+.pd-tile.svc { grid-column: 1 / -1; border-left: 4px solid var(--pd-teal, #0e9aa7); } .pd-tile.svc .v { color: var(--pd-teal, #0e9aa7); font-size: 16.5px; }

@@ -60,13 +60,14 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
 
   // ---- schedule tiles ----
   const tiles: [string, string][] = [['Booking date', fmtDate(c.booking_date)], ['Service date', fmtDate(c.service_date)], ['Arrival window', `${t12(c.arrival_from)} - ${t12(c.arrival_to)}`], ['Estimated duration', `about ${hoursText(c.duration_hours)}`]];
+  const svcTxt = c.service_types.join(' | ') || '-'; need(38);
+  doc.setFillColor(...SOFT); doc.roundedRect(M, y, CW, 14, 2, 2, 'F'); doc.setFillColor(...TEAL); doc.rect(M, y, 1.6, 14, 'F'); txt('SERVICE TYPE', M + 5, y + 5.2, { size: 7, bold: true, color: MUTED }); txt(svcTxt, M + 5, y + 10.8, { size: 10.6, bold: true, color: TEAL, max: CW - 10 }); y += 17;
   const tw = (CW - 9) / 4; need(20);
   tiles.forEach(([k, v], i) => { const x = M + i * (tw + 3); doc.setFillColor(...(i === 1 ? NAVY : SOFT)); doc.roundedRect(x, y, tw, 16, 2, 2, 'F'); txt(k.toUpperCase(), x + 4, y + 5.5, { size: 7, bold: true, color: i === 1 ? PALE : MUTED }); txt(v, x + 4, y + 12, { size: 10.2, bold: true, color: i === 1 ? WHITE : INK, max: tw - 6 }); });
   y += 22;
 
   // ---- service, technology, scope ----
-  section('Service');
-  txt(c.service_types.join(', ') || '-', M, y, { size: 11.5, bold: true, color: TEAL, max: CW }); y += lines(c.service_types.join(', ') || '-', CW, 11.5).length * 5 + 2;
+  section('Service method');
   need(24); doc.setFillColor(...NAVY); doc.roundedRect(M, y, CW, 10.5, 2, 2, 'F'); txt(DEFAULT_TECHNOLOGY, M + 5, y + 6.8, { size: 9.8, bold: true, color: WHITE });
   txt('Pre-Rinse  >  Deep Cleaning  >  Final Rinse  |  Water-Fed Pole, deionized water', W - M - 5, y + 6.8, { size: 8.2, color: PALE, align: 'right' }); y += 15;
   txt('APPROVED SCOPE OF WORK', M, y, { size: 7.5, bold: true, color: MUTED }); y += 4.8; para(c.scope || 'As per the approved quotation.', M, CW, 9.8, 4.8); y += 3;

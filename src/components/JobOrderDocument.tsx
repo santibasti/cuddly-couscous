@@ -28,14 +28,14 @@ export function JobOrderDocument({ order, showVip = true }: { order: View; showV
         <div className="pd-card"><div className="pd-k">Service location</div><b className="n">{c.location.name}</b><div>{c.location.address}</div>{c.location.contact_mobile && <div>Contact number: {c.location.contact_mobile}</div>}</div>
       </div>
       <div className="pd-tiles">
+        <div className="pd-tile svc"><div className="pd-k">Service type</div><div className="v">{c.service_types.join(' · ') || '—'}</div></div>
         <div className="pd-tile"><div className="pd-k">Booking date</div><div className="v">{fmtDate(c.booking_date)}</div></div>
         <div className="pd-tile hl"><div className="pd-k">Service date</div><div className="v">{fmtDate(c.service_date)}</div></div>
         <div className="pd-tile"><div className="pd-k">Arrival window</div><div className="v">{t12(c.arrival_from)} – {t12(c.arrival_to)}</div></div>
         <div className="pd-tile"><div className="pd-k">Estimated duration</div><div className="v">about {c.duration_hours} {c.duration_hours === 1 ? 'hour' : 'hours'}</div></div>
       </div>
 
-      <div className="pd-h" style={{ marginTop: 6 }}>Service</div>
-      <div className="pd-svc">{c.service_types.join(', ') || '—'}</div>
+      <div className="pd-h" style={{ marginTop: 6 }}>Service method</div>
       <div className="pd-tech"><b>{DEFAULT_TECHNOLOGY}</b><span>Pre-Rinse › Deep Cleaning › Final Rinse · Water-Fed Pole, deionized water</span></div>
       <div className="pd-k">Approved scope of work</div><p className="pd-scope">{c.scope || 'As per the approved quotation.'}</p>
 
