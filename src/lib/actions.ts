@@ -71,7 +71,8 @@ export function manualAttendance(p: { employee_id: string; date: string; kind: A
   const d = db(); const emp = d.employees.find((e) => e.id === p.employee_id)!;
   if (d.attendance.some((a) => a.employee_id === p.employee_id && a.date === p.date && !a.deleted_at)) fail('An attendance record already exists for that employee and date. Use a correction instead.');
   const t = p.kind === 'Present' ? computeTimes(emp, p.clock_in, p.clock_out, d.settings.grace_minutes) : { late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0 };
-  return store.insert('attendance', { ...p, field_work: !!p.job_id, ...t, approval: 'Approved', approved_by: me()!.id, approved_at: isoNow() } as never, `Manual attendance ${emp.full_name} ${p.date}`);
+  const open = p.kind === 'Present' && !!p.clock_in && !p.clock_out;   // still on duty: stays Pending until the clock-out is recorded
+  return store.insert('attendance', { ...p, field_work: !!p.job_id, ...t, ...(open ? { approval: 'Pending' } : { approval: 'Approved', approved_by: me()!.id, approved_at: isoNow() }) } as never, `Manual attendance ${emp.full_name} ${p.date}`);
 }
 export function requestCorrection(p: { employee_id: string; date: string; clock_in: string; clock_out: string; reason: string }) {
   store.require('attendance.own');
