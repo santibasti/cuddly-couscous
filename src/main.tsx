@@ -7,13 +7,16 @@ import './styles.css';
 import './components/InstallPrompt';
 import { startGeocoder } from './lib/geocode';
 import { applyTheme } from './lib/theme';
+import { startUpdateWatcher } from './lib/updater';
 applyTheme();
+
+if (import.meta.env.PROD) startUpdateWatcher();
 
 // offline-capable app shell (production builds only, so dev hot-reload is not cached)
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     const had = !!navigator.serviceWorker.controller;
-    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).then((reg) => { setInterval(() => { reg.update().catch(() => undefined); }, 3600000); }).catch(() => { /* not available (e.g. insecure origin) */ });
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).then((reg) => { setInterval(() => { reg.update().catch(() => undefined); }, 300000); window.addEventListener('focus', () => { reg.update().catch(() => undefined); }); }).catch(() => { /* not available (e.g. insecure origin) */ });
     // a new version took over after this page was already open: offer a reload (never reload by surprise — someone may be mid-form)
     let seen = had;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (seen) window.dispatchEvent(new Event('topmop:update-ready')); seen = true; });

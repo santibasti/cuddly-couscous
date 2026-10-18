@@ -75,15 +75,25 @@ export function InstallPrompt() {
   );
 }
 
-/** Shown when a newer version of the app has been downloaded in the background. */
+/** Shown when a newer version of the app is live. It refreshes itself once nobody is typing, or at once when the app comes back to the front. */
 export function UpdateBanner() {
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(false); const [left, setLeft] = useState(20);
   useEffect(() => { const h = () => setReady(true); window.addEventListener('topmop:update-ready', h); return () => window.removeEventListener('topmop:update-ready', h); }, []);
+  useEffect(() => {
+    if (!ready) return;
+    let last = Date.now(); const touch = () => { last = Date.now(); };
+    const evs = ['pointerdown', 'keydown', 'touchstart', 'input'] as const; evs.forEach((e) => window.addEventListener(e, touch, { passive: true }));
+    const typing = () => { const a = document.activeElement; return !!a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName) && (a as HTMLInputElement).type !== 'checkbox'; };
+    let hiddenAt = 0; const vis = () => { if (document.visibilityState === 'hidden') hiddenAt = Date.now(); else if (hiddenAt && Date.now() - hiddenAt > 5000 && !typing()) location.reload(); };
+    document.addEventListener('visibilitychange', vis);
+    const t = setInterval(() => { const idle = Math.floor((Date.now() - last) / 1000); setLeft(Math.max(0, 20 - idle)); if (idle >= 20 && !typing() && document.visibilityState === 'visible') location.reload(); }, 1000);
+    return () => { clearInterval(t); evs.forEach((e) => window.removeEventListener(e, touch)); document.removeEventListener('visibilitychange', vis); };
+  }, [ready]);
   if (!ready) return null;
   return (
     <div className="installbar update no-print" role="status">
-      <div style={{ flex: 1 }}><b>A new version of TopMop is ready.</b><div className="small">Reload to use it. Your unsent changes and drafts are kept.</div></div>
-      <button className="btn primary sm" onClick={() => location.reload()}>Reload</button>
+      <div style={{ flex: 1 }}><b>A new version of TopMop is ready.</b><div className="small">It refreshes by itself when you pause ({left}s). Your unsent changes and drafts are kept.</div></div>
+      <button className="btn primary sm" onClick={() => location.reload()}>Update now</button>
     </div>
   );
 }
