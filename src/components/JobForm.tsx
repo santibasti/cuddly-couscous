@@ -50,6 +50,7 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
   const save = () => {
     if (!v.client_id || !v.site_id) return attempt(() => { throw new Error('Choose a client and a service site.'); });
     if (!v.service_codes.length) return attempt(() => { throw new Error('Choose at least one service.'); });
+    if (v.depart_hq && v.depart_hq >= v.start_at.slice(11, 16)) return attempt(() => { throw new Error('The crew must leave HQ before the job starts — set “Depart HQ at” earlier than the start time.'); });
     const data = { ...v, checklist: v.checklist.length ? v.checklist : defaultChecklist(db, v.service_codes), branch_id: db.clients.find((c) => c.id === v.client_id)?.branch_id ?? v.branch_id };
     const r = attempt(() => saveJob({ ...data, id: initial?.id, number: initial?.number }), initial ? 'Job updated' : 'Job booked') as Job | undefined;
     if (r) { onClose(); onSaved?.(r); }
@@ -63,6 +64,7 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
         <Field label="Client" required><select value={v.client_id} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', ''); }}>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
         <Field label="Job site" required hint={v.client_id && !sites.length ? 'This client has no service site yet.' : undefined}><div className="row" style={{ gap: 6 }}><select style={{ flex: 1 }} {...f.bind('site_id')}><option value="">— select —</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{v.client_id && can('clients.edit') && <button type="button" className="btn sm" onClick={() => setNewSite(true)}>+ Site</button>}</div></Field>
         <Field label="Booking date" hint="The day the client booked. Change it if the booking is entered later than it was made."><input type="date" value={v.booking_date ?? ''} onChange={(e) => f.set('booking_date', e.target.value || undefined)} /></Field>
+        <Field label="Depart HQ at" hint="The time the crew leaves headquarters on the service day, so everyone knows when to be ready."><input type="time" step={300} value={v.depart_hq ?? ''} onChange={(e) => f.set('depart_hq', e.target.value || undefined)} /></Field>
         <Field label="Start"><input type="datetime-local" step={900} {...f.bind('start_at')} /></Field>
         <Field label="End"><input type="datetime-local" step={900} {...f.bind('end_at')} /></Field>
         <div className="full"><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Services</div><div className="row">{live(db.services).map((s) => <label key={s.code} className="check"><input type="checkbox" checked={v.service_codes.includes(s.code)} onChange={() => toggle('service_codes', s.code)} />{s.name}</label>)}</div></div>

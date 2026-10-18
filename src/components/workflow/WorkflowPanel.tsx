@@ -11,7 +11,7 @@ import { WORKFLOW_STEPS, hqGaps, workflowProgress, type StepState } from '@/lib/
 import {
   FUEL_LEVELS, arriveAtSite, canRunWorkflow, completeHqChecklist, correctWorkflow, dispatchJob, finishWork, matchScan, openWorkflow, saveHqDraft, saveWorkNotes, startWork,
 } from '@/lib/workflow';
-import { fmtDateTime, nowLocal } from '@/lib/util';
+import { departAt, fmtDateTime, fmtTime, nowLocal } from '@/lib/util';
 import { clearDraft, confirmLeave, draftKeys } from '@/lib/sync';
 import { useDraft } from '@/lib/useDraft';
 import { DraftBar, PresetChips, Toggle } from '@/components/touch';
@@ -82,7 +82,7 @@ export function WorkflowPanel({ job, above }: { job: Job; onDetails?: () => void
   const body: ReactNode[] = [
     wf.hq_at ? <PrepSummary wf={wf} /> : <PrepForm wf={wf} job={job} run={run} />,
     wf.disp_at ? <dl className="kv"><dt>Departed HQ</dt><dd>{fmtDateTime(wf.disp_at)}</dd><dt>Confirmed by</dt><dd>{userName(db, wf.disp_by)}</dd></dl>
-      : !wf.hq_at ? <Locked why="Available after job prep is confirmed." /> : <DispatchForm wf={wf} run={run} />,
+      : !wf.hq_at ? <Locked why="Available after job prep is confirmed." /> : <DispatchForm wf={wf} job={job} run={run} />,
     wf.arr_at ? <CheckInSummary wf={wf} /> : !wf.disp_at ? <Locked why="Available after the crew is dispatched." /> : <CheckInForm wf={wf} job={job} run={run} />,
     !wf.arr_at ? <Locked why="Available after site check-in." /> : <ScopeStep wf={wf} job={job} run={run} />,
     !wf.conf_at ? <Locked why="Available once the client has signed the quotation (step 4)." /> : wf.conf_mode === 'declined' ? <Skipped /> : <WorkStep wf={wf} job={job} run={run} onVariation={() => go(3)} />,
@@ -215,13 +215,13 @@ function PrepSummary({ wf }: { wf: JobWorkflow }) {
 }
 
 /* ================= Step 2: Dispatch ================= */
-function DispatchForm({ wf, run }: { wf: JobWorkflow; run: boolean }) {
+function DispatchForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
   const [at, setAt] = useState(nowLocal()); const [ok, setOk] = useState(false);
   const dr = useDraft(`d:${wf.id}:disp`, { at }, (d) => setAt(d.at), run && !wf.disp_at);
   return (
     <div className="stack">
       {run && <DraftBar d={dr} />}
-      <TimeField label="Actual departure time" value={at} onChange={setAt} disabled={!run} hint="Defaults to now — change it if the crew already left." />
+      <TimeField label="Actual departure time" value={at} onChange={setAt} disabled={!run} hint={`Defaults to now — change it if the crew already left.${job.depart_hq ? ` Planned: ${fmtTime(departAt(job)!)}.` : ''}`} />
       <Confirm checked={ok} onChange={setOk} disabled={!run}>I confirm the crew and equipment are loaded and have left headquarters.</Confirm>
       {run && <button className="btn primary lg" disabled={!ok} onClick={() => attempt(() => dispatchJob(wf.id, { at, confirmed: ok }), 'Crew dispatched')}>Dispatch crew</button>}
     </div>

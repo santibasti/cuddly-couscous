@@ -118,3 +118,6 @@ export const cls = (...a: (string | false | null | undefined)[]) => a.filter(Boo
 
 /** Deep copy of plain data (structuredClone is missing in older Android WebViews). */
 export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+/** Local date-time the crew leaves HQ for a job (its start day + the booked HH:mm), if one was set. */
+export const departAt = (j: { start_at: string; depart_hq?: string }) => (j.depart_hq ? `${j.start_at.slice(0, 10)}T${j.depart_hq}` : undefined);

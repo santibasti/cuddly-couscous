@@ -201,6 +201,8 @@ export interface Job extends Base {
   service_codes: ServiceCode[];
   scope: string;
   booking_date?: string; // YYYY-MM-DD: the day the client booked (set on the booking form; the Job Order shows it)
+  /** HH:mm — the time the crew leaves HQ on the service day (shown on the calendar, job page and Happening Today) */
+  depart_hq?: string;
   start_at: string; // YYYY-MM-DDTHH:mm
   end_at: string;
   status: JobStatus;

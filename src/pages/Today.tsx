@@ -6,7 +6,7 @@ import { useAuth, live } from '@/lib/store';
 import { Avatar } from '@/components/EmployeeCard';
 import { WeekBoard } from '@/components/WeekBoard';
 import { finalContract, invoiceBalance } from '@/lib/business';
-import { fmtDate, fmtTime, money, nowLocal, today } from '@/lib/util';
+import { departAt, fmtDate, fmtTime, money, nowLocal, today } from '@/lib/util';
 import type { DB, Employee, Job, JobWorkflow } from '@/lib/types';
 
 type Stage = 'scheduled' | 'late' | 'road' | 'onsite' | 'working' | 'finished' | 'left' | 'back' | 'declined';
@@ -193,7 +193,7 @@ export default function Today() {
                 </div>
                 <h3>{client?.name ?? '—'}{client?.vip && <span className="tdy-vip">⭐ VIP</span>}</h3>
                 <div className="tdy-loc">📍 {site?.name ? <b>{site.name}</b> : null}{site?.name && addr ? ' · ' : ''}{addr || 'No address'} {addr && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`} target="_blank" rel="noreferrer">Map ↗</a>}</div>
-                <div className="tdy-svc">{j.service_codes.map((c) => db.services.find((s) => s.code === c)?.name ?? c).join(' · ')} <span>· scheduled {fmtTime(j.start_at)}–{fmtTime(j.end_at)}</span></div>
+                <div className="tdy-svc">{j.service_codes.map((c) => db.services.find((s) => s.code === c)?.name ?? c).join(' · ')} <span>{j.depart_hq && <>· leave HQ {fmtTime(departAt(j)!)} </>}· scheduled {fmtTime(j.start_at)}–{fmtTime(j.end_at)}</span></div>
               </header>
 
               <div className="tdy-times">

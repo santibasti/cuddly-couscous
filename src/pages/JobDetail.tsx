@@ -21,7 +21,7 @@ import { ReportIncidentModal } from '@/components/workflow/Incidents';
 import { deleteBooking } from '@/lib/deletion';
 import { overrideJobStatus } from '@/lib/workflow';
 import { serviceReportPdf } from '@/lib/export';
-import { fmtDateTime, fmtStamp, money, nowLocal } from '@/lib/util';
+import { departAt, fmtDateTime, fmtStamp, fmtTime, money, nowLocal } from '@/lib/util';
 import type { Job } from '@/lib/types';
 
 export default function JobDetail() {
@@ -59,7 +59,7 @@ export default function JobDetail() {
 
   return (
     <>
-      <PageHead title={<>{j.number} <Badge>{j.status}</Badge></>} sub={<>{client?.name ?? ''}{client ? ' · ' : ''}{site?.name} · {fmtDateTime(j.start_at)} → {fmtDateTime(j.end_at)}</>}>
+      <PageHead title={<>{j.number} <Badge>{j.status}</Badge></>} sub={<>{client?.name ?? ''}{client ? ' · ' : ''}{site?.name} · {fmtDateTime(j.start_at)} → {fmtDateTime(j.end_at)}{j.depart_hq && <> · 🏢 Leave HQ {fmtTime(departAt(j)!)}</>}</>}>
         <Link to="/jobs" className="btn">← Jobs</Link>
         {can('jobs.edit') && !locked && <button className="btn" onClick={() => setEdit(true)}><Icon name="edit" />Edit / reassign</button>}
         {can('jobs.edit') && j.status === 'Pending' && <button className="btn" onClick={() => attempt(() => setJobStatus(j.id, 'Confirmed'), 'Job confirmed')}>Confirm</button>}
