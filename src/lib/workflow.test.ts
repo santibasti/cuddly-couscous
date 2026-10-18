@@ -205,6 +205,22 @@ describe('7-step workflow: normal recurring job', () => {
     W.arriveAtSite(wf.id, checkIn([lead], { absent: [{ id: crew, reason: 'Sick leave' }] }));
     expect(wfOf(sc.job.id).arr_crew_absent).toEqual([{ id: crew, reason: 'Sick leave' }]);
   });
+  it('check-in: only the Owner can clock in the crew who have not clocked in', async () => {
+    await as('owner@topmop.ph');
+    const [lead, crew] = [db().employees[3].id, db().employees[4].id];
+    const sc = scenario('OWNCL', lead, [crew]);
+    for (const e of [lead, crew]) for (const a of db().attendance.filter((x) => x.employee_id === e && x.date === T() && !x.deleted_at)) store.remove('attendance', a.id);
+    const wf = W.openWorkflow(sc.job.id);
+    W.completeHqChecklist(wf.id, prepForm(wf) as never);
+    W.dispatchJob(wf.id, { confirmed: true });
+    const form = { contact_name: 'Ms. Reyes', present: [lead, crew], absent: [] };
+    expect(() => W.arriveAtSite(wf.id, form)).toThrow(/not clocked in/);
+    await as('leader@topmop.ph');
+    expect(() => W.arriveAtSite(wf.id, { ...form, ownerClockIn: true })).toThrow();
+    await as('owner@topmop.ph');
+    W.arriveAtSite(wf.id, { ...form, ownerClockIn: true });
+    for (const e of [lead, crew]) { const a = db().attendance.find((x) => x.employee_id === e && x.date === T() && !x.deleted_at)!; expect(a.clock_in).toBeTruthy(); expect(a.job_id).toBe(sc.job.id); expect(a.notes).toMatch(/Owner/); }
+  });
 });
 
 describe('Scope Approval: conditional', () => {

@@ -237,7 +237,8 @@ function mergePrep(saved: CheckItem[], local: CheckItem[]): CheckItem[] {
 
 /* ================= Step 3: Site Check-In (arrival + attendance) ================= */
 function CheckInForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
-  const { db } = useAuth();
+  const { db, user } = useAuth();
+  const isOwner = user?.role === 'owner';
   const crew = [...new Set([...(job.leader_id ? [job.leader_id] : []), ...job.crew_ids])];
   const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? (id ? 'Unknown employee (reassign on the job)' : '—');
   const site = db.sites.find((s) => s.id === job.site_id);
@@ -263,7 +264,7 @@ function CheckInForm({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean
               {!on && <div style={{ marginTop: 6 }}><input disabled={!run} placeholder="Reason absent (required)" value={absent[e] ?? ''} onChange={(ev) => setAbsent({ ...absent, [e]: ev.target.value })} aria-label={`Reason ${emp(e)} is absent`} /><PresetChips replace options={PRESETS.absent} value={absent[e] ?? ''} onChange={(v) => setAbsent({ ...absent, [e]: v })} disabled={!run} /></div>}</div>
               {a ? <Badge tone="green">Clocked in {a.clock_in?.slice(11, 16)}</Badge> : on ? <Badge tone="red">Not clocked in</Badge> : <Badge tone="red">Absent</Badge>}</li>; })}
         </ul>
-        {(() => { const miss = missClock; return miss.length ? <div className="alert warn" style={{ marginTop: 8 }}><b>Cannot check in yet.</b> {miss.map(emp).join(', ')} {miss.length > 1 ? 'have' : 'has'} not clocked in. Each crew member must clock in on their own Attendance page first — or switch them off above and give the reason they are absent.</div> : <div className="small muted" style={{ marginTop: 6 }}>Everyone marked present has clocked in. Their attendance record is linked to this job.</div>; })()}
+        {(() => { const miss = missClock; return miss.length ? <div className="alert warn" style={{ marginTop: 8 }}><b>Cannot check in yet.</b> {miss.map(emp).join(', ')} {miss.length > 1 ? 'have' : 'has'} not clocked in. Each crew member must clock in on their own Attendance page first — or switch them off above and give the reason they are absent.{isOwner && <div style={{ marginTop: 8 }}><button type="button" className="btn sm primary" disabled={!run} onClick={() => attempt(() => arriveAtSite(wf.id, { at, contact_name: contact.name, contact_mobile: contact.mobile, notes, present, ownerClockIn: true, absent: crew.filter((e) => !present.includes(e)).map((e) => ({ id: e, reason: absent[e] ?? '' })) }), 'Crew clocked in by the Owner — checked in')}>Owner: clock them in &amp; check in</button> <span className="small muted">Records their clock-in at the arrival time above, marked “Clocked in by the Owner”.</span></div>}</div> : <div className="small muted" style={{ marginTop: 6 }}>Everyone marked present has clocked in. Their attendance record is linked to this job.</div>; })()}
       </div>
       <details><summary className="small" style={{ cursor: 'pointer' }}>Add a site note (optional)</summary><div style={{ marginTop: 8 }}><textarea disabled={!run} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Access, hazards, restrictions…" /><PresetChips options={PRESETS.site} value={notes} onChange={setNotes} disabled={!run} /></div></details>
       {run && <button className="btn primary lg" disabled={missClock.length > 0} onClick={() => attempt(() => arriveAtSite(wf.id, { at, contact_name: contact.name, contact_mobile: contact.mobile, notes, present, absent: crew.filter((e) => !present.includes(e)).map((e) => ({ id: e, reason: absent[e] ?? '' })) }), 'Checked in — attendance confirmed')}>Confirm check-in &amp; attendance</button>}

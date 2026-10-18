@@ -10,6 +10,7 @@ import { isDone, ISSUE_CATEGORIES, RATING_STARS_FROM_QUESTIONS, needsFollowUp, o
 import { syncFollowUps } from './followups';
 import { jobSavedHooks, settleConfirmation, syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { nowLocal, today } from './util';
+import { computeTimes } from './business';
 
 const db = (): DB => store.getDB();
 const fail = (m: string): never => { throw new RuleError(m); };
@@ -161,7 +162,7 @@ export function dispatchJob(id: string, f: { at?: string; confirmed: boolean }) 
 }
 
 /* ================= Step 3: Site Check-In (arrival + attendance) ================= */
-export interface CheckInForm { at?: string; contact_name: string; contact_mobile?: string; notes?: string; present: string[]; absent: { id: string; reason: string }[] }
+export interface CheckInForm { at?: string; contact_name: string; contact_mobile?: string; notes?: string; present: string[]; absent: { id: string; reason: string }[]; /** Owner only: clock in the crew who have not clocked in themselves */ ownerClockIn?: boolean }
 export function arriveAtSite(id: string, f: CheckInForm) {
   const wf = getWf(id); const job = jobOf(wf);
   needRun(job);
@@ -177,7 +178,17 @@ export function arriveAtSite(id: string, f: CheckInForm) {
   const date = at.slice(0, 10);
   const clocked = (e: string) => db().attendance.find((a) => a.employee_id === e && a.date === date && !a.deleted_at && a.clock_in);
   const notClocked = f.present.filter((e) => !clocked(e));
-  if (notClocked.length) fail(`These crew members have not clocked in yet: ${notClocked.map((e) => db().employees.find((x) => x.id === e)?.full_name ?? 'Unknown employee').join(', ')}. They must clock in on their Attendance page first — or mark them absent with a reason.`);
+  if (notClocked.length && f.ownerClockIn) {
+    if (store.role !== 'owner') fail('Only the Owner can clock the crew in at check-in.');
+    for (const e of notClocked) {
+      const emp = db().employees.find((x) => x.id === e)!;
+      const existing = db().attendance.find((a) => a.employee_id === e && a.date === date && !a.deleted_at);
+      const t = computeTimes(emp, at, undefined, db().settings.grace_minutes);
+      const patch = { kind: 'Present' as const, clock_in: at, job_id: job.id, field_work: true, late_min: t.late_min, notes: 'Clocked in by the Owner at site check-in' };
+      if (existing) store.update('attendance', existing.id, patch, 'update', `${emp.full_name} clocked in by the Owner at ${job.number} check-in`);
+      else store.insert('attendance', { employee_id: e, date, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending', ...patch } as never, `${emp.full_name} clocked in by the Owner at ${job.number} check-in`);
+    }
+  } else if (notClocked.length) fail(`These crew members have not clocked in yet: ${notClocked.map((e) => db().employees.find((x) => x.id === e)?.full_name ?? 'Unknown employee').join(', ')}. They must clock in on their Attendance page first — or mark them absent with a reason.`);
   for (const e of f.present) {
     const att = clocked(e)!;
     // an attendance record the office already approved is locked (corrections only): it stays as it is, the check-in itself records who was on site
