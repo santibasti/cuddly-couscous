@@ -845,6 +845,8 @@ export interface JobOrderContent {
   client_address?: string;
   /** set when the client is a VIP (the text is the client's VIP note, or "VIP client"); kept out of the revision key so flagging a client never creates a revised order */
   vip?: string;
+  /** the vehicle assigned to the booking, for the building's gate pass; kept out of the revision key so reassigning a vehicle updates the order in place */
+  vehicle?: { name: string; code?: string };
   /** service disclaimer from the approved quotation (company default when it has none) */
   disclaimer?: string;
   location: { name: string; address: string; contact_person: string; contact_mobile: string };

@@ -1,7 +1,7 @@
 // Job Order Confirmation (store side). Free of imports from ./actions so actions can call syncJobOrders without a cycle.
 import { store, RuleError } from './store';
 import type { DB, JobOrder } from './types';
-import { buildContent, changeSummary, contentKey, headOrder, planJobOrders } from './joborder-core';
+import { buildContent, changeSummary, contentKey, headOrder, planJobOrders, vehicleOf } from './joborder-core';
 import { isoNow, today, uid } from './util';
 
 const db = (): DB => store.getDB();
@@ -22,9 +22,10 @@ export function syncJobOrders(jobId?: string) {
   for (const job of db().jobs.filter((j) => !j.deleted_at && (!jobId || j.id === jobId))) {
     const o = headOrder(db(), job.id); const bd = job.booking_date ?? job.created_at.slice(0, 10);
     const cl = db().clients.find((x) => x.id === job.client_id); const vip = cl?.vip ? cl.vip_note?.trim() || 'VIP client' : undefined;
-    if (o && (o.content.booking_date !== bd || o.content.vip !== vip)) {
-      const { vip: _old, ...rest } = o.content; void _old;
-      store.system('job_orders', o.id, { content: { ...rest, booking_date: bd, ...(vip ? { vip } : {}) } } as never, `Booking date / VIP flag of ${o.number} updated`);
+    const veh = vehicleOf(db(), job);
+    if (o && (o.content.booking_date !== bd || o.content.vip !== vip || JSON.stringify(o.content.vehicle ?? null) !== JSON.stringify(veh ?? null))) {
+      const { vip: _old, vehicle: _v, ...rest } = o.content; void _old; void _v;
+      store.system('job_orders', o.id, { content: { ...rest, booking_date: bd, ...(vip ? { vip } : {}), ...(veh ? { vehicle: veh } : {}) } } as never, `Booking date / VIP flag / vehicle of ${o.number} updated`);
     }
   }
   for (const step of planJobOrders(db(), jobId)) {

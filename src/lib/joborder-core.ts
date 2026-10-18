@@ -48,6 +48,7 @@ export function buildContent(db: DB, job: Job): JobOrderContent {
     client: { name: c?.name ?? '', contact_person: site?.contact_person || c?.contact_person || '', email: c?.email || undefined },
     client_address: (c?.address || c?.billing_address || '').trim() || undefined,
     ...(c?.vip ? { vip: c.vip_note?.trim() || 'VIP client' } : {}),
+    ...(vehicleOf(db, job) ? { vehicle: vehicleOf(db, job) } : {}),
     disclaimer: (approvedQ?.disclaimer?.trim() || defaultDisclaimer(s)) || undefined,
     location: { name: site?.name ?? '', address: site?.address ?? '', contact_person: site?.contact_person || c?.contact_person || '', contact_mobile: site?.contact_mobile || c?.mobile || '' },
     booking_date: job.booking_date ?? job.created_at.slice(0, 10), service_date: job.start_at.slice(0, 10), arrival_from: start, arrival_to: addMin(start, 30), duration_hours: hours,
@@ -65,6 +66,11 @@ export function buildContent(db: DB, job: Job): JobOrderContent {
   };
 }
 void lineTotals; void invoiceTotals;
+/** The vehicle assigned to a booking as the Job Order shows it (undefined when none is assigned). */
+export function vehicleOf(db: DB, job: Job): JobOrderContent['vehicle'] {
+  const a = job.vehicle_id ? db.assets.find((x) => x.id === job.vehicle_id && !x.deleted_at) : undefined;
+  return a ? { name: a.name, ...(a.code ? { code: a.code } : {}) } : undefined;
+}
 
 /** What a client would notice changing: when, where, what, how much, who. (Payment status moves on its own and is not part of this.) */
 export function contentKey(c: JobOrderContent): string {

@@ -87,7 +87,7 @@ export function JobOrderPanel({ job, fold = false }: { job: Job; fold?: boolean 
   const mail = (o: JobOrder) => {
     if (needSend(o)) return;
     const c = o.content;
-    const body = `Hello ${c.client.contact_person || c.client.name},\n\nPlease find the confirmation of your scheduled service.\n\nJob Order: ${orderLabel(o)}\nService: ${c.service_types.join(', ')}\nDate: ${fmtDate(c.service_date)}\nLocation: ${c.location.name}, ${c.location.address}\n\nView or download it here:\n${shareLink(o)}\n\nThank you,\n${c.company.name}\n${c.company.phone}`;
+    const body = `Hello ${c.client.contact_person || c.client.name},\n\nPlease find the confirmation of your scheduled service.\n\nJob Order: ${orderLabel(o)}\nService: ${c.service_types.join(', ')}${c.vehicle ? `\nVehicle: ${c.vehicle.name}${c.vehicle.code ? ` (${c.vehicle.code})` : ''}` : ''}\nDate: ${fmtDate(c.service_date)}\nLocation: ${c.location.name}, ${c.location.address}\n\nView or download it here:\n${shareLink(o)}\n\nThank you,\n${c.company.name}\n${c.company.phone}`;
     location.href = `mailto:${client?.email ?? ''}?subject=${encodeURIComponent(`Job Order Confirmation ${orderLabel(o)} – ${fmtDate(c.service_date)}`)}&body=${encodeURIComponent(body)}`;
     log(o, 'E-mail opened for the client');
   };

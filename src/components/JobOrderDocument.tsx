@@ -29,6 +29,7 @@ export function JobOrderDocument({ order, showVip = true }: { order: View; showV
       </div>
       <div className="pd-tiles">
         <div className="pd-tile svc"><div className="pd-k">Service type</div><div className="v">{c.service_types.join(' · ') || '—'}</div></div>
+        <div className="pd-tile veh"><div className="pd-k">Service vehicle</div><div className="v">{c.vehicle ? <>🚚 {c.vehicle.name}{c.vehicle.code ? <span className="vc"> · {c.vehicle.code}</span> : null}</> : <span className="muted">To be confirmed</span>}</div></div>
         <div className="pd-tile"><div className="pd-k">Booking date</div><div className="v">{fmtDate(c.booking_date)}</div></div>
         <div className="pd-tile hl"><div className="pd-k">Service date</div><div className="v">{fmtDate(c.service_date)}</div></div>
         <div className="pd-tile"><div className="pd-k">Arrival window</div><div className="v">{t12(c.arrival_from)} – {t12(c.arrival_to)}</div></div>
