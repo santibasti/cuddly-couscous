@@ -51,8 +51,8 @@ const OWNER_MESSAGES = [
 ];
 const mood = (owner: boolean, done: number, total: number, onSite: number, absent: number, money: string) =>
   !total ? (owner ? 'No jobs today. A good day to follow up quotations and rest a little.' : 'A quiet day is a great time to prepare equipment and follow up with clients.')
-  : done === total ? (owner ? `All ${total} job${total === 1 ? '' : 's'} are done today, worth ${money}. Well done, boss! 🎉` : `All ${total} job${total === 1 ? '' : 's'} done today. Excellent work, team! 🎉`)
-  : onSite ? (owner ? `${onSite} crew${onSite === 1 ? ' is' : 's are'} out earning for TopMop right now — ${total} job${total === 1 ? '' : 's'} today, ${money} to bill.` : `${onSite} crew${onSite === 1 ? ' is' : 's are'} working on site right now. Keep up the great work!`)
+  : done === total ? (owner ? `All ${total} job${total === 1 ? '' : 's'} are done today, about ${money} in billing. Well done, boss! 🎉` : `All ${total} job${total === 1 ? '' : 's'} done today. Excellent work, team! 🎉`)
+  : onSite ? (owner ? `${onSite} crew${onSite === 1 ? ' is' : 's are'} out earning for TopMop right now — ${total} job${total === 1 ? '' : 's'} today, about ${money} expected to bill.` : `${onSite} crew${onSite === 1 ? ' is' : 's are'} working on site right now. Keep up the great work!`)
   : absent ? (owner ? 'Part of the team is out today, and the rest are covering. Remember to thank them.' : 'Some of the team is out today. Thank you to everyone covering.') : '';
 /** Counts up to a number when it changes (whole numbers and pesos), so the board feels alive. */
 function useCountUp(target: number, ms = 900) {
@@ -166,7 +166,7 @@ export default function Today() {
         <Kpi icon="🗓️" label="Jobs today" value={cards.length} sub={`${doneCount} finished`} tone="blue" bar={cards.length ? doneCount / cards.length : 0} />
         <Kpi icon="📍" label="On site right now" value={onSite} sub={onSite ? 'Crews working or arrived' : 'Nobody on site'} tone="green" bar={cards.length ? onSite / cards.length : 0} />
         <Kpi icon="👷" label="Staff present · absent" value={present} fmt={(n) => `${Math.round(n)} · ${absent}`} sub="Across today's jobs" tone={absent ? 'amber' : 'teal'} bar={present + absent ? present / (present + absent) : 0} />
-        {showMoney ? <Kpi icon="💰" label="Final billing today" value={billing} fmt={(n) => money(n)} sub="Including approved additional work" tone="gold" /> : <Kpi icon="⏳" label="Not yet started" value={cards.filter((c) => ['scheduled', 'late'].includes(c.stage)).length} sub="Waiting to dispatch" tone="gold" />}
+        {showMoney ? <Kpi icon="💰" label="Expected billing today" value={billing} fmt={(n) => money(n)} sub="Quoted rate, may change once the work is counted" tone="gold" /> : <Kpi icon="⏳" label="Not yet started" value={cards.filter((c) => ['scheduled', 'late'].includes(c.stage)).length} sub="Waiting to dispatch" tone="gold" />}
       </div>
 
       {!cards.length && <div className="card"><div className="empty" style={{ padding: 40, textAlign: 'center' }}>Nothing is scheduled for today.<div className="small muted">Jobs booked for today appear here as soon as they are on the calendar.</div></div></div>}
@@ -205,7 +205,7 @@ export default function Today() {
 
               <footer>
                 <div className="tdy-car">🚚 <b>{car?.name ?? 'No vehicle'}</b>{car?.code ? <small> {car.code}</small> : null}</div>
-                {showMoney && <div className="tdy-bill"><small>Final billing</small><b>{money(fc.payableTotal)}</b><em>{fc.variationsTotal > 0 ? `incl. ${money(fc.variationsTotal)} additional work` : 'incl. VAT'}{inv ? (invoiceBalance(db, inv) <= 0.005 ? ' · paid' : ` · invoiced ${inv.number}`) : ''}</em></div>}
+                {showMoney && <div className="tdy-bill"><small>{w?.conf_at ? 'Final billing' : 'Expected billing'}</small><b>{money(fc.payableTotal)}</b><em>{w?.conf_at ? (fc.variationsTotal > 0 ? `incl. ${money(fc.variationsTotal)} additional work` : 'signed by the client · incl. VAT') : 'quoted rate · may change after the on-site count'}{inv ? (invoiceBalance(db, inv) <= 0.005 ? ' · paid' : ` · invoiced ${inv.number}`) : ''}</em></div>}
               </footer>
             </article>
           );
