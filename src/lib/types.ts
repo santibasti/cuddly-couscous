@@ -626,7 +626,7 @@ export interface ClientFeedback extends Base {
   leader_id?: string; crew_ids: string[]; service_codes: string[]; service_date: string;
   rating: SatisfactionRating;
   /** 1 Poor · 2 Fair · 3 Good · 4 Very Good · 5 Excellent (not recorded on feedback saved before these questions existed) */
-  q_quality?: number; q_professionalism?: number; q_communication?: number;
+  q_quality?: number; q_professionalism?: number; q_communication?: number; q_punctuality?: number; q_safety?: number; q_tools?: number;
   aspects: string[];                 // legacy ticked items (no longer asked)
   comment?: string;
   recommend?: 'yes' | 'maybe' | 'no'; // would the client recommend TopMop to friends and family

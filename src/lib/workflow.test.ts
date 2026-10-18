@@ -624,7 +624,7 @@ describe('Client Satisfaction Check', () => {
     const { job, wf } = upToWork('SAT1', lead());
     W.finishWork(wf.id, {});
     await as('leader@topmop.ph');
-    expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: undefined })).toThrow(/rate the three questions/);
+    expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: undefined })).toThrow(/rate each item/);
     expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: { q_quality: 5, q_professionalism: 6, q_communication: 5, rating: 3 } })).toThrow(/1 \(Poor\) to 5/);
     expect(() => W.signServiceReport(wf.id, { ...handover, satisfaction: { q_quality: 5, q_professionalism: 4, q_communication: 4 } as never })).toThrow(/overall satisfaction/);
     W.signServiceReport(wf.id, { ...handover, satisfaction: { q_quality: 5, q_professionalism: 4, q_communication: 4, rating: 3 } });

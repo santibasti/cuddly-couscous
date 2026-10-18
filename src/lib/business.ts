@@ -808,14 +808,22 @@ export const RATING_STARS: Record<SatisfactionRating, number> = { 1: 1, 2: 4, 3:
 export const FEEDBACK_ASPECTS = ['Crew professionalism', 'Quality of cleaning', 'On-time arrival', 'Communication', 'Overall service'] as const;
 export const ISSUE_CATEGORIES: IssueCategory[] = ['Quality', 'Delay', 'Communication', 'Damage', 'Scope', 'Other'];
 export const SCALE5 = ['Poor', 'Fair', 'Good', 'Very Good', 'Excellent'] as const;
+/** The six things the client rates (1 Poor … 5 Excellent). The first three keep their original keys so older feedback still reads. */
 export const SAT_QUESTIONS = [
-  { key: 'q_quality', text: 'How would you rate the quality of cleaning?' },
-  { key: 'q_professionalism', text: 'How would you rate the crew’s professionalism?' },
-  { key: 'q_communication', text: 'How would you rate communication and service experience?' },
+  { key: 'q_quality', text: 'Cleanliness Result', icon: '✨', hint: 'How clean everything looks now' },
+  { key: 'q_professionalism', text: 'Professionalism of Team', icon: '👷', hint: 'Manners, uniform, attitude' },
+  { key: 'q_punctuality', text: 'Punctuality / Timeliness', icon: '⏱️', hint: 'Arrived and finished on time' },
+  { key: 'q_safety', text: 'Safety Practices', icon: '🦺', hint: 'Safe, careful way of working' },
+  { key: 'q_tools', text: 'Tools & Equipment', icon: '🧰', hint: 'Proper, clean, well-kept gear' },
+  { key: 'q_communication', text: 'Communication', icon: '💬', hint: 'Clear updates and friendly service' },
 ] as const;
+type QKey = typeof SAT_QUESTIONS[number]['key'];
+type Qs = Partial<Record<QKey, number>>;
 /** Not Satisfied, or any question rated 1 or 2, needs an issue category and an Admin follow-up. */
-export const needsFollowUp = (s: { rating?: number; q_quality?: number; q_professionalism?: number; q_communication?: number }) => s.rating === 1 || [s.q_quality, s.q_professionalism, s.q_communication].some((q) => q !== undefined && q <= 2);
-export const RATING_STARS_FROM_QUESTIONS = (s: { q_quality: number; q_professionalism: number; q_communication: number }) => Math.max(1, Math.min(5, Math.round((s.q_quality + s.q_professionalism + s.q_communication) / 3)));
+export const needsFollowUp = (s: Qs & { rating?: number }) => s.rating === 1 || SAT_QUESTIONS.some((q) => s[q.key] !== undefined && (s[q.key] as number) <= 2);
+/** The overall satisfaction (1 Not · 2 Satisfied · 3 Very) that follows from the six ratings: any 1–2 means Not satisfied, an average of 4.5 or more means Very satisfied. */
+export const overallFromAnswers = (s: Qs): SatisfactionRating | undefined => { const v = SAT_QUESTIONS.map((q) => s[q.key]).filter((x): x is number => !!x); if (!v.length) return undefined; return Math.min(...v) <= 2 ? 1 : v.reduce((a, b) => a + b, 0) / v.length >= 4.5 ? 3 : 2; };
+export const RATING_STARS_FROM_QUESTIONS = (s: Qs) => { const v = SAT_QUESTIONS.map((q) => s[q.key]).filter((x): x is number => !!x); return v.length ? Math.max(1, Math.min(5, Math.round(v.reduce((a, b) => a + b, 0) / v.length))) : 3; };
 export const feedbackOf = (d: Pick<DB, 'client_feedback'>, jobId: string) => d.client_feedback.find((f) => f.job_id === jobId && !f.deleted_at);
 /** Negative feedback the Admin has not acknowledged yet: the job cannot be fully closed while this exists. */
 export const openFollowUp = (d: Pick<DB, 'client_feedback'>, jobId: string) => d.client_feedback.find((f) => f.job_id === jobId && !f.deleted_at && f.follow_up === 'Required');

@@ -3,7 +3,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { useAuth } from '@/lib/store';
 import { Badge, Card, Field, Modal, attempt } from '@/components/ui';
 import { acknowledgeFeedback, type SatisfactionInput } from '@/lib/workflow';
-import { ISSUE_CATEGORIES, RATING_EMOJI, RATING_LABEL, SAT_QUESTIONS, SCALE5, needsFollowUp, satisfactionStats } from '@/lib/business';
+import { ISSUE_CATEGORIES, RATING_EMOJI, RATING_LABEL, SAT_QUESTIONS, needsFollowUp, overallFromAnswers, satisfactionStats } from '@/lib/business';
 import { addDays, fmtDate, fmtDateTime } from '@/lib/util';
 import type { ClientFeedback, IssueCategory, SatisfactionRating } from '@/lib/types';
 
@@ -13,33 +13,53 @@ export const RECOMMEND_LABEL = { yes: 'Yes, definitely', maybe: 'Maybe', no: 'No
 const TONE: Record<SatisfactionRating, string> = { 1: 'bad', 2: 'mid', 3: 'good' };
 
 /**
- * Client Satisfaction Check, built to take under 20 seconds on a tablet:
- * three 1–5 questions (large buttons), then the overall smiley, then an optional comment.
- * A Not Satisfied answer or any 1–2 rating needs an issue category from the Team Leader and creates an Admin follow-up.
+ * Client Satisfaction Check: six categories, each a tap on 1–5 stars, with a live progress bar and mood.
+ * Any 1–2 star answer needs an issue category from the Team Leader and creates an Admin follow-up.
  */
-const FACES: [number, string, string][] = [[1, '😞', 'Poor'], [2, '😕', 'Fair'], [3, '🙂', 'Good'], [4, '😊', 'Very good'], [5, '🤩', 'Excellent']];
-/** One tap on the 5-face scale stands for all three questions and for the overall satisfaction (1–2 Not satisfied · 3–4 Satisfied · 5 Very satisfied). */
-const overallFrom = (n: number): SatisfactionRating => (n <= 2 ? 1 : n === 5 ? 3 : 2);
+const STAR_WORD = ['Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
+const STAR_COLOR = ['#ef5b5b', '#f08a4b', '#f5b83d', '#7bd88f', '#2ee59d'];
+const MOODS = ['🫥', '😞', '😕', '🙂', '😊', '🤩'];
 export function SatisfactionCheck({ value, onChange, disabled, clientMode }: { value: Partial<SatisfactionInput>; onChange: (v: Partial<SatisfactionInput>) => void; disabled?: boolean; clientMode?: boolean }) {
-  const r = value.rating;
-  const [more, setMore] = useState(false);
-  const answered = SAT_QUESTIONS.every((q) => !!value[q.key]);
-  const overall = answered ? Math.round(SAT_QUESTIONS.reduce((a, q) => a + (value[q.key] as number), 0) / SAT_QUESTIONS.length) : 0;
+  const given = SAT_QUESTIONS.map((q) => (value[q.key] as number | undefined) ?? 0);
+  const done = given.filter(Boolean).length;
+  const answered = done === SAT_QUESTIONS.length;
+  const avg = done ? given.reduce((a, x) => a + x, 0) / done : 0;
   const low = needsFollowUp(value);
-  const pick = (n: number) => onChange({ ...value, q_quality: n, q_professionalism: n, q_communication: n, rating: overallFrom(n) });
-  const detail = (key: 'q_quality' | 'q_professionalism' | 'q_communication', n: number) => { const next = { ...value, [key]: n }; const vals = SAT_QUESTIONS.map((q) => next[q.key] as number); const avg = Math.round(vals.reduce((a, x) => a + x, 0) / vals.length); onChange({ ...next, rating: Math.min(...vals) <= 2 ? 1 : overallFrom(avg) }); };
+  const set = (key: (typeof SAT_QUESTIONS)[number]['key'], n: number) => {
+    const next = { ...value, [key]: n };
+    const all = SAT_QUESTIONS.every((q) => !!next[q.key]);
+    onChange({ ...next, rating: all ? overallFromAnswers(next as Record<string, number>) : value.rating });
+  };
+  const allFive = () => { const next: Partial<SatisfactionInput> = { ...value }; for (const q of SAT_QUESTIONS) (next as Record<string, number>)[q.key] = 5; onChange({ ...next, rating: overallFromAnswers(next as Record<string, number>) }); };
   return (
     <div className="card satcheck" style={{ padding: 14 }}>
       {!clientMode && <div className="satq">How was our service today?</div>}
-      <div className="faces" role="radiogroup" aria-label="Rate today's service">
-        {FACES.map(([n, emo, label]) => (
-          <button key={n} type="button" role="radio" aria-checked={overall === n && !more} disabled={disabled} className={`face f${n} ${overall === n ? 'on' : ''}`} onClick={() => pick(n)}>
-            <span className="emo" aria-hidden="true">{emo}</span><b>{label}</b>
-          </button>
-        ))}
+      <div className="sat-prog">
+        <span className="sat-mood" aria-hidden="true">{MOODS[done ? Math.round(avg) : 0]}</span>
+        <div className="sat-track" role="progressbar" aria-valuemin={0} aria-valuemax={SAT_QUESTIONS.length} aria-valuenow={done} aria-label="Questions rated"><i style={{ width: `${(done / SAT_QUESTIONS.length) * 100}%` }} /></div>
+        <b className="small">{done} of {SAT_QUESTIONS.length}</b>
       </div>
-      {answered && r && (
+      <div className="sat-rows">
+        {SAT_QUESTIONS.map((q) => {
+          const v = (value[q.key] as number | undefined) ?? 0;
+          return (
+            <div key={q.key} className={`sat-row ${v ? 'done' : ''}`}>
+              <div className="sat-ic" aria-hidden="true">{q.icon}</div>
+              <div className="sat-tx"><b>{q.text}</b><span className="small muted">{q.hint}</span></div>
+              <div className="sat-stars" role="radiogroup" aria-label={q.text}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button key={n} type="button" role="radio" aria-checked={v === n} aria-label={`${n} ${STAR_WORD[n - 1]}`} disabled={disabled} className={`sat-star ${n <= v ? 'on' : ''}`} style={n <= v ? { color: STAR_COLOR[v - 1] } : undefined} onClick={() => set(q.key, n)}>★</button>
+                ))}
+              </div>
+              <div className="sat-word" style={{ color: v ? STAR_COLOR[v - 1] : undefined }}>{v ? STAR_WORD[v - 1] : ''}</div>
+            </div>
+          );
+        })}
+      </div>
+      {!answered && <button type="button" className="btn sm sat-all" disabled={disabled} onClick={allFive}>🤩 Everything was excellent!</button>}
+      {answered && (
         <div className="stack" style={{ marginTop: 14 }}>
+          <div className="sat-thanks">{low ? 'Thank you for telling us — we will make it right. 🙏' : avg >= 4.5 ? 'Wow, thank you! 🎉 We love hearing that.' : 'Thank you for your feedback! 😊'}</div>
           <div>
             <div className="satq" style={{ marginBottom: 6 }}>Would you recommend TopMop? <span className="small muted">(optional)</span></div>
             <div className="smileys" role="radiogroup" aria-label="Would you recommend us">
@@ -51,20 +71,9 @@ export function SatisfactionCheck({ value, onChange, disabled, clientMode }: { v
             </div>
           </div>
           <Field label="Anything we should know? (optional)"><input disabled={disabled} value={value.comment ?? ''} onChange={(e) => onChange({ ...value, comment: e.target.value })} /></Field>
-          <button type="button" className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => setMore(!more)}>{more ? 'Hide' : 'Rate quality, crew and communication separately (optional)'}</button>
-          {more && SAT_QUESTIONS.map((q) => (
-            <div key={q.key} className="satrow">
-              <div className="satqt">{q.text}</div>
-              <div className="scale5" role="radiogroup" aria-label={q.text}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button key={n} type="button" role="radio" aria-checked={value[q.key] === n} aria-label={`${n} ${SCALE5[n - 1]}`} disabled={disabled} className={`s5 v${n} ${value[q.key] === n ? 'on' : ''}`} onClick={() => detail(q.key, n)}><b>{n}</b><span>{SCALE5[n - 1]}</span></button>
-                ))}
-              </div>
-            </div>
-          ))}
           {low && !clientMode && (
             <div className="alert err">
-              <b>Team Leader: choose the issue</b> (the client was not satisfied or gave a low rating — the Owner / Admin is notified and a follow-up is created)
+              <b>Team Leader: choose the issue</b> (the client gave a low rating — the Owner / Admin is notified and a follow-up is created)
               <div className="chips" role="group" aria-label="Issue category">{ISSUE_CATEGORIES.map((c) => <button key={c} type="button" disabled={disabled} className={value.issue_category === c ? 'on' : ''} onClick={() => onChange({ ...value, issue_category: c })}>{c}</button>)}</div>
             </div>
           )}
@@ -89,7 +98,7 @@ export function FeedbackSummary({ fb }: { fb: ClientFeedback }) {
   return (
     <div className="small">
       <b>{RATING_EMOJI[fb.rating]} {RATING_LABEL[fb.rating]}</b>
-      {fb.q_quality ? ` · cleaning ${fb.q_quality}/5 · crew ${fb.q_professionalism}/5 · communication ${fb.q_communication}/5` : ''}{fb.recommend ? ` · would recommend: ${RECOMMEND_LABEL[fb.recommend]}` : ''}{fb.issue_category ? ` · ${fb.issue_category}` : ''}{fb.aspects.length ? ` · ${fb.aspects.join(', ')}` : ''}{fb.comment ? ` · “${fb.comment}”` : ''}
+      {SAT_QUESTIONS.map((q) => (fb[q.key] ? ` · ${q.text.split(' ')[0].toLowerCase()} ${fb[q.key]}/5` : '')).join('')}{fb.recommend ? ` · would recommend: ${RECOMMEND_LABEL[fb.recommend]}` : ''}{fb.issue_category ? ` · ${fb.issue_category}` : ''}{fb.aspects.length ? ` · ${fb.aspects.join(', ')}` : ''}{fb.comment ? ` · “${fb.comment}”` : ''}
       {fb.follow_up === 'Required' && <> <Badge tone="red">Follow-up required</Badge></>}{fb.follow_up === 'Acknowledged' && <> <Badge tone="green">Acknowledged</Badge></>}
     </div>
   );

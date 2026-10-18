@@ -424,7 +424,7 @@ export interface ReportForm {
   /** Client Satisfaction Check: one tap, optional ticks, optional comment. Not Satisfied needs an issue category from the Team Leader. */
   satisfaction?: SatisfactionInput;
 }
-export interface SatisfactionInput { q_quality: number; q_professionalism: number; q_communication: number; rating: SatisfactionRating; comment?: string; issue_category?: IssueCategory; recommend?: 'yes' | 'maybe' | 'no' }
+export interface SatisfactionInput { q_quality: number; q_professionalism: number; q_communication: number; q_punctuality?: number; q_safety?: number; q_tools?: number; rating: SatisfactionRating; comment?: string; issue_category?: IssueCategory; recommend?: 'yes' | 'maybe' | 'no' }
 export function signServiceReport(id: string, f: ReportForm) {
   store.require('jobs.complete');
   const wf = getWf(id); const job = jobOf(wf);
@@ -443,7 +443,8 @@ export function signServiceReport(id: string, f: ReportForm) {
   const dBlock = discountBlock(db(), job, wf, billBase(job).base); if (dBlock) fail(dBlock);
   const sat = f.satisfaction;
   const q1to5 = (n: unknown) => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 5;
-  if (!sat || !q1to5(sat.q_quality) || !q1to5(sat.q_professionalism) || !q1to5(sat.q_communication)) fail('Ask the client to rate the three questions from 1 (Poor) to 5 (Excellent).');
+  if (!sat || !q1to5(sat.q_quality) || !q1to5(sat.q_professionalism) || !q1to5(sat.q_communication)) fail('Ask the client to rate each item from 1 (Poor) to 5 (Excellent).');
+  for (const k of ['q_punctuality', 'q_safety', 'q_tools'] as const) if (sat![k] !== undefined && !q1to5(sat![k])) fail('Ratings go from 1 (Poor) to 5 (Excellent).');
   if (![1, 2, 3].includes(sat!.rating)) fail('Ask the client for the overall satisfaction: Not Satisfied, Satisfied or Very Satisfied.');
   if (sat!.recommend !== undefined && !['yes', 'maybe', 'no'].includes(sat!.recommend)) fail('Choose Yes, Maybe or No for “Would you recommend us?”.');
   const low = needsFollowUp(sat!);
@@ -457,7 +458,7 @@ export function signServiceReport(id: string, f: ReportForm) {
   const neg = low;
   store.insert('client_feedback', {
     job_id: job.id, workflow_id: id, client_id: job.client_id, leader_id: job.leader_id, crew_ids: [...job.crew_ids], service_codes: [...job.service_codes], service_date: job.start_at.slice(0, 10),
-    rating: sat!.rating, q_quality: sat!.q_quality, q_professionalism: sat!.q_professionalism, q_communication: sat!.q_communication, aspects: [], comment: sat!.comment?.trim() || undefined, recommend: sat!.recommend, issue_category: neg ? sat!.issue_category : undefined, follow_up: neg ? 'Required' : 'None', submitted_by: uidNow(), submitted_at: new Date().toISOString(),
+    rating: sat!.rating, q_quality: sat!.q_quality, q_professionalism: sat!.q_professionalism, q_communication: sat!.q_communication, q_punctuality: sat!.q_punctuality, q_safety: sat!.q_safety, q_tools: sat!.q_tools, aspects: [], comment: sat!.comment?.trim() || undefined, recommend: sat!.recommend, issue_category: neg ? sat!.issue_category : undefined, follow_up: neg ? 'Required' : 'None', submitted_by: uidNow(), submitted_at: new Date().toISOString(),
   } as never, `${job.number}: client satisfaction ${sat!.rating === 1 ? 'Not Satisfied' : sat!.rating === 2 ? 'Satisfied' : 'Very Satisfied'} (quality ${sat!.q_quality}, crew ${sat!.q_professionalism}, communication ${sat!.q_communication})${neg ? ` — ${sat!.issue_category}: follow-up required` : ''}`);
   runAutomations();
 }
