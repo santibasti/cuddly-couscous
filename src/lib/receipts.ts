@@ -106,11 +106,19 @@ export async function forAi(dataUrl: string): Promise<string> {
   const k = Math.min(1, 1600 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', 0.85).split(',')[1] ?? '';
 }
-export const readReceipt = (base64: string) => callFn<Reading>('ai-receipt', { image: base64 }).catch((e: unknown) => {
-  const m = e instanceof Error ? e.message : '';
-  // the browser could not reach the function at all: it has not been deployed to Supabase yet (or the connection dropped)
-  throw new Error(/failed to send a request|failed to fetch|networkerror/i.test(m) ? 'The receipt reader is not set up on the server yet (the ai-receipt function has to be deployed), or the connection dropped.' : m || 'The AI could not read this receipt.');
-});
+const isNet = (m: string) => /failed to send a request|failed to fetch|networkerror|load failed/i.test(m);
+/** Reads a receipt with the AI. A dropped connection (common on a phone) is retried once before giving up. */
+export async function readReceipt(base64: string): Promise<Reading> {
+  const once = () => callFn<Reading>('ai-receipt', { image: base64 });
+  try { return await once(); }
+  catch (e) {
+    let err: unknown = e;
+    if (e instanceof Error && isNet(e.message)) { await new Promise((r) => setTimeout(r, 1500)); try { return await once(); } catch (e2) { err = e2; } }
+    const m = err instanceof Error ? err.message : '';
+    // the browser could not reach the function at all: it is not deployed yet, or the phone's connection dropped
+    throw new Error(isNet(m) ? 'Could not reach the receipt reader. Check the connection and tap "Read again". If it keeps failing, ask the admin to check that the ai-receipt function is deployed.' : m || 'The AI could not read this receipt.');
+  }
+}
 
 /* ---------- storage: Supabase in production, localStorage in the demo ---------- */
 const DEMO = 'topmop-receipts-demo';

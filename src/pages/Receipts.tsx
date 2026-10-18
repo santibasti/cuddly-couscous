@@ -41,7 +41,7 @@ async function removeReceipt(r: Receipt): Promise<boolean> {
   } catch (e) { toast(e instanceof Error ? e.message : 'Could not delete', 'err'); return false; }
 }
 
-function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRotate }: { initial?: Receipt; seed?: ReceiptDraft; scan?: { blob: Blob; dataUrl: string }; reading?: { busy: boolean; error?: string }; others: Receipt[]; onClose: () => void; onSaved: () => void; onRotate?: () => void }) {
+function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRotate }: { initial?: Receipt; seed?: ReceiptDraft; scan?: { blob: Blob; dataUrl: string }; reading?: { busy: boolean; error?: string }; others: Receipt[]; onClose: () => void; onSaved: () => void; onRotate?: (deg: number) => void }) {
   const { db, can, user } = useAuth();
   const [d, setD] = useState<ReceiptDraft>(initial ? { ...initial } : blankDraft()); const [busy, setBusy] = useState(false); const [confirmed, setConfirmed] = useState(false); const [askBir, setAskBir] = useState(false);
   const [img, setImg] = useState(scan?.dataUrl ?? ''); const [zoom, setZoom] = useState(false);
@@ -89,7 +89,7 @@ function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRota
         <div className="rc-scan">
           {img ? <img src={img} alt="Receipt scan" className={zoom ? 'zoom' : ''} onClick={() => setZoom(!zoom)} title="Tap to zoom" /> : <div className="muted">No scan</div>}
           <div className="small muted">Tap the picture to zoom. The scan is kept with the record.</div>
-          {onRotate && !initial && <button type="button" className="btn sm" disabled={reading?.busy} onClick={onRotate}>↻ Turn 90° and read again</button>}
+          {onRotate && !initial && <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}><button type="button" className="btn sm" disabled={reading?.busy} onClick={() => onRotate(0)}>🔄 Read again</button><button type="button" className="btn sm" disabled={reading?.busy} onClick={() => onRotate(90)}>↻ Turn 90° and read again</button></div>}
         </div>
         <div className="stack">
           {reading?.busy && <div className="alert info rc-reading"><span className="rc-spin" /> Reading the receipt…</div>}
@@ -195,10 +195,10 @@ export default function Receipts() {
     } catch (e) { toast(e instanceof Error ? e.message : 'Could not open the picture', 'err'); }
   };
 
-  const turn = async () => {
+  const turn = async (deg = 90) => {
     if (!draft) return;
     try {
-      const scan = await rotateScan(draft.scan.dataUrl, 90); setDraft({ ...draft, scan, reading: { busy: CLOUD } });
+      const scan = deg ? await rotateScan(draft.scan.dataUrl, deg) : draft.scan; setDraft({ ...draft, scan, reading: { busy: CLOUD } });
       if (CLOUD) { const r = await readReceipt(await forAi(scan.dataUrl)); setDraft((x) => (x ? { ...x, scan, d: draftFromReading(r), reading: { busy: false } } : x)); }
     } catch (e) { setDraft((x) => (x ? { ...x, reading: { busy: false, error: e instanceof Error ? e.message : 'The AI could not read this receipt.' } } : x)); }
   };
@@ -260,7 +260,7 @@ export default function Receipts() {
             {!shown.length && <tr><td colSpan={10} className="muted" style={{ padding: 20 }}>{loading ? 'Loading…' : 'No receipts here yet. Tap “Scan a receipt” and take a clear photo of the whole receipt.'}</td></tr>}
           </tbody></table></div>
       </Card>
-      {draft && <Editor seed={draft.d} scan={draft.scan} reading={draft.reading} others={rows} onClose={() => setDraft(null)} onSaved={load} key="new" onRotate={() => void turn()} />}
+      {draft && <Editor seed={draft.d} scan={draft.scan} reading={draft.reading} others={rows} onClose={() => setDraft(null)} onSaved={load} key="new" onRotate={(deg) => void turn(deg)} />}
       {open && <Editor initial={open} others={rows} onClose={() => setOpen(null)} onSaved={load} />}
     </>
   );
