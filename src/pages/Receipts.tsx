@@ -13,7 +13,15 @@ import type { ExpenseCategory, ExpenseMethod } from '@/lib/types';
 
 const CATEGORIES: ExpenseCategory[] = ['Fuel', 'Materials', 'Equipment Repair', 'Transportation', 'Marketing', 'Rent', 'Utilities', 'Government Fees', 'Subcontractor', 'Toll & Parking', 'Meals & Snacks', 'Other'];
 const METHODS: ExpenseMethod[] = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Credit Card', 'Other'];
-const num = (v: string): number | null => (v.trim() === '' ? null : Number(v.replace(/[^\d.\-]/g, '')) || 0);
+const num = (v: string): number | null => { const t = v.replace(/[^\d.]/g, ''); if (t === '') return null; const n = parseFloat(t); return Number.isFinite(n) ? Math.round(n * 100) / 100 : null; };
+/** An amount box that lets you type the decimal point (a plain number box swallows "12." while you type). It tidies to 2 decimals when you leave it. */
+function Amount({ value, onChange, style, disabled }: { value: number | null; onChange: (n: number | null) => void; style?: React.CSSProperties; disabled?: boolean }) {
+  const [txt, setTxt] = useState(value === null ? '' : String(value)); const [focus, setFocus] = useState(false);
+  useEffect(() => { if (!focus) setTxt(value === null ? '' : value.toFixed(2)); }, [value, focus]);   // follows changes made elsewhere (the AI reading, unposting) but never overwrites what is being typed
+  return <input style={style} disabled={disabled} inputMode="decimal" autoComplete="off" value={txt} placeholder="0.00"
+    onFocus={() => setFocus(true)} onBlur={() => { setFocus(false); setTxt(value === null ? '' : value.toFixed(2)); }}
+    onChange={(e) => { const t = e.target.value.replace(/[^\d.]/g, '').replace(/(\..*?)\./g, '$1'); setTxt(t); onChange(num(t)); }} />;
+}
 
 type Db = ReturnType<typeof store.getDB>;
 /** Expenses as duplicate-check sources, leaving out the expense this receipt created. */
@@ -56,7 +64,7 @@ function Editor({ initial, seed, scan, reading, others, onClose, onSaved, onRota
   const st = (f: string) => (bad(f) ? { borderColor: bad(f)!.level === 'error' ? 'var(--red)' : 'var(--amber)' } : undefined);
   const locked = initial?.status === 'Posted';
   const text = (k: keyof ReceiptDraft, f: string) => <input style={st(f)} disabled={locked} value={(d[k] as string | null) ?? ''} onChange={(e) => set(k, (e.target.value || null) as never)} />;
-  const money_ = (k: keyof ReceiptDraft, f: string) => <input style={st(f)} disabled={locked} inputMode="decimal" value={(d[k] as number | null) ?? ''} onChange={(e) => set(k, num(e.target.value) as never)} />;
+  const money_ = (k: keyof ReceiptDraft, f: string) => <Amount style={st(f)} disabled={locked} value={d[k] as number | null} onChange={(n) => set(k, n as never)} />;
   const save = async () => {
     setBusy(true);
     try {
