@@ -371,7 +371,10 @@ class Store {
     if (table === 'job_orders' && ['Sent to Client', 'Superseded'].includes(String(r.status))) {
       // a sent Job Order is a record of what the client was told: only its status line, resend log and Superseded link may change
       const free = ['status', 'superseded_by_id', 'history', 'last_sent_at', 'sent_count', 'updated_at', 'updated_by'];
-      if (!Object.keys(patch).every((k) => free.includes(k))) throw new RuleError('A Job Order that was sent to the client cannot be edited. A revised version is created when the booking changes.');
+      // booking date, VIP flag and the assigned vehicle follow the booking in place (no new version needed)
+      const content = (patch as { content?: Record<string, unknown> }).content; const old = (r as { content?: Record<string, unknown> }).content ?? {};
+      const inPlace = !!content && Object.keys(patch).every((k) => free.includes(k) || k === 'content') && [...new Set([...Object.keys(content), ...Object.keys(old)])].every((k) => ['booking_date', 'vip', 'vehicle'].includes(k) || JSON.stringify(content[k]) === JSON.stringify(old[k]));
+      if (!inPlace && !Object.keys(patch).every((k) => free.includes(k))) throw new RuleError('A Job Order that was sent to the client cannot be edited. A revised version is created when the booking changes.');
       if (r.status === 'Superseded' && patch.status && patch.status !== 'Superseded') throw new RuleError('A superseded Job Order cannot be reopened.');
     }
     if (table === 'assets' && patch.status === 'Available' && r.status !== 'Available') {

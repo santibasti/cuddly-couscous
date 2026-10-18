@@ -16,6 +16,7 @@ const event = (o: JobOrder, action: string, note?: string) => [...o.history, { a
  * once sent, a change to the schedule, approved scope, final price or team creates a Revised version and marks the sent one Superseded (never edited).
  * Only Admin / Operations run this (they are the people who review and send it).
  */
+const inPlaceTried = new Set<string>();
 export function syncJobOrders(jobId?: string) {
   if (!store.can('joborders.manage')) return;
   // a corrected booking date updates the order in place (it is not a change the client needs a new version for)
@@ -25,7 +26,11 @@ export function syncJobOrders(jobId?: string) {
     const veh = vehicleOf(db(), job);
     if (o && (o.content.booking_date !== bd || o.content.vip !== vip || JSON.stringify(o.content.vehicle ?? null) !== JSON.stringify(veh ?? null))) {
       const { vip: _old, vehicle: _v, ...rest } = o.content; void _old; void _v;
-      store.system('job_orders', o.id, { content: { ...rest, booking_date: bd, ...(vip ? { vip } : {}), ...(veh ? { vehicle: veh } : {}) } } as never, `Booking date / VIP flag / vehicle of ${o.number} updated`);
+      const sig = `${o.id}|${bd}|${vip ?? ''}|${JSON.stringify(veh ?? null)}`;
+      if (!inPlaceTried.has(sig)) {
+        inPlaceTried.add(sig);   // one attempt per change per session: a refusal must never crash the page or repeat on every refresh
+        try { store.system('job_orders', o.id, { content: { ...rest, booking_date: bd, ...(vip ? { vip } : {}), ...(veh ? { vehicle: veh } : {}) } } as never, `Booking date / VIP flag / vehicle of ${o.number} updated`); } catch { /* the order keeps what the client was told */ }
+      }
     }
   }
   for (const step of planJobOrders(db(), jobId)) {

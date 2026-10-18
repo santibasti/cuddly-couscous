@@ -1352,6 +1352,19 @@ describe('Job Order Confirmation', () => {
     expect(() => JO.markJobOrderSent(sent.id, 'Email')).toThrow(/already been sent/);
   });
 
+  it('a sent Job Order follows the vehicle, booking date and VIP flag in place, without a new version and without crashing', async () => {
+    await as('ops@topmop.ph');
+    const a = booked('JO-VEH');
+    const v1 = JO.markJobOrderSent(orders(a.job.id)[0].id, 'Share link');
+    const veh = db().assets.find((x) => x.category === 'Vehicle' && !x.deleted_at)!;
+    store.update('jobs', a.job.id, { vehicle_id: veh.id, booking_date: '2031-01-05' } as never);
+    expect(() => JO.syncJobOrders(a.job.id)).not.toThrow();
+    const list = orders(a.job.id); expect(list.length).toBe(1);                                  // no revised version
+    expect(list[0].id).toBe(v1.id); expect(list[0].status).toBe('Sent to Client');
+    expect(list[0].content.vehicle).toMatchObject({ name: veh.name }); expect(list[0].content.booking_date).toBe('2031-01-05');
+    expect(() => store.update('job_orders', v1.id, { content: { ...list[0].content, scope: 'changed' } } as never)).toThrow(/cannot be edited/);   // anything else stays locked
+  });
+
   it('a sent Job Order is never overwritten: schedule, scope, price or team changes supersede it with a revised version', async () => {
     await as('ops@topmop.ph');
     const a = booked('JO-G');
