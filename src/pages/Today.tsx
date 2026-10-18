@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth, live } from '@/lib/store';
 import { Avatar } from '@/components/EmployeeCard';
+import { WeekBoard } from '@/components/WeekBoard';
 import { finalContract, invoiceBalance } from '@/lib/business';
 import { fmtDate, fmtTime, money, nowLocal, today } from '@/lib/util';
 import type { DB, Employee, Job, JobWorkflow } from '@/lib/types';
@@ -51,7 +52,7 @@ const OWNER_MESSAGES = [
 ];
 const mood = (owner: boolean, done: number, total: number, onSite: number, absent: number, money: string) =>
   !total ? (owner ? 'No jobs today. A good day to follow up quotations and rest a little.' : 'A quiet day is a great time to prepare equipment and follow up with clients.')
-  : done === total ? (owner ? `All ${total} job${total === 1 ? '' : 's'} are done today, about ${money} in billing. Well done, boss! 🎉` : `All ${total} job${total === 1 ? '' : 's'} done today. Excellent work, team! 🎉`)
+  : done === total ? (owner ? `All ${total} job${total === 1 ? ' is' : 's are'} done today, about ${money} in billing. Well done, boss! 🎉` : `All ${total} job${total === 1 ? '' : 's'} done today. Excellent work, team! 🎉`)
   : onSite ? (owner ? `${onSite} crew${onSite === 1 ? ' is' : 's are'} out earning for TopMop right now — ${total} job${total === 1 ? '' : 's'} today, about ${money} expected to bill.` : `${onSite} crew${onSite === 1 ? ' is' : 's are'} working on site right now. Keep up the great work!`)
   : absent ? (owner ? 'Part of the team is out today, and the rest are covering. Remember to thank them.' : 'Some of the team is out today. Thank you to everyone covering.') : '';
 /** Counts up to a number when it changes (whole numbers and pesos), so the board feels alive. */
@@ -138,8 +139,9 @@ function crewOf(db: DB, j: Job, w: JobWorkflow | undefined, day: string): Member
 export default function Today() {
   const { db, can, user } = useAuth();
   const [now, setNow] = useState(nowLocal());
+  const [view, setView] = useState<'day' | 'week'>('day'); const [sel, setSel] = useState<string | null>(null); const [anchor, setAnchor] = useState(today());
   useEffect(() => { const t = setInterval(() => setNow(nowLocal()), 30_000); return () => clearInterval(t); }, []);
-  const day = now.slice(0, 10) || today();
+  const real = now.slice(0, 10) || today(); const day = sel ?? real;
   const showMoney = can('invoices.view');
 
   const cards = useMemo(() => live(db.jobs)
@@ -162,8 +164,15 @@ export default function Today() {
   return (
     <>
       <Hero name={(user?.name ?? '').replace(/^(mr|ms|mrs)\.?\s+/i, '').split(' ')[0]} owner={user?.role === 'owner'} money={showMoney ? money(billing) : 'today’s work'} done={doneCount} total={cards.length} onSite={onSite} absent={absent} now={now} day={day} />
+      <div className="wk-tabs" role="tablist">
+        <button role="tab" aria-selected={view === 'day'} className={view === 'day' ? 'on' : ''} onClick={() => { setView('day'); }}>{day === real ? '⚡ Today' : `📅 ${fmtDate(day)}`}</button>
+        <button role="tab" aria-selected={view === 'week'} className={view === 'week' ? 'on' : ''} onClick={() => { setView('week'); setAnchor(day); }}>📊 This week &amp; team performance</button>
+        {day !== real && view === 'day' && <button className="back" onClick={() => setSel(null)}>↩ Back to today</button>}
+      </div>
+      {view === 'week' && <WeekBoard anchor={anchor} setAnchor={setAnchor} day={day} onPickDay={(d) => { setSel(d === real ? null : d); setView('day'); }} showMoney={showMoney} />}
+      {view === 'day' && <>
       <div className="tdy-kpis">
-        <Kpi icon="🗓️" label="Jobs today" value={cards.length} sub={`${doneCount} finished`} tone="blue" bar={cards.length ? doneCount / cards.length : 0} />
+        <Kpi icon="🗓️" label={day === real ? "Jobs today" : "Jobs that day"} value={cards.length} sub={`${doneCount} finished`} tone="blue" bar={cards.length ? doneCount / cards.length : 0} />
         <Kpi icon="📍" label="On site right now" value={onSite} sub={onSite ? 'Crews working or arrived' : 'Nobody on site'} tone="green" bar={cards.length ? onSite / cards.length : 0} />
         <Kpi icon="👷" label="Staff present · absent" value={present} fmt={(n) => `${Math.round(n)} · ${absent}`} sub="Across today's jobs" tone={absent ? 'amber' : 'teal'} bar={present + absent ? present / (present + absent) : 0} />
         {showMoney ? <Kpi icon="💰" label="Expected billing today" value={billing} fmt={(n) => money(n)} sub="Quoted rate, may change once the work is counted" tone="gold" /> : <Kpi icon="⏳" label="Not yet started" value={cards.filter((c) => ['scheduled', 'late'].includes(c.stage)).length} sub="Waiting to dispatch" tone="gold" />}
@@ -211,6 +220,7 @@ export default function Today() {
           );
         })}
       </div>
+      </>}
     </>
   );
 }
