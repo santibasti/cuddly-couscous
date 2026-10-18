@@ -60,9 +60,8 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
 
   // ---- schedule tiles ----
   const tiles: [string, string][] = [['Booking date', fmtDate(c.booking_date)], ['Service date', fmtDate(c.service_date)], ['Arrival window', `${t12(c.arrival_from)} - ${t12(c.arrival_to)}`], ['Estimated duration', `about ${hoursText(c.duration_hours)}`]];
-  const svcTxt = c.service_types.join(' | ') || '-'; need(55);
+  const svcTxt = c.service_types.join(' | ') || '-'; need(38);
   doc.setFillColor(...SOFT); doc.roundedRect(M, y, CW, 14, 2, 2, 'F'); doc.setFillColor(...TEAL); doc.rect(M, y, 1.6, 14, 'F'); txt('SERVICE TYPE', M + 5, y + 5.2, { size: 7, bold: true, color: MUTED }); txt(svcTxt, M + 5, y + 10.8, { size: 10.6, bold: true, color: TEAL, max: CW - 10 }); y += 17;
-  doc.setFillColor(...SOFT); doc.roundedRect(M, y, CW, 14, 2, 2, 'F'); doc.setFillColor(...NAVY); doc.rect(M, y, 1.6, 14, 'F'); txt('SERVICE VEHICLE', M + 5, y + 5.2, { size: 7, bold: true, color: MUTED }); txt(c.vehicle ? `${c.vehicle.name}${c.vehicle.code ? '  |  ' + c.vehicle.code : ''}` : 'To be confirmed', M + 5, y + 10.8, { size: 10.6, bold: true, color: INK, max: CW - 10 }); y += 17;
   const tw = (CW - 9) / 4; need(20);
   tiles.forEach(([k, v], i) => { const x = M + i * (tw + 3); doc.setFillColor(...(i === 1 ? NAVY : SOFT)); doc.roundedRect(x, y, tw, 16, 2, 2, 'F'); txt(k.toUpperCase(), x + 4, y + 5.5, { size: 7, bold: true, color: i === 1 ? PALE : MUTED }); txt(v, x + 4, y + 12, { size: 10.2, bold: true, color: i === 1 ? WHITE : INK, max: tw - 6 }); });
   y += 22;
@@ -105,7 +104,7 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
 
   // ---- team ----
   section('Your team');
-  const team = [c.team.leader ? `Team Leader: ${c.team.leader}` : 'Team assignment to follow.', ...(c.team.leader && c.team.crew.length ? [`Crew: ${c.team.crew.join(', ')}`] : [])];
+  const team = [c.team.leader ? `Team Leader: ${c.team.leader}` : 'Team assignment to follow.', ...(c.team.leader && c.team.crew.length ? [`Crew: ${c.team.crew.join(', ')}`] : []), `Service vehicle: ${c.vehicle ? c.vehicle.name + (c.vehicle.code ? '  |  ' + c.vehicle.code : '') : 'to be confirmed'}`];
   const th = team.reduce((n, l) => n + lines(l, CW - 12, 9.8).length, 0) * 4.7 + 7; need(th + 2); accentCard(M, CW, th); let tk = y + 6.2; for (const l of team) for (const part of lines(l, CW - 12, 9.8)) { txt(part, M + 6, tk, { size: 9.8 }); tk += 4.7; } y += th + 4;
   if (c.access_notes.length) { section('Safety and access notes / your requirements'); for (const n of c.access_notes) para(`- ${n}`, M + 2, CW - 2, 9.4, 4.5); y += 2; }
 

@@ -29,7 +29,6 @@ export function JobOrderDocument({ order, showVip = true }: { order: View; showV
       </div>
       <div className="pd-tiles">
         <div className="pd-tile svc"><div className="pd-k">Service type</div><div className="v">{c.service_types.join(' · ') || '—'}</div></div>
-        <div className="pd-tile veh"><div className="pd-k">Service vehicle</div><div className="v">{c.vehicle ? <>🚚 {c.vehicle.name}{c.vehicle.code ? <span className="vc"> · {c.vehicle.code}</span> : null}</> : <span className="muted">To be confirmed</span>}</div></div>
         <div className="pd-tile"><div className="pd-k">Booking date</div><div className="v">{fmtDate(c.booking_date)}</div></div>
         <div className="pd-tile hl"><div className="pd-k">Service date</div><div className="v">{fmtDate(c.service_date)}</div></div>
         <div className="pd-tile"><div className="pd-k">Arrival window</div><div className="v">{t12(c.arrival_from)} – {t12(c.arrival_to)}</div></div>
@@ -53,7 +52,7 @@ export function JobOrderDocument({ order, showVip = true }: { order: View; showV
       <div className="pd-pay">{c.payment_status}</div></>}
 
       <div className="pd-h">Your team</div>
-      <div className="pd-card">{c.team.leader ? <><div>Team Leader: <b>{c.team.leader}</b></div>{c.team.crew.length > 0 && <div>Crew: {c.team.crew.join(', ')}</div>}</> : 'Team assignment to follow.'}</div>
+      <div className="pd-card">{c.team.leader ? <><div>Team Leader: <b>{c.team.leader}</b></div>{c.team.crew.length > 0 && <div>Crew: {c.team.crew.join(', ')}</div>}</> : <div>Team assignment to follow.</div>}<div className="pd-veh">Service vehicle: {c.vehicle ? <b>🚚 {c.vehicle.name}{c.vehicle.code ? ` · ${c.vehicle.code}` : ''}</b> : <span className="muted">to be confirmed</span>}</div></div>
 
       {c.access_notes.length > 0 && <><div className="pd-h">Safety and access notes / your requirements</div><ul className="pd-bul">{c.access_notes.map((n, i) => <li key={i}>{n}</li>)}</ul></>}
       <div className="pd-h">What to prepare</div>

@@ -1121,3 +1121,4 @@ body:not(.dark) .dash-dark .stat { background: #fff; border-color: var(--line); 
 }
 .pd-tile.svc { grid-column: 1 / -1; border-left: 4px solid var(--pd-teal, #0e9aa7); } .pd-tile.svc .v { color: var(--pd-teal, #0e9aa7); font-size: 16.5px; }
 .pd-tile.veh { grid-column: 1 / -1; border-left: 4px solid var(--pd-navy, #0b2545); } .pd-tile.veh .v { font-size: 15.5px; } .pd-tile.veh .vc { font-weight: 600; opacity: .7; }
+.pd-veh { margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(120,140,170,.35); }
