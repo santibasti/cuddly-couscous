@@ -190,11 +190,12 @@ export default function Receipts() {
   const pick = async (f: File) => {
     try {
       if (!f.type.startsWith('image/')) throw new Error('Choose a picture of the receipt.');
-      const scan = await prepareScan(f, enhance);
+      let first: Promise<Awaited<ReturnType<typeof readReceipt>>> | null = null;
+      const scan = await prepareScan(f, enhance, (ai) => { if (CLOUD) { first = readReceipt(ai); first.catch(() => undefined); } });   // the AI starts reading while the full-size scan is still being saved
       setDraft({ d: blankDraft(), scan, reading: { busy: CLOUD } });
       if (CLOUD) {
         try {
-          let r = await readReceipt(await forAi(scan.dataUrl)); let cur: { blob: Blob; dataUrl: string } = scan;
+          let r = await (first ?? readReceipt(scan.ai)); let cur: { blob: Blob; dataUrl: string } = scan;
           if (r.rotate) { cur = await rotateScan(scan.dataUrl, r.rotate); setDraft((x) => (x ? { ...x, scan: cur } : x)); r = await readReceipt(await forAi(cur.dataUrl)); }  // photographed sideways: turn it upright and read again
           setDraft((x) => (x ? { ...x, scan: cur, d: draftFromReading(r), reading: { busy: false } } : x));
         }

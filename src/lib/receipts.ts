@@ -75,14 +75,24 @@ export const readyForBir = (c: Check[]) => !c.some((x) => x.level === 'error');
 
 const blobToDataUrl = (b: Blob) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(b); });
 
-/** Resize (long side 2000 px) and, when asked, gently clean up a faded print; the result is both what the AI reads and the scan that is kept. */
-export async function prepareScan(file: File, enhance: boolean): Promise<{ blob: Blob; dataUrl: string; base64: string }> {
+/** A copy for the AI: long side 1400 px is plenty to read print, and it uploads much faster on a phone. */
+const AI_SIDE = 1400;
+const aiFrom = (src: CanvasImageSource & { width: number; height: number }) => {
+  const k = Math.min(1, AI_SIDE / Math.max(src.width, src.height)); const c = document.createElement('canvas'); c.width = Math.round(src.width * k); c.height = Math.round(src.height * k); c.getContext('2d')!.drawImage(src, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.8).split(',')[1] ?? '';
+};
+/**
+ * Resize (long side 2000 px) and, when asked, gently clean up a faded print; the result is both what the AI reads and the scan that is kept.
+ * `onAi` is called as soon as the small copy for the AI is ready, so the reading can start while the full-size scan is still being encoded.
+ */
+export async function prepareScan(file: File, enhance: boolean, onAi?: (base64: string) => void): Promise<{ blob: Blob; dataUrl: string; base64: string; ai: string }> {
   const bmp = await createImageBitmap(file); const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
   const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
   if (enhance) { try { enhanceCanvas(c); } catch { /* keep the original look */ } }
+  const ai = aiFrom(c); onAi?.(ai);
   const blob = await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Could not read the picture'))), 'image/jpeg', 0.9));
   const dataUrl = await blobToDataUrl(blob);
-  return { blob, dataUrl, base64: dataUrl.split(',')[1] ?? '' };
+  return { blob, dataUrl, base64: dataUrl.split(',')[1] ?? '', ai };
 }
 /** Turns the scan clockwise by 90 / 180 / 270 degrees (a photo taken sideways) and returns the new scan. */
 export async function rotateScan(dataUrl: string, deg: number): Promise<{ blob: Blob; dataUrl: string }> {
@@ -100,11 +110,10 @@ export function isOwnDocument(d: Pick<ReceiptDraft, 'supplier_name' | 'supplier_
   return (!!digits(d.supplier_tin) && digits(d.supplier_tin) === digits(company.tin)) || (!!n && (n.includes('topmop') || (!!mine && (n === mine || n.includes(mine.slice(0, 14))))));
 }
 
-/** A smaller copy for the AI (long side 1600 px) so the call stays quick. */
+/** A smaller copy for the AI of a scan that is already encoded (used after turning it). */
 export async function forAi(dataUrl: string): Promise<string> {
   const img = new Image(); await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error('Could not read the picture')); img.src = dataUrl; });
-  const k = Math.min(1, 1600 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.85).split(',')[1] ?? '';
+  return aiFrom(img);
 }
 const isNet = (m: string) => /failed to send a request|failed to fetch|networkerror|load failed/i.test(m);
 /** Reads a receipt with the AI. A dropped connection (common on a phone) is retried once before giving up. */

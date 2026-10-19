@@ -13,10 +13,10 @@ const text = (v: unknown, max = 200) => { const s = String(v ?? '').replace(/\s+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const asUser = createClient(env('SUPABASE_URL'), env('SUPABASE_ANON_KEY'), { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } });
-  const { data: ok } = await asUser.rpc('can_capture_receipts');
+  const [{ data: ok }, body] = await Promise.all([asUser.rpc('can_capture_receipts'), req.json().catch(() => ({}))]);   // permission check and body read together
   if (ok !== true) return json({ error: 'Not allowed' }, 403);
   if (!env('ANTHROPIC_API_KEY')) return json({ error: 'The AI key is not set up yet (ANTHROPIC_API_KEY).' }, 503);
-  const { image } = await req.json().catch(() => ({}));
+  const { image } = body as { image?: unknown };
   if (typeof image !== 'string' || image.length < 100) return json({ error: 'No photo received.' }, 400);
   if (image.length > 5_000_000) return json({ error: 'The photo is too large.' }, 400);
   const system = `You read photographed Philippine official receipts, sales invoices and cash invoices for a bookkeeper preparing BIR filings. Transcribe ONLY what is actually printed or written and legible. If a value is erased, faded, cut off, hidden or not on the document, return null for it. NEVER guess, complete or invent a TIN, name, address, number, date or amount. The photo may be sideways or upside down, taken at an angle, and parts may be handwritten (read neat handwriting too; if a handwritten value is not clearly legible, put the field in "low_confidence" or "unreadable"). Printed headers (business name, TIN, address, "NON-VAT Reg." / "VAT Reg.") belong to the SELLER; "Sold to", "Billed to" or "Delivered to" lines belong to the BUYER. Reply with JSON only:
@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
 "notes":"one short sentence about the condition of the receipt (faded, torn, folded, glare) or empty"}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: env('AI_RECEIPT_MODEL') || 'claude-sonnet-5-5', max_tokens: 1500, system, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: 'Read this receipt.' }] }] }),
+    body: JSON.stringify({ model: env('AI_RECEIPT_MODEL') || 'claude-sonnet-5-5', max_tokens: 900, system, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: 'Read this receipt.' }] }] }),
   });
   if (!res.ok) {
     const detail = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? '';
