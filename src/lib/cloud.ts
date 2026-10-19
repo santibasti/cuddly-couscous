@@ -206,7 +206,7 @@ export function applyOutbox(db: DB, entries: JournalEntry[]): { db: DB; entries:
   return { db: next as unknown as DB, entries: out };
 }
 
-export interface JournalEntry { t: string; id: string; kind: 'insert' | 'update'; row: Record<string, unknown>; before?: Record<string, unknown> }
+export interface JournalEntry { t: string; id: string; kind: 'insert' | 'update'; row: Record<string, unknown>; before?: Record<string, unknown>; /** a correction made with a reason (sent together with it, so the database rules can allow it) */ reason?: string }
 /**
  * Replays the changes in the exact order the app made them. The database checks every step (e.g. a discount goes Pending → Approved → Applied,
  * a job is Closed only after its workflow is), so what matters is not just the final state of each row but the order it got there.
@@ -238,6 +238,10 @@ export async function pushChanges(prev: DB, next: DB, soft: Set<string>, journal
       for (const k of new Set([...Object.keys(r), ...Object.keys(bef)])) if (JSON.stringify(r[k]) !== JSON.stringify(bef[k])) changed[k] = r[k] === undefined ? null : r[k];
       const row = toDb(changed, undefined, RENAME[t]); for (const k of SKIP_PUSH) delete row[k]; delete row.updated_at; delete row.updated_by;
       if (!Object.keys(row).length) continue;
+      if (t === 'workflows' && op.reason) {
+        await run(op.id, async () => { const { error } = await supabase().rpc('update_workflow_with_reason', { p_id: op.id, p_patch: row, p_reason: op.reason }); if (error) throw new CloudError(error.message, error.code ?? 'P0001'); });
+        continue;
+      }
       await run(op.id, async () => {
         const { data, error } = await tolerant(t, row, (x) => supabase().from(t).update(x).eq('id', op.id).select('id'));
         if (error) throw new CloudError(error.message, error.code);

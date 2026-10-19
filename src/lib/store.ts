@@ -36,7 +36,7 @@ class Store {
   private pool: Record<string, number[]> = {};
   /** order in which rows were changed, so they are written to the database in the same order (parents first, workflow before job status …) */
   private journal: JournalEntry[] = [];
-  private note(table: string, kind: 'insert' | 'update', row: unknown, before?: unknown) { if (CLOUD) { this.journal.push({ t: table, id: (row as Base).id, kind, row: row as Record<string, unknown>, before: before as Record<string, unknown> | undefined }); this.saveOutbox(); } }
+  private note(table: string, kind: 'insert' | 'update', row: unknown, before?: unknown) { if (CLOUD) { this.journal.push({ t: table, id: (row as Base).id, kind, row: row as Record<string, unknown>, before: before as Record<string, unknown> | undefined, ...(this._reason && table === 'workflows' ? { reason: this._reason } : {}) }); this.saveOutbox(); } }
   /** What must survive closing the app while offline: unsent changes and unused document numbers (saved on this device). */
   private outTimer: ReturnType<typeof setTimeout> | null = null;
   private snapTimer: ReturnType<typeof setTimeout> | null = null;
