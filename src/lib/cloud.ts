@@ -239,9 +239,11 @@ export async function pushChanges(prev: DB, next: DB, soft: Set<string>, journal
       for (const k of new Set([...Object.keys(r), ...Object.keys(bef)])) if (JSON.stringify(r[k]) !== JSON.stringify(bef[k])) changed[k] = r[k] === undefined ? null : r[k];
       const row = toDb(changed, undefined, RENAME[t]); for (const k of SKIP_PUSH) delete row[k]; delete row.updated_at; delete row.updated_by;
       if (!Object.keys(row).length) continue;
-      if (t === 'workflows' && op.reason) {
-        await run(op.id, async () => { const { error } = await supabase().rpc('update_workflow_with_reason', { p_id: op.id, p_patch: row, p_reason: op.reason }); if (error) throw new CloudError(error.message, error.code ?? 'P0001'); });
-        continue;
+      if ((t === 'workflows' || t === 'jobs') && op.reason) {
+        const missing = (e: { code?: string; message: string }) => e.code === 'PGRST202' || e.code === '42883' || /could not find the function|does not exist/i.test(e.message);   // database not updated yet: send it the plain way
+        const done = await (async () => { const { error } = await supabase().rpc(t === 'jobs' ? 'update_job_with_reason' : 'update_workflow_with_reason', { p_id: op.id, p_patch: row, p_reason: op.reason }); if (!error) return true; if (missing(error)) return false; return new CloudError(error.message, error.code ?? 'P0001'); })();
+        if (done === true) continue;
+        if (done instanceof CloudError) { if (softIds.has(op.id) && isRuleError(done)) { softFailed++; continue; } throw done; }
       }
       await run(op.id, async () => {
         const { data, error } = await tolerant(t, row, (x) => supabase().from(t).update(x).eq('id', op.id).select('id'));
