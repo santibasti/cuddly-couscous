@@ -85,6 +85,21 @@ export async function fetchTables(tables: readonly SyncTable[]): Promise<Partial
   await Promise.all(tables.map(async (t) => { out[t] = (await readAll(t)).map((r) => fromDb(r, RENAME[t])); }));
   return out;
 }
+/** A login that can read only its own employee row still needs the names (and photos) of the people on its jobs: add them as name-only entries. */
+async function addRoster(emps: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
+  if (emps.length > 1) return emps;                                    // a login that can see the staff list already has everyone
+  try {
+    const { data, error } = await supabase().rpc('team_roster');
+    if (error || !Array.isArray(data)) return emps;
+    const have = new Set(emps.map((e) => e.id)); const now = new Date().toISOString();
+    const more = (data as Record<string, unknown>[]).filter((r) => !have.has(r.id)).map((r) => ({
+      id: r.id, created_at: now, updated_at: now, created_by: 'system', code: '', full_name: r.full_name, position: r.position ?? '', tier: r.tier ?? 'Technician', department: r.department ?? 'Field Operations', branch_id: r.branch_id ?? '',
+      pay_basis: 'daily', daily_rate: 0, monthly_salary: 0, payroll_type: 'daily', hire_date: '', bank_name: '', bank_account: '', payout_method: 'Cash', mobile: '', emergency_name: '', emergency_mobile: '', sss: '', philhealth: '', pagibig: '', tin: '',
+      status: r.status ?? 'active', documents: [], trainings: [], shift_start: '08:00', shift_end: '17:00', rest_day: 0, ...(r.avatar ? { avatar: r.avatar } : {}), ...(r.rating != null ? { rating: Number(r.rating) } : {}),
+    }));
+    return [...emps, ...more];
+  } catch { return emps; }                                               // function not in the database yet: names stay as they were
+}
 /* What the last full load saw, so the periodic refresh can ask only for rows changed since (a full reload every 90 seconds on every open screen used most of the free egress). */
 let marks: Partial<Record<SyncTable, string>> = {}; let auditAt = ''; let settingsAt = ''; let fullAt = 0;
 const FULL_EVERY = 15 * 60000;   // a full reload this often also picks up removed / hidden rows
@@ -99,6 +114,7 @@ export async function fetchAll(): Promise<DB> {
   const db = emptyDB() as unknown as Record<string, unknown>;
   const nm: typeof marks = {};
   for (const [t, rows] of raw) { db[t] = rows.map((r) => fromDb(r, RENAME[t])); nm[t] = maxOf(rows, 'updated_at'); }
+  db.employees = await addRoster(db.employees as Record<string, unknown>[]);
   marks = nm; fullAt = Date.now();
   db.users = profiles.map(toUser);
   db.audit = (audit.data ?? []).map(toAudit);
