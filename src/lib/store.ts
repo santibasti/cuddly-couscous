@@ -174,7 +174,11 @@ class Store {
         let res;
         try { res = await pushChanges(this.baseline, next, this.soft, this.journal.slice(0, jn)); }
         catch (e) {
-          if (isRuleError(e)) { this.soft.clear(); this.journal = []; this.saveOutbox(); this.cloudError((e as Error).message); await this.reloadCloud(); return; }
+          if (isRuleError(e)) {
+            this.soft.clear(); this.journal = [];
+            if (/duplicate key/i.test((e as Error).message) && /(number|receipt_no)_key/.test((e as Error).message)) { this.pool = {}; for (const k of ['QT', 'JOB', 'INV', 'OR', 'EMP', 'INC', 'DR', 'BJ', 'OV', 'JO', 'MT', 'SR']) void this.refill(k); }   // numbers saved on this device were already used elsewhere: start from fresh ones
+            this.saveOutbox(); this.cloudError((e as Error).message); await this.reloadCloud(); return;
+          }
           throw e;                                            // network trouble: stay queued ("Offline Draft")
         }
         this.soft.clear(); this.journal.splice(0, jn); this.baseline = next; this.saveOutbox(); this.saveSnapshot();
@@ -415,13 +419,20 @@ class Store {
     this.audit('update', 'settings', 'settings', summary, undefined, patch);
     this.set((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
   }
+  private numberTaken(kind: string, no: string): boolean {
+    const f: Record<string, [TableName, string]> = { QT: ['quotations', 'number'], JOB: ['jobs', 'number'], INV: ['invoices', 'number'], OR: ['payments', 'receipt_no'], INC: ['incidents', 'number'], DR: ['discount_requests', 'number'], BJ: ['back_jobs', 'number'], OV: ['ocular_visits', 'number'], JO: ['job_orders', 'number'], MT: ['maint_records', 'number'] };
+    const t = f[kind]; if (!t) return false;
+    return (this._db[t[0]] as unknown as Record<string, unknown>[]).some((r) => r[t[1]] === no);
+  }
   nextNumber(kind: 'QT' | 'JOB' | 'INV' | 'OR' | 'EMP' | 'INC' | 'DR' | 'BJ' | 'OV' | 'JO' | 'MT' | 'SR'): string {
     if (CLOUD) {
-      const pool = this.pool[kind]; const n = pool?.shift();
+      const pool = this.pool[kind]; const fmt = (x: number) => (kind === 'EMP' ? `TM-${String(x).padStart(3, '0')}` : `${kind}-${new Date().getFullYear()}-${String(x).padStart(4, '0')}`);
+      // a number already on a record is never handed out again (another tab or device may have used it from the same saved pool)
+      let n = pool?.shift(); while (n !== undefined && this.numberTaken(kind, fmt(n))) n = pool.shift();
       if (n === undefined) { void this.refill(kind); throw new RuleError('Document numbers are still loading from the server. Try again in a moment.'); }
       if (pool.length < 8) void this.refill(kind);
       this.saveOutbox();
-      return kind === 'EMP' ? `TM-${String(n).padStart(3, '0')}` : `${kind}-${new Date().getFullYear()}-${String(n).padStart(4, '0')}`;
+      return fmt(n);
     }
     const n = (this._db.settings.counters[kind] ?? 0) + 1;
     this._db = { ...this._db, settings: { ...this._db.settings, counters: { ...this._db.settings.counters, [kind]: n } } };
