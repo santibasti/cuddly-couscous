@@ -242,6 +242,27 @@ describe('Scope Approval: conditional', () => {
     expect(() => W.confirmScopeNoChanges(rec.wf.id)).toThrow(/already approved/);
   });
 
+  it('the Owner can restart a job from Job Prep: equipment comes back, stock returns, later steps are cleared', async () => {
+    await as('owner@topmop.ph');
+    const lead = db().employees[3].id;
+    const r = upToCheckIn('RESTART', lead);
+    expect(db().assets.find((a) => a.id === r.veh.id)!.status).toBe('In Use');
+    const issuedBefore = db().stock.filter((t) => t.job_id === r.job.id).reduce((a, t) => a + t.qty, 0);
+    await as('leader@topmop.ph');
+    expect(() => W.restartWorkflow(r.wf.id, 'testing')).toThrow(/Only the Owner/);
+    await as('owner@topmop.ph');
+    expect(() => W.restartWorkflow(r.wf.id, ' ')).toThrow(/reason/);
+    W.restartWorkflow(r.wf.id, 'Test run, starting over');
+    const w = wfOf(r.job.id);
+    expect(w.hq_at).toBeUndefined(); expect(w.disp_at).toBeUndefined(); expect(w.arr_at).toBeUndefined();
+    expect(w.items.every((i) => !i.out_ok)).toBe(true);
+    expect(stat(r.job.id)).toBe('Dispatch Checklist Pending');
+    expect(db().assets.find((a) => a.id === r.veh.id)!.status).toBe('Available');
+    expect(db().stock.filter((t) => t.job_id === r.job.id).reduce((a, t) => a + t.qty, 0)).toBe(issuedBefore + -issuedBefore);
+    W.completeHqChecklist(w.id, prepForm(w) as never);                                   // prep can be done again
+    expect(wfOf(r.job.id).hq_at).toBeTruthy();
+  });
+
   it('a glass job can be signed without a count when the leader confirms there are no extra panels', async () => {
     await as('owner@topmop.ph');
     const r = upToCheckIn('SC3b', db().employees[3].id, false);

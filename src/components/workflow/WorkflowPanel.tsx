@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '@/lib/store';
-import { Badge, Card, Field, Icon, Modal, attempt, toast } from '@/components/ui';
+import { Badge, Card, Field, Icon, Modal, ask, attempt, toast } from '@/components/ui';
 import { QrScanner } from '@/components/Qr';
 import { AddToolModal, Confirm, ItemCard, KIND_LABEL, Seg, TimeField } from './shared';
 import { ScopeStep } from './ScopeStep';
@@ -9,7 +9,7 @@ import { CloseOutStep } from './CloseOutStep';
 import { ReportIncidentModal } from './Incidents';
 import { WORKFLOW_STEPS, hqGaps, workflowProgress, type StepState } from '@/lib/business';
 import {
-  FUEL_LEVELS, arriveAtSite, canRunWorkflow, completeHqChecklist, correctWorkflow, dispatchJob, finishWork, matchScan, openWorkflow, saveHqDraft, saveWorkNotes, startWork,
+  FUEL_LEVELS, arriveAtSite, canRunWorkflow, completeHqChecklist, correctWorkflow, dispatchJob, restartWorkflow, finishWork, matchScan, openWorkflow, saveHqDraft, saveWorkNotes, startWork,
 } from '@/lib/workflow';
 import { departAt, fmtDateTime, fmtTime, nowLocal } from '@/lib/util';
 import { clearDraft, confirmLeave, draftKeys } from '@/lib/sync';
@@ -49,7 +49,7 @@ const last = 6;
 
 /* ================= the panel ================= */
 export function WorkflowPanel({ job, above }: { job: Job; onDetails?: () => void; above?: (step: number) => ReactNode }) {
-  const { db, can } = useAuth();
+  const { db, can, user } = useAuth();
   const wf = db.workflows.find((w) => w.job_id === job.id && !w.deleted_at);
   const vars = db.variations.filter((v) => v.job_id === job.id && !v.deleted_at);
   const prog = workflowProgress(wf, vars);
@@ -90,7 +90,11 @@ export function WorkflowPanel({ job, above }: { job: Job; onDetails?: () => void
     !wf.rep_at && wf.conf_mode !== 'declined' ? <Locked why="Available after the client handover is signed." /> : <CloseOutStep wf={wf} job={job} run={run} />,
   ];
   const stamps = [{ at: wf.hq_at, by: wf.hq_by }, { at: wf.disp_at, by: wf.disp_by }, { at: wf.arr_at, by: wf.arr_by }, { at: wf.conf_at, by: wf.conf_by }, { at: wf.finish_at, by: wf.finish_by }, { at: wf.rep_at, by: wf.rep_by }, { at: wf.closed_at, by: wf.closed_by }];
-  const fixBtn = can('incidents.manage') ? <button className="btn sm" onClick={() => setFix(true)}><Icon name="edit" />Correct record</button> : null;
+  const restart = async () => {
+    if (!window.confirm('Restart this job from Job Prep? Everything recorded after prep is cleared, equipment comes back and chemicals go back to stock.')) return;
+    const r = await ask('Restart from Job Prep', 'Reason', { required: true, okLabel: 'Restart' }); if (r) attempt(() => restartWorkflow(wf.id, r), 'Restarted from Job Prep');
+  };
+  const fixBtn = can('incidents.manage') ? <span className="row" style={{ gap: 6 }}>{user?.role === 'owner' && !wf.start_at && !wf.closed_at && wf.hq_at && <button className="btn sm" onClick={restart}>↺ Restart from Job Prep</button>}<button className="btn sm" onClick={() => setFix(true)}><Icon name="edit" />Correct record</button></span> : null;
 
   return (<>
     {above?.(cur)}

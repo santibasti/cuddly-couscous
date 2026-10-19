@@ -613,6 +613,32 @@ export function correctWorkflow(id: string, patch: Partial<JobWorkflow>, reason:
   const wf = getWf(id); const job = jobOf(wf);
   return store.withReason(reason, () => store.update('workflows', id, patch as never, 'update', `Workflow record corrected for ${job.number}: ${reason}`));
 }
+/**
+ * Owner only: start the job again from Job Prep. Everything recorded after prep is cleared, equipment checked out for the job comes back,
+ * and chemicals issued to the job go back to stock (as return entries). Not allowed once the work has started.
+ */
+export function restartWorkflow(id: string, reason: string) {
+  if (store.role !== 'owner') fail('Only the Owner can restart a job from Job Prep.');
+  if (!reason.trim()) fail('Enter the reason for restarting.');
+  const wf = getWf(id); const job = jobOf(wf);
+  if (wf.closed_at) fail('A closed job cannot be restarted.');
+  if (wf.start_at) fail('The work has already started — correct the record instead of restarting.');
+  if (db().invoices.some((i) => i.job_id === job.id && i.status !== 'Reversed' && !i.deleted_at)) fail('This job already has an invoice — reverse it first.');
+  return store.withReason(reason.trim(), () => {
+    for (const co of db().checkouts.filter((c) => c.job_id === job.id && c.status === 'Released' && !c.deleted_at)) performReturn(co.id, { condition: 'Good', damage_notes: '', missing: '' });
+    for (const it of db().items) {
+      const net = round2Safe(issuedNet(job.id, it.id));
+      if (net > 0) store.insert('stock', { item_id: it.id, type: 'Return from Job', qty: net, unit_cost: it.cost, location_id: it.location_id, job_id: job.id, date: today(), approval: 'Approved', reason: `Job prep restarted: ${reason.trim()}` } as never, `Returned ${net} ${it.uom} ${it.name} to stock (job prep restarted for ${job.number})`);
+    }
+    const clear = ['hq_at', 'hq_by', 'hq_fuel', 'hq_notes', 'hq_shortage_reason', 'disp_at', 'disp_by', 'arr_at', 'arr_by', 'arr_contact_name', 'arr_contact_mobile', 'arr_notes', 'arr_crew_present', 'arr_crew_absent', 'scope_changed', 'package_panels', 'conf_mode', 'conf_at', 'conf_by', 'conf_quotation_id', 'conf_original_total', 'conf_name', 'conf_signature', 'conf_notes', 'conf_variation_id', 'conf_final_total', 'conf_deposit', 'conf_deposit_note', 'conf_lat', 'conf_lng', 'conf_gps_note', 'conf_device', 'start_at', 'start_by', 'finish_at', 'finish_by', 'work_notes', 'rep_at', 'rep_by', 'rep_scope', 'rep_method', 'rep_findings', 'rep_limits', 'rep_recs', 'rep_complimentary', 'rep_client_name', 'rep_client_sig', 'rep_client_at', 'rep_tm_name', 'rep_tm_sig', 'rep_rating', 'rep_notes', 'rc_at', 'rc_by', 'rc_notes', 'leave_at', 'leave_by', 'hqa_at', 'hqa_by', 'hqa_fuel', 'closed_at', 'closed_by', 'closed_notes'];
+    const patch: Record<string, unknown> = { items: buildChecklistItems(db(), job), panels: [] };
+    for (const k of clear) patch[k] = undefined;
+    store.update('workflows', id, patch as never, 'update', `${job.number}: restarted from Job Prep — ${reason.trim()}`);
+    const j = db().jobs.find((x) => x.id === job.id)!;
+    if (j.status !== 'Dispatch Checklist Pending') setStatus(j, 'Dispatch Checklist Pending', `${job.number}: ${j.status} → Dispatch Checklist Pending (restarted from Job Prep)`);
+    runAutomations();
+  });
+}
 export function overrideJobStatus(id: string, status: JobStatus, reason: string) {
   store.require('dispatch.approve');
   const job = db().jobs.find((j) => j.id === id) ?? fail('Job not found.');
