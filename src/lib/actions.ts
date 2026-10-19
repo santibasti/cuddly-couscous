@@ -73,6 +73,7 @@ export function decideAttendance(id: string, approve: boolean, note?: string) {
   store.require('attendance.approve');
   const a = db().attendance.find((x) => x.id === id)!;
   if (a.employee_id === store.user?.employee_id && store.role !== 'owner') fail('You cannot approve your own attendance.');
+  if (approve && a.kind === 'Present' && a.clock_in && !a.clock_out) fail('This person is still on duty — approve the attendance after they clock out.');
   return store.update('attendance', id, { approval: approve ? 'Approved' : 'Rejected', approved_by: me()!.id, approved_at: isoNow(), notes: note ?? a.notes }, 'approve', `${approve ? 'Approved' : 'Rejected'} attendance ${a.date}`);
 }
 export function bulkApproveAttendance(ids: string[]) { ids.forEach((id) => { try { decideAttendance(id, true); } catch { /* skip own records */ } }); }

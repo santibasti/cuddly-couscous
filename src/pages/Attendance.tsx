@@ -163,7 +163,7 @@ export default function Attendance() {
           <RecognitionHub meId={employee?.id} canAnnounce={can('performance.edit')} />
           <div className="grid g4 keep2" style={{ marginBottom: 12 }}>
             <Stat k="Present / clocked in" v={present} s={`of ${rows.filter((r) => !r.isRest).length} scheduled`} tone="good" /><Stat k="Late" v={late} tone={late ? 'warn' : undefined} />
-            <Stat k="No record" v={date <= T ? missing : 0} tone={missing && date <= T ? 'bad' : undefined} /><Stat k="Awaiting approval" v={rows.filter((r) => r.a?.approval === 'Pending').length} tone="warn" />
+            <Stat k="No record" v={date <= T ? missing : 0} tone={missing && date <= T ? 'bad' : undefined} /><Stat k="Awaiting approval" v={pendingAtt.length} tone="warn" />
           </div>
           <div className="row" style={{ marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
             <input type="date" value={date} max={T} onChange={(e) => setDate(e.target.value)} aria-label="Date" style={{ width: 'auto' }} /><button className="btn sm" onClick={() => setDate(addDays(date, -1))}>◀</button><button className="btn sm" onClick={() => setDate(addDays(date, 1))} disabled={date >= T}>▶</button>
@@ -179,7 +179,7 @@ export default function Attendance() {
                   <EmployeeCard key={r.e.id} emp={r.e} status={status} tone={tone}
                     onUpload={can('employees.edit') ? (url) => attempt(() => store.update('employees', r.e.id, { avatar: url }), 'Photo saved') : r.e.id === employee?.id ? (url) => attempt(() => setMyAvatar(url), 'Your photo is saved') : undefined}
                     lines={[{ k: 'In', v: r.a?.clock_in ? fmtTime(r.a.clock_in) : '—' }, { k: 'Out', v: r.a?.clock_out ? fmtTime(r.a.clock_out) : '—' }, { k: 'Hours', v: r.a ? String(r.a.worked_hours ?? 0) : '—' }, { k: 'Job site', v: r.site }]}
-                    actions={approve && r.a?.approval === 'Pending' ? <>{ownerClock(r.e, r.a)}<button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></> : <>{ownerClock(r.e, r.a)}{r.a ? <Badge>{r.a.approval}</Badge> : null}</>} />
+                    actions={approve && r.a?.approval === 'Pending' && r.a.clock_out ? <>{ownerClock(r.e, r.a)}<button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></> : <>{ownerClock(r.e, r.a)}{r.a ? <Badge>{r.a.approval}</Badge> : null}</>} />
                 );
               })}
             </div>
@@ -197,7 +197,7 @@ export default function Attendance() {
                 { key: 'hrs', header: 'Hours', num: true, value: (r) => r.a?.worked_hours ?? 0 },
                 { key: 'flags', header: 'Indicators', value: (r) => (r.a ? [r.a.kind, r.a.late_min > db.settings.grace_minutes ? 'late' : '', r.a.ot_min ? 'overtime' : '', r.a.field_work ? 'field work' : ''].join(' ') : r.isRest ? 'Rest day' : r.hol ? 'Holiday' : 'No record'), render: (r) => r.a ? <Flags a={r.a} emp={r.e} /> : r.isRest ? <Badge tone="blue">Rest day</Badge> : r.hol ? <Badge tone="blue">{r.hol.kind} holiday</Badge> : date < T ? <Badge tone="red">Absent / no record</Badge> : <Badge tone="amber">Not in</Badge> },
                 { key: 'appr', header: 'Approval', value: (r) => r.a?.approval ?? '', render: (r) => r.a ? <Badge>{r.a.approval}</Badge> : '' },
-                { key: 'actions', header: '', noExport: true, sortable: false, render: (r) => approve && r.a?.approval === 'Pending' ? <span className="row">{ownerClock(r.e, r.a)}<button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></span> : ownerClock(r.e, r.a) },
+                { key: 'actions', header: '', noExport: true, sortable: false, render: (r) => approve && r.a?.approval === 'Pending' && r.a.clock_out ? <span className="row">{ownerClock(r.e, r.a)}<button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></span> : ownerClock(r.e, r.a) },
               ]}
             />
           </Card>
