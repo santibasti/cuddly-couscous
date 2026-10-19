@@ -121,3 +121,17 @@ export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 /** Local date-time the crew leaves HQ for a job (its start day + the booked HH:mm), if one was set. */
 export const departAt = (j: { start_at: string; depart_hq?: string }) => (j.depart_hq ? `${j.start_at.slice(0, 10)}T${j.depart_hq}` : undefined);
+
+/** "Subdivision, City" for a job site: the address part just before the city (the subdivision / barangay), plus the city. */
+export function placeLine(address?: string, city?: string, province?: string): string {
+  const segs = (address ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  const norm = (x?: string) => (x ?? '').toLowerCase().replace(/\bcity of\b|\bcity\b|\./g, '').replace(/\s+/g, ' ').trim();
+  const skip = new Set(['philippines', 'metro manila', 'ncr', 'national capital region', norm(province)]);
+  const c = norm(city); let at = c ? segs.findIndex((x) => norm(x) === c) : -1;
+  const body = segs.filter((x) => !skip.has(norm(x)));
+  if (at < 0) at = body.findIndex((x) => c && norm(x).includes(c));
+  const cityName = city || (body.length > 1 ? body[body.length - 1] : '');
+  const bi = body.findIndex((x) => norm(x) === norm(cityName));
+  const sub = bi > 0 ? body[bi - 1] : bi < 0 && body.length > 1 ? body[body.length - 2] : '';
+  return [sub, cityName].filter(Boolean).join(', ');
+}
