@@ -36,16 +36,28 @@ Deno.serve(async (req) => {
 "unreadable":["names of the fields above that are on the document but erased / faded / cut off"],
 "low_confidence":["names of fields you read but are unsure about"],
 "notes":"one short sentence about the condition of the receipt (faded, torn, folded, glare) or empty"}`;
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: env('AI_RECEIPT_MODEL') || 'claude-sonnet-5-5', max_tokens: 900, system, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: 'Read this receipt.' }] }] }),
-  });
-  if (!res.ok) {
-    const detail = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? '';
-    return json({ error: `The AI could not answer (${res.status}). ${detail}`.trim() }, 502);
-  }
-  const out = (await res.json()) as { content?: { type: string; text?: string }[] };
-  const raw = (out.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('');
+  // A fast model reads most receipts correctly; when it leaves out or doubts something that matters, the careful model reads it again.
+  const accurate = env('AI_RECEIPT_MODEL') || 'claude-sonnet-5-5'; const fast = env('AI_RECEIPT_FAST_MODEL') || 'claude-haiku-5-5';
+  const ask = async (model: string): Promise<{ raw: string } | { error: string }> => {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: 900, system, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: 'Read this receipt.' }] }] }),
+    });
+    if (!res.ok) {
+      const detail = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? '';
+      return { error: `The AI could not answer (${res.status}). ${detail}`.trim() };
+    }
+    const out = (await res.json()) as { content?: { type: string; text?: string }[] };
+    return { raw: (out.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('') };
+  };
+  const parse = (raw: string): Record<string, unknown> | null => { try { return JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as Record<string, unknown>; } catch { return null; } };
+  const KEY = ['date', 'receipt_no', 'supplier_tin', 'total_amount'];
+  const shaky = (j: Record<string, unknown> | null) => !j || Number(j.rotate) > 0 ? false : KEY.some((k) => j[k] === null || j[k] === undefined || j[k] === '') || [...(Array.isArray(j.unreadable) ? j.unreadable : []), ...(Array.isArray(j.low_confidence) ? j.low_confidence : [])].some((x) => KEY.includes(String(x)));
+  let r = await ask(fast === 'off' ? accurate : fast);
+  if ('error' in r && fast !== 'off') r = await ask(accurate);                                   // the fast model is not available: use the careful one
+  else if ('raw' in r && fast !== 'off' && fast !== accurate && (parse(r.raw) === null || shaky(parse(r.raw)))) { const again = await ask(accurate); if ('raw' in again) r = again; }
+  if ('error' in r) return json({ error: r.error }, 502);
+  const raw = r.raw;
   try {
     const j = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as Record<string, unknown>;
     const date = text(j.date, 10); const vs = text(j.vat_status, 12); const names = (a: unknown) => (Array.isArray(a) ? a.slice(0, 20).map((x) => String(x).slice(0, 30)) : []);
