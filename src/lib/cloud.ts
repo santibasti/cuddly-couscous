@@ -266,9 +266,16 @@ export async function reserveNumbers(kind: string, n: number): Promise<number[]>
 
 /* ---------- auth ---------- */
 export async function signIn(email: string, password: string) {
-  const { data, error } = await supabase().auth.signInWithPassword({ email: email.trim(), password });
-  if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Invalid email or password.' : error.message);
-  return data.user;
+  const busy = (e: { message: string; status?: number }) => [502, 503, 504].includes(e.status ?? 0) || /^HTTP 50[234]$/.test(e.message) || /timed? ?out|gateway/i.test(e.message);
+  let last: { message: string; status?: number } | null = null;
+  for (let i = 0; i < 3; i++) {
+    const { data, error } = await supabase().auth.signInWithPassword({ email: email.trim(), password });
+    if (!error) return data.user;
+    if (error.message === 'Invalid login credentials') throw new Error('Invalid email or password.');
+    if (!busy(error)) throw new Error(error.message);
+    last = error; await new Promise((r) => setTimeout(r, 1500 * (i + 1)));   // the server was slow to answer: try again
+  }
+  throw new Error(`The server is slow to respond right now (${last?.message ?? 'timeout'}). Nothing is wrong with your password — wait a minute and tap Sign in again.`);
 }
 export const signOut = () => supabase().auth.signOut();
 /** True when the failure is the connection (offline, server unreachable) rather than a database rule. */
