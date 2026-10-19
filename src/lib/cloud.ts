@@ -85,18 +85,57 @@ export async function fetchTables(tables: readonly SyncTable[]): Promise<Partial
   await Promise.all(tables.map(async (t) => { out[t] = (await readAll(t)).map((r) => fromDb(r, RENAME[t])); }));
   return out;
 }
+/* What the last full load saw, so the periodic refresh can ask only for rows changed since (a full reload every 90 seconds on every open screen used most of the free egress). */
+let marks: Partial<Record<SyncTable, string>> = {}; let auditAt = ''; let settingsAt = ''; let fullAt = 0;
+const FULL_EVERY = 15 * 60000;   // a full reload this often also picks up removed / hidden rows
+const maxOf = (rows: Record<string, unknown>[], col: string, from = '') => rows.reduce((m, r) => { const v = r[col] as string | undefined; return v && v > m ? v : m; }, from);
 export async function fetchAll(): Promise<DB> {
-  const [tables, profiles, settings, audit] = await Promise.all([
-    fetchTables(SYNC_TABLES),
+  const [raw, profiles, settings, audit] = await Promise.all([
+    Promise.all(SYNC_TABLES.map(async (t) => [t, await readAll(t)] as const)),
     readAll('profiles'),
-    supabase().from('settings').select('data').eq('id', 'main').maybeSingle(),
+    supabase().from('settings').select('data, updated_at').eq('id', 'main').maybeSingle(),
     supabase().from('audit_logs').select('*').order('at', { ascending: false }).limit(500),
   ]);
   const db = emptyDB() as unknown as Record<string, unknown>;
-  for (const t of SYNC_TABLES) db[t] = tables[t] ?? [];
+  const nm: typeof marks = {};
+  for (const [t, rows] of raw) { db[t] = rows.map((r) => fromDb(r, RENAME[t])); nm[t] = maxOf(rows, 'updated_at'); }
+  marks = nm; fullAt = Date.now();
   db.users = profiles.map(toUser);
   db.audit = (audit.data ?? []).map(toAudit);
+  auditAt = maxOf((audit.data ?? []) as Record<string, unknown>[], 'at');
+  settingsAt = (settings.data?.updated_at as string | undefined) ?? '';
   if (settings.data?.data) db.settings = settings.data.data as Settings;
+  return db as unknown as DB;
+}
+/** Only what changed since the last load, merged into `cur`; a full load when there is no baseline yet or it is a while old. */
+export async function fetchLatest(cur: DB): Promise<DB> {
+  if (!fullAt || Date.now() - fullAt > FULL_EVERY) return fetchAll();
+  const db = { ...cur } as unknown as Record<string, unknown>;
+  const changes = await Promise.all(SYNC_TABLES.map(async (t) => {
+    const rows: Record<string, unknown>[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase().from(t).select('*').gte('updated_at', marks[t] ?? '1970-01-01T00:00:00Z').order('updated_at').order('id').range(from, from + 999);
+      if (error) { if (NEWER_TABLES.has(t) && (error.code === 'PGRST205' || error.code === '42P01' || /schema cache|does not exist/i.test(error.message))) break; throw new CloudError(`Could not load ${t}: ${error.message}`, error.code); }
+      rows.push(...(data ?? []));
+      if (!data || data.length < 1000) break;
+    }
+    return [t, rows] as const;
+  }));
+  for (const [t, rows] of changes) {
+    if (!rows.length) continue;
+    marks[t] = maxOf(rows, 'updated_at', marks[t] ?? '');
+    const list = (cur[t] as unknown as { id: string }[]).slice(); const at = new Map(list.map((r, i) => [r.id, i]));
+    for (const r of rows.map((x) => fromDb(x, RENAME[t]) as { id: string })) { const i = at.get(r.id); if (i === undefined) list.push(r); else if (JSON.stringify(list[i]) !== JSON.stringify(r)) list[i] = r; }
+    db[t] = list;
+  }
+  const [prof, st, au] = await Promise.all([
+    readAll('profiles'),
+    supabase().from('settings').select('data, updated_at').eq('id', 'main').gt('updated_at', settingsAt || '1970-01-01T00:00:00Z').maybeSingle(),
+    supabase().from('audit_logs').select('*').gt('at', auditAt || '1970-01-01T00:00:00Z').order('at', { ascending: false }).limit(500),
+  ]);
+  db.users = prof.map(toUser);
+  if (st.data?.data) { db.settings = st.data.data as Settings; settingsAt = (st.data.updated_at as string) ?? settingsAt; }
+  if (au.data?.length) { auditAt = maxOf(au.data as Record<string, unknown>[], 'at', auditAt); db.audit = [...au.data.map(toAudit), ...cur.audit].slice(0, 500); }
   return db as unknown as DB;
 }
 export async function fetchProfile(uid: string): Promise<UserAccount | null> {

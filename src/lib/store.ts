@@ -6,7 +6,7 @@ import { seedDB } from './seed';
 import { geoHooks, geoPatch } from './geo-ph';
 import { syncHub } from './sync';
 import { kvDel, kvGet, kvSet } from './outbox';
-import { fetchProfiles, updateProfile, CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, fetchAll, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
+import { fetchProfiles, updateProfile, CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, fetchAll, fetchLatest, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
 
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
@@ -209,7 +209,7 @@ class Store {
   private async refreshCloud() {
     if (!CLOUD || !this.sessionUser || this.flushing || syncHub.getSnapshot().pending > 0 || this._db !== this.baseline || (typeof document !== 'undefined' && document.hidden)) return;
     const ver = this._db.version;
-    try { const db = await fetchAll(); this.lastFresh = Date.now(); if (this._db.version === ver && this._db === this.baseline && !this.flushing) { this._db = { ...db, notifications: this._db.notifications, version: ver }; this.baseline = this._db; this.saveSnapshot(); this.listeners.forEach((l) => l()); } } catch { /* offline: try again later */ }
+    try { const db = await fetchLatest(this._db); this.lastFresh = Date.now(); if (this._db.version === ver && this._db === this.baseline && !this.flushing) { this._db = { ...db, notifications: this._db.notifications, version: ver }; this.baseline = this._db; this.saveSnapshot(); this.listeners.forEach((l) => l()); } } catch { /* offline: try again later */ }
   }
 
   /* ---- subscription ---- */
