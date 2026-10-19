@@ -1,3 +1,4 @@
+import { BUILD, forceUpdate } from '@/lib/updater';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { store, useAuth, useBoot } from '@/lib/store';
@@ -197,7 +198,7 @@ function Shell() {
             <Route path="*" element={<Navigate to={homeFor(any)} replace />} />
           </Routes>
           </Suspense>
-          <div className="small muted" style={{ marginTop: 24, textAlign: 'center' }}>TopMop Operations • {CLOUD ? 'Connected to Supabase' : 'Demo data stored in this browser'} • Last sync {fmtStamp(new Date().toISOString())} <Badge tone="teal">{CLOUD ? 'live' : 'demo mode'}</Badge></div>
+          <div className="small muted" style={{ marginTop: 24, textAlign: 'center' }}>TopMop Operations • {CLOUD ? 'Connected to Supabase' : 'Demo data stored in this browser'} • Last sync {fmtStamp(new Date().toISOString())} <Badge tone="teal">{CLOUD ? 'live' : 'demo mode'}</Badge> • Build {BUILD} • <a href="#" onClick={(e) => { e.preventDefault(); void forceUpdate(); }}>Update now</a></div>
         </main>
       </div>
       <nav className="bottomnav" aria-label="Quick navigation">

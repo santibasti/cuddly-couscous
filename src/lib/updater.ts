@@ -27,3 +27,12 @@ export function startUpdateWatcher() {
   window.addEventListener('focus', () => void checkForUpdate());
   void checkForUpdate();
 }
+
+/** The build this page is running (shown in the footer so it is easy to compare with the live one). */
+export const BUILD = CURRENT;
+/** Throw away every saved copy of the app (service worker + caches) and load the live version. Signed-in data is kept. */
+export async function forceUpdate() {
+  try { const regs = await navigator.serviceWorker?.getRegistrations?.(); await Promise.all((regs ?? []).map((r) => r.unregister())); } catch { /* none */ }
+  try { const keys = await caches?.keys?.(); await Promise.all((keys ?? []).map((k) => caches.delete(k))); } catch { /* none */ }
+  location.replace(`${location.pathname}?v=${Date.now()}${location.hash}`);
+}
