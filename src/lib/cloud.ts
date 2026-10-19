@@ -296,6 +296,11 @@ export async function signIn(email: string, password: string) {
   }
   throw new Error(`The server is slow to respond right now (${last?.message ?? 'timeout'}). Nothing is wrong with your password — wait a minute and tap Sign in again.`);
 }
+/** The signed-in person sets a new password for their own login. */
+export async function changeMyPassword(password: string) {
+  const { error } = await supabase().auth.updateUser({ password });
+  if (error) throw new Error(/same password|different from the old/i.test(error.message) ? 'Choose a password different from the current one.' : error.message);
+}
 export const signOut = () => supabase().auth.signOut();
 /** True when the failure is the connection (offline, server unreachable) rather than a database rule. */
 export const isNetworkError = (e: unknown) => !isRuleError(e) || /failed to fetch|network|load failed|fetch/i.test(String((e as Error)?.message ?? ''));

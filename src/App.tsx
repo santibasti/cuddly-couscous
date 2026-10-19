@@ -2,10 +2,10 @@ import { BUILD, forceUpdate } from '@/lib/updater';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { store, useAuth, useBoot } from '@/lib/store';
-import { CLOUD } from '@/lib/cloud';
+import { CLOUD, changeMyPassword } from '@/lib/cloud';
 import { ROLE_LABEL, ROUTE_ACCESS } from '@/lib/rbac';
 import { runAutomations } from '@/lib/actions';
-import { Icon, Overlays, Badge, toast } from '@/components/ui';
+import { Icon, Overlays, Badge, Field, Modal, attempt, toast } from '@/components/ui';
 import { SyncBadge } from '@/components/touch';
 import { InstallPrompt, InstallButton, UpdateBanner } from '@/components/InstallPrompt';
 import { confirmLeave } from '@/lib/sync';
@@ -90,6 +90,7 @@ function Shell() {
   const nav = useNavigate();
   const loc = useLocation();
   const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState(false);
   const [, setTick] = useState(0);
   const [bell, setBell] = useState(false);
   useEffect(() => { preloadPages(); }, []);
@@ -131,9 +132,11 @@ function Shell() {
           <div className="lbl"><div style={{ color: '#fff', fontWeight: 600 }}>{user.name}</div>
           <div>{ROLE_LABEL[user.role]}</div></div>
           <InstallButton />
+          <button className="btn sm block" title="Change my password" aria-label="Change my password" style={{ marginTop: 10 }} onClick={() => setPw(true)}><Icon name="lock" /><span className="lbl">Change password</span></button>
           <button className="btn sm block" title="Sign out" aria-label="Sign out" style={{ marginTop: 10 }} onClick={() => { if (!confirmLeave()) return; store.logout(); nav('/login'); }}><Icon name="logout" /><span className="lbl">Sign out</span></button>
         </div>
       </aside>
+      {pw && <PasswordModal onClose={() => setPw(false)} />}
       <div className={open ? 'scrim open' : 'scrim'} onClick={() => setOpen(false)} />
       <div className="main">
         <header className="topbar">
@@ -206,6 +209,25 @@ function Shell() {
         <a href="#menu" onClick={(e) => { e.preventDefault(); setOpen(true); }}><Icon name="menu" />More</a>
       </nav>
     </div>
+  );
+}
+
+function PasswordModal({ onClose }: { onClose: () => void }) {
+  const [a, setA] = useState(''); const [b, setB] = useState(''); const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (!CLOUD) return attempt(() => { throw new Error('Demo accounts all use the password topmop123.'); });
+    if (a.length < 8) return attempt(() => { throw new Error('Use at least 8 characters.'); });
+    if (a !== b) return attempt(() => { throw new Error('The two passwords do not match.'); });
+    setBusy(true);
+    try { await changeMyPassword(a); toast('Password changed', 'ok'); onClose(); } catch (e) { toast(e instanceof Error ? e.message : 'Could not change the password', 'err'); } finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Change my password" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !a || !b} onClick={() => void save()}>{busy ? 'Saving…' : 'Change password'}</button></>}>
+      <div className="stack">
+        <Field label="New password" hint="At least 8 characters."><input type="password" autoComplete="new-password" value={a} onChange={(e) => setA(e.target.value)} /></Field>
+        <Field label="Type it again"><input type="password" autoComplete="new-password" value={b} onChange={(e) => setB(e.target.value)} /></Field>
+      </div>
+    </Modal>
   );
 }
 
