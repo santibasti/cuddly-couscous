@@ -206,15 +206,16 @@ export function applyOutbox(db: DB, entries: JournalEntry[]): { db: DB; entries:
   return { db: next as unknown as DB, entries: out };
 }
 
-export interface JournalEntry { t: string; id: string; kind: 'insert' | 'update'; row: Record<string, unknown>; before?: Record<string, unknown>; /** a correction made with a reason (sent together with it, so the database rules can allow it) */ reason?: string }
+export interface JournalEntry { t: string; id: string; kind: 'insert' | 'update'; row: Record<string, unknown>; before?: Record<string, unknown>; /** a correction made with a reason (sent together with it, so the database rules can allow it) */ reason?: string; /** automatic housekeeping: if the database refuses it for this person, skip it quietly */ soft?: boolean }
 /**
  * Replays the changes in the exact order the app made them. The database checks every step (e.g. a discount goes Pending → Approved → Applied,
  * a job is Closed only after its workflow is), so what matters is not just the final state of each row but the order it got there.
  */
 export async function pushChanges(prev: DB, next: DB, soft: Set<string>, journal: JournalEntry[] = []): Promise<{ touched: Set<SyncTable>; softFailed: number }> {
   const touched = new Set<SyncTable>(); let softFailed = 0;
+  const softIds = new Set([...soft, ...journal.filter((j) => j.soft).map((j) => j.id)]);   // entries restored after a restart keep their quiet-skip flag
   const run = async (id: string, fn: () => Promise<void>) => {
-    try { await fn(); } catch (e) { if (soft.has(id) && isRuleError(e)) softFailed++; else throw e; }   // automatic housekeeping may be refused for this role; never block the person's own work
+    try { await fn(); } catch (e) { if (softIds.has(id) && isRuleError(e)) softFailed++; else throw e; }   // automatic housekeeping may be refused for this role; never block the person's own work
   };
   const known = new Set<string>(SYNC_TABLES);
   const ops: JournalEntry[] = [];

@@ -36,7 +36,7 @@ class Store {
   private pool: Record<string, number[]> = {};
   /** order in which rows were changed, so they are written to the database in the same order (parents first, workflow before job status …) */
   private journal: JournalEntry[] = [];
-  private note(table: string, kind: 'insert' | 'update', row: unknown, before?: unknown) { if (CLOUD) { this.journal.push({ t: table, id: (row as Base).id, kind, row: row as Record<string, unknown>, before: before as Record<string, unknown> | undefined, ...(this._reason && table === 'workflows' ? { reason: this._reason } : {}) }); this.saveOutbox(); } }
+  private note(table: string, kind: 'insert' | 'update', row: unknown, before?: unknown) { if (CLOUD) { this.journal.push({ t: table, id: (row as Base).id, kind, row: row as Record<string, unknown>, before: before as Record<string, unknown> | undefined, ...(this._reason && table === 'workflows' ? { reason: this._reason } : {}), ...(this.soft.has((row as Base).id) ? { soft: true } : {}) }); this.saveOutbox(); } }
   /** What must survive closing the app while offline: unsent changes and unused document numbers (saved on this device). */
   private outTimer: ReturnType<typeof setTimeout> | null = null;
   private snapTimer: ReturnType<typeof setTimeout> | null = null;
@@ -443,7 +443,7 @@ class Store {
   /** Changes this device's copy only — for a record the database function has already updated. */
   patchLocal<T extends TableName>(table: T, id: string, patch: Partial<Rows[T]>) { this.set((d) => ({ ...d, [table]: (d[table] as unknown as Base[]).map((r) => (r.id === id ? ({ ...r, ...patch } as Base) : r)) }) as DB); }
   system<T extends TableName>(table: T, id: string, patch: Partial<Rows[T]>, summary?: string) { this.soft.add(id); return this.update(table, id, patch, 'update', summary); }
-  systemInsert<T extends TableName>(table: T, data: NewRow<T>, summary?: string) { const r = this.insert(table, data, summary); this.soft.add((r as Base).id); return r; }
+  systemInsert<T extends TableName>(table: T, data: NewRow<T>, summary?: string) { const r = this.insert(table, data, summary); this.soft.add((r as Base).id); const e = this.journal.find((j) => j.id === (r as Base).id && j.kind === 'insert'); if (e) e.soft = true; return r; }
   syncNotifications(list: Omit<Rows['notifications'], keyof Base | 'read_by'>[]) {
     const old = new Map(this._db.notifications.map((n) => [n.key, n]));
     const now = isoNow();
