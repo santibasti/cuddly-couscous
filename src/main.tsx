@@ -7,7 +7,8 @@ import './styles.css';
 import './components/InstallPrompt';
 import { startGeocoder } from './lib/geocode';
 import { applyTheme } from './lib/theme';
-import { startUpdateWatcher } from './lib/updater';
+import { BUILD, forceUpdate, startUpdateWatcher } from './lib/updater';
+import { CLOUD } from './lib/cloud';
 applyTheme();
 
 if (import.meta.env.PROD) startUpdateWatcher();
@@ -29,7 +30,18 @@ class Boundary extends Component<{ children: ReactNode }, { err?: Error }> {
   static getDerivedStateFromError(err: Error) { return { err }; }
   render() {
     if (!this.state.err) return this.props.children;
-    return <div style={{ font: '14px system-ui', padding: 20, maxWidth: 640 }}><h2>Something went wrong</h2><pre style={{ whiteSpace: 'pre-wrap', background: '#f3f6f9', padding: 12, borderRadius: 8 }}>{this.state.err.message}{'\n\n'}{navigator.userAgent}</pre><button onClick={() => { try { localStorage.clear(); } catch { /* ignore */ } location.reload(); }}>Clear saved demo data and reload</button></div>;
+    const e = this.state.err; const stack = (e.stack ?? '').split('\n').slice(0, 8).join('\n');
+    return (
+      <div style={{ font: '14px system-ui', padding: 20, maxWidth: 720, color: '#0b1b2e' }}>
+        <h2 style={{ color: '#fff' }}>Something went wrong</h2>
+        <pre style={{ whiteSpace: 'pre-wrap', background: '#f3f6f9', color: '#0b1b2e', padding: 12, borderRadius: 8, fontSize: 12 }}>{e.message}{'\n\n'}{stack}{'\n\n'}Build {BUILD}</pre>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => location.reload()}>Reload</button>
+          <button onClick={() => void forceUpdate()}>Update now (clear saved app copies)</button>
+          {!CLOUD && <button onClick={() => { try { localStorage.clear(); } catch { /* ignore */ } location.reload(); }}>Clear saved demo data and reload</button>}
+        </div>
+      </div>
+    );
   }
 }
 
