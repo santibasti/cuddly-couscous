@@ -9,7 +9,7 @@ import { groupSum, inPeriod, inputVatClaimable, monthPeriod, peso, quarterPeriod
 import { SAMPLE_TAG, sampleReceipts } from '@/lib/sample';
 import type { Receipt } from '@/lib/types';
 
-const PALETTE = ['#0f766e', '#2563eb', '#b45309', '#7c3aed', '#be123c', '#4d7c0f'];
+const PALETTE = ['#22d3ee', '#6366f1', '#f59e0b', '#a78bfa', '#fb7185', '#34d399'];
 const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(Math.round(n)));
 
 export default function Dashboard() {
@@ -104,12 +104,12 @@ export default function Dashboard() {
       <div className="grid g2">
         <div className="card"><h2><span className="dot" />Spend, last 6 months</h2>
           <div style={{ height: 240 }} role="img" aria-label="Bar chart of monthly spend">
-            <ResponsiveContainer><BarChart data={d.months}><defs><linearGradient id="barg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2dd4bf" /><stop offset="100%" stopColor="#0f766e" /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" /><XAxis dataKey="month" stroke="var(--muted)" /><YAxis tickFormatter={k} stroke="var(--muted)" width={44} /><Tooltip formatter={(v) => peso(Number(v))} contentStyle={{ background: 'var(--card)', border: '1px solid var(--line)' }} /><Bar dataKey="amount" fill="url(#barg)" radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer>
+            <ResponsiveContainer><BarChart data={d.months}><defs><linearGradient id="barg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#22d3ee" /><stop offset="100%" stopColor="#6366f1" /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" /><XAxis dataKey="month" stroke="var(--muted)" /><YAxis tickFormatter={k} stroke="var(--muted)" width={44} /><Tooltip cursor={{ fill: 'rgba(255,255,255,.05)' }} formatter={(v) => peso(Number(v))} contentStyle={{ background: 'var(--card)', border: '1px solid var(--line)' }} /><Bar dataKey="amount" fill="url(#barg)" radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer>
           </div></div>
         <div className="card"><h2><span className="dot" />Top categories, this quarter</h2>
           {d.cats.length === 0 ? <div className="muted">No receipts in this quarter yet.</div> : (
             <div style={{ height: 240 }} role="img" aria-label="Bar chart of spend by category">
-              <ResponsiveContainer><BarChart data={d.cats} layout="vertical" margin={{ left: 8 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--line)" /><XAxis type="number" tickFormatter={k} stroke="var(--muted)" /><YAxis type="category" dataKey="name" width={130} stroke="var(--muted)" tick={{ fontSize: 11 }} /><Tooltip formatter={(v) => peso(Number(v))} contentStyle={{ background: 'var(--card)', border: '1px solid var(--line)' }} /><Bar dataKey="amount" radius={[0, 6, 6, 0]}>{d.cats.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}</Bar></BarChart></ResponsiveContainer>
+              <ResponsiveContainer><BarChart data={d.cats} layout="vertical" margin={{ left: 8 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--line)" /><XAxis type="number" tickFormatter={k} stroke="var(--muted)" /><YAxis type="category" dataKey="name" width={130} stroke="var(--muted)" tick={{ fontSize: 11 }} /><Tooltip cursor={{ fill: 'rgba(255,255,255,.05)' }} formatter={(v) => peso(Number(v))} contentStyle={{ background: 'var(--card)', border: '1px solid var(--line)' }} /><Bar dataKey="amount" radius={[0, 6, 6, 0]}>{d.cats.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}</Bar></BarChart></ResponsiveContainer>
             </div>)}
         </div>
       </div>
