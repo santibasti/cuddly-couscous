@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth, live } from '@/lib/store';
 import { AnnCard } from '@/components/AnnCard';
+import { ShareAwardModal } from '@/components/ShareAwardModal';
 import { Badge, Card, Field, Modal, PageHead, attempt, toast } from '@/components/ui';
 import { KINDS, deleteAnnouncement, markSeen, react, saveAnnouncement, setAnnouncementStatus, useAnnouncements, type AnnInput, type AnnKind, type Announcement, type Audience } from '@/lib/announcements';
 import type { Employee } from '@/lib/types';
@@ -14,6 +15,8 @@ export default function Announcements() {
   const manage = can('announce.manage');
   const list = manage ? all : items;
   const [edit, setEdit] = useState<Announcement | 'new' | null>(null);
+  const [share, setShare] = useState<Announcement | null>(null);
+  const myEmp = user?.employee_id ? db.employees.find((e) => e.id === user.employee_id) : undefined;
   // opening the page counts as seeing what is on it
   useEffect(() => { if (loaded && items.length) void markSeen(items.map((a) => a.id)); }, [loaded, items.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const emps = useMemo(() => new Map(db.employees.map((e) => [e.id, e])), [db.employees]);
@@ -27,11 +30,12 @@ export default function Announcements() {
       <div className="stack">
         {list.map((a) => (
           <AnnCard key={a.id} a={a} emps={emps} meId={user?.employee_id ?? null} myReaction={mine[a.id]?.reaction ?? null} stats={stats[a.id]} manage={manage}
-            onReact={(e) => attempt(() => react(a.id, e), undefined)} onEdit={() => setEdit(a)}
+            onShare={myEmp && user?.employee_id && a.awardee_ids.includes(user.employee_id) && a.status === 'Published' ? () => setShare(a) : undefined} onReact={(e) => attempt(() => react(a.id, e), undefined)} onEdit={() => setEdit(a)}
             onStatus={(s) => attempt(() => setAnnouncementStatus(a.id, s), s === 'Published' ? 'Published' : 'Archived')}
             onDelete={() => { if (confirm('Delete this announcement? It disappears from everyone’s app.')) attempt(() => deleteAnnouncement(a.id), 'Deleted'); }} />
         ))}
       </div>
+      {share && myEmp && <ShareAwardModal a={share} emp={myEmp} onClose={() => setShare(null)} />}
       {edit && <Compose initial={edit === 'new' ? undefined : edit} emps={live(db.employees).filter((e) => e.status !== 'inactive')} onClose={() => setEdit(null)} />}
     </>
   );
