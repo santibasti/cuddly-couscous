@@ -14,6 +14,7 @@ export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'dashboard.view', group: 'Dashboard', label: 'View operational dashboard' },
   { key: 'dashboard.finance', group: 'Dashboard', label: 'View financial dashboard widgets' },
   { key: 'dashboard.executive', group: 'Dashboard', label: 'Executive dashboard: revenue, collections and exact client locations (Admin / CEO)' },
+  { key: 'executive.view', group: 'Dashboard', label: 'Executive tab: forecast, operating constraints and the AI business review (Owner)' },
   { key: 'clients.view', group: 'Clients', label: 'View clients' },
   { key: 'clients.edit', group: 'Clients', label: 'Create / edit clients' },
   { key: 'clients.delete', group: 'Clients', label: 'Delete clients with no billing or service history (Owner / Admin)' },
@@ -134,6 +135,7 @@ export function permsFor(role: Role, overrides?: Record<Role, string[]>): Set<st
 export const ROUTE_ACCESS: Record<string, string[]> = {
   dashboard: ['dashboard.view', 'dashboard.finance'],
   today: ['dashboard.view', 'dashboard.finance'],
+  executive: ['executive.view'],
   clients: ['clients.view'],
   sales: ['sales.view'],
   inbox: ['inbox.manage'],

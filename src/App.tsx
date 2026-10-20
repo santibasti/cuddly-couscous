@@ -33,6 +33,7 @@ const Inventory = lazy(() => import('@/pages/Inventory'));
 const Assets = lazy(() => import('@/pages/Assets'));
 const Finance = lazy(() => import('@/pages/Finance'));
 const Reports = lazy(() => import('@/pages/Reports'));
+const Executive = lazy(() => import('@/pages/Executive'));
 const Admin = lazy(() => import('@/pages/Admin'));
 const Notifications = lazy(() => import('@/pages/Notifications'));
 const Portal = lazy(() => import('@/pages/Portal'));
@@ -53,6 +54,7 @@ function preloadPages() { const ric = (window as unknown as { requestIdleCallbac
 const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: string; group?: string }[] = [
   { to: '/dashboard', key: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'Overview' },
   { to: '/today', key: 'today', label: 'Happening Today', icon: 'dispatch' },
+  { to: '/executive', key: 'executive', label: 'Executive', icon: 'finance' },
   { to: '/jobs', key: 'jobs', label: 'Jobs & Calendar', icon: 'calendar', group: 'Operations' },
   { to: '/service-reports', key: 'servicereports', label: 'Service Reports', icon: 'reports' },
   { to: '/photos', key: 'photos', label: 'Photo Library', icon: 'camera' },
@@ -196,6 +198,7 @@ function Shell() {
             <Route path="/assets" element={<Guard area="assets"><Assets /></Guard>} />
             <Route path="/finance" element={<Guard area="finance"><Finance /></Guard>} />
             <Route path="/reports" element={<Guard area="reports"><Reports /></Guard>} />
+            <Route path="/executive" element={<Guard area="executive"><Executive /></Guard>} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/admin" element={<Guard area="admin"><Admin /></Guard>} />
             <Route path="*" element={<Navigate to={homeFor(any)} replace />} />
