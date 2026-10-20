@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '@/ctx';
 import Icon from '@/components/Icon';
+import PageHero from '@/components/PageHero';
 import { monthPeriod, peso, quarterPeriod, totalsOf, yearPeriod, type Period } from '@/lib/bir';
 import { downloadCsv, downloadXlsx, reportPack } from '@/lib/exports';
 
@@ -26,7 +27,7 @@ export default function Reports() {
 
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>Reports & export</h1><div className="sub">Download your records as Excel or CSV for your accountant or BIR filing.</div></div></div>
+      <PageHero icon="sheet" title="Reports & export" sub="Download your records as Excel or CSV for your accountant or BIR filing." />
       <div className="card stack">
         <div className="row">
           <div className="tabs">{(['month', 'quarter', 'year', 'custom'] as Kind[]).map((x) => <button key={x} className={kind === x ? 'on' : ''} onClick={() => setKind(x)}>{x[0].toUpperCase() + x.slice(1)}</button>)}</div>
@@ -50,7 +51,7 @@ export default function Reports() {
       </div>
 
       <div className="card tablewrap">
-        <h2>Individual files (CSV)</h2>
+        <h2><span className="dot" />Individual files (CSV)</h2>
         <table><thead><tr><th>Report</th><th className="num">Rows</th><th /></tr></thead>
           <tbody>{pack.tables.map((tb) => (
             <tr key={tb.name}><td>{tb.name}{tb.name.startsWith('SLP') && !company.vatRegistered && <span className="muted small"> — your company is not marked VAT-registered</span>}</td><td className="num">{tb.rows.length}</td>

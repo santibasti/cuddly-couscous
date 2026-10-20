@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '@/ctx';
 import Icon from '@/components/Icon';
+import PageHero from '@/components/PageHero';
 import { formatTin, isValidTin } from '@/lib/bir';
 
 export default function Settings() {
@@ -21,9 +22,9 @@ export default function Settings() {
 
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>Settings</h1><div className="sub">Company profile, usage and your data.</div></div></div>
+      <PageHero icon="settings" title="Settings" sub="Company profile, usage and your data." />
       <div className="card stack">
-        <h2>Company profile</h2>
+        <h2><span className="dot" />Company profile</h2>
         <div className="form">
           <label className="f"><span className="lbl">Registered business name</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} disabled={!isOwner} /></label>
           <label className="f"><span className="lbl">Business TIN</span><input value={f.tin} inputMode="numeric" onChange={(e) => setF({ ...f, tin: formatTin(e.target.value) })} disabled={!isOwner} /></label>
@@ -36,13 +37,13 @@ export default function Settings() {
       </div>
 
       <div className="card stack">
-        <h2>Scan usage</h2>
+        <h2><span className="dot" />Scan usage</h2>
         <div className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={company.scanLimit} aria-valuenow={scansUsed}><i style={{ width: `${Math.min(100, (scansUsed / company.scanLimit) * 100)}%` }} /></div>
         <div className="small muted">{scansUsed} of {company.scanLimit} receipt scans used this month. The count resets on the 1st. Need more? Contact support.</div>
       </div>
 
       <div className="card stack">
-        <h2>Your data</h2>
+        <h2><span className="dot" />Your data</h2>
         <div className="small muted">Signed in as {session.email} ({session.role}). {receipts.length} receipts stored.</div>
         <div><button onClick={backup}><Icon name="download" size={17} />Download full backup (JSON)</button></div>
       </div>

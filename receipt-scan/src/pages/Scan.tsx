@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useApp } from '@/ctx';
 import Icon from '@/components/Icon';
 import ReceiptEditor from '@/components/ReceiptEditor';
+import PageHero from '@/components/PageHero';
 import { blankReceipt, formatTin, num } from '@/lib/bir';
 import { downscale, sha256 } from '@/lib/image';
 import type { Receipt } from '@/lib/types';
@@ -60,7 +61,7 @@ export default function Scan() {
 
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>Scan receipts</h1><div className="sub">Photograph each receipt or invoice — whole page in view, flat and well lit.</div></div></div>
+      <PageHero icon="camera" title="Scan receipts" sub="Photograph each receipt or invoice — whole page in view, flat and well lit." />
       <div className="card row" style={{ flexWrap: 'nowrap' }}><div className="grow"><div className="bar"><i style={{ width: `${Math.min(100, (scansUsed / limit) * 100)}%` }} /></div></div><span className="small muted nowrap">{scansUsed} / {limit} scans used this month</span></div>
 
       {canWrite ? (
@@ -77,7 +78,7 @@ export default function Scan() {
 
       {jobs.length > 0 && (
         <div className="card">
-          <h2>This session</h2>
+          <h2><span className="dot" />This session</h2>
           <ul className="issues list">
             {jobs.map((j) => (
               <li key={j.key} className="item">

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '@/ctx';
 import Icon from '@/components/Icon';
 import ReceiptEditor from '@/components/ReceiptEditor';
+import PageHero from '@/components/PageHero';
 import { CATEGORIES, checkReceipt, hasErrors, peso } from '@/lib/bir';
 import type { Receipt } from '@/lib/types';
 
@@ -21,7 +23,7 @@ export default function Receipts() {
 
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>Receipts</h1><div className="sub">{receipts.length} saved · click a row to review or edit</div></div></div>
+      <PageHero icon="receipt" title="Receipts" sub={`${receipts.length} saved · click a row to review or edit`}><Link className="btn light" to="/scan"><Icon name="plus" size={17} />Add receipt</Link></PageHero>
       <div className="row">
         <div className="searchbox"><Icon name="search" size={16} /><input style={{ width: 280 }} placeholder="Search supplier, invoice no., TIN…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" /></div>
         <select style={{ width: 'auto' }} value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Month"><option value="">All months</option>{months.map((m) => <option key={m}>{m}</option>)}</select>
