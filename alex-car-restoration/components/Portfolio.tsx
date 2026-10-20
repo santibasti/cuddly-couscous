@@ -53,9 +53,9 @@ export default function Portfolio({ projects, limit, showHeading = true }: { pro
                     <p className="eyebrow mt-6">{categoryLabels[p.category]}</p>
                     <h3 className="mt-2 font-display text-2xl font-semibold uppercase tracking-tight sm:text-3xl">{p.make} {p.model}</h3>
                     <p className="mt-3 line-clamp-2 max-w-xl text-sm leading-relaxed text-warm/70 md:line-clamp-none">{p.summary}</p>
-                    <ul className="mt-4 hidden flex-wrap sm:flex gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.16em] text-silver/80">
+                    {p.scope.length > 0 && <ul className="mt-4 hidden flex-wrap sm:flex gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.16em] text-silver/80">
                       {p.scope.map((s) => <li key={s}>{s}</li>)}
-                    </ul>
+                    </ul>}
                     <span className="mt-6 inline-block border-b border-silver/40 pb-1 text-[11px] uppercase tracking-[0.22em] text-silver group-hover:border-warm group-hover:text-warm">View Project</span>
                   </Link>
                 </article>

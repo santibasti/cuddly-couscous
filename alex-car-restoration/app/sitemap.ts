@@ -3,7 +3,7 @@ import { site } from "@/content/site";
 import { getProjects } from "@/lib/data";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const projects = (await getProjects()).filter((p) => !p.placeholder);
+  const projects = (await getProjects()).filter((p) => !p.placeholder && p.detailsConfirmed);
   return [
     { url: site.url, changeFrequency: "monthly", priority: 1 },
     { url: `${site.url}/projects`, changeFrequency: "monthly", priority: 0.8 },

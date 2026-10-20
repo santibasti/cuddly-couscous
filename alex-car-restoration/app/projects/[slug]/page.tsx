@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     title: `${p.make} ${p.model} — ${categoryLabels[p.category]}`,
     description: p.summary,
     alternates: { canonical: `/projects/${p.slug}` },
-    robots: p.placeholder ? { index: false, follow: true } : undefined,
+    robots: p.placeholder || !p.detailsConfirmed ? { index: false, follow: true } : undefined,
   };
 }
 
@@ -38,17 +38,21 @@ export default async function ProjectPage({ params }: Params) {
           {p.placeholder && <p className="mt-6 inline-block bg-racing px-3 py-1 text-[10px] uppercase tracking-[0.22em]">Placeholder project — replace with authorised content</p>}
           <div className="mt-10 max-w-2xl space-y-6 text-base leading-relaxed text-warm/75">{p.narrative.map((t) => <p key={t}>{t}</p>)}</div>
         </div>
-        <aside className="lg:col-span-4 lg:col-start-9">
-          <h2 className="eyebrow mb-4">Scope of restoration</h2>
-          <ul className="divide-y divide-silver/15 border-y border-silver/15 text-sm">{p.scope.map((s) => <li key={s} className="py-3">{s}</li>)}</ul>
-        </aside>
+        {p.scope.length > 0 && (
+          <aside className="lg:col-span-4 lg:col-start-9">
+            <h2 className="eyebrow mb-4">Scope of restoration</h2>
+            <ul className="divide-y divide-silver/15 border-y border-silver/15 text-sm">{p.scope.map((s) => <li key={s} className="py-3">{s}</li>)}</ul>
+          </aside>
+        )}
       </div>
-      <div className="container-x pb-20">
-        <Reveal><h2 className="eyebrow mb-4">Before &amp; after</h2>
-          <BeforeAfter before={p.before} after={p.after} altBefore={`${name} before restoration`} altAfter={`${name} after restoration`} /></Reveal>
-      </div>
+      {(p.placeholder || (p.before && p.after)) && (
+        <div className="container-x pb-20">
+          <Reveal><h2 className="eyebrow mb-4">Before &amp; after</h2>
+            <BeforeAfter before={p.before} after={p.after} altBefore={`${name} before restoration`} altAfter={`${name} after restoration`} /></Reveal>
+        </div>
+      )}
       <div className="container-x grid gap-3 pb-24 sm:grid-cols-2 lg:grid-cols-3">
-        {(p.gallery?.length ? p.gallery : [undefined, undefined, undefined]).map((src, i) => (
+        {(p.gallery?.length ? p.gallery : p.placeholder ? [undefined, undefined, undefined] : []).map((src, i) => (
           <Reveal key={i}><Media src={src} alt={`${name} process photograph ${i + 1}`} label="Process" tone={i} className="aspect-[4/3] w-full" sizes="(min-width:1024px) 30vw, 100vw" /></Reveal>
         ))}
       </div>

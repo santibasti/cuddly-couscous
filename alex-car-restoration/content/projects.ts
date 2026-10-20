@@ -15,7 +15,10 @@ export type Project = {
   category: ProjectCategory;
   summary: string;
   narrative: string[];
+  /** Leave empty until the scope of work is confirmed; it is then hidden. */
   scope: string[];
+  /** false = show only the vehicle and photos, no claims about the work done */
+  detailsConfirmed: boolean;
   hero?: string;
   before?: string;
   after?: string;
@@ -30,34 +33,26 @@ export const categoryLabels: Record<ProjectCategory, string> = {
   custom: "Custom",
 };
 
-const lorem = (kind: string) => [
-  `Placeholder narrative for a ${kind} project. Replace with the real story of the vehicle: its history, the owner's goals and the challenges faced during the restoration.`,
-  "Describe the approach taken, the decisions made to preserve the vehicle's character and the result delivered at handover.",
-];
+/**
+ * Vehicles below are real cars photographed at the workshop (authorised
+ * photography supplied by the business). Make/model are read from the photos;
+ * categories are provisional. Add `summary`, `narrative`, `scope`, before/after
+ * and set `detailsConfirmed: true` once the work done on each car is verified.
+ */
+const pending = ["The full project story and scope of work will be added once confirmed by the workshop."];
 
 export const projects: Project[] = [
-  { slug: "placeholder-classic-sports-coupe", make: "Classic Marque", model: "Sports Coupe", category: "classic", placeholder: true,
-    summary: "Placeholder: a full restoration of a classic sports coupe.",
-    narrative: lorem("classic restoration"),
-    scope: ["Assessment & documentation", "Body preparation", "Refinishing", "Final inspection"] },
-  { slug: "placeholder-luxury-saloon", make: "Luxury Marque", model: "Grand Saloon", category: "luxury", placeholder: true,
-    summary: "Placeholder: restoration and refinishing of a prestigious saloon.",
-    narrative: lorem("luxury restoration"),
-    scope: ["Panel restoration", "Paint correction", "Detailing", "Handover"] },
-  { slug: "placeholder-body-and-paint", make: "Collector Marque", model: "Convertible", category: "body", placeholder: true,
-    summary: "Placeholder: precision bodywork and a flawless new finish.",
-    narrative: lorem("bodywork and refinishing"),
-    scope: ["Surface preparation", "Bodywork", "Paint & clear coat", "Quality inspection"] },
-  { slug: "placeholder-custom-build", make: "Custom", model: "Bespoke Build", category: "custom", placeholder: true,
-    summary: "Placeholder: bespoke bodywork and a one-of-one finish.",
-    narrative: lorem("custom"),
-    scope: ["Design consultation", "Custom bodywork", "Bespoke finish", "Final presentation"] },
-  { slug: "placeholder-vintage-tourer", make: "Vintage Marque", model: "Touring Car", category: "classic", placeholder: true,
-    summary: "Placeholder: a vintage tourer returned to its former character.",
-    narrative: lorem("vintage restoration"),
-    scope: ["Strip & assessment", "Metalwork", "Refinishing", "Reassembly"] },
-  { slug: "placeholder-luxury-gt", make: "Luxury Marque", model: "Grand Tourer", category: "luxury", placeholder: true,
-    summary: "Placeholder: refinishing and detailing of a grand tourer.",
-    narrative: lorem("luxury refinishing"),
-    scope: ["Paint correction", "Refinishing", "Protection", "Handover"] },
+  { slug: "ford-mustang", make: "Ford", model: "Mustang", category: "classic", placeholder: false, detailsConfirmed: false,
+    hero: "/images/mustang-showroom.webp", summary: "A classic Mustang presented in the Alex Restoration studio.", narrative: pending, scope: [] },
+  { slug: "porsche-911", make: "Porsche", model: "911", category: "custom", placeholder: false, detailsConfirmed: false,
+    hero: "/images/porsche-911-white.webp", summary: "A white 911 with carbon-fibre details and forged wheels.", narrative: pending, scope: [] },
+  { slug: "ford-gt", make: "Ford", model: "GT", category: "luxury", placeholder: false, detailsConfirmed: false,
+    hero: "/images/ford-gt-rear.webp", summary: "A Ford GT presented in the finishing studio.", narrative: pending, scope: [] },
+  { slug: "nissan-gt-r", make: "Nissan", model: "GT-R", category: "custom", placeholder: false, detailsConfirmed: false,
+    hero: "/images/shopfront-gtr.webp", summary: "A blue GT-R outside the Alex Restoration workshop.", narrative: pending, scope: [] },
+  { slug: "suzuki-jimny", make: "Suzuki", model: "Jimny", category: "custom", placeholder: false, detailsConfirmed: false,
+    hero: "/images/suzuki-jimny.webp", summary: "A lime-green Jimny presented in the finishing studio.", narrative: pending, scope: [] },
+  { slug: "vespa", make: "Vespa", model: "Vintage Scooter", category: "classic", placeholder: false, detailsConfirmed: false,
+    hero: "/images/vespa-showroom.webp", gallery: ["/images/vespa-detail.webp"],
+    summary: "A vintage Vespa in deep red with a brown leather seat.", narrative: pending, scope: [] },
 ];
