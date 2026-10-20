@@ -1442,4 +1442,18 @@ describe('Job Order Confirmation', () => {
     JO.logJobOrderEvent(o.id, 'PDF downloaded');
     expect(db().job_orders.find((x) => x.id === o.id)!.history.at(-1)!.action).toBe('PDF downloaded');
   });
+  it('"Add to total bill" adds an agreed charge to the final bill and the contract value, and needs a message and who agreed', async () => {
+    await as('owner@topmop.ph');
+    const { job } = scenario('ADDBILL', db().employees[3].id);
+    const before = B.finalContract(db(), db().jobs.find((j) => j.id === job.id)!);
+    const f = { description: 'Additional glass panels', qty: 92, unit: 'panel', rate: 140, message: '92 more panels on the east side', agreed_by: 'Ms. Reyes', agreed_via: 'Phone call' };
+    expect(() => W.addToBill(job.id, { ...f, message: ' ' })).toThrow(/message/);
+    expect(() => W.addToBill(job.id, { ...f, qty: 0 })).toThrow(/quantity/);
+    const v = W.addToBill(job.id, f);
+    expect(v.status).toBe('Approved');
+    const after = B.finalContract(db(), db().jobs.find((j) => j.id === job.id)!);
+    expect(after.variationsNet).toBe(92 * 140);
+    expect(after.variationsTotal).toBeGreaterThan(92 * 140 - 1);
+    expect(db().jobs.find((j) => j.id === job.id)!.contract_amount).toBe(before.originalNet + 92 * 140);
+  });
 });

@@ -418,6 +418,27 @@ export function approveVariation(id: string, f: { client_name: string; signature
   store.update('jobs', job.id, { contract_amount: fc.finalNet }, 'update', `${job.number}: contract value ${fc.originalNet} + variations ${fc.variationsNet} = ${fc.finalNet}`);
   runAutomations();
 }
+/** Owner / Operations: add a charge to the total bill (e.g. "92 additional panels") when the client has already agreed, by signature, message or phone. Saved as an approved variation, so it flows into the final bill and the invoice. */
+export interface BillAddInput { description: string; qty: number; unit: string; rate: number; message: string; agreed_by: string; agreed_via: string }
+export function addToBill(jobId: string, f: BillAddInput): Variation {
+  store.require('jobs.edit');
+  const job = db().jobs.find((j) => j.id === jobId) ?? fail('Job not found.');
+  if (['Cancelled', 'Declined'].includes(job.status)) fail('This job is cancelled — nothing can be added to its bill.');
+  if (jobHasInvoice(jobId)) fail('This job is already invoiced. Reverse the invoice first, add the charge, then invoice again.');
+  if (!f.description.trim()) fail('Enter what is being added (for example "Additional glass panels").');
+  if (!(f.qty > 0)) fail('Enter how many (quantity).');
+  if (!(f.rate > 0)) fail('Enter the rate per unit.');
+  if (!f.message.trim()) fail('Add a short message so everyone knows why this was added.');
+  if (!f.agreed_by.trim()) fail('Enter who at the client agreed to it.');
+  const q = db().quotations.find((x) => x.id === job.quotation_id);
+  const items: QuoteItem[] = [{ service_code: job.service_codes[0] ?? 'OTHER', description: f.description.trim(), qty: f.qty, unit: f.unit.trim() || 'lot', rate: f.rate, discount: 0 }];
+  const v = store.insert('variations', { job_id: jobId, number: varNumber(job), reason: f.message.trim(), items, discount: 0, vat_mode: q?.vat_mode ?? 'exclusive', vat_rate: q?.vat_rate ?? db().settings.vat_rate ?? 12, panel_row_ids: [], status: 'Approved', source: 'owner_added', client_name: f.agreed_by.trim(), signed_at: new Date().toISOString(), decided_at: new Date().toISOString(), decided_by: uidNow(), notes: `Agreed by ${f.agreed_by.trim()} — ${f.agreed_via}` } as never, `Added to ${job.number} bill: ${f.qty} ${f.unit} ${f.description.trim()} (agreed by ${f.agreed_by.trim()} — ${f.agreed_via})`) as Variation;
+  const net = variationTotals(v).net;
+  const fc = finalContract(db(), db().jobs.find((j) => j.id === job.id)!);
+  const contract = q ? fc.finalNet : Math.round((job.contract_amount + net) * 100) / 100;   // without a linked quotation the contract value is all there is to add to
+  store.update('jobs', job.id, { contract_amount: contract }, 'update', `${job.number}: contract value ${job.contract_amount} + addition ${net} = ${contract}`);
+  return v;
+}
 export function rejectVariation(id: string, note: string) {
   const v = db().variations.find((x) => x.id === id) ?? fail('Variation not found.');
   needRun(db().jobs.find((j) => j.id === v.job_id)!);

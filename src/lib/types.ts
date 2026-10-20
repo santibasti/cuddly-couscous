@@ -549,7 +549,7 @@ export interface Variation extends Base {
   client_name?: string; client_signature?: string; signed_at?: string;
   decided_by?: string; notes?: string;
   // Client Final Quote Review (step 4): additions offered at the site before the conforme is signed
-  source?: 'final_review';
+  source?: 'final_review' | 'owner_added';
   revision_open?: boolean; revision_note?: string; revision_at?: string;
   decided_at?: string;       // when the client approved / declined
   sign_lat?: number; sign_lng?: number; sign_gps_note?: string; sign_device?: string;

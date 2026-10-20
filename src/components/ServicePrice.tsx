@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { VariationModal } from '@/components/workflow/VariationStep';
+import { AddToBillModal } from '@/components/AddToBillModal';
 import { quoteShowsAmounts, RATES_NOTE } from '@/lib/quote-text';
 import { docTotals, finalContract, variationTotals } from '@/lib/business';
 import { Badge, Card } from '@/components/ui';
@@ -41,7 +42,7 @@ const Lines = ({ items, rates, hidden }: { items: QuoteItem[]; rates?: boolean; 
 /** `step` = the workflow step on screen (0-6, -1 before the workflow starts). The full card shows before Scope Approval; Scope Approval already
  *  carries the quotation, so it is left out there; after it the card folds into one line. */
 export function ServicePriceCard({ job, step = -1 }: { job: Job; step?: number }) {
-  const ok = useCanSeePrice(); const { can } = useAuth(); const [add, setAdd] = useState(false);
+  const ok = useCanSeePrice(); const { can } = useAuth(); const [add, setAdd] = useState(false); const [bill, setBill] = useState(false);
   const canAdd = can('jobs.edit') && can('dispatch.run') && ['Confirmed', 'Dispatch Checklist Pending', 'Dispatched', 'On Site', 'In Progress'].includes(job.status);
   const { q, approved, waiting, fc, qt, waitingTotal, rates, hidden } = usePriceView(job);
   if (!ok || step === 3) return null;
@@ -63,7 +64,9 @@ export function ServicePriceCard({ job, step = -1 }: { job: Job; step?: number }
       {approved.map((v) => <div key={v.id} style={{ marginTop: 12 }}><div className="row between"><b>Additional work {v.number}</b><Badge tone="green">Approved by client</Badge></div>{v.reason && <div className="small muted">{v.reason}</div>}<Lines items={v.items} rates={rates} />{!rates && <div className="row between small" style={{ marginTop: 4 }}><span className="muted">Total incl. VAT</span><b>{money(variationTotals(v).total)}</b></div>}</div>)}
       {waiting.map((v) => <div key={v.id} className="alert warn" style={{ marginTop: 12 }}><div className="row between"><b>Additional work {v.number}</b><Badge tone="amber">Waiting for the client's OK</Badge></div>{v.reason && <div className="small">{v.reason}</div>}<Lines items={v.items} rates={rates} />{!rates && <div className="row between small" style={{ marginTop: 4 }}><span>Total incl. VAT</span><b>{money(variationTotals(v).total)}</b></div>}<div className="small muted">The Team Leader gets the client's signature on site, in the Scope Approval step.</div></div>)}
       {canAdd && <div style={{ marginTop: 10 }}><button className="btn sm navy" onClick={() => setAdd(true)}>+ Add extra work to this booking</button><span className="small muted"> — shows here for the Team Leader; the client approves it on site</span></div>}
+      {can('jobs.edit') && !['Cancelled', 'Declined'].includes(job.status) && <div style={{ marginTop: 10 }}><button className="btn sm primary" onClick={() => setBill(true)}>➕ Add to total bill</button><span className="small muted"> — e.g. 92 additional panels the client already agreed to</span></div>}
       {add && <VariationModal job={job} onClose={() => setAdd(false)} />}
+      {bill && <AddToBillModal job={job} onClose={() => setBill(false)} />}
       {!rates && !hidden && <div className="alert info" style={{ marginTop: 12, marginBottom: 0 }}>
         <div className="row between"><span>Agreed contract value</span><b>{money(fc.payableTotal)}</b></div>
         {waiting.length > 0 && <div className="row between"><span>If the client also approves the additional work</span><b>{money(fc.payableTotal + waitingTotal)}</b></div>}
