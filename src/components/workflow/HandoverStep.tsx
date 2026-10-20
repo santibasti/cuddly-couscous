@@ -16,6 +16,14 @@ const SAT_REQ = (s: Partial<SatisfactionInput>) => SAT_QUESTIONS.every((q) => !!
 import { serviceReportPdf } from '@/lib/export';
 import type { Job, JobWorkflow } from '@/lib/types';
 
+const Sec = ({ n, title, hint, children }: { n: number; title: string; hint?: string; children: React.ReactNode }) => (
+  <section className="stack" style={{ gap: 8 }}>
+    <div className="row" style={{ gap: 8, alignItems: 'baseline' }}><span className="badge teal" style={{ minWidth: 22, textAlign: 'center' }}>{n}</span><b>{title}</b>{hint && <span className="small muted">{hint}</span>}</div>
+    {children}
+  </section>
+);
+const FEW = 4;   // chips shown before "More"
+
 /** Client Handover: the Service Accomplishment Report, pre-filled from the job, scope, variations, crew and equipment. */
 export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: boolean }) {
   const { db, user } = useAuth();
@@ -30,7 +38,10 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
   const [f, setF] = useState({ scope: autoScope, findings: '', recs: '', limits: '', complimentary: '', client_name: wf.conf_name ?? site?.contact_person ?? '', tm_name: emp(job.leader_id) !== '—' ? emp(job.leader_id) : user?.name ?? '' });
   const [sat, setSat] = useState<Partial<SatisfactionInput>>({});
   const [stage, setStage] = useState<null | 'rate' | 'tl' | 'sign'>(null);
-  const [csig, setCsig] = useState<string>(); const [tsig, setTsig] = useState<string>(); const [ok, setOk] = useState(false);
+  const [csig, setCsig] = useState<string>(); const [tsig, setTsig] = useState<string>(); const [ok, setOk] = useState(false); const [more, setMore] = useState<Record<string, boolean>>({});
+  const chips = (key: string, opts: readonly string[]) => [...(more[key] ? opts : opts.slice(0, FEW))];
+  const moreBtn = (key: string, opts: readonly string[]) => opts.length > FEW && <button type="button" className="btn sm" onClick={() => setMore({ ...more, [key]: !more[key] })}>{more[key] ? 'Fewer options' : `More options (${opts.length - FEW})`}</button>;
+  const allGood = () => setF({ ...f, findings: 'Work completed without issues', recs: 'None', limits: 'None' });
   const dr = useDraft(`d:${wf.id}:rep`, { f, csig, tsig, sat }, (d) => { setF(d.f); setCsig(d.csig); setTsig(d.tsig); setSat(d.sat ?? {}); }, run && !signed);
   if (signed) {
     return (
@@ -50,32 +61,38 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
   return (
     <div className="stack">
       {run && <DraftBar d={dr} />}
-      <ul className="list" style={{ border: '1px solid var(--line-2)', borderRadius: 6 }}>{ready.map((r) => <li key={r.t}><span>{r.ok ? '✅' : '⬜'} {r.t}</span><Badge tone={r.ok ? 'green' : 'amber'}>{r.ok ? 'Ready' : 'Needed'}</Badge></li>)}</ul>
-      <div className="card" style={{ padding: 12 }}>
-        <div className="small muted" style={{ marginBottom: 6 }}>Filled in from the job — nothing to retype</div>
-        <dl className="kv"><dt>Client / site</dt><dd>{db.clients.find((c) => c.id === job.client_id)?.name} · {site?.name}</dd><dt>Job ref</dt><dd>{job.number}</dd>
-          <dt>Work period</dt><dd>{fmtDateTime(wf.start_at)} → {fmtDateTime(wf.finish_at)}</dd><dt>Crew</dt><dd>{[job.leader_id, ...job.crew_ids].filter(Boolean).map((e) => emp(e)).join(', ')}</dd>
-          <dt>Equipment used</dt><dd>{equip.join(', ') || '—'}</dd>{wf.work_notes && <><dt>Work notes</dt><dd>{wf.work_notes}</dd></>}</dl>
-      </div>
-      <PaymentMethodConfirm wf={wf} job={job} run={run} />
-      <div className="card" style={{ padding: 12 }}><div className="small muted" style={{ marginBottom: 6 }}>Final bill the client is signing for</div><FinalSummary sm={sm} /></div>
-      {block && <div className="alert warn">{block}</div>}
-      <Field label="Work completed" required><textarea disabled={!run} value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })} /></Field>
-      <Field label="Findings" required><textarea disabled={!run} value={f.findings} onChange={(e) => setF({ ...f, findings: e.target.value })} placeholder="Tap a finding below, type, or enter “None”" /><PresetChips replace options={PRESETS.findings} value={f.findings} onChange={(v) => setF({ ...f, findings: v })} disabled={!run} /></Field>
-      <div className="form-grid">
-        <Field label="Recommendations" required><textarea disabled={!run} value={f.recs} onChange={(e) => setF({ ...f, recs: e.target.value })} /><PresetChips options={[...PRESETS.recs, 'None']} value={f.recs} onChange={(v) => setF({ ...f, recs: v })} disabled={!run} /></Field>
-        <Field label="Limitations / exclusions" required><textarea disabled={!run} value={f.limits} onChange={(e) => setF({ ...f, limits: e.target.value })} /><PresetChips options={[...PRESETS.limits, 'None']} value={f.limits} onChange={(v) => setF({ ...f, limits: v })} disabled={!run} /></Field>
-        <Field label="Client name" required><input disabled={!run} value={f.client_name} onChange={(e) => setF({ ...f, client_name: e.target.value })} /></Field>
-        <Field label="TopMop team leader" required><input disabled={!run} value={f.tm_name} onChange={(e) => setF({ ...f, tm_name: e.target.value })} /></Field>
-      </div>
-      <details><summary className="small" style={{ cursor: 'pointer' }}>Optional: complimentary services</summary>
-        <div className="form-grid" style={{ marginTop: 8 }}>
-          <Field label="Complimentary services"><input disabled={!run} value={f.complimentary} onChange={(e) => setF({ ...f, complimentary: e.target.value })} /></Field>
-        </div></details>
+      {!wf.finish_at && <div className="alert warn">Finish the work first (step 5).</div>}
+      <Sec n={1} title="Check the job and the bill">
+        <details className="card" style={{ padding: 12 }}><summary style={{ cursor: 'pointer' }}><b>{db.clients.find((c) => c.id === job.client_id)?.name}</b> · {site?.name} · {job.number} <span className="small muted">— filled in from the job, tap to see</span></summary>
+          <dl className="kv" style={{ marginTop: 8 }}><dt>Work period</dt><dd>{fmtDateTime(wf.start_at)} → {fmtDateTime(wf.finish_at)}</dd><dt>Crew</dt><dd>{[job.leader_id, ...job.crew_ids].filter(Boolean).map((e) => emp(e)).join(', ')}</dd>
+            <dt>Equipment used</dt><dd>{equip.join(', ') || '—'}</dd>{wf.work_notes && <><dt>Work notes</dt><dd>{wf.work_notes}</dd></>}</dl>
+        </details>
+        <div className="card" style={{ padding: 12 }}><div className="small muted" style={{ marginBottom: 6 }}>Final bill the client is signing for</div><FinalSummary sm={sm} /></div>
+        {block && <div className="alert warn">{block}</div>}
+        <PaymentMethodConfirm wf={wf} job={job} run={run} />
+      </Sec>
+      <Sec n={2} title="Write the report" hint="Work completed is filled in for you">
+        <details className="card" style={{ padding: 12 }}><summary style={{ cursor: 'pointer' }}><span className="small muted">Work completed</span><div style={{ whiteSpace: 'pre-wrap' }}>{f.scope}</div></summary>
+          <Field label="Edit work completed" required><textarea rows={3} disabled={!run} value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })} /></Field></details>
+        {run && <button type="button" className="btn" onClick={allGood}>✨ All good — use the standard wording</button>}
+        <Field label="Findings" required><textarea rows={2} disabled={!run} value={f.findings} onChange={(e) => setF({ ...f, findings: e.target.value })} placeholder="Tap a finding below, type, or enter “None”" /><PresetChips replace options={chips('f', PRESETS.findings)} value={f.findings} onChange={(v) => setF({ ...f, findings: v })} disabled={!run} />{moreBtn('f', PRESETS.findings)}</Field>
+        <Field label="Recommendations" required><textarea rows={2} disabled={!run} value={f.recs} onChange={(e) => setF({ ...f, recs: e.target.value })} /><PresetChips options={chips('r', [...PRESETS.recs, 'None'])} value={f.recs} onChange={(v) => setF({ ...f, recs: v })} disabled={!run} />{moreBtn('r', [...PRESETS.recs, 'None'])}</Field>
+        <Field label="Limitations / exclusions" required><textarea rows={2} disabled={!run} value={f.limits} onChange={(e) => setF({ ...f, limits: e.target.value })} /><PresetChips options={chips('l', [...PRESETS.limits, 'None'])} value={f.limits} onChange={(v) => setF({ ...f, limits: v })} disabled={!run} />{moreBtn('l', [...PRESETS.limits, 'None'])}</Field>
+        <details><summary className="small" style={{ cursor: 'pointer' }}>Optional: complimentary services</summary>
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <Field label="Complimentary services"><input disabled={!run} value={f.complimentary} onChange={(e) => setF({ ...f, complimentary: e.target.value })} /></Field>
+          </div></details>
+      </Sec>
+      <Sec n={3} title="Sign">
+        <div className="form-grid">
+          <Field label="Client name" required><input disabled={!run} value={f.client_name} onChange={(e) => setF({ ...f, client_name: e.target.value })} /></Field>
+          <Field label="TopMop team leader" required><input disabled={!run} value={f.tm_name} onChange={(e) => setF({ ...f, tm_name: e.target.value })} /></Field>
+        </div>
       {run && <div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>TopMop team leader signature</div><SignaturePad value={tsig} onChange={setTsig} /></div>}
       {run && <Confirm checked={ok} onChange={setOk}>The work and findings above were reviewed with the client.</Confirm>}
       {run && <div className="alert info">Next: hand the tablet to the client. They will answer a short rating on its own page, then review the final bill and sign.</div>}
       {run && <button className="btn primary lg" disabled={!ok || !!block || !tsig || !f.scope.trim() || !f.findings.trim() || !f.recs.trim() || !f.limits.trim() || !f.client_name.trim()} onClick={() => setStage('rate')}>Hand tablet to the client →</button>}
+      </Sec>
       {stage && (
         <div className="pcwin clientpage" role="dialog" aria-modal="true" aria-label="Client">
           <div className="pcwin-h"><div style={{ flex: 1 }}><b>TopMop Window Cleaning Solutions Corp.</b><div className="small muted">{job.number} · {site?.name}</div></div><button className="btn" onClick={() => setStage(null)}>← Team Leader</button></div>
