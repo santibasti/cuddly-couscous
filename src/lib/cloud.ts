@@ -5,6 +5,7 @@
 //   3. hands out document numbers from the server so two people never get the same one (`reserveNumbers`).
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { AuditLog, DB, Settings, TableName, UserAccount } from './types';
+import { permsFor } from './rbac';
 
 const URL = import.meta.env?.VITE_SUPABASE_URL as string | undefined;
 const KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -118,12 +119,20 @@ export async function completeSettings(server: Settings): Promise<Settings> {
 let marks: Partial<Record<SyncTable, string>> = {}; let auditAt = ''; let settingsAt = ''; let fullAt = 0;
 const FULL_EVERY = 15 * 60000;   // a full reload this often also picks up removed / hidden rows
 const maxOf = (rows: Record<string, unknown>[], col: string, from = '') => rows.reduce((m, r) => { const v = r[col] as string | undefined; return v && v > m ? v : m; }, from);
+/** Only people with the audit permission can read the activity log; for everyone else the database would scan the whole table to return nothing (and time out), so it is not asked for. */
+let auditAllowed = false;
+async function loadAudit(since?: string): Promise<{ rows: Record<string, unknown>[]; failed: boolean }> {
+  if (!auditAllowed) return { rows: [], failed: false };
+  let q = supabase().from('audit_logs').select('*').order('at', { ascending: false }).limit(500);
+  if (since) q = q.gt('at', since);
+  const { data, error } = await q;
+  return error ? { rows: [], failed: true } : { rows: (data ?? []) as Record<string, unknown>[], failed: false };   // the log is not needed to work: never block sign-in on it
+}
 export async function fetchAll(): Promise<DB> {
-  const [raw, profiles, settings, audit] = await Promise.all([
+  const [raw, profiles, settings] = await Promise.all([
     Promise.all(SYNC_TABLES.map(async (t) => [t, await readAll(t)] as const)),
     readAll('profiles'),
     supabase().from('settings').select('data, updated_at').eq('id', 'main').maybeSingle(),
-    supabase().from('audit_logs').select('*').order('at', { ascending: false }).limit(500),
   ]);
   const db = emptyDB() as unknown as Record<string, unknown>;
   const nm: typeof marks = {};
@@ -131,12 +140,16 @@ export async function fetchAll(): Promise<DB> {
   db.employees = await addRoster(db.employees as Record<string, unknown>[]);
   marks = nm; fullAt = Date.now();
   if (settings.error) throw new CloudError(`Could not load the company settings: ${settings.error.message}`, settings.error.code);   // never open the app half-loaded (a slow server must not leave it without settings)
-  if (audit.error) throw new CloudError(`Could not load the activity log: ${audit.error.message}`, audit.error.code);
   db.users = profiles.map(toUser);
-  db.audit = (audit.data ?? []).map(toAudit);
-  auditAt = maxOf((audit.data ?? []) as Record<string, unknown>[], 'at');
   settingsAt = (settings.data?.updated_at as string | undefined) ?? '';
   if (settings.data?.data) db.settings = await completeSettings(settings.data.data as Settings);
+  // may this person read the activity log?
+  const uid = await currentUserId().catch(() => null);
+  const role = (profiles.find((p) => p.id === uid)?.role as string | undefined) ?? null;
+  auditAllowed = !!role && permsFor(role as never, (db.settings as Settings).access).has('admin.audit');
+  const au = await loadAudit();
+  db.audit = au.rows.map(toAudit);
+  auditAt = maxOf(au.rows, 'at');
   return db as unknown as DB;
 }
 /** Only what changed since the last load, merged into `cur`; a full load when there is no baseline yet or it is a while old. */
@@ -163,11 +176,11 @@ export async function fetchLatest(cur: DB): Promise<DB> {
   const [prof, st, au] = await Promise.all([
     readAll('profiles'),
     supabase().from('settings').select('data, updated_at').eq('id', 'main').gt('updated_at', settingsAt || '1970-01-01T00:00:00Z').maybeSingle(),
-    supabase().from('audit_logs').select('*').gt('at', auditAt || '1970-01-01T00:00:00Z').order('at', { ascending: false }).limit(500),
+    loadAudit(auditAt || '1970-01-01T00:00:00Z'),
   ]);
   db.users = prof.map(toUser);
   if (st.data?.data) { db.settings = await completeSettings(st.data.data as Settings); settingsAt = (st.data.updated_at as string) ?? settingsAt; }
-  if (au.data?.length) { auditAt = maxOf(au.data as Record<string, unknown>[], 'at', auditAt); db.audit = [...au.data.map(toAudit), ...cur.audit].slice(0, 500); }
+  if (au.rows.length) { auditAt = maxOf(au.rows, 'at', auditAt); db.audit = [...au.rows.map(toAudit), ...cur.audit].slice(0, 500); }
   return db as unknown as DB;
 }
 export async function fetchProfile(uid: string): Promise<UserAccount | null> {
