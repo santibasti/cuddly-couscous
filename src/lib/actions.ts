@@ -67,7 +67,9 @@ export function clockOut(employeeId: string, geo: Geo) {
   if (!rec) fail('No open clock-in found for today.');
   const at = nowLocal();
   const t = computeTimes(emp, rec!.clock_in, at, d.settings.grace_minutes);
-  return store.update('attendance', rec!.id, { clock_out: at, out_lat: geo.lat, out_lng: geo.lng, ...t }, 'update', `${emp.full_name} clocked out ${at.slice(11)}`);
+  // a clean day approves itself when Admin turned that on (on the live site the database does this; here it keeps the demo the same)
+  const clean = !!d.settings.auto_approve_attendance && rec!.kind === 'Present' && t.late_min === 0 && t.undertime_min === 0 && t.ot_min === 0;
+  return store.update('attendance', rec!.id, { clock_out: at, out_lat: geo.lat, out_lng: geo.lng, ...t, ...(clean && !CLOUD ? { approval: 'Approved' as const, approved_by: 'auto', approved_at: isoNow() } : {}) }, 'update', `${emp.full_name} clocked out ${at.slice(11)}${clean ? ' — clean day, approved automatically' : ''}`);
 }
 export function decideAttendance(id: string, approve: boolean, note?: string) {
   store.require('attendance.approve');

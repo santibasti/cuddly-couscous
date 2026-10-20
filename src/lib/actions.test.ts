@@ -183,6 +183,24 @@ describe('business rules enforced by the store', () => {
     expect(() => m.A.undoClockIn(rec().id)).toThrow(/Only the Owner/);
   });
 
+  it('a clean clock-out is approved automatically only when Admin turned that on', async () => {
+    await as('owner@topmop.ph');
+    const { today, nowLocal } = await import('./util');
+    const now = nowLocal(); const hh = +now.slice(11, 13); const mm = +now.slice(14, 16);
+    if (hh * 60 + mm < 40) return;   // too close to midnight to build a "clean" shift in this test
+    const end = hh * 60 + mm - 5; const hm = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
+    const emp = db().employees.find((e) => e.status !== 'inactive' && !e.deleted_at && e.department === 'Field Operations')!;
+    m.store.update('employees', emp.id, { shift_start: '00:00', shift_end: hm } as never);
+    for (const on of [false, true]) {
+      for (const a of db().attendance.filter((x) => x.employee_id === emp.id && x.date === today() && !x.deleted_at)) m.store.remove('attendance', a.id, { cascade: true });
+      m.store.patchSettings({ auto_approve_attendance: on });
+      m.store.insert('attendance', { employee_id: emp.id, date: today(), kind: 'Present', clock_in: `${today()}T00:00`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending' } as never);
+      m.A.clockOut(emp.id, {});
+      expect(db().attendance.find((x) => x.employee_id === emp.id && x.date === today() && !x.deleted_at)!.approval).toBe(on ? 'Approved' : 'Pending');
+    }
+    m.store.patchSettings({ auto_approve_attendance: false });
+  });
+
   it('writes an audit entry for every mutation with before/after', async () => {
     await as('owner@topmop.ph');
     const n = db().audit.length;

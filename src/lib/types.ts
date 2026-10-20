@@ -935,6 +935,8 @@ export interface Settings {
   /** Facebook Page AI assistant: off, suggest (staff approve each reply) or auto (replies right away); `notes` = extra facts and FAQs for the AI */
   /** pay a full day for any day worked, whatever the hours (no hourly proration, overtime or late / undertime deductions). Default on. */
   pay_by_day?: boolean;
+  /** approve an attendance record automatically when the person clocks out and the day is clean (not late, no undertime, no overtime) */
+  auto_approve_attendance?: boolean;
   fb_ai?: { mode: 'off' | 'suggest' | 'auto'; notes: string };
   /** Marketing AI: writes and posts to the Facebook Page. approve = I approve each post, auto = posts go out on schedule. */
   /** BIR compliance tab: how a sale is classified on the SLS when it is not plain VATable, and rows left out of the lists (by record id) */
