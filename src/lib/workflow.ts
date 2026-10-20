@@ -291,6 +291,17 @@ export function saveFinalReview(id: string, f: FinalReviewInput) {
   store.update('workflows', id, { conf_deposit: deposit || undefined, conf_deposit_note: f.deposit_note?.trim() || undefined } as never, 'update', `${job.number}: variation approval prepared${deposit ? ` (deposit ${deposit})` : ''}`);
 }
 
+/** One tap from the panel counter: the panels counted beyond the starter package go onto the final quote / bill as additional glass work (the client approves it in the final quote step). */
+export function addCountedPanelsToBill(id: string) {
+  const wf = getWf(id); const job = jobOf(wf);
+  const cur = reviewDraft(job.id);
+  if (cur?.items.some((i) => i.linked_panels)) return { already: true };
+  const def = categoryDefaults(db().services, 'glass');
+  const line: QuoteItem = { service_code: 'GLASS_EXT', category: 'glass', description: '', qty: 0, entered_qty: 0, unit: 'panel', rate: def.rate, discount: 0, linked_panels: true };
+  saveFinalReview(id, { items: [...(cur?.items ?? []), line], deposit: wf.conf_deposit, deposit_note: wf.conf_deposit_note });
+  return { already: false };
+}
+
 /** The client asks for changes: the review stays open and cannot be signed until the Team Leader re-presents it. */
 export function requestFinalQuoteRevision(id: string, note: string) {
   const wf = getWf(id); const job = jobOf(wf);

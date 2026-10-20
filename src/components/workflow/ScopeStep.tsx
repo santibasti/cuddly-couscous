@@ -8,7 +8,7 @@ import { QuoteImageGallery } from '@/components/QuoteImages';
 import { DeclineJobModal, DiscountSection } from './DiscountPanel';
 import { DraftBar, Stepper } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
-import { PANEL_AREAS, PANEL_SIDES, confirmScopeNoChanges, savePanels, setQuoteLineMeasured, setScopeChanged } from '@/lib/workflow';
+import { PANEL_AREAS, PANEL_SIDES, addCountedPanelsToBill, confirmScopeNoChanges, savePanels, setQuoteLineMeasured, setScopeChanged } from '@/lib/workflow';
 import { quoteShowsAmounts } from '@/lib/quote-text';
 import { countPanels, docTotals, scopeRoute, panelTotals, quotedPanels, rowPanels } from '@/lib/business';
 import { fmtDateTime, money, uid } from '@/lib/util';
@@ -38,6 +38,7 @@ export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolea
   const [open, setOpen] = useState(false);
   const canEdit = editable; editable = false; // the table below is the summary; counting happens in the counter window
   const finish = () => { if (!dirty || attempt(() => savePanels(wf.id, rows, pkg), 'Panel count saved')) { dr.markSaved(); setOpen(false); } };
+  const addToBill = () => { if (!attempt(() => { if (dirty) savePanels(wf.id, rows, pkg); return addCountedPanelsToBill(wf.id); }, `${extra} additional panels added to the bill — the client approves them in the final quote step`)) return; dr.markSaved(); setOpen(false); };
   const numIn = (r: PanelRow, k: 'external' | 'internal') => <Stepper label={`${k} panels ${r.area} ${r.side}`} value={r[k]} onChange={(v) => set(r.id, { [k]: v ?? 0 })} />;
   return (
     <div className="stack" style={{ gap: 8 }}>
@@ -108,6 +109,7 @@ export function PanelTable({ wf, editable }: { wf: JobWorkflow; editable: boolea
           </div>
           <div className="pcwin-f">
             <div className="pcwin-sum"><span>External <b>{t.external}</b></span><span>Internal <b>{t.internal}</b></span><span>Total <b className="big">{t.total}</b></span><span className="small muted">{extra > 0 ? `${extra} additional beyond the package` : auto && t.total < quoted ? `${quoted - t.total} to go in the package` : 'no additional panels'}</span></div>
+            {extra > 0 && !wf.conf_at && <button className="btn lg" onClick={addToBill}>➕ Add {extra} to bill</button>}
             <button className="btn primary lg" onClick={finish}>Finish counting</button>
           </div>
         </div>

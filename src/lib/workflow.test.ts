@@ -374,6 +374,18 @@ describe('panel counting & variations', () => {
     expect(g.qty).toBe(6);
   });
 
+  it('one tap from the panel counter puts the additional panels on the final quote', async () => {
+    await as('owner@topmop.ph');
+    const lead = db().users.find((u) => u.email === 'leader@topmop.ph')!.employee_id!;
+    const { wf, job } = upToCheckIn('PCBILL', lead);
+    W.savePanels(wf.id, [{ id: 'a', area: '1st Floor', side: 'Front', external: 123, internal: 0 }], 31);
+    expect(W.addCountedPanelsToBill(wf.id).already).toBe(false);
+    const v = db().variations.find((x) => x.job_id === job.id && x.source === 'final_review')!;
+    expect(v.status).toBe('Draft'); expect(v.items[0]).toMatchObject({ category: 'glass', qty: 92, linked_panels: true });
+    expect(W.addCountedPanelsToBill(wf.id).already).toBe(true);
+    expect(db().variations.filter((x) => x.job_id === job.id && x.source === 'final_review')).toHaveLength(1);
+  });
+
   it('only an Operations Manager / Admin may change a default rate or give a discount', async () => {
     await as('owner@topmop.ph');
     const lead = db().users.find((u) => u.email === 'leader@topmop.ph')!.employee_id!;
