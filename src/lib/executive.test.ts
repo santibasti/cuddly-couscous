@@ -28,3 +28,21 @@ describe('executive analysis', () => {
     expect(f.method).toMatch(/Run-rate/);
   });
 });
+
+import { buildTeamMeeting, teamAiSummary, teamMeetingText } from './teammeeting';
+describe('team meeting report', () => {
+  const db2 = seedDB(); const T2 = today();
+  it('builds the crew report and keeps money out of it', () => {
+    for (const k of ['month', 'last30', 'lastmonth'] as const) {
+      const t = buildTeamMeeting(db2, T2, k);
+      expect(t.goals).toHaveLength(4);
+      const text = teamMeetingText(t, 'TopMop') + JSON.stringify(teamAiSummary(t));
+      expect(text).not.toMatch(/₱|revenue|margin|receivable|salary|payroll|daily_rate/i);
+    }
+  });
+  it('sends the AI no names or client comments', () => {
+    const t = buildTeamMeeting(db2, T2, 'last30'); const s = JSON.stringify(teamAiSummary(t));
+    for (const e of db2.employees.slice(0, 20)) expect(s).not.toContain(e.full_name.split(' ')[0] + '"');
+    for (const p of t.praise) expect(s).not.toContain(p);
+  });
+});

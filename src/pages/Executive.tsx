@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Area, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAuth } from '@/lib/store';
-import { Badge, Card, PageHead, attempt, toast } from '@/components/ui';
+import { Badge, Card, PageHead, Tabs, attempt, toast } from '@/components/ui';
 import { aiSummary, buildExecutive, type ExecData, type Severity } from '@/lib/executive';
-import { deleteReport, generateAnalysis, generateResearch, listReports, saveReport, type Analysis, type Research, type SavedReport } from '@/lib/executive-reports';
+import { buildTeamMeeting, teamAiSummary, teamMeetingText, type MeetingPeriod, type TeamMeeting } from '@/lib/teammeeting';
+import { deleteReport, generateAnalysis, generateResearch, generateTeamTalk, listReports, saveReport, type Analysis, type Research, type SavedReport, type TeamTalk } from '@/lib/executive-reports';
 import { CLOUD } from '@/lib/cloud';
 import { fmtDate, fmtDateTime, money, today } from '@/lib/util';
 
@@ -20,6 +21,7 @@ export default function Executive() {
   const { db } = useAuth();
   const T = today();
   const d = useMemo(() => buildExecutive(db, T), [db, T]);
+  const [tab, setTab] = useState<'review' | 'team'>('review');
   const [research, setResearch] = useState(true);
   const [busy, setBusy] = useState<'' | 'analysis' | 'research'>('');
   const [part, setPart] = useState<{ analysis: Analysis | null; research: Research | null; err?: string; rerr?: string; model?: string } | null>(null);
@@ -48,10 +50,16 @@ export default function Executive() {
   return (
     <>
       <PageHead icon="🧭" title="Executive" sub="Forecast, where operations are limiting growth, and an AI business review. Every figure is calculated from your own records; the AI explains them and suggests decisions.">
+        {tab === 'review' && <>
         <label className="check small" title="Looks up current market information with sources, in a separate section"><input type="checkbox" checked={research} onChange={(e) => setResearch(e.target.checked)} />Include outside research</label>
         <button className="btn primary" disabled={!!busy} onClick={() => void generate()}>{busy ? 'Writing the report…' : '✨ Generate AI report'}</button>
+        </>}
       </PageHead>
 
+      <Tabs tabs={[{ id: 'review' as const, label: 'Management review' }, { id: 'team' as const, label: 'Team meeting report' }]} value={tab} onChange={setTab} />
+      {tab === 'team' && <TeamMeetingPanel />}
+      {tab === 'review' && (
+        <>
       <Verdict d={d} />
       <KpiRow d={d} />
       <ForecastCard d={d} />
@@ -70,6 +78,8 @@ export default function Executive() {
         {shown && <div style={{ marginTop: 12 }}><button className="btn sm" onClick={() => { if (confirm('Delete this saved report?')) attempt(async () => { await deleteReport(shown.id); setSaved((s) => s.filter((x) => x.id !== shown.id)); setOpenId(''); }, 'Report deleted'); }}>Delete this report</button></div>}
       </Card>
       <div className="small muted" style={{ marginTop: 10 }}>The AI does not give legal, tax or safety rulings, and its research can be wrong or out of date — check the sources before acting on anything important.</div>
+        </>
+      )}
     </>
   );
 }
@@ -163,7 +173,7 @@ function ServicesCard({ d }: { d: ExecData }) {
   );
 }
 
-const List = ({ items }: { items?: string[] }) => (items?.length ? <ul className="list plain" style={{ margin: '4px 0 0 18px' }}>{items.map((x, i) => <li key={i} style={{ marginBottom: 3 }}>{x}</li>)}</ul> : null);
+const List = ({ items }: { items?: string[] }) => (items?.length ? <ul style={{ margin: '4px 0 0', paddingLeft: 20, listStyle: 'disc' }}>{items.map((x, i) => <li key={i} style={{ marginBottom: 3 }}>{x}</li>)}</ul> : null);
 const H = ({ children }: { children: React.ReactNode }) => <h3 style={{ margin: '16px 0 4px', fontSize: 15 }}>{children}</h3>;
 
 function ReportView({ analysis: a, research: r, rerr, wanted }: { analysis: Analysis | null; research: Research | null; rerr?: string; wanted: boolean }) {
@@ -174,7 +184,7 @@ function ReportView({ analysis: a, research: r, rerr, wanted }: { analysis: Anal
         <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>{h && <Badge tone={h[1] as never}>{h[0]}</Badge>}<b style={{ fontSize: 17 }}>{a.headline}</b></div>
         {a.summary && <p style={{ marginTop: 8 }}>{a.summary}</p>}
         {!!a.working?.length && <><H>What is working</H><List items={a.working} /></>}
-        {!!a.risks?.length && <><H>Risks</H><ul className="list plain" style={{ margin: '4px 0 0 18px' }}>{a.risks.map((x, i) => <li key={i} style={{ marginBottom: 4 }}><Badge tone={(x.severity === 'high' ? 'red' : x.severity === 'medium' ? 'amber' : 'blue') as never}>{x.severity}</Badge> <b>{x.risk}</b> — {x.why}</li>)}</ul></>}
+        {!!a.risks?.length && <><H>Risks</H><ul style={{ margin: '4px 0 0', paddingLeft: 20, listStyle: 'disc' }}>{a.risks.map((x, i) => <li key={i} style={{ marginBottom: 4 }}><Badge tone={(x.severity === 'high' ? 'red' : x.severity === 'medium' ? 'amber' : 'blue') as never}>{x.severity}</Badge> <b>{x.risk}</b> — {x.why}</li>)}</ul></>}
         {a.constraints && <><H>Are operations the constraint?</H><p style={{ margin: '4px 0' }}>{a.constraints.explanation}</p><List items={a.constraints.evidence} />{!!a.constraints.what_to_do?.length && <><div className="small muted" style={{ marginTop: 6 }}>What to do</div><List items={a.constraints.what_to_do} /></>}</>}
         {a.forecast && <><H>Forecast: what it means</H><p style={{ margin: '4px 0' }}>{a.forecast.outlook}</p>{!!a.forecast.assumptions?.length && <><div className="small muted">Assumptions</div><List items={a.forecast.assumptions} /></>}{!!a.forecast.could_change_it?.length && <><div className="small muted" style={{ marginTop: 6 }}>What could change it</div><List items={a.forecast.could_change_it} /></>}</>}
         {!!a.decisions?.length && <><H>Decisions to consider (best first)</H>
@@ -197,6 +207,74 @@ function ReportView({ analysis: a, research: r, rerr, wanted }: { analysis: Anal
         {r?.findings?.map((x, i) => <div key={i} className="card" style={{ padding: 12, marginBottom: 8 }}><b>{x.topic}</b><div className="small" style={{ marginTop: 4 }}>{x.finding}</div><div className="small muted" style={{ marginTop: 4 }}>Why it matters: {x.why_it_matters}</div>{x.source_url && <div className="small" style={{ marginTop: 4 }}>Source: <a href={x.source_url} target="_blank" rel="noreferrer">{x.source_title || x.source_url}</a></div>}</div>)}
         {!!r?.ideas?.length && <><div className="small muted" style={{ marginTop: 8 }}>Ideas to test</div>{r.ideas.map((x, i) => <div key={i} style={{ marginTop: 6 }}><b>{x.idea}</b><div className="small muted">Test cheaply: {x.how_to_test_cheaply}{x.source_url && <> · <a href={x.source_url} target="_blank" rel="noreferrer">source</a></>}</div></div>)}</>}
       </>}
+    </div>
+  );
+}
+
+/* ---------- Team meeting report: for the crew and staff, no money figures ---------- */
+const PERIODS: [MeetingPeriod, string][] = [['month', 'This month so far'], ['last30', 'Last 30 days'], ['lastmonth', 'Last month']];
+function TeamMeetingPanel() {
+  const { db } = useAuth(); const T = today();
+  const [period, setPeriod] = useState<MeetingPeriod>('month');
+  const [language, setLanguage] = useState<'english' | 'taglish'>('taglish');
+  const t = useMemo(() => buildTeamMeeting(db, T, period), [db, T, period]);
+  const [talk, setTalk] = useState<TeamTalk | null>(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  useEffect(() => { setTalk(null); setErr(''); }, [period]);
+  const write = async () => {
+    setBusy(true); setErr('');
+    try { setTalk((await generateTeamTalk(teamAiSummary(t), language)).result); } catch (e) { setErr(e instanceof Error ? e.message : 'The AI could not write the talking points.'); } finally { setBusy(false); }
+  };
+  const copy = async () => { try { await navigator.clipboard.writeText(teamMeetingText(t, db.settings.company.name)); toast('Copied — paste it into Viber or Messenger', 'ok'); } catch { toast('Could not copy on this device', 'err'); } };
+  return (
+    <>
+      <div className="row no-print" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+        <div className="chips" role="group" aria-label="Period" style={{ margin: 0 }}>{PERIODS.map(([k2, l]) => <button key={k2} type="button" className={period === k2 ? 'on' : ''} onClick={() => setPeriod(k2)}>{l}</button>)}</div>
+        <select style={{ width: 'auto' }} value={language} onChange={(e) => setLanguage(e.target.value as 'english' | 'taglish')} aria-label="Language of the talking points"><option value="taglish">Talking points: Taglish</option><option value="english">Talking points: English</option></select>
+        <button className="btn" disabled={busy} onClick={() => void write()}>{busy ? 'Writing…' : '✨ Write talking points with AI'}</button>
+        <button className="btn" onClick={() => void copy()}>Copy for Viber</button>
+        <button className="btn primary" onClick={() => window.print()}>Print / save as PDF</button>
+      </div>
+      <div className="alert info no-print" style={{ marginBottom: 12 }}>This report is made for the crew: it shows service quality, punctuality, safety, recognition and the work ahead — <b>no money figures or pay</b>. The AI talking points use counts and scores only (no names, no client comments).</div>
+      {err && <div className="alert err no-print">{err}</div>}
+      <TeamSheet t={t} talk={talk} company={db.settings.company.name} />
+    </>
+  );
+}
+
+function TeamSheet({ t, talk, company }: { t: TeamMeeting; talk: TeamTalk | null; company: string }) {
+  const Big = ({ v, l }: { v: string; l: string }) => <div className="stat"><div className="v">{v}</div><div className="k">{l}</div></div>;
+  return (
+    <div className="tm-sheet card" style={{ padding: 18, maxWidth: 900 }}>
+      <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}><div><h2 style={{ margin: 0 }}>Team meeting</h2><div className="muted">{company} · {t.period.label} · {fmtDate(today())}</div></div></div>
+      {talk?.opening && <p style={{ marginTop: 12, fontSize: 16 }}>{talk.opening}</p>}
+      <div className="grid g4 keep2" style={{ margin: '14px 0' }}>
+        <Big v={String(t.jobsDone)} l="Jobs completed" /><Big v={String(t.clientsServed)} l="Clients served" />
+        <Big v={t.rating === null ? '—' : `${t.rating} / 5`} l={`Client rating (${t.responses})`} /><Big v={t.punctuality.pct === null ? '—' : `${Math.round(t.punctuality.pct * 100)}%`} l="On time" />
+      </div>
+      {!!t.wins.length && <><H>🎉 Good news</H><List items={t.wins} /></>}
+      {(t.recognition.top.length > 0 || t.recognition.perfect.length > 0 || t.recognition.streaks.length > 0) && <><H>🙌 Thank you</H>
+        {talk?.recognition_script && <p style={{ margin: '4px 0' }}>{talk.recognition_script}</p>}
+        <ul style={{ margin: '4px 0 0', paddingLeft: 20, listStyle: 'disc' }}>
+          {t.recognition.top.map((x) => <li key={x.name}>⭐ <b>{x.name}</b> — top rated ({x.rating} / 5)</li>)}
+          {!!t.recognition.perfect.length && <li>🏅 Perfect attendance: <b>{t.recognition.perfect.join(', ')}</b></li>}
+          {t.recognition.streaks.map((x) => <li key={x.name}>🔥 <b>{x.name}</b> — {x.days} days on time in a row</li>)}
+        </ul></>}
+      {!!t.categories.length && <><H>How clients rated us</H>
+        <div style={{ display: 'grid', gap: 6, maxWidth: 560 }}>{t.categories.map((c) => <div key={c.key} className="row between small"><span>{c.icon} {c.text}</span><span className="row" style={{ gap: 8 }}><span className="satbar" style={{ width: 110 }}><i style={{ width: `${(c.avg / 5) * 100}%`, background: c.avg >= 4.5 ? 'var(--green)' : c.avg >= 3.5 ? 'var(--amber)' : 'var(--red)' }} /></span><b>{c.avg}</b></span></div>)}</div></>}
+      {!!t.praise.length && <><H>💬 What clients said</H><ul style={{ margin: '4px 0 0', paddingLeft: 20, listStyle: 'disc' }}>{t.praise.map((x, i) => <li key={i}>“{x}”</li>)}</ul></>}
+      {!!t.focus.length && <><H>💪 Let us improve</H><List items={t.focus} /></>}
+      <H>🦺 Safety</H>
+      <p style={{ margin: '4px 0' }}>{t.safety.incidents} incident{t.safety.incidents === 1 ? '' : 's'} this period{t.safety.open ? `, ${t.safety.open} still open` : ''}{t.safety.daysSinceSerious !== null ? ` · ${t.safety.daysSinceSerious} day${t.safety.daysSinceSerious === 1 ? '' : 's'} since the last medium / high incident` : ''}.</p>
+      {talk?.safety_reminder && <p style={{ margin: '4px 0' }}><b>Reminder:</b> {talk.safety_reminder}</p>}
+      <H>📅 The work ahead</H>
+      <p style={{ margin: '4px 0' }}>{t.ahead.next7} job{t.ahead.next7 === 1 ? '' : 's'} in the next 7 days · {t.ahead.next14} in the next 14 days{t.ahead.peakCrewPct !== null ? ` · busiest day: ${Math.round(t.ahead.peakCrewPct * 100)}% of the crew booked` : ''}.</p>
+      {!!t.ahead.busiest.length && <ul style={{ margin: '4px 0 0', paddingLeft: 20, listStyle: 'disc' }}>{t.ahead.busiest.map((b) => <li key={b.date}>{fmtDate(b.date)} — {b.jobs} job{b.jobs === 1 ? '' : 's'}</li>)}</ul>}
+      <H>🎯 Our goals</H>
+      <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th></th><th>Goal</th><th>Now</th><th>Target</th></tr></thead><tbody>{t.goals.map((g) => <tr key={g.label}><td>{g.met === null ? '·' : g.met ? '✅' : '⬜'}</td><td>{g.label}</td><td><b>{g.now}</b></td><td>{g.target}</td></tr>)}</tbody></table></div>
+      {talk?.agenda && <><H>🗣️ Meeting guide (about {talk.agenda.reduce((a, x) => a + (x.minutes || 0), 0)} minutes)</H>
+        <ol style={{ margin: '4px 0 0 18px' }}>{talk.agenda.map((x, i) => <li key={i} style={{ marginBottom: 8 }}><b>{x.topic}</b> <span className="muted small">({x.minutes} min)</span><List items={x.points} /></li>)}</ol></>}
+      {!!talk?.questions_for_crew?.length && <><H>❓ Ask the crew</H><List items={talk.questions_for_crew} /></>}
+      {talk?.closing && <p style={{ marginTop: 14, fontWeight: 600 }}>{talk.closing}</p>}
     </div>
   );
 }

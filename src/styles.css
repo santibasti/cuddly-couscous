@@ -1172,3 +1172,5 @@ body:not(.dark) .wk-team { background: #fff; border-color: var(--line); } .wk-te
 .sat-all { margin-top: 12px; width: 100%; justify-content: center; }
 .sat-thanks { font-weight: 700; text-align: center; font-size: 16px; animation: satpop .4s; }
 @media (max-width: 640px) { .sat-row { grid-template-columns: 36px 1fr; row-gap: 4px; } .sat-stars { grid-column: 1 / -1; justify-content: space-between; } .sat-star { font-size: 40px; flex: 1; } .sat-word { grid-column: 1 / -1; text-align: center; min-height: 16px; } }
+/* team meeting report: print only the sheet, in black on white */
+@media print { .page-head, .ph-stats, .tabs, .tabbar { display: none !important; } .tm-sheet { background: #fff !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; max-width: none !important; } .tm-sheet, .tm-sheet * { color: #000 !important; } .tm-sheet .stat { border: 1px solid #bbb !important; background: #fff !important; } }

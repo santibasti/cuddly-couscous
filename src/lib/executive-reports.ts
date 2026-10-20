@@ -23,6 +23,9 @@ const needLive = () => { if (!CLOUD) throw new Error('The AI report works on the
 export async function generateAnalysis(summary: unknown) { needLive(); return callFn<{ result: Analysis; model: string }>('ai-executive', { mode: 'analysis', summary }); }
 export async function generateResearch(summary: unknown) { needLive(); return callFn<{ result: Research; model: string }>('ai-executive', { mode: 'research', summary }); }
 
+export interface TeamTalk { opening?: string; agenda?: { minutes: number; topic: string; points: string[] }[]; recognition_script?: string; safety_reminder?: string; questions_for_crew?: string[]; closing?: string }
+export async function generateTeamTalk(summary: unknown, language: 'english' | 'taglish') { needLive(); return callFn<{ result: TeamTalk; model: string }>('ai-executive', { mode: 'team', summary, language }); }
+
 export async function listReports(): Promise<SavedReport[]> {
   if (!CLOUD) return [];
   const { data, error } = await supabase().from('executive_reports').select('*').is('deleted_at', null).order('created_at', { ascending: false }).limit(30);

@@ -46,6 +46,21 @@ Reply with JSON only (no text outside it):
 "caution":"one sentence on how reliable this research is"}
 At most 8 findings and 5 ideas.`;
 
+const TEAM_SYSTEM = `You help the owner of a small Philippine window-cleaning company run a short, friendly meeting with the crew and staff (technicians, team leaders, office staff). ${CONTEXT}
+RULES
+- Use ONLY the figures given. Never invent a number, name or event. No money figures (the crew is not shown revenue, pay or bills) and no blaming of individuals.
+- Write in simple, warm, respectful language a field crew understands. Short sentences. Praise specifically, then name one or two things to improve, then say what the next two weeks need.
+- Safety comes first: include one practical reminder about working at height (harness, anchor points, weather, equipment checks) suited to the numbers given.
+- If the language is "taglish", write naturally in Taglish (mix of Tagalog and English) the way a Filipino supervisor would speak; otherwise plain English.
+Reply with JSON only:
+{"opening":"2-3 sentences to start the meeting",
+"agenda":[{"minutes":5,"topic":"","points":["what to say, in the speaker's voice"]}],
+"recognition_script":"1-3 sentences thanking the crew in general (the names are added separately)",
+"safety_reminder":"",
+"questions_for_crew":["questions that get the crew talking"],
+"closing":"2 sentences"}
+Give 4 to 6 agenda items totalling about 20 minutes, with at most 4 points each.`;
+
 async function call(model: string, system: string, user: string, maxTokens: number, web: boolean) {
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 135_000);
   try {
@@ -65,15 +80,17 @@ Deno.serve(async (req) => {
   const [{ data: ok }, body] = await Promise.all([asUser.rpc('can_view_executive'), req.json().catch(() => ({}))]);
   if (ok !== true) return json({ error: 'Not allowed' }, 403);
   if (!env('ANTHROPIC_API_KEY')) return json({ error: 'The AI key is not set up yet (ANTHROPIC_API_KEY).' }, 503);
-  const { mode, summary } = body as { mode?: string; summary?: unknown };
-  if (mode !== 'analysis' && mode !== 'research') return json({ error: 'Unknown report part.' }, 400);
+  const { mode, summary, language } = body as { mode?: string; summary?: unknown; language?: string };
+  if (mode !== 'analysis' && mode !== 'research' && mode !== 'team') return json({ error: 'Unknown report part.' }, 400);
   const data = JSON.stringify(summary ?? {});
   if (data.length < 20 || data.length > 60_000) return json({ error: 'The business summary is missing or too large.' }, 400);
   try {
-    const model = mode === 'analysis' ? (env('AI_EXECUTIVE_MODEL') || 'claude-opus-5-5') : (env('AI_EXECUTIVE_RESEARCH_MODEL') || 'claude-sonnet-5-5');
+    const model = mode === 'analysis' ? (env('AI_EXECUTIVE_MODEL') || 'claude-opus-5-5') : mode === 'team' ? (env('AI_EXECUTIVE_TEAM_MODEL') || env('AI_EXECUTIVE_RESEARCH_MODEL') || 'claude-sonnet-5-5') : (env('AI_EXECUTIVE_RESEARCH_MODEL') || 'claude-sonnet-5-5');
     const raw = mode === 'analysis'
       ? await call(model, ANALYSIS_SYSTEM, `Company data (calculated by the software, totals and trends only):\n${data}`, 5000, false)
-      : await call(model, RESEARCH_SYSTEM, `What the company's own numbers show (for focus only):\n${data}`, 4000, true);
+      : mode === 'team'
+        ? await call(model, TEAM_SYSTEM, `Language: ${language === 'taglish' ? 'taglish' : 'english'}\nThis period's numbers for the crew meeting (calculated by the software):\n${data}`, 2500, false)
+        : await call(model, RESEARCH_SYSTEM, `What the company's own numbers show (for focus only):\n${data}`, 4000, true);
     const result = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? 'null');
     if (!result || typeof result !== 'object') return json({ error: 'The AI answer could not be read. Try again.' }, 502);
     return json({ result, model });
