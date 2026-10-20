@@ -19,6 +19,7 @@ const event = (o: JobOrder, action: string, note?: string) => [...o.history, { a
 const inPlaceTried = new Set<string>();
 export function syncJobOrders(jobId?: string) {
   if (!store.can('joborders.manage')) return;
+  if (!db().settings.company) return;   // the company settings have not loaded: nothing to build an order from
   // a corrected booking date updates the order in place (it is not a change the client needs a new version for)
   for (const job of db().jobs.filter((j) => !j.deleted_at && (!jobId || j.id === jobId))) {
     const o = headOrder(db(), job.id); const bd = job.booking_date ?? job.created_at.slice(0, 10);

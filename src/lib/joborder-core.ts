@@ -44,7 +44,7 @@ export function buildContent(db: DB, job: Job): JobOrderContent {
   const terms = [paymentSentence(approvedQ?.payment_option) ?? `Payment is due within ${s.payment_terms_days} days of the invoice date.`, approvedQ?.terms?.trim()].filter(Boolean).join(' ');
   const vatMode = approvedQ?.vat_mode ?? 'none'; const vatRate = approvedQ?.vat_rate ?? 0;
   return {
-    company: { name: s.company.name, tagline: s.company.tagline, address: s.company.address, phone: s.company.phone, email: s.company.email, tin: s.company.tin },
+    company: { name: s.company?.name ?? '', tagline: s.company?.tagline ?? '', address: s.company?.address ?? '', phone: s.company?.phone ?? '', email: s.company?.email ?? '', tin: s.company?.tin ?? '' },
     client: { name: c?.name ?? '', contact_person: site?.contact_person || c?.contact_person || '', email: c?.email || undefined },
     client_address: (c?.address || c?.billing_address || '').trim() || undefined,
     ...(c?.vip ? { vip: c.vip_note?.trim() || 'VIP client' } : {}),

@@ -116,6 +116,8 @@ export async function fetchAll(): Promise<DB> {
   for (const [t, rows] of raw) { db[t] = rows.map((r) => fromDb(r, RENAME[t])); nm[t] = maxOf(rows, 'updated_at'); }
   db.employees = await addRoster(db.employees as Record<string, unknown>[]);
   marks = nm; fullAt = Date.now();
+  if (settings.error) throw new CloudError(`Could not load the company settings: ${settings.error.message}`, settings.error.code);   // never open the app half-loaded (a slow server must not leave it without settings)
+  if (audit.error) throw new CloudError(`Could not load the activity log: ${audit.error.message}`, audit.error.code);
   db.users = profiles.map(toUser);
   db.audit = (audit.data ?? []).map(toAudit);
   auditAt = maxOf((audit.data ?? []) as Record<string, unknown>[], 'at');
