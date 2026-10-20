@@ -15,8 +15,8 @@ export default function Hero() {
       <motion.div className="absolute inset-0" initial={{ scale: 1.08 }} animate={{ scale: 1 }} transition={{ duration: 14, ease: "linear" }}>
         <Media {...media.hero} priority className="h-full w-full" />
       </motion.div>
-      <div className="absolute inset-0 bg-obsidian/60" aria-hidden />
-      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-obsidian/60" aria-hidden />
+      <div className="absolute inset-0 bg-obsidian/35" aria-hidden />
+      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-obsidian/35" aria-hidden />
       <div className="container-x relative pb-28 pt-40 lg:pb-32">
         <motion.p {...line(0.2)} className="eyebrow mb-6">Heritage · Precision · Perfection</motion.p>
         <h1 className="h-display max-w-5xl text-[clamp(2.4rem,6.6vw,7rem)]">

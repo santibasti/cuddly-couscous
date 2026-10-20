@@ -9,17 +9,19 @@ type Props = {
   sizes?: string;
   /** Shade variant so placeholder grids don't look identical */
   tone?: number;
+  /** CSS object-position for cropping, e.g. "50% 60%" */
+  position?: string;
 };
 
 /**
  * Renders an optimised image when `src` is supplied, otherwise a clearly
  * marked placeholder (never passed off as real work).
  */
-export default function Media({ src, alt, label, className = "", priority, sizes = "100vw", tone = 0 }: Props) {
+export default function Media({ src, alt, label, className = "", priority, sizes = "100vw", tone = 0, position }: Props) {
   if (src) {
     return (
       <div className={`relative overflow-hidden bg-graphite ${className}`}>
-        <Image src={src} alt={alt} fill sizes={sizes} priority={priority} className="object-cover" />
+        <Image src={src} alt={alt} fill sizes={sizes} priority={priority} className="object-cover" style={position ? { objectPosition: position } : undefined} />
       </div>
     );
   }
