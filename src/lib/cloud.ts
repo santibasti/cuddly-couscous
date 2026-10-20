@@ -325,6 +325,11 @@ export async function signIn(email: string, password: string) {
   }
   throw new Error(`The server is slow to respond right now (${last?.message ?? 'timeout'}). Nothing is wrong with your password — wait a minute and tap Sign in again.`);
 }
+/** Owner / Admin: set a new password for another person's login (done by the admin-set-password function, which holds the admin key). */
+export async function adminSetPassword(userId: string, password: string) {
+  const { callFn } = await import('./fnclient');
+  await callFn<{ ok: boolean }>('admin-set-password', { user_id: userId, password });
+}
 /** The signed-in person sets a new password for their own login. */
 export async function changeMyPassword(password: string) {
   const { error } = await supabase().auth.updateUser({ password });

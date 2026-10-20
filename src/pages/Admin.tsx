@@ -16,6 +16,36 @@ const ROLES = Object.keys(ROLE_LABEL) as Role[];
 async function saveLogin(id: string, patch: Parameters<typeof store.saveProfile>[1], ok: string): Promise<boolean> {
   try { await store.saveProfile(id, patch); toast(ok, 'ok'); return true; } catch (e) { toast((e as Error).message || 'Could not save the login.', 'err'); return false; }
 }
+/** Owner / Admin: set a new password for a login. Shows the new password once so it can be passed on to the person. */
+function SetPasswordModal({ user, onClose }: { user: UserAccount; onClose: () => void }) {
+  const [pw, setPw] = useState(''); const [busy, setBusy] = useState(false); const [done, setDone] = useState(false); const [show, setShow] = useState(false);
+  const make = () => { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'; const r = crypto.getRandomValues(new Uint32Array(10)); setPw([...r].map((x) => a[x % a.length]).join('')); setShow(true); };
+  const save = async () => {
+    if (pw.length < 8) return toast('The password must be at least 8 characters.', 'err');
+    setBusy(true);
+    try { await store.setPassword(user.id, pw); setDone(true); toast(`Password set for ${user.name}`, 'ok'); }
+    catch (e) { toast(e instanceof Error ? e.message : 'Could not set the password', 'err'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title={`Set password – ${user.name}`} onClose={onClose} footer={done ? <button className="btn primary" onClick={onClose}>Done</button> : <><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || pw.length < 8} onClick={() => void save()}>{busy ? 'Saving…' : 'Set password'}</button></>}>
+      {done ? (
+        <div className="stack">
+          <div className="alert ok">The new password for <b>{user.name}</b> ({user.email}) is now active.</div>
+          <div className="card" style={{ padding: 12 }}><div className="small muted">Give it to them privately (it will not be shown again):</div><div className="mono" style={{ fontSize: 18, marginTop: 4, userSelect: 'all' }}>{pw}</div>
+            <div style={{ marginTop: 8 }}><button className="btn sm" onClick={() => { void navigator.clipboard?.writeText(pw).then(() => toast('Copied', 'ok'), () => toast('Could not copy', 'err')); }}>Copy</button></div></div>
+          <div className="small muted">They can change it themselves afterwards from the side menu → Change password.</div>
+        </div>
+      ) : (
+        <div className="stack">
+          <div className="small muted">{user.email} · {ROLE_LABEL[user.role]}. They are signed out of other devices only when their session expires.</div>
+          <Field label="New password" hint="At least 8 characters."><div className="row" style={{ gap: 6 }}><input style={{ flex: 1 }} type={show ? 'text' : 'password'} autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} /><button type="button" className="btn sm" onClick={() => setShow(!show)}>{show ? 'Hide' : 'Show'}</button><button type="button" className="btn sm" onClick={make}>Generate</button></div></Field>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function UserModal({ initial, onClose }: { initial?: UserAccount; onClose: () => void }) {
   const { db } = useAuth();
   const f = useObj({ name: initial?.name ?? '', email: initial?.email ?? '', role: (initial?.role ?? 'field') as Role, employee_id: initial?.employee_id ?? '', password: '', active: initial?.active ?? true });
@@ -214,6 +244,7 @@ export default function Admin() {
   const { db, can } = useAuth();
   const [tab, setTab] = useState<'users' | 'perms' | 'pricing' | 'rates' | 'audit' | 'bin' | 'data'>(can('admin.users') ? 'users' : can('admin.settings') ? 'rates' : 'audit');
   const [um, setUm] = useState<UserAccount | 'new' | null>(null);
+  const [pwUser, setPwUser] = useState<UserAccount | null>(null);
   const [detail, setDetail] = useState<AuditLog | null>(null);
   const [tbl, setTbl] = useState(''); const [act, setAct] = useState('');
   const bin: { table: TableName; id: string; label: string; at: string; by?: string | null }[] = [];
@@ -234,7 +265,7 @@ export default function Admin() {
           { key: 'n', header: 'Name', value: (u) => u.name, render: (u) => <b>{u.name}</b> }, { key: 'e', header: 'Email', value: (u) => u.email }, { key: 'r', header: 'Role', value: (u) => ROLE_LABEL[u.role], render: (u) => <Badge tone="blue">{ROLE_LABEL[u.role]}</Badge> },
           { key: 'emp', header: 'Employee', value: (u) => db.employees.find((e) => e.id === u.employee_id)?.full_name ?? '—' }, { key: 'st', header: 'Status', value: (u) => (u.active ? 'Active' : 'Disabled'), render: (u) => <Badge tone={!u.active && !u.employee_id ? 'amber' : undefined}>{u.active ? 'Active' : !u.employee_id && CLOUD ? 'Waiting for Admin' : 'Inactive'}</Badge> },
           { key: 'c', header: 'Created', value: (u) => u.created_at, render: (u) => fmtStamp(u.created_at) },
-          { key: 'actions', header: '', noExport: true, sortable: false, render: (u) => CLOUD ? <span className="row"><button className="btn sm" onClick={() => setUm(u)}>Edit</button><button className="btn sm" onClick={() => void saveLogin(u.id, { active: !u.active }, u.active ? 'Login switched off' : 'Login switched on')}>{u.active ? 'Disable' : 'Enable'}</button></span> : <span className="row"><button className="btn sm" onClick={() => setUm(u)}>Edit</button><button className="btn sm" onClick={() => attempt(() => { store.require('admin.users'); if (u.id === store.user?.id) throw new Error('You cannot disable your own account.'); store.update('users', u.id, { active: !u.active }, 'update', `${u.active ? 'Disabled' : 'Enabled'} user ${u.name}`); })}>{u.active ? 'Disable' : 'Enable'}</button><button className="btn sm" onClick={async () => { const pw = await ask('Reset password', 'New password (min 8 characters)'); if (pw) { if (pw.length < 8) return toast('Password must be at least 8 characters.', 'err'); attempt(async () => store.setPassword(u.id, pw), 'Password reset'); } }}>Reset password</button></span> },
+          { key: 'actions', header: '', noExport: true, sortable: false, render: (u) => CLOUD ? <span className="row"><button className="btn sm" onClick={() => setUm(u)}>Edit</button><button className="btn sm" onClick={() => setPwUser(u)}>Set password</button><button className="btn sm" onClick={() => void saveLogin(u.id, { active: !u.active }, u.active ? 'Login switched off' : 'Login switched on')}>{u.active ? 'Disable' : 'Enable'}</button></span> : <span className="row"><button className="btn sm" onClick={() => setUm(u)}>Edit</button><button className="btn sm" onClick={() => attempt(() => { store.require('admin.users'); if (u.id === store.user?.id) throw new Error('You cannot disable your own account.'); store.update('users', u.id, { active: !u.active }, 'update', `${u.active ? 'Disabled' : 'Enabled'} user ${u.name}`); })}>{u.active ? 'Disable' : 'Enable'}</button><button className="btn sm" onClick={async () => { const pw = await ask('Reset password', 'New password (min 8 characters)'); if (pw) { if (pw.length < 8) return toast('Password must be at least 8 characters.', 'err'); attempt(async () => store.setPassword(u.id, pw), 'Password reset'); } }}>Reset password</button></span> },
         ]} /></Card>
       )}
       {tab === 'perms' && can('admin.users') && <Permissions access={db.settings.access} />}
@@ -270,6 +301,7 @@ export default function Admin() {
         </Modal>
       )}
       {um && <UserModal initial={um === 'new' ? undefined : um} onClose={() => setUm(null)} />}
+      {pwUser && <SetPasswordModal user={pwUser} onClose={() => setPwUser(null)} />}
     </>
   );
 }

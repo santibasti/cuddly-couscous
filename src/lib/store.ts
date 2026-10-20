@@ -6,7 +6,7 @@ import { seedDB } from './seed';
 import { geoHooks, geoPatch } from './geo-ph';
 import { syncHub } from './sync';
 import { kvDel, kvGet, kvSet } from './outbox';
-import { fetchProfiles, updateProfile, CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, completeSettings, fetchAll, fetchLatest, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
+import { fetchProfiles, updateProfile, CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, adminSetPassword, completeSettings, fetchAll, fetchLatest, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
 
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
@@ -288,7 +288,7 @@ class Store {
   }
   async setPassword(userId: string, password: string) {
     this.require('admin.users');
-    if (CLOUD) throw new RuleError('Passwords are managed in Supabase (Authentication → Users).');
+    if (CLOUD) { await adminSetPassword(userId, password); return; }
     const h = await sha256(`topmop:${password}`);
     this.update('users', userId, { pass_hash: h } as never, 'update', 'Password reset');
   }
