@@ -18,11 +18,14 @@ export const site = {
     whatsapp: null as string | null, // digits only, e.g. "639XXXXXXXXX"
     messenger: null as string | null, // e.g. "alexcarrestoration" (m.me/<username>)
     email: null as string | null,
-    address: null as string | null,
-    mapEmbedUrl: null as string | null, // Google Maps "Embed a map" src URL
-    mapLink: null as string | null,
+    address: "66 Fernando Poe Jr. Ave, San Francisco del Monte, Quezon City, Metro Manila, Philippines" as string | null, // from the Google Business listing; confirm
+    mapEmbedUrl: "https://www.google.com/maps?q=66+Fernando+Poe+Jr.+Ave,+San+Francisco+del+Monte,+Quezon+City,+Philippines&output=embed" as string | null, // swap for the official "Embed a map" URL if preferred
+    mapLink: "https://www.google.com/maps/search/?api=1&query=Alex+Car+Restoration+66+Fernando+Poe+Jr.+Ave+Quezon+City" as string | null,
     hours: null as string | null,
   },
+  locality: { city: "Quezon City", region: "Metro Manila" },
+  // Google Business Profile summary. Update when the numbers change.
+  rating: { value: 4.9, count: 7, source: "Google", asOf: "October 2026", url: "https://www.google.com/search?q=alex+car+restoration" },
   // Verified service areas, e.g. ["Metro Manila", "Cavite"]. Empty until confirmed.
   serviceAreas: [] as string[],
   social: {

@@ -28,7 +28,7 @@ const jsonLd = {
   name: site.name,
   url: site.url,
   description: site.description,
-  address: { "@type": "PostalAddress", addressCountry: "PH", ...(c.address ? { streetAddress: c.address } : {}) },
+  address: { "@type": "PostalAddress", addressCountry: "PH", addressLocality: site.locality.city, addressRegion: site.locality.region, ...(c.address ? { streetAddress: c.address.split(", ").slice(0, 2).join(", ") } : {}) },
   ...(c.phone ? { telephone: c.phone } : {}),
   ...(c.email ? { email: c.email } : {}),
   ...(site.serviceAreas.length ? { areaServed: site.serviceAreas } : {}),
