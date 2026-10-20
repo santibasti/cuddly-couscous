@@ -20,7 +20,7 @@ export default function Portfolio({ projects, limit, showHeading = true }: { pro
   const shown = limit ? list.slice(0, limit) : list;
 
   return (
-    <section id="work" className="bg-obsidian py-24 lg:py-40">
+    <section id="work" className="bg-obsidian py-14 sm:py-20 lg:py-40">
       <div className="container-x">
         {showHeading && (
           <>
@@ -30,7 +30,7 @@ export default function Portfolio({ projects, limit, showHeading = true }: { pro
             </Reveal>
           </>
         )}
-        <div role="group" aria-label="Filter projects" className="-mx-5 mt-12 flex gap-2 overflow-x-auto px-5 pb-2 sm:mx-0 sm:flex-wrap sm:px-0">
+        <div role="group" aria-label="Filter projects" className="-mx-5 mt-8 flex gap-2 overflow-x-auto px-5 pb-2 sm:mx-0 sm:flex-wrap sm:px-0">
           {filters.map((f) => (
             <button key={f.id} onClick={() => setActive(f.id)} aria-pressed={active === f.id}
               className={`shrink-0 border px-5 py-3 text-[11px] uppercase tracking-[0.22em] transition-colors ${active === f.id ? "border-warm bg-warm text-obsidian" : "border-silver/30 text-silver hover:border-warm hover:text-warm"}`}>
@@ -38,10 +38,10 @@ export default function Portfolio({ projects, limit, showHeading = true }: { pro
             </button>
           ))}
         </div>
-        <motion.ul layout className="mt-12 grid gap-x-6 gap-y-16 md:grid-cols-2">
+        <motion.ul layout className="-mx-5 mt-8 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-4 md:mx-0 md:mt-12 md:grid md:snap-none md:grid-cols-2 md:gap-x-6 md:gap-y-16 md:overflow-visible md:px-0">
           <AnimatePresence mode="popLayout">
             {shown.map((p, i) => (
-              <motion.li layout key={p.slug} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
+              <motion.li layout key={p.slug} className="w-[82%] shrink-0 snap-center md:w-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
                 <article className="group">
                   <Link href={`/projects/${p.slug}`} className="block" aria-label={`View project: ${p.make} ${p.model}`}>
                     <div className="relative aspect-[4/3] overflow-hidden">
@@ -52,8 +52,8 @@ export default function Portfolio({ projects, limit, showHeading = true }: { pro
                     </div>
                     <p className="eyebrow mt-6">{categoryLabels[p.category]}</p>
                     <h3 className="mt-2 font-display text-2xl font-semibold uppercase tracking-tight sm:text-3xl">{p.make} {p.model}</h3>
-                    <p className="mt-3 max-w-xl text-sm leading-relaxed text-warm/70">{p.summary}</p>
-                    <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.16em] text-silver/80">
+                    <p className="mt-3 line-clamp-2 max-w-xl text-sm leading-relaxed text-warm/70 md:line-clamp-none">{p.summary}</p>
+                    <ul className="mt-4 hidden flex-wrap sm:flex gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.16em] text-silver/80">
                       {p.scope.map((s) => <li key={s}>{s}</li>)}
                     </ul>
                     <span className="mt-6 inline-block border-b border-silver/40 pb-1 text-[11px] uppercase tracking-[0.22em] text-silver group-hover:border-warm group-hover:text-warm">View Project</span>

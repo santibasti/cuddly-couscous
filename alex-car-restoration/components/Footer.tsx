@@ -11,8 +11,8 @@ export default function Footer() {
     { href: site.social.youtube, label: "YouTube", Icon: Youtube },
   ].filter((s) => s.href);
   return (
-    <footer className="border-t border-silver/15 bg-obsidian pb-28 pt-20 lg:pb-12">
-      <div className="container-x grid gap-12 md:grid-cols-12">
+    <footer className="border-t border-silver/15 bg-obsidian pb-24 pt-12 sm:pt-20 lg:pb-12">
+      <div className="container-x grid gap-8 md:gap-12 md:grid-cols-12">
         <div className="md:col-span-4">
           <p className="font-display text-lg font-semibold uppercase tracking-[0.3em]">Alex <span className="text-silver">Car Restoration</span></p>
           <p className="mt-4 text-xs uppercase tracking-[0.28em] text-silver">Heritage. Precision. Perfection.</p>
@@ -24,11 +24,11 @@ export default function Footer() {
             </div>
           )}
         </div>
-        <nav aria-label="Footer" className="md:col-span-2">
+        <nav aria-label="Footer" className="hidden md:col-span-2 md:block">
           <p className="eyebrow mb-4">Navigate</p>
           <ul className="space-y-2 text-sm">{nav.map((n) => <li key={n.href}><Link href={n.href} className="text-warm/70 hover:text-warm">{n.label}</Link></li>)}</ul>
         </nav>
-        <div className="md:col-span-3">
+        <div className="hidden md:col-span-3 md:block">
           <p className="eyebrow mb-4">Services</p>
           <ul className="space-y-2 text-sm text-warm/70">{services.map((s) => <li key={s.id}>{s.title}</li>)}</ul>
         </div>
@@ -43,7 +43,7 @@ export default function Footer() {
           </ul>
         </div>
       </div>
-      <div className="container-x mt-16 border-t border-silver/10 pt-6 text-xs text-silver/70">
+      <div className="container-x mt-10 border-t border-silver/10 pt-6 text-xs text-silver/70">
         © {new Date().getFullYear()} {site.name}. All rights reserved.
       </div>
     </footer>

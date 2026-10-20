@@ -3,13 +3,13 @@ import type { Testimonial } from "@/content/testimonials";
 
 export default function Testimonials({ items }: { items: Testimonial[] }) {
   return (
-    <section id="testimonials" className="bg-graphite py-24 lg:py-40">
+    <section id="testimonials" className="bg-graphite py-14 sm:py-20 lg:py-40">
       <div className="container-x">
         <Reveal><p className="eyebrow mb-6">Client Testimonials</p></Reveal>
         <Reveal delay={0.1}><h2 className="h-display max-w-4xl text-[clamp(2rem,5vw,4.5rem)]">In our clients&rsquo; words.</h2></Reveal>
         {items.length === 0 ? (
           <Reveal delay={0.2}>
-            <p className="mt-12 max-w-xl border-l border-racing pl-6 text-base leading-relaxed text-warm/70">
+            <p className="mt-8 max-w-xl border-l border-racing pl-6 text-base leading-relaxed text-warm/70">
               Verified client testimonials will be shared here with each client&rsquo;s permission.
             </p>
           </Reveal>
