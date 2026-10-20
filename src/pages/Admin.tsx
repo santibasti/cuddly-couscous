@@ -1,7 +1,7 @@
 import { TONES } from '@/lib/marketingtone';
 import { callFn } from '@/lib/fnclient';
 import { DEFAULT_DISCLAIMER, DEFAULT_INTRO, DEFAULT_METHODOLOGY } from '@/lib/quote-text';
-import { CLOUD } from '@/lib/cloud';
+import { CLOUD, fetchAuditDetail } from '@/lib/cloud';
 import { useState } from 'react';
 import { live, store, useAuth } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Tabs, attempt, ask, useObj, toast } from '@/components/ui';
@@ -272,7 +272,7 @@ export default function Admin() {
       {tab === 'pricing' && can('admin.settings') && <Pricing />}
       {tab === 'rates' && can('admin.settings') && <Rates s={db.settings} />}
       {tab === 'audit' && can('admin.audit') && (
-        <Card flush><DataTable<AuditLog> rows={logs} rowKey={(a) => a.id} onRow={(a) => setDetail(a)} exportTitle="Audit log" pageSize={20}
+        <Card flush><DataTable<AuditLog> rows={logs} rowKey={(a) => a.id} onRow={(a) => { setDetail(a); if (CLOUD && a.before === undefined && a.after === undefined && ['create', 'update', 'delete', 'approve', 'reverse', 'lock', 'restore'].includes(a.action)) void fetchAuditDetail(a.id).then((d) => setDetail((cur) => (cur?.id === a.id ? { ...cur, ...d } : cur))).catch(() => undefined); }} exportTitle="Audit log" pageSize={20}
           filters={<><select value={tbl} onChange={(e) => setTbl(e.target.value)} aria-label="Table"><option value="">All records</option>{[...new Set(db.audit.map((a) => a.table))].sort().map((t) => <option key={t}>{t}</option>)}</select><select value={act} onChange={(e) => setAct(e.target.value)} aria-label="Action"><option value="">All actions</option>{['create', 'update', 'delete', 'restore', 'approve', 'reverse', 'lock', 'login', 'logout', 'export'].map((t) => <option key={t}>{t}</option>)}</select></>}
           cols={[{ key: 'at', header: 'When (Manila)', value: (a) => a.at, render: (a) => fmtStamp(a.at) }, { key: 'u', header: 'User', value: (a) => a.user_name }, { key: 'a', header: 'Action', value: (a) => a.action, render: (a) => <Badge tone={a.action === 'delete' || a.action === 'reverse' ? 'red' : a.action === 'approve' || a.action === 'lock' ? 'green' : 'blue'}>{a.action}</Badge> }, { key: 't', header: 'Record', value: (a) => a.table }, { key: 's', header: 'Summary', value: (a) => a.summary }, { key: 'r', header: 'Reason', value: (a) => a.reason ?? '' }]} /></Card>
       )}

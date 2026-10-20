@@ -123,10 +123,17 @@ const maxOf = (rows: Record<string, unknown>[], col: string, from = '') => rows.
 let auditAllowed = false;
 async function loadAudit(since?: string): Promise<{ rows: Record<string, unknown>[]; failed: boolean }> {
   if (!auditAllowed) return { rows: [], failed: false };
-  let q = supabase().from('audit_logs').select('*').order('at', { ascending: false }).limit(500);
+  // the list needs only the light columns; the old / new values (which can carry whole records) are fetched when one entry is opened
+  let q = supabase().from('audit_logs').select('id, at, user_id, user_name, action, table_name, record_id, summary, reason').order('at', { ascending: false }).limit(since ? 200 : 300);
   if (since) q = q.gt('at', since);
   const { data, error } = await q;
   return error ? { rows: [], failed: true } : { rows: (data ?? []) as Record<string, unknown>[], failed: false };   // the log is not needed to work: never block sign-in on it
+}
+/** The old / new values of one activity-log entry. */
+export async function fetchAuditDetail(id: string): Promise<{ before?: unknown; after?: unknown }> {
+  const { data, error } = await supabase().from('audit_logs').select('before, after').eq('id', id).maybeSingle();
+  if (error) throw new CloudError(error.message, error.code);
+  return { before: data?.before ?? undefined, after: data?.after ?? undefined };
 }
 export async function fetchAll(): Promise<DB> {
   const [raw, profiles, settings] = await Promise.all([

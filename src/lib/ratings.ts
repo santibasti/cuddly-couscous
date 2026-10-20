@@ -4,6 +4,9 @@ import { employeeRating } from './rating-core';
 import { computeRecog } from './recognition-core';
 import { today } from './util';
 
+/** JSON with sorted keys. The database stores these objects as jsonb, which hands the keys back in its own order, so a plain JSON.stringify never matched and every employee was rewritten on every pass. */
+export const stable = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
+
 /** Recalculate ratings; only employees whose rating, breakdown or month changed are written. Safe to run repeatedly. */
 let lastRecogAt = 0;
 export function syncRatings() {
@@ -12,11 +15,11 @@ export function syncRatings() {
   for (const e of db.employees.filter((x) => !x.deleted_at && x.status !== 'inactive')) {
     if (recogDue || !e.recog) { // badge data changes slowly: recalculated every few minutes, not after every action
       const rc = computeRecog(db, e, t);
-      if (JSON.stringify(rc) !== JSON.stringify(e.recog)) store.system('employees', e.id, { recog: rc }, `Badges of ${e.full_name} updated`);
+      if (stable(rc) !== stable(e.recog)) store.system('employees', e.id, { recog: rc }, `Badges of ${e.full_name} updated`);
     }
     const r = employeeRating(db, e, t);
     if (!r) continue;
-    const same = e.rating === r.rating && e.rating_at?.slice(0, 7) === t.slice(0, 7) && JSON.stringify(e.rating_parts) === JSON.stringify(r.parts);
+    const same = e.rating === r.rating && e.rating_at?.slice(0, 7) === t.slice(0, 7) && stable(e.rating_parts) === stable(r.parts);
     if (!same) store.system('employees', e.id, { rating: r.rating, rating_parts: r.parts, rating_at: t }, `Rating of ${e.full_name}: ${r.rating.toFixed(1)}`);
   }
 }
