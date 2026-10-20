@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '@/ctx';
+import Icon from '@/components/Icon';
 import { formatTin, isValidTin } from '@/lib/bir';
 
 export default function Settings() {
@@ -20,7 +21,7 @@ export default function Settings() {
 
   return (
     <div className="stack">
-      <h1>Settings</h1>
+      <div className="page-head"><div><h1>Settings</h1><div className="sub">Company profile, usage and your data.</div></div></div>
       <div className="card stack">
         <h2>Company profile</h2>
         <div className="form">
@@ -28,9 +29,9 @@ export default function Settings() {
           <label className="f"><span className="lbl">Business TIN</span><input value={f.tin} inputMode="numeric" onChange={(e) => setF({ ...f, tin: formatTin(e.target.value) })} disabled={!isOwner} /></label>
           <div className="full"><label className="f"><span className="lbl">Address</span><input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} disabled={!isOwner} /></label></div>
         </div>
-        {f.tin && !isValidTin(f.tin) && <div className="notice warn">TIN should be 9 digits, or 12–14 with the branch code.</div>}
-        <label className="row" style={{ gap: '.5rem' }}><input type="checkbox" checked={f.vatRegistered} disabled={!isOwner} onChange={(e) => setF({ ...f, vatRegistered: e.target.checked })} /> We are VAT-registered (enables input-VAT tracking and the SLP)</label>
-        {msg && <div className="notice ok">{msg}</div>}{err && <div className="notice bad">{err}</div>}
+        {f.tin && !isValidTin(f.tin) && <div className="notice warn"><Icon name="alert" />TIN should be 9 digits, or 12–14 with the branch code.</div>}
+        <label className="check"><input type="checkbox" checked={f.vatRegistered} disabled={!isOwner} onChange={(e) => setF({ ...f, vatRegistered: e.target.checked })} /> We are VAT-registered (enables input-VAT tracking and the SLP)</label>
+        {msg && <div className="notice ok"><Icon name="check" />{msg}</div>}{err && <div className="notice bad"><Icon name="error" />{err}</div>}
         <div><button className="primary" onClick={save} disabled={!isOwner}>Save changes</button></div>
       </div>
 
@@ -43,7 +44,7 @@ export default function Settings() {
       <div className="card stack">
         <h2>Your data</h2>
         <div className="small muted">Signed in as {session.email} ({session.role}). {receipts.length} receipts stored.</div>
-        <div><button onClick={backup}>⬇ Download full backup (JSON)</button></div>
+        <div><button onClick={backup}><Icon name="download" size={17} />Download full backup (JSON)</button></div>
       </div>
     </div>
   );

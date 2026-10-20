@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '@/ctx';
+import Icon from '@/components/Icon';
 import ReceiptEditor from '@/components/ReceiptEditor';
 import { blankReceipt, formatTin, num } from '@/lib/bir';
 import { downscale, sha256 } from '@/lib/image';
@@ -59,29 +60,34 @@ export default function Scan() {
 
   return (
     <div className="stack">
-      <div><h1>Scan receipts</h1><div className="muted">Take a photo of each receipt or invoice. Keep the whole page in view, flat and well lit.</div></div>
-      <div className="row"><div className="grow"><div className="bar"><i style={{ width: `${Math.min(100, (scansUsed / limit) * 100)}%` }} /></div></div><span className="small muted nowrap">{scansUsed} / {limit} scans used this month</span></div>
+      <div className="page-head"><div><h1>Scan receipts</h1><div className="sub">Photograph each receipt or invoice — whole page in view, flat and well lit.</div></div></div>
+      <div className="card row" style={{ flexWrap: 'nowrap' }}><div className="grow"><div className="bar"><i style={{ width: `${Math.min(100, (scansUsed / limit) * 100)}%` }} /></div></div><span className="small muted nowrap">{scansUsed} / {limit} scans used this month</span></div>
 
       {canWrite ? (
         <div className={`drop ${over ? 'over' : ''}`} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files); }}>
-          <div style={{ fontSize: '2rem' }}>📷</div>
-          <p>Drop receipt photos here, or</p>
+          <div className="drop-ic"><Icon name="camera" size={28} /></div>
+          <p style={{ margin: '0 0 1rem' }}><b>Drop receipt photos here</b><br /><span className="muted small">JPG, PNG or HEIC · several at once is fine</span></p>
           <div className="row" style={{ justifyContent: 'center' }}>
-            <button className="primary" onClick={() => input.current?.click()}>Take photo / choose files</button>
-            <button onClick={() => setOpen(blankReceipt(company.id))}>Enter manually</button>
+            <button className="primary" onClick={() => input.current?.click()}><Icon name="upload" size={17} />Take photo / choose files</button>
+            <button onClick={() => setOpen(blankReceipt(company.id))}><Icon name="plus" size={17} />Enter manually</button>
           </div>
           <input ref={input} type="file" accept="image/*" capture="environment" multiple hidden onChange={(e) => pick(e.target.files)} />
         </div>
-      ) : <div className="notice info">Your role is read-only.</div>}
+      ) : <div className="notice info"><Icon name="shield" />Your role is read-only.</div>}
 
       {jobs.length > 0 && (
         <div className="card">
           <h2>This session</h2>
-          <ul className="issues">
+          <ul className="issues list">
             {jobs.map((j) => (
-              <li key={j.key} className="row between" style={{ background: 'var(--bg)' }}>
-                <span>{j.state === 'working' ? '⏳' : j.state === 'done' ? '✅' : j.state === 'skipped' ? '↩️' : '❌'} {j.name}{j.msg && <span className="muted small"> — {j.msg}</span>}</span>
-                {j.receipt && <button onClick={() => setOpen(j.receipt!)}>Review</button>}
+              <li key={j.key} className="item">
+                <span className="row" style={{ gap: '.55rem', flexWrap: 'nowrap' }}>
+                  <span style={{ color: j.state === 'done' ? 'var(--ok)' : j.state === 'failed' ? 'var(--bad)' : 'var(--muted)', display: 'flex' }}>
+                    <Icon name={j.state === 'working' ? 'spinner' : j.state === 'done' ? 'check' : j.state === 'skipped' ? 'undo' : 'error'} />
+                  </span>
+                  <span>{j.name}{j.msg && <span className="muted small"> — {j.msg}</span>}</span>
+                </span>
+                {j.receipt && <button className="sm" onClick={() => setOpen(j.receipt!)}>Review</button>}
               </li>
             ))}
           </ul>

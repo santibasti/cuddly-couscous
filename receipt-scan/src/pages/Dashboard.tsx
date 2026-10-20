@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useApp } from '@/ctx';
+import Icon from '@/components/Icon';
 import ReceiptEditor from '@/components/ReceiptEditor';
 import { groupSum, inPeriod, inputVatClaimable, monthPeriod, peso, quarterPeriod, round2, totalsOf } from '@/lib/bir';
 import { SAMPLE_TAG, sampleReceipts } from '@/lib/sample';
@@ -45,11 +46,11 @@ export default function Dashboard() {
   if (receipts.length === 0) {
     return (
       <div className="stack">
-        <h1>Welcome, {company.name}</h1>
-        <div className="card stack">
-          <h2>Let’s get your first receipt in</h2>
-          <ol className="muted"><li>Go to <b>Scan</b> and photograph a receipt or invoice.</li><li>Check the highlighted fields and press <b>Save & verify</b>.</li><li>Open <b>Reports</b> to download Excel/CSV for your accountant or BIR filing.</li></ol>
-          <div className="row"><Link className="btn primary" to="/scan">📷 Scan a receipt</Link>{canWrite && <button onClick={loadSample} disabled={busy}>{busy ? 'Loading…' : 'Load sample data to look around'}</button>}</div>
+        <div className="page-head"><div><h1>Welcome, {company.name}</h1><div className="sub">Let’s get your first receipt in.</div></div></div>
+        <div className="card stack" style={{ padding: '1.5rem' }}>
+          <h2>Three steps to BIR-ready records</h2>
+          <ol className="muted" style={{ paddingLeft: '1.2rem', lineHeight: 1.9 }}><li>Go to <b>Scan</b> and photograph a receipt or invoice.</li><li>Check the highlighted fields and press <b>Save & verify</b>.</li><li>Open <b>Reports</b> to download Excel/CSV for your accountant or BIR filing.</li></ol>
+          <div className="row"><Link className="btn primary" to="/scan"><Icon name="camera" size={17} />Scan a receipt</Link>{canWrite && <button onClick={loadSample} disabled={busy}>{busy ? 'Loading…' : 'Load sample data to look around'}</button>}</div>
         </div>
       </div>
     );
@@ -57,14 +58,14 @@ export default function Dashboard() {
 
   return (
     <div className="stack">
-      <div className="row between"><div><h1>Dashboard</h1><div className="muted">{company.name} · {q.label}</div></div><Link className="btn primary" to="/scan">📷 Scan receipt</Link></div>
+      <div className="page-head"><div><h1>Dashboard</h1><div className="sub">{company.name} · {q.label}</div></div><Link className="btn primary" to="/scan"><Icon name="camera" size={17} />Scan receipt</Link></div>
 
       <div className="grid g4">
-        <div className="card kpi"><div className="label">Spend this month</div><div className="value">{peso(d.month.gross)}</div><div className="sub">{d.month.count} receipts</div></div>
-        <div className="card kpi"><div className="label">Spend this quarter</div><div className="value">{peso(d.quarter.gross)}</div><div className="sub">{d.quarter.count} receipts</div></div>
-        <div className="card kpi"><div className="label">Input VAT you can claim ({q.label})</div><div className="value">{company.vatRegistered ? peso(d.claimVat) : '—'}</div>
+        <div className="card kpi"><div className="kpi-top"><span className="kpi-ic"><Icon name="wallet" /></span><div className="label">Spend this month</div></div><div className="value">{peso(d.month.gross)}</div><div className="sub">{d.month.count} receipts</div></div>
+        <div className="card kpi"><div className="kpi-top"><span className="kpi-ic blue"><Icon name="trend" /></span><div className="label">Spend this quarter</div></div><div className="value">{peso(d.quarter.gross)}</div><div className="sub">{d.quarter.count} receipts</div></div>
+        <div className="card kpi"><div className="kpi-top"><span className="kpi-ic green"><Icon name="percent" /></span><div className="label">Input VAT you can claim ({q.label})</div></div><div className="value">{company.vatRegistered ? peso(d.claimVat) : '—'}</div>
           <div className="sub">{company.vatRegistered ? (d.lostVat > 0 ? `${peso(d.lostVat)} VAT on receipts that don’t qualify` : 'All VAT receipts qualify') : 'Turn on VAT-registered in Settings'}</div></div>
-        <div className="card kpi"><div className="label">Needs review</div><div className="value">{d.review.length}</div><div className="sub">{scansUsed}/{limit} scans used this month</div></div>
+        <div className="card kpi"><div className="kpi-top"><span className="kpi-ic amber"><Icon name="clock" /></span><div className="label">Needs review</div></div><div className="value">{d.review.length}</div><div className="sub">{scansUsed}/{limit} scans used this month</div></div>
       </div>
 
       <div className="grid g2">
@@ -82,14 +83,14 @@ export default function Dashboard() {
 
       <div className="card">
         <div className="row between"><h2>Waiting for your review</h2><Link to="/receipts">All receipts →</Link></div>
-        {d.review.length === 0 ? <div className="notice ok">Everything is verified. 🎉</div> : (
-          <ul className="issues">{d.review.slice(0, 6).map((r) => (
-            <li key={r.id} className="row between" style={{ background: 'var(--bg)' }}>
-              <span>{r.date} · <b>{r.supplierName || '(no name)'}</b> · {peso(r.total)}</span><button onClick={() => setOpen(r)}>Review</button>
+        {d.review.length === 0 ? <div className="notice ok"><Icon name="check" />Everything is verified.</div> : (
+          <ul className="issues list">{d.review.slice(0, 6).map((r) => (
+            <li key={r.id} className="item">
+              <span>{r.date} · <b>{r.supplierName || '(no name)'}</b> · {peso(r.total)}</span><button className="sm" onClick={() => setOpen(r)}>Review</button>
             </li>))}</ul>)}
       </div>
 
-      {canWrite && hasSample && <div className="notice info row between">Sample data is loaded. <button onClick={clearSample} disabled={busy}>Remove sample data</button></div>}
+      {canWrite && hasSample && <div className="notice info row between"><span className="row" style={{ gap: '.5rem' }}><Icon name="alert" />Sample data is loaded.</span><button className="sm" onClick={clearSample} disabled={busy}>Remove sample data</button></div>}
       {open && <ReceiptEditor key={open.id} initial={open} onClose={() => setOpen(null)} />}
     </div>
   );

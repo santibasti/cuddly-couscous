@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useApp } from '@/ctx';
+import Icon from '@/components/Icon';
 import { CATEGORIES, DOC_TYPES, PAYMENT_METHODS, checkReceipt, formatTin, hasErrors, num, round2, splitVat } from '@/lib/bir';
 import type { Receipt } from '@/lib/types';
 
@@ -44,16 +45,16 @@ export default function ReceiptEditor({ initial, onClose }: { initial: Receipt; 
     <div className="modal-bg" role="dialog" aria-modal="true" aria-label="Receipt details" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="row between" style={{ marginBottom: '.75rem' }}>
-          <h2 style={{ margin: 0 }}>{isNew ? 'Review new receipt' : 'Receipt details'} {r.status === 'verified' ? <span className="chip ok">Verified</span> : <span className="chip warn">Needs review</span>}</h2>
-          <button className="ghost" onClick={onClose} aria-label="Close">✕</button>
+          <h2 style={{ margin: 0, fontSize: '1.15rem' }}>{isNew ? 'Review new receipt' : 'Receipt details'} {r.status === 'verified' ? <span className="chip ok">Verified</span> : <span className="chip warn">Needs review</span>}</h2>
+          <button className="ghost" onClick={onClose} aria-label="Close"><Icon name="x" /></button>
         </div>
         <div className="split">
           <div className="pad-img">
-            {img ? <img src={img} alt="Receipt" /> : <div className="card muted">{r.imagePath ? 'Loading photo…' : 'No photo attached'}</div>}
+            {img ? <img src={img} alt="Receipt" /> : <div className="card empty"><Icon name="image" size={28} /><div className="small" style={{ marginTop: '.4rem' }}>{r.imagePath ? 'Loading photo…' : 'No photo attached'}</div></div>}
             {img && <a className="small" href={img} target="_blank" rel="noreferrer">Open full size</a>}
           </div>
           <div className="stack">
-            {Object.keys(r.confidence).length > 0 && <div className="notice info small">Highlighted fields were hard to read — please check them against the photo.</div>}
+            {Object.keys(r.confidence).length > 0 && <div className="notice info small"><Icon name="alert" size={16} />Highlighted fields were hard to read — please check them against the photo.</div>}
             <fieldset disabled={ro} style={{ border: 0, padding: 0, margin: 0 }}>
               <div className="form">
                 <F k="docType" label="Document type"><select value={r.docType} onChange={(e) => set('docType', e.target.value as Receipt['docType'])}>{DOC_TYPES.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></F>
@@ -73,7 +74,7 @@ export default function ReceiptEditor({ initial, onClose }: { initial: Receipt; 
                 <F k="category" label="Category"><select value={r.category} onChange={(e) => set('category', e.target.value)}>{[...new Set([...CATEGORIES, r.category])].map((c) => <option key={c}>{c}</option>)}</select></F>
                 <F k="purchaseType" label="Purchase of"><select value={r.purchaseType} onChange={(e) => set('purchaseType', e.target.value as Receipt['purchaseType'])}><option value="goods">Goods</option><option value="services">Services</option><option value="capital">Capital goods</option></select></F>
                 <F k="paymentMethod" label="Paid by"><select value={r.paymentMethod} onChange={(e) => set('paymentMethod', e.target.value)}>{[...new Set([...PAYMENT_METHODS, r.paymentMethod])].map((c) => <option key={c}>{c}</option>)}</select></F>
-                <label className="row" style={{ gap: '.5rem', alignSelf: 'end' }}><input type="checkbox" checked={r.deductible} onChange={(e) => set('deductible', e.target.checked)} /> Deductible business expense</label>
+                <label className="check" style={{ alignSelf: 'end', minHeight: 42 }}><input type="checkbox" checked={r.deductible} onChange={(e) => set('deductible', e.target.checked)} /> Deductible business expense</label>
                 <div className="full"><F k="notes" label="Notes"><textarea rows={2} value={r.notes} onChange={(e) => set('notes', e.target.value)} /></F></div>
               </div>
               <div className="row" style={{ marginTop: '.5rem' }}>
@@ -84,11 +85,11 @@ export default function ReceiptEditor({ initial, onClose }: { initial: Receipt; 
 
             {issues.length > 0 && (
               <ul className="issues" aria-label="Checks">
-                {issues.map((i, n) => <li key={n} className={i.severity}>{i.severity === 'error' ? '⛔' : '⚠️'} {i.message}</li>)}
+                {issues.map((i, n) => <li key={n} className={i.severity}><Icon name={i.severity === 'error' ? 'error' : 'alert'} size={17} />{i.message}</li>)}
               </ul>
             )}
-            {issues.length === 0 && <div className="notice ok">All checks passed. Subtotals: {round2(r.vatable + r.vatAmount + r.vatExempt + r.zeroRated).toFixed(2)}</div>}
-            {err && <div className="notice bad" role="alert">{err}</div>}
+            {issues.length === 0 && <div className="notice ok"><Icon name="check" />All checks passed. Breakdown total: {round2(r.vatable + r.vatAmount + r.vatExempt + r.zeroRated).toFixed(2)}</div>}
+            {err && <div className="notice bad" role="alert"><Icon name="error" />{err}</div>}
 
             <div className="row between">
               {!isNew && !ro ? <button className="danger" onClick={remove} disabled={busy}>Delete</button> : <span />}

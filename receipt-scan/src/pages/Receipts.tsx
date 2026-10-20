@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '@/ctx';
+import Icon from '@/components/Icon';
 import ReceiptEditor from '@/components/ReceiptEditor';
 import { CATEGORIES, checkReceipt, hasErrors, peso } from '@/lib/bir';
 import type { Receipt } from '@/lib/types';
@@ -20,13 +21,13 @@ export default function Receipts() {
 
   return (
     <div className="stack">
-      <div><h1>Receipts</h1><div className="muted">{receipts.length} saved · click a row to review or edit</div></div>
+      <div className="page-head"><div><h1>Receipts</h1><div className="sub">{receipts.length} saved · click a row to review or edit</div></div></div>
       <div className="row">
-        <input style={{ maxWidth: 260 }} placeholder="Search supplier, invoice no., TIN…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
+        <div className="searchbox"><Icon name="search" size={16} /><input style={{ width: 280 }} placeholder="Search supplier, invoice no., TIN…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" /></div>
         <select style={{ width: 'auto' }} value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Month"><option value="">All months</option>{months.map((m) => <option key={m}>{m}</option>)}</select>
         <select style={{ width: 'auto' }} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Any status</option><option value="needs_review">Needs review</option><option value="verified">Verified</option></select>
         <select style={{ width: 'auto' }} value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category"><option value="">All categories</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
-        <span className="grow" /><b>{peso(sum)}</b><span className="muted small">{rows.length} shown</span>
+        <span className="grow" /><b style={{ fontSize: '1.05rem' }}>{peso(sum)}</b><span className="muted small">{rows.length} shown</span>
       </div>
       <div className="card tablewrap" style={{ padding: 0 }}>
         <table>
@@ -44,7 +45,7 @@ export default function Receipts() {
                 </tr>
               );
             })}
-            {rows.length === 0 && <tr><td colSpan={7} className="muted" style={{ textAlign: 'center', padding: '2rem' }}>No receipts match. Use Scan to add some.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={7} className="empty">No receipts match. Use Scan to add some.</td></tr>}
           </tbody>
         </table>
       </div>
