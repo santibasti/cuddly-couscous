@@ -12,8 +12,13 @@ export const media = {
   ] as M[],
   workshop: [
     { src: "/images/craftsman-rolls-royce.webp", alt: "Technician carefully working on a luxury vehicle in the workshop", label: "Technicians" },
+    { src: "/images/panel-beating.webp", alt: "Craftsman shaping a body panel by hand with a hammer", label: "Precision bodywork" },
     { src: "/images/landcruiser-teardown.webp", alt: "Technician working inside a stripped-down SUV during restoration", label: "Restoration in progress" },
+    { src: "/images/technicians-assembly.webp", alt: "Two technicians refitting a headlamp assembly in the preparation area", label: "Preparation" },
     { src: "/images/vespa-detail.webp", alt: "Close-up of a restored Vespa's paintwork, spare wheel and chrome", label: "Detailed craftsmanship" },
+    { src: "/images/porsche-polish-team.webp", alt: "Three technicians machine-polishing a blue Porsche in the finishing studio", label: "Paint finishing" },
+    { src: "/images/g-class-front-end.webp", alt: "Technicians inspecting the front end of a black SUV during reassembly", label: "Inspection" },
+    { src: "/images/silver-suv-polish.webp", alt: "Technician hand-finishing the paint of a silver SUV", label: "Paint correction" },
     { src: "/images/suzuki-jimny.webp", alt: "Lime-green Suzuki Jimny presented in the finishing studio", label: "Final presentation" },
     { src: "/images/show-trophy-1.webp", alt: "Alex Car Restoration team member lifting a trophy at a car show", label: "At the show" },
     { src: "/images/team-workshop.webp", alt: "The Alex Car Restoration team in the workshop", label: "The team" },

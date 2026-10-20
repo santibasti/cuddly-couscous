@@ -3,7 +3,13 @@ import Reveal from "./Reveal";
 import Parallax from "./Parallax";
 import { media } from "@/content/media";
 
+// Desktop 12-col rhythm: 7+5, 4+4+4, 7+5, 4+4+4, 12
 const spans = [
+  "lg:col-span-7 aspect-[4/5] lg:aspect-[16/10]",
+  "lg:col-span-5 aspect-[4/5] lg:aspect-auto",
+  "lg:col-span-4 aspect-[4/5] lg:aspect-[4/3]",
+  "lg:col-span-4 aspect-[4/5] lg:aspect-[4/3]",
+  "lg:col-span-4 aspect-[4/5] lg:aspect-[4/3]",
   "lg:col-span-7 aspect-[4/5] lg:aspect-[16/10]",
   "lg:col-span-5 aspect-[4/5] lg:aspect-auto",
   "lg:col-span-4 aspect-[4/5] lg:aspect-[4/3]",
