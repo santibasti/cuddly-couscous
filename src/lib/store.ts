@@ -63,7 +63,8 @@ class Store {
       this._db = emptyDB(); this.baseline = this._db; this.bootStatus = 'booting';
       syncHub.setFlusher(() => this.flushCloud());
       if (typeof window !== 'undefined') {
-        setInterval(() => { void this.refreshCloud(); }, 90000);
+        // check for other people's changes: every 30 seconds for the Owner (who approves discounts and decisions others are waiting on), every 90 seconds for everyone else
+        setInterval(() => { const gap = this.user?.role === 'owner' ? 30000 : 90000; if (Date.now() - this.lastPoll >= gap - 1000) void this.refreshCloud(); }, 10000);
         // coming back to the app: pull the latest at once if the data is a little old
         document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - this.lastFresh > 30000) void this.refreshCloud(); });
       }
@@ -214,10 +215,21 @@ class Store {
     this.listeners.forEach((l) => l());
   }
   /** Pull other people's changes every so often, but never while this person has unsent changes. */
-  private async refreshCloud() {
-    if (!CLOUD || !this.sessionUser || this.flushing || syncHub.getSnapshot().pending > 0 || this._db !== this.baseline || (typeof document !== 'undefined' && document.hidden)) return;
+  private lastPoll = 0;
+  /** When this device last got the server's latest data (shown next to the refresh button). */
+  get lastPull() { return this.lastFresh; }
+  /** The refresh button: reload everything now (unless this device still has changes waiting to be sent). */
+  async pullNow(): Promise<'updated' | 'busy' | 'offline'> {
+    if (!CLOUD || !this.sessionUser) return 'updated';
+    if (this.flushing || syncHub.getSnapshot().pending > 0 || this._db !== this.baseline) return 'busy';
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline';
+    return (await this.refreshCloud(true)) ? 'updated' : 'offline';
+  }
+  private async refreshCloud(full = false): Promise<boolean> {
+    if (!CLOUD || !this.sessionUser || this.flushing || syncHub.getSnapshot().pending > 0 || this._db !== this.baseline || (typeof document !== 'undefined' && document.hidden && !full)) return false;
+    this.lastPoll = Date.now();
     const ver = this._db.version;
-    try { const db = await fetchLatest(this._db); this.lastFresh = Date.now(); if (this._db.version === ver && this._db === this.baseline && !this.flushing) { this._db = { ...db, notifications: this._db.notifications, version: ver }; this.baseline = this._db; this.saveSnapshot(); this.listeners.forEach((l) => l()); } } catch { /* offline: try again later */ }
+    try { const db = await fetchLatest(this._db, full); this.lastFresh = Date.now(); if (this._db.version === ver && this._db === this.baseline && !this.flushing) { this._db = { ...db, notifications: this._db.notifications, version: ver }; this.baseline = this._db; this.saveSnapshot(); this.listeners.forEach((l) => l()); } else this.listeners.forEach((l) => l()); return true; } catch { return false; /* offline: try again later */ }
   }
 
   /* ---- subscription ---- */

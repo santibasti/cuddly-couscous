@@ -93,6 +93,11 @@ function Shell() {
   const loc = useLocation();
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshNow = async () => {
+    setRefreshing(true);
+    try { const r = await store.pullNow(); toast(r === 'busy' ? 'Some changes are still being sent — try again in a moment.' : r === 'offline' ? 'No connection right now.' : 'Up to date', r === 'updated' ? 'ok' : 'err'); } finally { setRefreshing(false); }
+  };
   const [, setTick] = useState(0);
   const [bell, setBell] = useState(false);
   useEffect(() => { preloadPages(); }, []);
@@ -146,6 +151,8 @@ function Shell() {
           <div className="title grow">{items.find((n) => loc.pathname.startsWith(n.to))?.label ?? 'TopMop'}</div>
           <button className="icon-btn" onClick={() => { setTheme(getTheme() === 'dark' ? 'light' : 'dark'); setTick((x) => x + 1); }} aria-label="Switch dark / light appearance" title={getTheme() === 'dark' ? 'Switch to light' : 'Switch to dark'}>{getTheme() === 'dark' ? '☀' : '☾'}</button>
           <SyncBadge />
+          {CLOUD && <button className="icon-btn" disabled={refreshing} onClick={() => void refreshNow()} aria-label="Refresh now" title={`Refresh now${store.lastPull ? ` · updated ${new Date(store.lastPull).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}` : ''}`}><span className={refreshing ? 'spin' : ''} style={{ display: 'inline-block' }}>↻</span></button>}
+          {CLOUD && store.lastPull > 0 && <span className="muted small hide-sm" title="When this screen last got the latest data">Updated {new Date(store.lastPull).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}</span>}
           <span className="muted small hide-sm">Asia/Manila</span>
           <div className="rel" ref={bellRef}>
             <button className="icon-btn" onClick={() => setBell((b) => !b)} aria-label={`Notifications (${unread.length} unread)`}><Icon name="bell" />{unread.length > 0 && <span className="dot">{unread.length > 99 ? '99+' : unread.length}</span>}</button>

@@ -153,8 +153,8 @@ export async function fetchAll(): Promise<DB> {
   return db as unknown as DB;
 }
 /** Only what changed since the last load, merged into `cur`; a full load when there is no baseline yet or it is a while old. */
-export async function fetchLatest(cur: DB): Promise<DB> {
-  if (!fullAt || Date.now() - fullAt > FULL_EVERY) return fetchAll();
+export async function fetchLatest(cur: DB, full = false): Promise<DB> {
+  if (full || !fullAt || Date.now() - fullAt > FULL_EVERY) return fetchAll();
   const db = { ...cur } as unknown as Record<string, unknown>;
   const changes = await Promise.all(SYNC_TABLES.map(async (t) => {
     const rows: Record<string, unknown>[] = [];
