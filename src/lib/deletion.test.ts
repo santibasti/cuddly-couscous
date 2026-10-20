@@ -56,3 +56,26 @@ describe('owner deletes a started booking', () => {
     expect(() => D.deleteBooking(db().jobs[0].id, 'x')).toThrow(/Only the Owner/);
   });
 });
+
+describe('deleting quotations', () => {
+  it('only a user with sales.delete may delete, and a reason is required', async () => {
+    await store.login('ops@topmop.ph', 'topmop123');
+    expect(() => D.deleteQuotation(db().quotations[0].id, 'x')).toThrow(/not permitted/i);
+    await store.login('owner@topmop.ph', 'topmop123');
+    const free = db().quotations.find((q) => !q.deleted_at && !D.planQuotationDelete(db(), q.id).blockers.length)!;
+    expect(() => D.deleteQuotation(free.id, ' ')).toThrow(/reason/);
+  });
+  it('refuses a quotation linked to a booking or invoice; deletes a free duplicate', async () => {
+    await store.login('owner@topmop.ph', 'topmop123');
+    const linked = db().quotations.find((q) => !q.deleted_at && db().jobs.some((j) => j.quotation_id === q.id && !j.deleted_at))!;
+    expect(D.planQuotationDelete(db(), linked.id).blockers.join(' ')).toMatch(/booking/);
+    expect(() => D.deleteQuotation(linked.id, 'duplicate')).toThrow(/cannot be deleted/);
+    expect(db().quotations.find((q) => q.id === linked.id)!.deleted_at).toBeFalsy();
+    const free = db().quotations.find((q) => !q.deleted_at && !D.planQuotationDelete(db(), q.id).blockers.length)!;
+    D.deleteQuotation(free.id, 'duplicate');
+    expect(db().quotations.find((q) => q.id === free.id)!.deleted_at).toBeTruthy();
+    // a cancelled booking still counts as linked
+    const cancelled = db().jobs.find((j) => j.quotation_id && !j.deleted_at && db().quotations.some((q) => q.id === j.quotation_id && !q.deleted_at));
+    if (cancelled) expect(D.planQuotationDelete(db(), cancelled.quotation_id!).blockers.length).toBeGreaterThan(0);
+  });
+});

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj, ask } from '@/components/ui';
+import { deleteQuotation, planQuotationDelete } from '@/lib/deletion';
 import { DataTable } from '@/components/DataTable';
 import { docTotals } from '@/lib/business';
 import { moveInquiry, setQuoteStatus } from '@/lib/actions';
@@ -91,7 +92,16 @@ export default function Sales() {
               { key: 'number', header: 'Quotation #', value: (q) => q.number }, { key: 'client', header: 'Client', value: (q) => cn(q.client_id) },
               { key: 'created', header: 'Created', value: (q) => q.created_at, render: (q) => fmtDate(q.created_at.slice(0, 10)) }, { key: 'issue', header: 'Issued', value: (q) => q.issue_date, render: (q) => fmtDate(q.issue_date) }, { key: 'valid', header: 'Valid until', value: (q) => q.valid_until, render: (q) => fmtDate(q.valid_until) },
               { key: 'total', header: 'Total', num: true, type: 'money', value: total, render: (q) => money(total(q)) }, { key: 'status', header: 'Status', value: (q) => q.status, render: (q) => <Badge>{q.status}</Badge> },
-              { key: 'actions', header: '', sortable: false, noExport: true, render: (q) => q.status === 'Sent' && can('sales.approve') ? <span className="row" onClick={(e) => e.stopPropagation()}><button className="btn sm primary" onClick={() => attempt(() => setQuoteStatus(q.id, 'Approved'), 'Marked approved')}>Approve</button><button className="btn sm" onClick={async () => { const r = await ask('Reject quotation', 'Reason'); if (r) attempt(() => setQuoteStatus(q.id, 'Rejected', r), 'Marked rejected'); }}>Reject</button></span> : null },
+              { key: 'actions', header: '', sortable: false, noExport: true, render: (q) => {
+                const del = can('sales.delete') ? <button className="btn sm danger" title="Delete this quotation" onClick={async () => {
+                  const plan = planQuotationDelete(db, q.id);
+                  if (plan.blockers.length) { attempt(() => deleteQuotation(q.id, 'check')); return; }
+                  const r = await ask(`Delete ${q.number}?${plan.counts.length ? ` Note: ${plan.counts.join('; ')}.` : ''} It can be restored from Admin → Recycle bin.`, 'Reason for deleting', { okLabel: 'Delete quotation' });
+                  if (r) attempt(() => deleteQuotation(q.id, r), `${q.number} deleted`);
+                }}>Delete</button> : null;
+                const decide = q.status === 'Sent' && can('sales.approve') ? <><button className="btn sm primary" onClick={() => attempt(() => setQuoteStatus(q.id, 'Approved'), 'Marked approved')}>Approve</button><button className="btn sm" onClick={async () => { const r = await ask('Reject quotation', 'Reason'); if (r) attempt(() => setQuoteStatus(q.id, 'Rejected', r), 'Marked rejected'); }}>Reject</button></> : null;
+                return decide || del ? <span className="row" onClick={(e) => e.stopPropagation()}>{decide}{del}</span> : null;
+              } },
             ]} />
         </Card>
       )}

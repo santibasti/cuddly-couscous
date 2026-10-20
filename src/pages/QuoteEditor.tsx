@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, attempt, ask, toast, useObj } from '@/components/ui';
+import { deleteQuotation, planQuotationDelete } from '@/lib/deletion';
 import { countPanels, docTotals, priceService, type GlassRow } from '@/lib/business';
 import { directInvoiceOf, duplicateQuotation, invoiceFromQuotation, quoteLink, saveQuotation, setQuoteStatus } from '@/lib/actions';
 import { quotationPdf, shareTextQuote } from '@/lib/export';
@@ -107,6 +108,12 @@ export default function QuoteEditor() {
         <Link to="/sales" className="btn">← Quotations</Link>
         {existing && <IncludeImagesToggle target={{ quotation_id: existing.id }} checked={pdfImg} onChange={setPdfImg} />}
         {existing && <Link to={`/sales/quote/${existing.id}/preview`} className="btn">Preview</Link>}
+        {existing && can('sales.delete') && <button className="btn danger" onClick={async () => {
+          const plan = planQuotationDelete(db, existing.id);
+          if (plan.blockers.length) { attempt(() => deleteQuotation(existing.id, 'check')); return; }
+          const r = await ask(`Delete ${existing.number}?${plan.counts.length ? ` Note: ${plan.counts.join('; ')}.` : ''} It can be restored from Admin → Recycle bin.`, 'Reason for deleting', { okLabel: 'Delete quotation' });
+          if (r && attempt(() => deleteQuotation(existing.id, r), `${existing.number} deleted`)) nav('/sales');
+        }}>Delete</button>}
         {existing && <button className="btn" onClick={() => attempt(() => quotationPdf(db, existing, { includeImages: pdfImg }))}><Icon name="download" />PDF</button>}
         {existing && client?.email && <a className="btn" href={`mailto:${client.email}?subject=${encodeURIComponent(`Quotation ${existing.number} – ${db.settings.company.name}`)}&body=${encodeURIComponent(share + '\n\n(Attach the downloaded PDF.)')}`}><Icon name="mail" />Email</a>}
         {existing && <a className="btn" target="_blank" rel="noreferrer" href={`https://wa.me/${wa}?text=${encodeURIComponent(share)}`}><Icon name="share" />WhatsApp</a>}

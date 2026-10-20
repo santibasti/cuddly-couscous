@@ -21,6 +21,7 @@ export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'clients.tax', group: 'Clients', label: 'View client tax info' },
   { key: 'sales.view', group: 'Sales', label: 'View inquiries & quotations' },
   { key: 'sales.edit', group: 'Sales', label: 'Create / edit quotations' },
+  { key: 'sales.delete', group: 'Sales', label: 'Delete quotations that are not linked to a booking or invoice (Owner / Admin)' },
   { key: 'sales.approve', group: 'Sales', label: 'Send / approve / reject quotations' },
   { key: 'ocular.view', group: 'Jobs', label: 'View ocular visits (assigned ones for Team Leaders)' },
   { key: 'ocular.schedule', group: 'Jobs', label: 'Schedule, edit and cancel ocular visits' },

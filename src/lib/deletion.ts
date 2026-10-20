@@ -35,6 +35,30 @@ export function planClientDelete(db: DB, clientId: string): DeletePlan {
   return { blockers, cascade, counts };
 }
 
+/** A quotation can be deleted only if nothing depends on it: no booking (even a cancelled one), no invoice and no signed scope refers to it. */
+export function planQuotationDelete(db: DB, quotationId: string): DeletePlan {
+  const blockers: string[] = []; const counts: string[] = [];
+  const jobs = live(db.jobs).filter((j) => j.quotation_id === quotationId);
+  if (jobs.length) blockers.push(`linked to ${plural(jobs.length, 'booking')} (${jobs.slice(0, 4).map((j) => `${j.number} · ${j.status}`).join(', ')}${jobs.length > 4 ? '…' : ''}) — delete or unlink the booking first`);
+  const inv = live(db.invoices).filter((i) => i.quotation_id === quotationId && i.status !== 'Reversed');
+  if (inv.length) blockers.push(`already invoiced (${inv.slice(0, 3).map((i) => i.number).join(', ')}${inv.length > 3 ? '…' : ''})`);
+  const signed = live(db.workflows).filter((w) => w.conf_quotation_id === quotationId);
+  if (signed.length) blockers.push(`used for the client's signed scope approval on a job`);
+  const q = live(db.quotations).find((x) => x.id === quotationId);
+  if (q && ['Sent', 'Approved'].includes(q.status)) counts.push(`it was ${q.status === 'Sent' ? 'sent to the client — their link will stop working' : 'approved by the client — nothing has been booked from it yet'}`);
+  return { blockers, cascade: [], counts };
+}
+
+export function deleteQuotation(id: string, reason: string) {
+  store.require('sales.delete');
+  const db = store.getDB(); const q = live(db.quotations).find((x) => x.id === id) ?? fail('Quotation not found.');
+  const plan = planQuotationDelete(db, id);
+  if (plan.blockers.length) fail(`${q.number} cannot be deleted: it is ${plan.blockers.join('; ')}.`);
+  if (!reason.trim()) fail('Give a reason for the deletion.');
+  store.withReason(reason.trim(), () => store.remove('quotations', id, { cascade: true }));
+  return plan;
+}
+
 export function planItemDelete(db: DB, itemId: string): DeletePlan {
   const blockers: string[] = [];
   const moves = live(db.stock).filter((t) => t.item_id === itemId && t.type !== 'Opening'); if (moves.length) blockers.push(`${plural(moves.length, 'stock movement')} (received, issued, adjusted or counted)`);
