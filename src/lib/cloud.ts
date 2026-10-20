@@ -100,6 +100,20 @@ async function addRoster(emps: Record<string, unknown>[]): Promise<Record<string
     return [...emps, ...more];
   } catch { return emps; }                                               // function not in the database yet: names stay as they were
 }
+/** Settings saved on the server may lack newer options (or, after a bad save, whole sections): fill what is missing from the built-in defaults so no screen reads a setting that is not there. */
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+export async function completeSettings(server: Settings): Promise<Settings> {
+  const need = ['company', 'multipliers', 'access', 'reminder_days', 'statutory', 'channels'];
+  const s = server as unknown as Record<string, unknown>;
+  if (need.every((k) => s[k] !== undefined) && typeof s.std_hours_per_day === 'number') return server;
+  const { seedDB } = await import('./seed');
+  const def = seedDB().settings as unknown as Record<string, unknown>; const out: Record<string, unknown> = { ...s };
+  for (const [k, v] of Object.entries(def)) {
+    if (out[k] === undefined || out[k] === null) out[k] = v;
+    else if (isObj(v) && isObj(out[k])) out[k] = { ...v, ...(out[k] as Record<string, unknown>) };
+  }
+  return out as unknown as Settings;
+}
 /* What the last full load saw, so the periodic refresh can ask only for rows changed since (a full reload every 90 seconds on every open screen used most of the free egress). */
 let marks: Partial<Record<SyncTable, string>> = {}; let auditAt = ''; let settingsAt = ''; let fullAt = 0;
 const FULL_EVERY = 15 * 60000;   // a full reload this often also picks up removed / hidden rows
@@ -122,7 +136,7 @@ export async function fetchAll(): Promise<DB> {
   db.audit = (audit.data ?? []).map(toAudit);
   auditAt = maxOf((audit.data ?? []) as Record<string, unknown>[], 'at');
   settingsAt = (settings.data?.updated_at as string | undefined) ?? '';
-  if (settings.data?.data) db.settings = settings.data.data as Settings;
+  if (settings.data?.data) db.settings = await completeSettings(settings.data.data as Settings);
   return db as unknown as DB;
 }
 /** Only what changed since the last load, merged into `cur`; a full load when there is no baseline yet or it is a while old. */
@@ -152,7 +166,7 @@ export async function fetchLatest(cur: DB): Promise<DB> {
     supabase().from('audit_logs').select('*').gt('at', auditAt || '1970-01-01T00:00:00Z').order('at', { ascending: false }).limit(500),
   ]);
   db.users = prof.map(toUser);
-  if (st.data?.data) { db.settings = st.data.data as Settings; settingsAt = (st.data.updated_at as string) ?? settingsAt; }
+  if (st.data?.data) { db.settings = await completeSettings(st.data.data as Settings); settingsAt = (st.data.updated_at as string) ?? settingsAt; }
   if (au.data?.length) { auditAt = maxOf(au.data as Record<string, unknown>[], 'at', auditAt); db.audit = [...au.data.map(toAudit), ...cur.audit].slice(0, 500); }
   return db as unknown as DB;
 }
@@ -271,7 +285,7 @@ export async function pushChanges(prev: DB, next: DB, soft: Set<string>, journal
       });
     }
   }
-  if (settingsChanged(prev, next)) {
+  if (settingsChanged(prev, next) && next.settings.company && next.settings.multipliers) {   // never save settings that are missing whole sections (a half-loaded copy would wipe the real ones)
     const { error } = await supabase().rpc('save_settings', { p_data: next.settings });
     if (error) throw new CloudError(error.message, error.code ?? 'P0001');
   }
