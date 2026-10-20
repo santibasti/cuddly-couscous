@@ -16,6 +16,16 @@ Deno.serve(async (req) => {
   const [{ data: ok }, body] = await Promise.all([asUser.rpc('can_capture_receipts'), req.json().catch(() => ({}))]);   // permission check and body read together
   if (ok !== true) return json({ error: 'Not allowed' }, 403);
   if (!env('ANTHROPIC_API_KEY')) return json({ error: 'The AI key is not set up yet (ANTHROPIC_API_KEY).' }, 503);
+  // connection test (the "Test AI connection" button): a tiny request to each model, reporting exactly what the AI service answered
+  if ((body as { ping?: boolean }).ping) {
+    const probe = async (model: string) => {
+      const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 5, messages: [{ role: 'user', content: 'Reply with OK' }] }) }).catch((e) => ({ ok: false, status: 0, json: async () => ({ error: { message: String(e) } }) }) as unknown as Response);
+      const msg = res.ok ? '' : ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? '';
+      return { model, ok: res.ok, status: res.status, message: msg };
+    };
+    const names = [env('AI_RECEIPT_FAST_MODEL') || 'claude-haiku-5-5', env('AI_RECEIPT_MODEL') || 'claude-sonnet-5-5'];
+    return json({ ping: true, key_set: !!env('ANTHROPIC_API_KEY'), models: await Promise.all(names.map(probe)) });
+  }
   const { image } = body as { image?: unknown };
   if (typeof image !== 'string' || image.length < 100) return json({ error: 'No photo received.' }, 400);
   if (image.length > 5_000_000) return json({ error: 'The photo is too large.' }, 400);

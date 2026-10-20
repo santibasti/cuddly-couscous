@@ -115,6 +115,9 @@ export async function forAi(dataUrl: string): Promise<string> {
   const img = new Image(); await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error('Could not read the picture')); img.src = dataUrl; });
   return aiFrom(img);
 }
+export interface AiPing { ping: boolean; key_set: boolean; models: { model: string; ok: boolean; status: number; message: string }[] }
+/** "Test AI connection": asks the function to try each model with a tiny request and report what the AI service said. */
+export const pingReceiptAi = () => callFn<AiPing>('ai-receipt', { ping: true });
 const isNet = (m: string) => /failed to send a request|failed to fetch|networkerror|load failed/i.test(m);
 /** Reads a receipt with the AI. A dropped connection (common on a phone) is retried once before giving up. */
 export async function readReceipt(base64: string): Promise<Reading> {

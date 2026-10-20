@@ -6,7 +6,7 @@ import { Badge, Card, Field, Icon, Modal, PageHead, Stat, attempt, toast } from 
 import { CLOUD } from '@/lib/cloud';
 import { saveExpense } from '@/lib/actions';
 import { exportCsv } from '@/lib/export';
-import { blankDraft, checkReceipt, duplicatesOf, deleteReceipt, draftFromReading, forAi, isOwnDocument, listReceipts, prepareScan, readReceipt, readyForBir, rotateScan, saveNewReceipt, scanUrl, updateReceipt, type Check, type Receipt, type ReceiptDraft, type ReceiptVat } from '@/lib/receipts';
+import { blankDraft, checkReceipt, duplicatesOf, deleteReceipt, draftFromReading, forAi, isOwnDocument, listReceipts, pingReceiptAi, prepareScan, readReceipt, readyForBir, rotateScan, saveNewReceipt, scanUrl, updateReceipt, type Check, type Receipt, type ReceiptDraft, type ReceiptVat } from '@/lib/receipts';
 import { fmtTin } from '@/lib/bir';
 import { fmtDate, money, round2, today } from '@/lib/util';
 import type { ExpenseCategory, ExpenseMethod } from '@/lib/types';
@@ -184,6 +184,7 @@ export default function Receipts() {
   const [draft, setDraft] = useState<{ d: ReceiptDraft; scan: { blob: Blob; dataUrl: string; base64?: string }; reading: { busy: boolean; error?: string } } | null>(null);
   const [enhance, setEnhance] = useState(true); const file = useRef<HTMLInputElement>(null);
   const manage = can('receipts.manage');
+  const [testing, setTesting] = useState(false);
   const load = useCallback(() => { listReceipts().then((r) => { setRows(r); setErr(''); }).catch((e) => setErr(e instanceof Error ? e.message : 'Could not load the receipts')).finally(() => setLoading(false)); }, []);
   useEffect(load, [load]);
 
@@ -234,6 +235,15 @@ export default function Receipts() {
     <>
       <PageHead icon="🧾" title="Receipts" sub="Photograph a receipt: the app reads the supplier, TIN, address, VAT and amounts, and keeps the scan.">
         <label className="check small" title="Evens out light and sharpens faded print on the scan that is kept"><input type="checkbox" checked={enhance} onChange={(e) => setEnhance(e.target.checked)} />Enhance faded print</label>
+        {manage && CLOUD && <button className="btn" disabled={testing} title="Checks that the AI service answers, and why not if it does not" onClick={async () => {
+          setTesting(true);
+          try {
+            const r = await pingReceiptAi(); const bad = r.models.filter((m) => !m.ok);
+            if (!r.key_set) toast('The AI key is not set up (ANTHROPIC_API_KEY).', 'err');
+            else if (!bad.length) toast('AI connection works ✓', 'ok');
+            else toast(`AI problem — ${bad.map((m) => `${m.model}: ${m.status} ${m.message}`.trim()).join(' | ').slice(0, 240)}`, 'err');
+          } catch (e) { toast(e instanceof Error ? e.message : 'Could not reach the receipt reader', 'err'); } finally { setTesting(false); }
+        }}>{testing ? 'Testing…' : 'Test AI connection'}</button>}
         {can('receipts.capture') || manage ? <button className="btn primary lg" onClick={() => file.current?.click()}>📷 Scan a receipt</button> : null}
         <input ref={file} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void pick(f); }} />
       </PageHead>
