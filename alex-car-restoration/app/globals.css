@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
+body { background: #0B0D0F; color: #F5F5F2; -webkit-font-smoothing: antialiased; }
+::selection { background: #A51C30; color: #F5F5F2; }
+
+@layer components {
+  .container-x { @apply mx-auto w-full max-w-[1440px] px-5 sm:px-8 lg:px-14; }
+  .eyebrow { @apply text-[11px] font-medium uppercase tracking-[0.28em] text-silver; }
+  .h-display { @apply font-display font-semibold uppercase leading-[0.95] tracking-tight; }
+  .btn { @apply inline-flex items-center justify-center gap-2 px-6 py-3.5 text-[11px] font-semibold uppercase tracking-[0.22em] transition-colors duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-silver; }
+  .btn-primary { @apply btn bg-racing text-warm hover:bg-warm hover:text-obsidian; }
+  .btn-ghost { @apply btn border border-silver/40 text-warm hover:border-warm hover:bg-warm hover:text-obsidian; }
+  .field { @apply w-full border-0 border-b border-silver/30 bg-transparent px-0 py-3 text-sm text-warm placeholder:text-silver/50 focus:border-warm focus:outline-none focus:ring-0; }
+  .label { @apply mb-1 block text-[10px] font-medium uppercase tracking-[0.22em] text-silver; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
