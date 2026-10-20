@@ -1,7 +1,61 @@
-export const processSteps = [
-  { n: "01", title: "Consultation & Vehicle Assessment", text: "We listen to your vision and carefully assess the vehicle's condition, history and requirements." },
-  { n: "02", title: "Restoration Planning", text: "A clear scope, approach and sequence of work is agreed before any work begins." },
-  { n: "03", title: "Preparation & Craftsmanship", text: "Meticulous disassembly, surface preparation and bodywork, carried out with patience and precision." },
-  { n: "04", title: "Refinishing & Quality Inspection", text: "Professional refinishing followed by rigorous inspection of every panel, line and finish." },
-  { n: "05", title: "Final Presentation & Handover", text: "The completed vehicle is presented and handed over with the care it deserves." },
+/**
+ * Official 10-stage Frame-On Restoration Process.
+ *
+ * - `title` and `summary` are the official wording supplied by the business.
+ * - `detail` is the expanded explanation: DRAFT wording elaborating on the
+ *   summary only. Confirm or edit with the workshop before publication.
+ * - `image`: authorised project photograph for the stage (put it in
+ *   /public/images and set the path). Until supplied, a clearly marked
+ *   placeholder is shown; never use unrelated stock imagery.
+ */
+export type ProcessStage = {
+  n: string;
+  title: string;
+  summary: string;
+  detail: string;
+  image?: string;
+  imageAlt: string;
+};
+
+export const processStages: ProcessStage[] = [
+  { n: "01", title: "Body Disassembly",
+    summary: "All body panels and components are carefully removed and catalogued through a comprehensive parts inventory.",
+    detail: "Panels, trim and fittings are removed with care and each part is logged in the parts inventory, so every component can be tracked, assessed and returned to the vehicle correctly.",
+    imageAlt: "Technician carefully removing body panels and components" },
+  { n: "02", title: "Mechanical & Electrical Retention",
+    summary: "Mechanical and electrical systems remain intact throughout the frame-on restoration process.",
+    detail: "In a frame-on restoration the mechanical and electrical systems stay in place and are protected throughout the work, keeping the focus on the body and its finish.",
+    imageAlt: "Vehicle with mechanical and electrical systems left intact during restoration" },
+  { n: "03", title: "Bare-Shell Reduction",
+    summary: "The vehicle body is reduced to a bare shell in preparation for detailed restoration.",
+    detail: "Remaining trim and fittings are taken off, leaving the bare body shell so every surface can be inspected and worked on properly.",
+    imageAlt: "Vehicle body reduced to a bare shell" },
+  { n: "04", title: "Metal Stripping",
+    summary: "The shell is stripped to bare metal and treated to prevent corrosion.",
+    detail: "Old paint and coatings are removed down to bare metal, revealing the true condition of the panels. The exposed metal is then treated to prevent corrosion.",
+    imageAlt: "Body shell stripped back to bare metal" },
+  { n: "05", title: "Rustproofing & Cavity Wax Protection",
+    summary: "Protective treatments are applied to body panels and concealed cavities to help prevent corrosion and preserve the vehicle.",
+    detail: "Rustproofing is applied to the panels and wax is worked into hidden cavities where moisture can collect, helping protect areas that are difficult to reach.",
+    imageAlt: "Rustproofing and cavity wax being applied to the body" },
+  { n: "06", title: "Primer Application & Body Repair",
+    summary: "Protective primer is applied, and structural bodywork and necessary repairs are addressed.",
+    detail: "Primer protects the prepared metal, while structural bodywork and any necessary repairs restore the shape and integrity of the shell.",
+    imageAlt: "Primer application and body repair in progress" },
+  { n: "07", title: "Paint Preparation",
+    summary: "Body filling, sculpting, surface shaping, and meticulous preparation for refinishing.",
+    detail: "Body filler is applied and sculpted, and surfaces are shaped and refined until panels, lines and gaps are ready for refinishing.",
+    imageAlt: "Surface preparation and body filling before paint" },
+  { n: "08", title: "Paint Correction",
+    summary: "Final paint application and refinement to achieve a high-quality finish.",
+    detail: "The final paint is applied and then refined through correction and polishing to bring out depth and gloss.",
+    imageAlt: "Paintwork being refined and corrected" },
+  { n: "09", title: "Ceramic Coating",
+    summary: "A protective ceramic coating is applied to help preserve the finished paintwork.",
+    detail: "A protective ceramic coating is applied over the finished paintwork to help preserve the finish.",
+    imageAlt: "Ceramic coating applied to finished paintwork" },
+  { n: "10", title: "Quality Check",
+    summary: "Final inspection to confirm that the completed restoration meets established quality standards.",
+    detail: "Every panel, line and finish is inspected against the workshop's quality standards before the vehicle is presented and handed over.",
+    imageAlt: "Final quality inspection of the completed restoration" },
 ];
