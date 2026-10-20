@@ -5,16 +5,16 @@
 type M = { src?: string; alt: string; label: string };
 
 export const media = {
-  hero: { src: undefined, alt: "Restored classic Porsche 911 inside the workshop", label: "Hero — classic 911 in workshop" } as M,
+  hero: { src: "/images/vespa-showroom.webp", alt: "Restored vintage Vespa scooter in a deep red finish with a brown leather seat", label: "Hero" } as M,
   about: [
-    { src: undefined, alt: "Craftsman performing detailed bodywork", label: "Craftsman at work" },
-    { src: undefined, alt: "Workshop restoration in progress", label: "Restoration process" },
+    { src: "/images/craftsman-rolls-royce.webp", alt: "Craftsman performing detailed work on the front wing of a Rolls-Royce", label: "Craftsman at work" },
+    { src: "/images/vespa-detail.webp", alt: "Detail of a restored vintage Vespa with chrome trim and period accessories", label: "Restoration detail" },
   ] as M[],
   workshop: [
-    { src: undefined, alt: "Technician working on a premium vehicle", label: "Technicians" },
-    { src: undefined, alt: "Paint preparation", label: "Paint preparation" },
-    { src: undefined, alt: "Precision bodywork", label: "Precision bodywork" },
-    { src: undefined, alt: "Detailed craftsmanship", label: "Detail craftsmanship" },
-    { src: undefined, alt: "Final inspection", label: "Final inspection" },
+    { src: "/images/craftsman-rolls-royce.webp", alt: "Technician carefully working on a luxury vehicle in the workshop", label: "Technicians" },
+    { src: "/images/vespa-detail.webp", alt: "Close-up of a restored Vespa's paintwork, spare wheel and chrome", label: "Detailed craftsmanship" },
+    { src: "/images/vespa-showroom.webp", alt: "Finished vintage Vespa presented in the showroom", label: "Final presentation" },
+    { src: "/images/show-trophy-1.webp", alt: "Alex Car Restoration team member lifting a trophy at a car show", label: "At the show" },
+    { src: "/images/show-trophy-2.webp", alt: "Speaking beside a restored classic car at a car show", label: "At the show" },
   ] as M[],
 };
