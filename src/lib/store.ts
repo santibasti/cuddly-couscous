@@ -6,12 +6,14 @@ import { seedDB } from './seed';
 import { geoHooks, geoPatch } from './geo-ph';
 import { syncHub } from './sync';
 import { kvDel, kvGet, kvSet } from './outbox';
-import { fetchProfiles, updateProfile, CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, fetchAll, fetchLatest, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
+import { fetchProfiles, updateProfile, CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, completeSettings, fetchAll, fetchLatest, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
 
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
 
 const KEY = 'topmop-ops-db-v4';
+/** Does this copy of the data carry the company settings the screens read (company details, pay multipliers, …)? */
+const settingsOk = (d: DB) => !!(d.settings && d.settings.company && d.settings.multipliers && d.settings.reminder_days && d.settings.access && typeof d.settings.std_hours_per_day === 'number');
 const SESSION = 'topmop-ops-session-v1';
 
 export class PermissionError extends Error {}
@@ -47,7 +49,7 @@ class Store {
   }
   /** A copy of the server's data, so the app can open with no connection. */
   private saveSnapshot() {
-    if (!CLOUD || !this.sessionUser) return;
+    if (!CLOUD || !this.sessionUser || !settingsOk(this.baseline)) return;
     if (this.snapTimer) clearTimeout(this.snapTimer);
     this.snapTimer = setTimeout(() => { const u = this.sessionUser; if (!u) return; const b = this.baseline; void kvSet(`snap:${u}`, { at: isoNow(), db: { ...b, audit: b.audit.slice(0, 100), notifications: [] } }); }, 4000);
   }
@@ -87,7 +89,8 @@ class Store {
     if (!uid && offline) { try { uid = localStorage.getItem('topmop-last-user'); } catch { /* noop */ } }
     if (uid) {
       // open at once from the copy saved on this device and bring in the latest from the server in the background (the first sign-in on a device still waits for the data)
-      const snap = offline ? undefined : await kvGet<{ at: string; db: DB }>(`snap:${uid}`).catch(() => undefined);
+      let snap = offline ? undefined : await kvGet<{ at: string; db: DB }>(`snap:${uid}`).catch(() => undefined);
+      if (snap?.db && !settingsOk(snap.db)) { void kvDel(`snap:${uid}`); snap = undefined; }   // a saved copy without the company settings would crash the screens: load fresh instead
       if (snap?.db) {
         this._db = { ...snap.db, version: 1 }; this.baseline = this._db; this.sessionUser = uid;
         try { await this.restoreLocal(uid); } catch { /* the saved copy still opens */ }
@@ -130,6 +133,7 @@ class Store {
   private async openOffline(uid: string): Promise<boolean> {
     const snap = await kvGet<{ at: string; db: DB }>(`snap:${uid}`);
     if (!snap?.db) return false;
+    if (!settingsOk(snap.db)) snap.db = { ...snap.db, settings: await completeSettings(snap.db.settings ?? ({ counters: {} } as never)) };
     this._db = { ...snap.db, version: 1 }; this.baseline = this._db; this.sessionUser = uid;
     await this.restoreLocal(uid);
     this.markFresh();
