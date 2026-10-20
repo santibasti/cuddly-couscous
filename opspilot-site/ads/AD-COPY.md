@@ -10,6 +10,7 @@ Regenerate them with `node ads/build-ads.mjs` from `opspilot-site/` (needs Playw
 | **A-spreadsheets** | Problem hook: "Still running your business on Excel and chat threads?" + sample dashboard | square 1080×1080, portrait 1080×1350, story/reel 1080×1920, link 1200×628 |
 | **B-one-system** | Brand statement: "Your business. One clear system." + module hub | same four sizes |
 | **C-bring-a-workflow** | Consultation offer: "Bring one workflow" + 3-step process | same four sizes |
+| **E-custom-system** | Bright "device mockup" style: "We Build Your Custom Business System", laptop + phone with sample dashboard, 3 benefit icons | same four sizes |
 | **D-carousel-1…5** | Carousel, one card per industry (contractors, car washes, clinics, fleets, construction) | square 1080×1080 |
 
 Use square or portrait for the Facebook/Instagram feed, story for Stories and Reels, landscape for link ads.
@@ -65,6 +66,17 @@ Send clicks to `https://www.opspilot.ph/?utm_source=facebook&utm_medium=paid&utm
 **Headline:** Bring one workflow. We'll show how it could run.
 **Description:** Workflow consultation for MSMEs
 **Button:** Contact Us
+
+### Version 4: custom system (pair with E)
+
+**Primary text**
+> We build your custom business system, set up around how your business runs: attendance, jobs, stock, quotations and billing in one place.
+>
+> Scope is agreed in writing, and support is defined in your agreement. See sample dashboards and request a demo at opspilot.ph
+
+**Headline:** We build your custom business system
+**Description:** Tailor-fit systems for Philippine MSMEs
+**Button:** Learn More
 
 ### Carousel (pair with D1–D5)
 
