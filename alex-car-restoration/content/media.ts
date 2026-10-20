@@ -5,16 +5,17 @@
 type M = { src?: string; alt: string; label: string };
 
 export const media = {
-  hero: { src: "/images/vespa-showroom.webp", alt: "Restored vintage Vespa scooter in a deep red finish with a brown leather seat", label: "Hero" } as M,
+  hero: { src: "/images/porsche-911-white.webp", alt: "White Porsche 911 with carbon-fibre side intake and forged wheels in the workshop", label: "Hero" } as M,
   about: [
     { src: "/images/craftsman-rolls-royce.webp", alt: "Craftsman performing detailed work on the front wing of a Rolls-Royce", label: "Craftsman at work" },
-    { src: "/images/vespa-detail.webp", alt: "Detail of a restored vintage Vespa with chrome trim and period accessories", label: "Restoration detail" },
+    { src: "/images/shopfront-gtr.webp", alt: "Blue Nissan GT-R parked outside the Alex Restoration workshop", label: "Workshop" },
   ] as M[],
   workshop: [
     { src: "/images/craftsman-rolls-royce.webp", alt: "Technician carefully working on a luxury vehicle in the workshop", label: "Technicians" },
+    { src: "/images/landcruiser-teardown.webp", alt: "Technician working inside a stripped-down SUV during restoration", label: "Restoration in progress" },
     { src: "/images/vespa-detail.webp", alt: "Close-up of a restored Vespa's paintwork, spare wheel and chrome", label: "Detailed craftsmanship" },
-    { src: "/images/vespa-showroom.webp", alt: "Finished vintage Vespa presented in the showroom", label: "Final presentation" },
+    { src: "/images/suzuki-jimny.webp", alt: "Lime-green Suzuki Jimny presented in the finishing studio", label: "Final presentation" },
     { src: "/images/show-trophy-1.webp", alt: "Alex Car Restoration team member lifting a trophy at a car show", label: "At the show" },
-    { src: "/images/show-trophy-2.webp", alt: "Speaking beside a restored classic car at a car show", label: "At the show" },
+    { src: "/images/team-workshop.webp", alt: "The Alex Car Restoration team in the workshop", label: "The team" },
   ] as M[],
 };

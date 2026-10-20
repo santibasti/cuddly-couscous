@@ -7,7 +7,7 @@ import { site } from "@/content/site";
 export default function About() {
   const f = site.facts;
   const facts = [
-    { k: "Founded", v: f.yearFounded },
+    { k: "Established", v: f.yearFounded },
     { k: "Experience", v: f.yearsOfExperience },
     { k: "Certifications", v: f.certifications.length ? f.certifications.join(", ") : null },
     { k: "Recognition", v: f.awards.length ? f.awards.join(", ") : null },

@@ -26,13 +26,13 @@ export const site = {
   // Verified service areas, e.g. ["Metro Manila", "Cavite"]. Empty until confirmed.
   serviceAreas: [] as string[],
   social: {
-    facebook: null as string | null,
+    facebook: "https://www.facebook.com/alexrestoration" as string | null, // from workshop signage; confirm
     instagram: null as string | null,
     youtube: null as string | null,
   },
   // Editable fields for later verification. Never invent these.
   facts: {
-    yearFounded: null as string | null,
+    yearFounded: "1992" as string | null, // "Established 1992" on workshop signage (supplied photo); confirm
     yearsOfExperience: null as string | null,
     certifications: [] as string[],
     awards: [] as string[],

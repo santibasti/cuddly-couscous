@@ -3,7 +3,7 @@ import Reveal from "./Reveal";
 import Parallax from "./Parallax";
 import { media } from "@/content/media";
 
-const spans = ["lg:col-span-7 aspect-[16/10]", "lg:col-span-5 aspect-[4/5] lg:aspect-auto", "lg:col-span-4 aspect-[4/3]", "lg:col-span-4 aspect-[4/3]", "lg:col-span-4 aspect-[4/3]"];
+const spans = ["lg:col-span-7 aspect-[16/10]", "lg:col-span-5 aspect-[4/5] lg:aspect-auto", "lg:col-span-4 aspect-[4/3]", "lg:col-span-4 aspect-[4/3]", "lg:col-span-4 aspect-[4/3]", "lg:col-span-12 aspect-[3/2] lg:aspect-[16/9]"];
 
 export default function Workshop() {
   return (
