@@ -75,11 +75,11 @@ export const readyForBir = (c: Check[]) => !c.some((x) => x.level === 'error');
 
 const blobToDataUrl = (b: Blob) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(b); });
 
-/** A copy for the AI: long side 1568 px is the most the AI uses, so nothing is lost, and it uploads much faster than the full scan. */
-const AI_SIDE = 1568;
+/** A copy for the AI (long side 1600 px, as before); it is made from the same picture and sent while the full scan is still being saved. */
+const AI_SIDE = 1600;
 const aiFrom = (src: CanvasImageSource & { width: number; height: number }) => {
   const k = Math.min(1, AI_SIDE / Math.max(src.width, src.height)); const c = document.createElement('canvas'); c.width = Math.round(src.width * k); c.height = Math.round(src.height * k); c.getContext('2d')!.drawImage(src, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.88).split(',')[1] ?? '';   // a little more quality keeps faded print readable
+  return c.toDataURL('image/jpeg', 0.85).split(',')[1] ?? '';
 };
 /**
  * Resize (long side 2000 px) and, when asked, gently clean up a faded print; the result is both what the AI reads and the scan that is kept.

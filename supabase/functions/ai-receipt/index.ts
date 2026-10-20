@@ -13,23 +13,24 @@ const text = (v: unknown, max = 200) => { const s = String(v ?? '').replace(/\s+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const asUser = createClient(env('SUPABASE_URL'), env('SUPABASE_ANON_KEY'), { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } });
-  const [{ data: ok }, body] = await Promise.all([asUser.rpc('can_capture_receipts'), req.json().catch(() => ({}))]);   // permission check and body read together
+  const { data: ok } = await asUser.rpc('can_capture_receipts');
   if (ok !== true) return json({ error: 'Not allowed' }, 403);
   if (!env('ANTHROPIC_API_KEY')) return json({ error: 'The AI key is not set up yet (ANTHROPIC_API_KEY).' }, 503);
+  const body = await req.json().catch(() => ({})) as { image?: unknown; ping?: boolean };
   // connection test (the "Test AI connection" button): a tiny request to each model, reporting exactly what the AI service answered
-  if ((body as { ping?: boolean }).ping) {
+  if (body.ping) {
     const probe = async (model: string) => {
       const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 5, messages: [{ role: 'user', content: 'Reply with OK' }] }) }).catch((e) => ({ ok: false, status: 0, json: async () => ({ error: { message: String(e) } }) }) as unknown as Response);
       const msg = res.ok ? '' : ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? '';
       return { model, ok: res.ok, status: res.status, message: msg };
     };
-    const names = [env('AI_RECEIPT_FAST_MODEL') || 'claude-haiku-5-5', env('AI_RECEIPT_MODEL') || 'claude-sonnet-5-5'];
+    const names = [env('AI_RECEIPT_MODEL') || 'claude-sonnet-5-5'];
     return json({ ping: true, key_set: !!env('ANTHROPIC_API_KEY'), models: await Promise.all(names.map(probe)) });
   }
-  const { image } = body as { image?: unknown };
+  const { image } = body;
   if (typeof image !== 'string' || image.length < 100) return json({ error: 'No photo received.' }, 400);
   if (image.length > 5_000_000) return json({ error: 'The photo is too large.' }, 400);
-  const system = `You read photographed Philippine official receipts, sales invoices and cash invoices for a bookkeeper preparing BIR filings. Transcribe ONLY what is actually printed or written. If a value is completely erased, cut off, hidden or not on the document, return null for it. Thermal receipts often fade: when printed text is faded or worn but you can still make out most of it, give your best reading of what you can see and add that field to \"low_confidence\" (a person will check it against the paper); use \"unreadable\" and null only when you cannot make out any of it. Never invent characters you cannot see: for a partly visible TIN or number, give only the digits you can actually read. NEVER make up a name, address, date or amount from nothing. The photo may be sideways or upside down, taken at an angle, and parts may be handwritten (read neat handwriting too; if a handwritten value is not clearly legible, put the field in "low_confidence" or "unreadable"). Printed headers (business name, TIN, address, "NON-VAT Reg." / "VAT Reg.") belong to the SELLER; "Sold to", "Billed to" or "Delivered to" lines belong to the BUYER. Reply with JSON only:
+  const system = `You read photographed Philippine official receipts, sales invoices and cash invoices for a bookkeeper preparing BIR filings. Transcribe ONLY what is actually printed or written and legible. If a value is erased, faded, cut off, hidden or not on the document, return null for it. NEVER guess, complete or invent a TIN, name, address, number, date or amount. The photo may be sideways or upside down, taken at an angle, and parts may be handwritten (read neat handwriting too; if a handwritten value is not clearly legible, put the field in "low_confidence" or "unreadable"). Printed headers (business name, TIN, address, "NON-VAT Reg." / "VAT Reg.") belong to the SELLER; "Sold to", "Billed to" or "Delivered to" lines belong to the BUYER. Reply with JSON only:
 {"rotate":0|90|180|270 (degrees CLOCKWISE the photo must be turned so the text reads upright and left-to-right; 0 if it is already upright),
 "buyer_name":"the 'sold to' name as written or null","buyer_tin":"buyer TIN or null","buyer_address":"buyer address or null",
 "doc_type":"Official Receipt|Sales Invoice|Cash Invoice|Billing Invoice|Other|null",
@@ -46,28 +47,16 @@ Deno.serve(async (req) => {
 "unreadable":["names of the fields above that are on the document but erased / faded / cut off"],
 "low_confidence":["names of fields you read but are unsure about"],
 "notes":"one short sentence about the condition of the receipt (faded, torn, folded, glare) or empty"}`;
-  // A fast model reads most receipts correctly; when it leaves out or doubts something that matters, the careful model reads it again.
-  const accurate = env('AI_RECEIPT_MODEL') || 'claude-sonnet-5-5'; const fast = env('AI_RECEIPT_FAST_MODEL') || 'claude-haiku-5-5';
-  const ask = async (model: string): Promise<{ raw: string } | { error: string }> => {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model, max_tokens: 900, system, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: 'Read this receipt.' }] }] }),
-    });
-    if (!res.ok) {
-      const detail = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? '';
-      return { error: `The AI could not answer (${res.status}). ${detail}`.trim() };
-    }
-    const out = (await res.json()) as { content?: { type: string; text?: string }[] };
-    return { raw: (out.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('') };
-  };
-  const parse = (raw: string): Record<string, unknown> | null => { try { return JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as Record<string, unknown>; } catch { return null; } };
-  const KEY = ['date', 'receipt_no', 'supplier_tin', 'total_amount'];
-  const shaky = (j: Record<string, unknown> | null) => !j || Number(j.rotate) > 0 ? false : KEY.some((k) => j[k] === null || j[k] === undefined || j[k] === '') || [...(Array.isArray(j.unreadable) ? j.unreadable : []), ...(Array.isArray(j.low_confidence) ? j.low_confidence : [])].some((x) => KEY.includes(String(x)));
-  let r = await ask(fast === 'off' ? accurate : fast);
-  if ('error' in r && fast !== 'off') r = await ask(accurate);                                   // the fast model is not available: use the careful one
-  else if ('raw' in r && fast !== 'off' && fast !== accurate && (parse(r.raw) === null || shaky(parse(r.raw)))) { const again = await ask(accurate); if ('raw' in again) r = again; }
-  if ('error' in r) return json({ error: r.error }, 502);
-  const raw = r.raw;
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: env('AI_RECEIPT_MODEL') || 'claude-sonnet-5-5', max_tokens: 1500, system, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: 'Read this receipt.' }] }] }),
+  });
+  if (!res.ok) {
+    const detail = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message ?? '';
+    return json({ error: `The AI could not answer (${res.status}). ${detail}`.trim() }, 502);
+  }
+  const out = (await res.json()) as { content?: { type: string; text?: string }[] };
+  const raw = (out.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('');
   try {
     const j = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as Record<string, unknown>;
     const date = text(j.date, 10); const vs = text(j.vat_status, 12); const names = (a: unknown) => (Array.isArray(a) ? a.slice(0, 20).map((x) => String(x).slice(0, 30)) : []);
