@@ -421,7 +421,7 @@ function compute(db: DB, from: string, to: string, f: { branch: string; service:
   const live = <X extends { deleted_at?: string | null }>(a: X[]) => a.filter((x) => !x.deleted_at);
   const jobOk = (j: DB['jobs'][number]) => (!f.branch || j.branch_id === f.branch) && (!f.client || j.client_id === f.client) && (!f.service || j.service_codes.includes(f.service as ServiceCode)) && (!mineEmp || j.leader_id === mineEmp || j.crew_ids.includes(mineEmp));
   const jobs = live(db.jobs).filter(jobOk);
-  const todayJobs = jobs.filter((j) => j.start_at.startsWith(T) && !['Cancelled', 'Rescheduled'].includes(j.status));
+  const todayJobs = jobs.filter((j) => j.start_at.slice(0, 10) <= T && j.end_at.slice(0, 10) >= T && !['Cancelled', 'Rescheduled'].includes(j.status));
   const inRangeJobs = jobs.filter((j) => inRange(j.start_at, from, to) && !['Cancelled', 'Rescheduled'].includes(j.status));
   const jobsCompleted = inRangeJobs.filter((j) => isDone(j.status)).length;
   // weekly buckets

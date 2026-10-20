@@ -259,7 +259,7 @@ export function trend(db: DB, s: Scope, range: TrendRange): TrendPoint[] {
 /* ---------- operations today, attention, growth ---------- */
 export function operationsToday(db: DB, s: Scope) {
   const T = s.T;
-  const jobs = live(db.jobs).filter((j) => s.jobOk(j) && j.start_at.startsWith(T) && !SKIP.includes(j.status));
+  const jobs = live(db.jobs).filter((j) => s.jobOk(j) && j.start_at.slice(0, 10) <= T && j.end_at.slice(0, 10) >= T && !SKIP.includes(j.status));
   const crew = new Set(jobs.flatMap((j) => [...j.crew_ids, ...(j.leader_id ? [j.leader_id] : [])]));
   return {
     jobs, crewAssigned: crew.size, crewIn: live(db.attendance).filter((a) => a.date === T && a.clock_in && !a.clock_out).length,

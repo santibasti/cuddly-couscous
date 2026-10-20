@@ -7,7 +7,7 @@ import { JobForm } from '@/components/JobForm';
 import { BackJobsTable } from '@/components/BackJobs';
 import { OcularDetailModal, OcularFormModal, svcNames } from '@/components/Ocular';
 import { moveJob } from '@/lib/actions';
-import { addDays, departAt, placeLine, dow, eachDay, fmtDate, fmtTime, monthEnd, monthStart, money, today, weekStart } from '@/lib/util';
+import { addDays, departAt, diffDays, placeLine, dow, eachDay, fmtDate, fmtTime, monthEnd, monthStart, money, today, weekStart } from '@/lib/util';
 import type { Job, OcularVisit } from '@/lib/types';
 
 type View = 'month' | 'week' | 'day' | 'list' | 'backjobs';
@@ -59,7 +59,10 @@ export default function Jobs() {
     </button>
   );
   const isOff = (j: Job) => ['Cancelled', 'Rescheduled'].includes(j.status);
-  const byDay = (d: string) => jobs.filter((j) => j.start_at.startsWith(d) && (showOff || !isOff(j))).sort((a, b) => a.start_at.localeCompare(b.start_at));
+  // a job that runs over several days appears on every one of those days
+  const byDay = (d: string) => jobs.filter((j) => j.start_at.slice(0, 10) <= d && j.end_at.slice(0, 10) >= d && (showOff || !isOff(j))).sort((a, b) => a.start_at.localeCompare(b.start_at));
+  /** where `d` falls in a multi-day job: { n: 2, of: 3 } (undefined for a one-day job) */
+  const dayOf = (j: Job, d: string) => { const a = j.start_at.slice(0, 10); const b = j.end_at.slice(0, 10); return b > a ? { n: diffDays(d, a) + 1, of: diffDays(b, a) + 1, first: d === a, last: d === b } : undefined; };
   const [over, setOver] = useState<string | null>(null);
   const drop = (d: string, id: string) => {
     setOver(null);
@@ -71,14 +74,14 @@ export default function Jobs() {
   const crewLine = (j: Job) => { const ids = [...(j.leader_id ? [j.leader_id] : []), ...j.crew_ids]; const shown = ids.slice(0, 4).map(first).filter(Boolean).join(', '); return ids.length ? shown + (ids.length > 4 ? ` +${ids.length - 4}` : '') : 'No crew yet'; };
   const where = (j: Job) => { const st = db.sites.find((x) => x.id === j.site_id); const cl = db.clients.find((x) => x.id === j.client_id); return placeLine(st?.address || cl?.address, st?.city ?? cl?.city, st?.province ?? cl?.province); };
   const carName = (j: Job) => db.assets.find((a) => a.id === j.vehicle_id)?.name ?? '';
-  const chip = (j: Job) => (
-    <Link key={j.id} to={`/jobs/${j.id}`} className={`jchip k-${kindOf(j.status)}`} draggable={edit && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)} onDragStart={(e) => e.dataTransfer.setData('text/job', j.id)} title={`${j.number} · ${cn(j.client_id)} · ${j.status}\nTeam: ${[...(j.leader_id ? [j.leader_id] : []), ...j.crew_ids].map((id) => db.employees.find((e) => e.id === id)?.full_name ?? id).join(', ') || 'none yet'}\nVehicle: ${carName(j) || 'none'}`}>
-      <Glyph k={kindOf(j.status)} /><span className="jt"><span className="jl1"><b>{fmtTime(j.start_at)}</b><em>{j.back_job_id ? '↩ Back job' : svcShort(j)}</em></span><span className="jl2">{cn(j.client_id)}</span>{where(j) && <span className="jl3">📍 {where(j)}</span>}<span className="jl3">👤 {crewLine(j)}</span>{carName(j) && <span className="jl3">🚚 {carName(j)}</span>}{j.depart_hq && <span className="jl3">🏢 Leave HQ {fmtTime(departAt(j)!)}</span>}</span>
+  const chip = (j: Job, d: string) => { const dy = dayOf(j, d); return (
+    <Link key={j.id} to={`/jobs/${j.id}`} className={`jchip k-${kindOf(j.status)}`} draggable={edit && (!dy || dy.first) && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)} onDragStart={(e) => e.dataTransfer.setData('text/job', j.id)} title={`${j.number} · ${cn(j.client_id)} · ${j.status}\nTeam: ${[...(j.leader_id ? [j.leader_id] : []), ...j.crew_ids].map((id) => db.employees.find((e) => e.id === id)?.full_name ?? id).join(', ') || 'none yet'}\nVehicle: ${carName(j) || 'none'}`}>
+      <Glyph k={kindOf(j.status)} /><span className="jt"><span className="jl1"><b>{dy ? (dy.first ? fmtTime(j.start_at) : dy.last ? `until ${fmtTime(j.end_at)}` : 'All day') : fmtTime(j.start_at)}</b>{!dy && <em>{j.back_job_id ? '↩ Back job' : svcShort(j)}</em>}</span><span className="jl2">{cn(j.client_id)}</span>{dy && <span className="jl3">📆 Day {dy.n} of {dy.of}</span>}{where(j) && <span className="jl3">📍 {where(j)}</span>}<span className="jl3">👤 {crewLine(j)}</span>{carName(j) && <span className="jl3">🚚 {carName(j)}</span>}{j.depart_hq && (!dy || dy.first) && <span className="jl3">🏢 Leave HQ {fmtTime(departAt(j)!)}</span>}</span>
     </Link>
-  );
+  ); };
   const offCount = jobs.filter(isOff).length;
   const cellChips = (d: string) => {
-    const all = [...byDay(d).map(chip), ...ovByDay(d).map(ovChip)];
+    const all = [...byDay(d).map((j) => chip(j, d)), ...ovByDay(d).map(ovChip)];
     if (view === 'week' || all.length <= MAX_CHIPS + 1) return all;
     return [...all.slice(0, MAX_CHIPS), <button key="more" type="button" className="jmore" onClick={(e) => { e.stopPropagation(); setAnchor(d); setView('day'); }}>+{all.length - MAX_CHIPS} more</button>];
   };
@@ -86,7 +89,7 @@ export default function Jobs() {
   return (
     <>
       <PageHead icon="📅" stats={[
-        { icon: '🗓️', label: 'Today', value: jobs.filter((j) => j.start_at.startsWith(today()) && !isOff(j)).length, sub: 'jobs scheduled', tone: 'blue' },
+        { icon: '🗓️', label: 'Today', value: jobs.filter((j) => j.start_at.slice(0, 10) <= today() && j.end_at.slice(0, 10) >= today() && !isOff(j)).length, sub: 'jobs scheduled', tone: 'blue' },
         { icon: '🚚', label: 'In the field', value: jobs.filter((j) => ['Dispatched', 'On Site', 'In Progress'].includes(j.status)).length, sub: 'dispatched or working', tone: 'green' },
         { icon: '⏳', label: 'Next 7 days', value: jobs.filter((j) => j.start_at.slice(0, 10) > today() && j.start_at.slice(0, 10) <= addDays(today(), 7) && !isOff(j)).length, sub: 'upcoming bookings', tone: 'teal' },
         { icon: '📋', label: 'This month', value: jobs.filter((j) => j.start_at.startsWith(today().slice(0, 7)) && !isOff(j)).length, sub: 'jobs booked', tone: 'gold' },
@@ -135,7 +138,7 @@ export default function Jobs() {
         <div className="grid g2">
           <Card title={`Jobs on ${fmtDate(anchor)}`} flush>
             <ul className="list">{byDay(anchor).map((j) => (
-              <li key={j.id}><div><Link to={`/jobs/${j.id}`}><b>{fmtTime(j.start_at)} – {fmtTime(j.end_at)} · {j.number}</b></Link><div>{cn(j.client_id)} · {db.sites.find((s) => s.id === j.site_id)?.name}</div>{where(j) && <div className="small">📍 {where(j)}</div>}{j.depart_hq && <div className="small">🏢 Leave HQ {fmtTime(departAt(j)!)}</div>}
+              <li key={j.id}><div><Link to={`/jobs/${j.id}`}><b>{j.start_at.slice(0, 10) === j.end_at.slice(0, 10) ? `${fmtTime(j.start_at)} – ${fmtTime(j.end_at)}` : `${fmtDate(j.start_at.slice(0, 10))} ${fmtTime(j.start_at)} → ${fmtDate(j.end_at.slice(0, 10))} ${fmtTime(j.end_at)}`} · {j.number}</b></Link><div>{cn(j.client_id)} · {db.sites.find((s) => s.id === j.site_id)?.name}</div>{where(j) && <div className="small">📍 {where(j)}</div>}{j.depart_hq && <div className="small">🏢 Leave HQ {fmtTime(departAt(j)!)}</div>}
                 <div className="small muted">Leader {db.employees.find((e) => e.id === j.leader_id)?.full_name ?? '—'} · crew {j.crew_ids.length} · {db.assets.find((a) => a.id === j.vehicle_id)?.name ?? 'no vehicle'}</div></div><Badge>{j.status}</Badge></li>
             ))}{!byDay(anchor).length && <li className="muted">Nothing scheduled.</li>}</ul>
           </Card>
