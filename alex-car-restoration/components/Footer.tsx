@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Facebook, Instagram, Youtube } from "lucide-react";
 import { nav, site } from "@/content/site";
 import { services } from "@/content/services";
+import Logo from "./Logo";
 
 export default function Footer() {
   const c = site.contact;
@@ -14,7 +15,7 @@ export default function Footer() {
     <footer className="border-t border-silver/15 bg-obsidian pb-24 pt-12 sm:pt-20 lg:pb-12">
       <div className="container-x grid gap-8 md:gap-12 md:grid-cols-12">
         <div className="md:col-span-4">
-          <p className="font-display text-lg font-semibold uppercase tracking-[0.3em]">Alex <span className="text-silver">Car Restoration</span></p>
+          <Logo id="footer-logo" className="h-12 w-auto text-warm" />
           <p className="mt-4 text-xs uppercase tracking-[0.28em] text-silver">Heritage. Precision. Perfection.</p>
           {socials.length > 0 && (
             <div className="mt-8 flex gap-4">

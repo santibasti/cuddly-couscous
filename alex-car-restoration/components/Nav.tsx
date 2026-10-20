@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { nav, site } from "@/content/site";
+import Logo from "./Logo";
 
 export default function Nav() {
   const [open, setOpen] = useState(false);
@@ -22,9 +23,7 @@ export default function Nav() {
   return (
     <header className={`fixed inset-x-0 top-0 z-50 transition-colors duration-500 ${solid || open ? "bg-obsidian/95 backdrop-blur" : "bg-transparent"}`}>
       <div className="container-x flex h-16 items-center justify-between lg:h-20">
-        <Link href="/" aria-label={`${site.name} — home`} className="font-display text-sm font-semibold uppercase tracking-[0.3em]">
-          Alex <span className="text-silver">Car Restoration</span>
-        </Link>
+        <Link href="/" aria-label={`${site.name} — home`} className="text-warm"><Logo id="nav-logo" className="h-8 w-auto lg:h-10" /></Link>
         <nav aria-label="Primary" className="hidden items-center gap-8 xl:flex">
           {nav.map((n) => (
             <Link key={n.href} href={n.href} className="text-[11px] uppercase tracking-[0.22em] text-silver transition-colors hover:text-warm">{n.label}</Link>
