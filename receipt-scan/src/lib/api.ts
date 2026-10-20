@@ -1,4 +1,4 @@
-import type { Company, ExtractResult, PlanId, Receipt, Session } from './types';
+import type { Company, ExtractResult, Receipt, Session } from './types';
 
 export interface SignUpInput { email: string; password: string; companyName: string; tin: string; vatRegistered: boolean }
 
@@ -10,7 +10,6 @@ export interface Api {
   signOut(): Promise<void>;
   getCompany(): Promise<Company>;
   updateCompany(patch: Partial<Omit<Company, 'id'>>): Promise<Company>;
-  setPlan(plan: PlanId): Promise<Company>;
   listReceipts(): Promise<Receipt[]>;
   saveReceipt(r: Receipt): Promise<Receipt>;
   deleteReceipt(id: string): Promise<void>;
@@ -19,7 +18,7 @@ export interface Api {
   imageUrl(path: string): Promise<string | null>;
   /** scans used this calendar month */
   scansUsed(): Promise<number>;
-  /** read a receipt photo; counts one scan against the plan */
+  /** read a receipt photo; counts one scan against the company's monthly limit */
   extract(blob: Blob): Promise<ExtractResult>;
 }
 

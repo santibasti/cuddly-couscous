@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useApp } from '@/ctx';
 import ReceiptEditor from '@/components/ReceiptEditor';
-import { groupSum, inPeriod, inputVatClaimable, monthPeriod, peso, planOf, quarterPeriod, round2, totalsOf } from '@/lib/bir';
+import { groupSum, inPeriod, inputVatClaimable, monthPeriod, peso, quarterPeriod, round2, totalsOf } from '@/lib/bir';
 import { SAMPLE_TAG, sampleReceipts } from '@/lib/sample';
 import type { Receipt } from '@/lib/types';
 
@@ -34,7 +34,7 @@ export default function Dashboard() {
     };
   }, [receipts, company]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const limit = planOf(company.plan).scansPerMonth;
+  const limit = company.scanLimit;
   async function loadSample() { setBusy(true); for (const r of sampleReceipts(company.id)) await api.saveReceipt(r); await reload(); setBusy(false); }
   async function clearSample() {
     if (!confirm('Remove all sample receipts?')) return;

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '@/ctx';
 import ReceiptEditor from '@/components/ReceiptEditor';
-import { blankReceipt, formatTin, planOf, num } from '@/lib/bir';
+import { blankReceipt, formatTin, num } from '@/lib/bir';
 import { downscale, sha256 } from '@/lib/image';
 import type { Receipt } from '@/lib/types';
 
@@ -14,7 +14,7 @@ export default function Scan() {
   const [open, setOpen] = useState<Receipt | null>(null);
   const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const limit = planOf(company.plan).scansPerMonth;
+  const limit = company.scanLimit;
   const left = Math.max(0, limit - scansUsed);
 
   const patch = (key: string, p: Partial<Job>) => setJobs((js) => js.map((j) => (j.key === key ? { ...j, ...p } : j)));
@@ -32,7 +32,7 @@ export default function Scan() {
     for (let i = 0; i < imgs.length; i++) {
       const key = work[i].key;
       try {
-        if (remaining <= 0) { patch(key, { state: 'failed', msg: 'Monthly scan limit reached — upgrade in Settings.' }); continue; }
+        if (remaining <= 0) { patch(key, { state: 'failed', msg: 'Monthly scan limit reached — contact support to raise it.' }); continue; }
         const blob = await downscale(imgs[i]);
         const hash = await sha256(blob);
         if (seen.has(hash)) { patch(key, { state: 'skipped', msg: 'Already uploaded.' }); continue; }

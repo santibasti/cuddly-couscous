@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Api, SignUpInput } from './api';
-import type { Company, ExtractResult, PlanId, Receipt, Session } from './types';
+import type { Company, ExtractResult, Receipt, Session } from './types';
 import { blobToDataUrl } from './image';
 
 type Row = Record<string, any>;
@@ -21,7 +21,7 @@ const fromReceipt = (r: Receipt): Row => ({
   category: r.category, deductible: r.deductible, notes: r.notes, status: r.status, image_path: r.imagePath,
   image_hash: r.imageHash, confidence: r.confidence,
 });
-const toCompany = (c: Row): Company => ({ id: c.id, name: c.name, tin: c.tin, vatRegistered: c.vat_registered, address: c.address, plan: c.plan });
+const toCompany = (c: Row): Company => ({ id: c.id, name: c.name, tin: c.tin, vatRegistered: c.vat_registered, address: c.address, scanLimit: c.scan_limit });
 
 export function createCloudApi(): Api {
   const sb: SupabaseClient = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
@@ -71,11 +71,6 @@ export function createCloudApi(): Api {
       if (p.address !== undefined) row.address = p.address;
       const { data, error } = await sb.from('companies').update(row).eq('id', s.companyId).select().single();
       fail(error); return toCompany(data!);
-    },
-    async setPlan(plan: PlanId) {
-      // Plan changes must go through your payment webhook in production; this RPC is restricted to owners and only lets them move to 'free'.
-      const { data, error } = await sb.rpc('request_plan_change', { p_plan: plan });
-      fail(error); return toCompany(data as Row);
     },
     async listReceipts() {
       const s = await need();

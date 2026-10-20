@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '@/ctx';
-import { PLANS, formatTin, isValidTin, peso, planOf } from '@/lib/bir';
+import { formatTin, isValidTin } from '@/lib/bir';
 
 export default function Settings() {
   const { api, company, setCompany, scansUsed, session, receipts } = useApp();
@@ -13,15 +13,10 @@ export default function Settings() {
     setErr(''); setMsg('');
     try { setCompany(await api.updateCompany({ name: f.name, tin: f.tin, vatRegistered: f.vatRegistered, address: f.address })); setMsg('Saved.'); } catch (e) { setErr((e as Error).message); }
   }
-  async function choose(id: typeof company.plan) {
-    setErr(''); setMsg('');
-    try { setCompany(await api.setPlan(id)); setMsg('Plan updated.'); } catch (e) { setErr((e as Error).message); }
-  }
   function backup() {
     const blob = new Blob([JSON.stringify({ company, receipts, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${company.name.replace(/\W+/g, '-').toLowerCase()}-backup.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
-  const cur = planOf(company.plan);
 
   return (
     <div className="stack">
@@ -40,18 +35,9 @@ export default function Settings() {
       </div>
 
       <div className="card stack">
-        <h2>Plan & usage</h2>
-        <div className="small muted">{scansUsed} of {cur.scansPerMonth} scans used this month. Prices shown are placeholders.</div>
-        <div className="grid g4">
-          {PLANS.map((p) => (
-            <div key={p.id} className={`card plan ${p.id === company.plan ? 'current' : ''}`}>
-              <h3>{p.name}</h3><div className="kpi"><div className="value">{p.pricePhp ? peso(p.pricePhp) : 'Free'}</div><div className="sub">{p.pricePhp ? 'per month' : 'forever'}</div></div>
-              <p className="small">{p.scansPerMonth} scans / month<br />{p.blurb}</p>
-              {p.id === company.plan ? <span className="chip ok">Current plan</span> : (
-                <button disabled={!isOwner || (api.mode === 'cloud' && p.id !== 'free')} onClick={() => choose(p.id)}>{api.mode === 'cloud' && p.id !== 'free' ? 'Contact us to upgrade' : 'Switch'}</button>)}
-            </div>))}
-        </div>
-        {api.mode === 'cloud' && <div className="small muted">Upgrades are activated by your payment provider webhook (see README) — clients cannot grant themselves a plan.</div>}
+        <h2>Scan usage</h2>
+        <div className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={company.scanLimit} aria-valuenow={scansUsed}><i style={{ width: `${Math.min(100, (scansUsed / company.scanLimit) * 100)}%` }} /></div>
+        <div className="small muted">{scansUsed} of {company.scanLimit} receipt scans used this month. The count resets on the 1st. Need more? Contact support.</div>
       </div>
 
       <div className="card stack">

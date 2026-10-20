@@ -1,7 +1,7 @@
 import type { Api, SignUpInput } from './api';
-import type { Company, ExtractResult, PlanId, Receipt, Session } from './types';
+import type { Company, ExtractResult, Receipt, Session } from './types';
 import { blobToDataUrl, sha256 } from './image';
-import { planOf } from './bir';
+import { DEFAULT_SCAN_LIMIT } from './bir';
 
 /**
  * Demo backend: everything lives in this browser's localStorage, one account = one company.
@@ -44,7 +44,7 @@ export function createDemoApi(): Api {
       const email = i.email.trim().toLowerCase();
       if (db.users.some((u) => u.email === email)) throw new Error('An account with this email already exists');
       if (i.password.length < 8) throw new Error('Password must be at least 8 characters');
-      const company: Company = { id: crypto.randomUUID(), name: i.companyName.trim(), tin: i.tin, vatRegistered: i.vatRegistered, address: '', plan: 'free' };
+      const company: Company = { id: crypto.randomUUID(), name: i.companyName.trim(), tin: i.tin, vatRegistered: i.vatRegistered, address: '', scanLimit: DEFAULT_SCAN_LIMIT };
       const salt = crypto.randomUUID();
       const user: DemoUser = { id: crypto.randomUUID(), email, salt, hash: await hashPw(i.password, salt), companyId: company.id };
       db.companies.push(company); db.users.push(user); persist(db);
@@ -64,18 +64,12 @@ export function createDemoApi(): Api {
     async getCompany() {
       const c = load().companies.find((x) => x.id === session().companyId);
       if (!c) throw new Error('Company not found');
-      return c;
+      return { ...c, scanLimit: c.scanLimit ?? DEFAULT_SCAN_LIMIT };
     },
     async updateCompany(patch) {
       const s = writable(); const db = load();
       const c = db.companies.find((x) => x.id === s.companyId)!;
       Object.assign(c, patch); persist(db);
-      return c;
-    },
-    async setPlan(plan: PlanId) {
-      const s = writable(); const db = load();
-      const c = db.companies.find((x) => x.id === s.companyId)!;
-      c.plan = plan; persist(db);
       return c;
     },
     async listReceipts() {
@@ -112,7 +106,7 @@ export function createDemoApi(): Api {
       const s = writable(); const db = load();
       const company = db.companies.find((c) => c.id === s.companyId)!;
       const used = db.usage[monthKey(s.companyId)] ?? 0;
-      if (used >= planOf(company.plan).scansPerMonth) throw new Error('Monthly scan limit reached — upgrade your plan');
+      if (used >= (company.scanLimit ?? DEFAULT_SCAN_LIMIT)) throw new Error('Monthly scan limit reached — contact support to raise it');
       db.usage[monthKey(s.companyId)] = used + 1; persist(db);
       return { fields: {}, confidence: {}, read: false, message: 'Demo mode has no receipt reader — type the fields in. Connect Supabase to turn on automatic reading.' };
     },

@@ -59,7 +59,6 @@ tr.click { cursor: pointer; } tr.click:hover td { background: var(--brand-soft);
 .pad-img { position: sticky; top: .5rem; align-self: start; }
 .auth { min-height: 100vh; display: grid; place-items: center; padding: 1rem; } .auth .card { width: min(440px, 100%); }
 .tabs { display: inline-flex; background: var(--line); border-radius: 10px; padding: 3px; } .tabs button { border: 0; background: transparent; min-height: 34px; } .tabs button.on { background: var(--card); font-weight: 600; }
-.plan.current { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
 .bar { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; } .bar > i { display: block; height: 100%; background: var(--brand); }
 .bottom { display: none; }
 

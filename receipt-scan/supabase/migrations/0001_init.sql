@@ -1,6 +1,5 @@
 -- ResiboScan: multi-tenant schema. One company = one tenant; every row carries company_id and is protected by RLS.
 
-create type plan_id as enum ('free', 'starter', 'business');
 create type member_role as enum ('owner', 'admin', 'staff', 'viewer');
 
 create table companies (
@@ -9,7 +8,9 @@ create table companies (
   tin text not null default '',
   vat_registered boolean not null default false,
   address text not null default '',
-  plan plan_id not null default 'free',
+  -- receipt scans allowed per calendar month; raise it for a customer with:
+  --   update companies set scan_limit = 300 where id = '<company id>';
+  scan_limit int not null default 100 check (scan_limit >= 0),
   created_at timestamptz not null default now()
 );
 
@@ -88,10 +89,6 @@ language sql stable security definer set search_path = public as $$
   select exists (select 1 from memberships where company_id = p_company and user_id = auth.uid() and role in ('owner','admin'));
 $$;
 
-create function plan_limit(p plan_id) returns int language sql immutable as $$
-  select case p when 'free' then 20 when 'starter' then 150 else 600 end;
-$$;
-
 -- signup: create the tenant and make the caller its owner
 create function create_company(p_name text, p_tin text, p_vat_registered boolean) returns uuid
 language plpgsql security definer set search_path = public as $$
@@ -116,24 +113,12 @@ language plpgsql security definer set search_path = public as $$
 declare lim int; n int;
 begin
   if not can_write(p_company) then raise exception 'not allowed'; end if;
-  select plan_limit(plan) into lim from companies where id = p_company;
+  select scan_limit into lim from companies where id = p_company;
   insert into scan_usage(company_id, month, used) values (p_company, date_trunc('month', now())::date, 0) on conflict do nothing;
   update scan_usage set used = used + 1
     where company_id = p_company and month = date_trunc('month', now())::date and used < lim
     returning used into n;
   return n is not null;
-end $$;
-
--- Owners may only DOWNGRADE themselves. Upgrades must be applied by your payment webhook using the service role.
-create function request_plan_change(p_plan plan_id) returns companies
-language plpgsql security definer set search_path = public as $$
-declare cid uuid; c companies;
-begin
-  select company_id into cid from memberships where user_id = auth.uid() and role = 'owner' limit 1;
-  if cid is null then raise exception 'only the owner can change the plan'; end if;
-  if p_plan <> 'free' then raise exception 'paid plans are activated after payment'; end if;
-  update companies set plan = p_plan where id = cid returning * into c;
-  return c;
 end $$;
 
 -- keep updated_at fresh and write an audit trail
@@ -159,7 +144,7 @@ alter table audit_log enable row level security;
 
 create policy companies_select on companies for select using (is_member(id));
 create policy companies_update on companies for update using (can_admin(id)) with check (can_admin(id));
--- plan is not editable by clients: revoke column-level update on it
+-- scan_limit is not editable by clients: only these columns can be updated
 revoke update on companies from authenticated;
 grant update (name, tin, vat_registered, address) on companies to authenticated;
 

@@ -1,5 +1,4 @@
 export type Role = 'owner' | 'admin' | 'staff' | 'viewer';
-export type PlanId = 'free' | 'starter' | 'business';
 export type DocType = 'sales_invoice' | 'official_receipt' | 'cash_invoice' | 'other';
 export type PurchaseType = 'goods' | 'services' | 'capital';
 export type ReceiptStatus = 'needs_review' | 'verified';
@@ -10,7 +9,8 @@ export interface Company {
   tin: string;
   vatRegistered: boolean;
   address: string;
-  plan: PlanId;
+  /** scans allowed per calendar month; set per company by the operator */
+  scanLimit: number;
 }
 
 export interface Session {
@@ -70,10 +70,3 @@ export interface Issue {
   message: string;
 }
 
-export interface Plan {
-  id: PlanId;
-  name: string;
-  pricePhp: number;
-  scansPerMonth: number;
-  blurb: string;
-}

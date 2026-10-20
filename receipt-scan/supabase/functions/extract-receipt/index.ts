@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
     });
     const { data: ok, error: quotaErr } = await sb.rpc('consume_scan', { p_company: companyId });
     if (quotaErr) return json({ error: quotaErr.message }, 403);
-    if (!ok) return json({ error: 'Monthly scan limit reached — upgrade your plan' }, 402);
+    if (!ok) return json({ error: 'Monthly scan limit reached — contact support to raise it' }, 402);
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

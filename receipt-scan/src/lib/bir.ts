@@ -1,4 +1,4 @@
-import type { Company, Issue, Plan, PlanId, Receipt } from './types';
+import type { Company, Issue, Receipt } from './types';
 
 export const VAT_RATE = 0.12;
 
@@ -8,13 +8,8 @@ export const num = (v: unknown) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/** Placeholder pricing — set your real prices before launch. */
-export const PLANS: Plan[] = [
-  { id: 'free', name: 'Free', pricePhp: 0, scansPerMonth: 20, blurb: 'Try it with one small business' },
-  { id: 'starter', name: 'Starter', pricePhp: 499, scansPerMonth: 150, blurb: 'Sari-sari, café, freelancer-with-staff' },
-  { id: 'business', name: 'Business', pricePhp: 1499, scansPerMonth: 600, blurb: 'Multiple branches and a bookkeeper' },
-];
-export const planOf = (id: PlanId) => PLANS.find((p) => p.id === id) ?? PLANS[0];
+/** Default monthly scans per company (the database column `companies.scan_limit` is the source of truth). */
+export const DEFAULT_SCAN_LIMIT = 100;
 
 export const CATEGORIES = [
   'Inventory / Cost of goods', 'Supplies', 'Rent', 'Utilities', 'Communication', 'Fuel & transport',
