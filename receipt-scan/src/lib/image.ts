@@ -1,3 +1,5 @@
+import { sha256Bytes } from './sha256';
+
 /** Downscale a photo so uploads stay small and fast on mobile data. */
 export async function downscale(file: Blob, maxSide = 1600, quality = 0.82): Promise<Blob> {
   const bmp = await createImageBitmap(file);
@@ -11,8 +13,13 @@ export async function downscale(file: Blob, maxSide = 1600, quality = 0.82): Pro
 }
 
 export async function sha256(blob: Blob): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const buf = await blob.arrayBuffer();
+  // crypto.subtle is missing on plain-http pages (e.g. a LAN address), so fall back to a JS implementation
+  if (globalThis.crypto?.subtle) {
+    const d = await crypto.subtle.digest('SHA-256', buf);
+    return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  return sha256Bytes(new Uint8Array(buf));
 }
 
 export function blobToDataUrl(blob: Blob): Promise<string> {

@@ -1,6 +1,7 @@
 import type { Api, SignUpInput } from './api';
 import type { Company, ExtractResult, Receipt, Session } from './types';
 import { blobToDataUrl, sha256 } from './image';
+import { uuid } from './uuid';
 import { DEFAULT_SCAN_LIMIT } from './bir';
 
 /**
@@ -44,9 +45,9 @@ export function createDemoApi(): Api {
       const email = i.email.trim().toLowerCase();
       if (db.users.some((u) => u.email === email)) throw new Error('An account with this email already exists');
       if (i.password.length < 8) throw new Error('Password must be at least 8 characters');
-      const company: Company = { id: crypto.randomUUID(), name: i.companyName.trim(), tin: i.tin, vatRegistered: i.vatRegistered, address: '', scanLimit: DEFAULT_SCAN_LIMIT };
-      const salt = crypto.randomUUID();
-      const user: DemoUser = { id: crypto.randomUUID(), email, salt, hash: await hashPw(i.password, salt), companyId: company.id };
+      const company: Company = { id: uuid(), name: i.companyName.trim(), tin: i.tin, vatRegistered: i.vatRegistered, address: '', scanLimit: DEFAULT_SCAN_LIMIT };
+      const salt = uuid();
+      const user: DemoUser = { id: uuid(), email, salt, hash: await hashPw(i.password, salt), companyId: company.id };
       db.companies.push(company); db.users.push(user); persist(db);
       const s: Session = { userId: user.id, email, companyId: company.id, role: 'owner' };
       localStorage.setItem(SESSION_KEY, JSON.stringify(s));

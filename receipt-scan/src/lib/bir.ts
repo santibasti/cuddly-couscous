@@ -1,4 +1,5 @@
 import type { Company, Issue, Receipt } from './types';
+import { uuid } from './uuid';
 
 export const VAT_RATE = 0.12;
 
@@ -45,7 +46,7 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export function blankReceipt(companyId: string): Receipt {
   return {
-    id: crypto.randomUUID(), companyId, docType: 'sales_invoice', supplierName: '', supplierTin: '', supplierAddress: '',
+    id: uuid(), companyId, docType: 'sales_invoice', supplierName: '', supplierTin: '', supplierAddress: '',
     supplierVatRegistered: true, invoiceNo: '', date: todayIso(), vatable: 0, vatAmount: 0, vatExempt: 0, zeroRated: 0,
     total: 0, withholdingTax: 0, atc: '', purchaseType: 'goods', paymentMethod: 'Cash', category: 'Supplies',
     deductible: true, notes: '', status: 'needs_review', imagePath: null, imageHash: null, confidence: {},
