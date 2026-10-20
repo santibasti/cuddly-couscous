@@ -1,6 +1,7 @@
-import type { Company, ExtractResult, Receipt, Session } from './types';
+import type { AccountKind, Company, CompanyStats, CompanyStatus, ExtractResult, FirmRow, Receipt, Session } from './types';
 
-export interface SignUpInput { email: string; password: string; companyName: string; tin: string; vatRegistered: boolean }
+/** For a firm, `companyName` is the firm's name and no company is created yet. */
+export interface SignUpInput { email: string; password: string; companyName: string; tin: string; vatRegistered: boolean; kind: AccountKind }
 
 export interface Api {
   mode: 'demo' | 'cloud';
@@ -8,6 +9,17 @@ export interface Api {
   signUp(input: SignUpInput): Promise<Session>;
   signIn(email: string, password: string): Promise<Session>;
   signOut(): Promise<void>;
+  /** open another workspace (a firm moving between its clients); null goes back to the client list */
+  switchCompany(companyId: string | null): Promise<Session>;
+  /** every company this login belongs to, with this month's numbers */
+  listClients(): Promise<CompanyStats[]>;
+  /** firms only: create a client workspace */
+  addClient(input: { name: string; tin: string; vatRegistered: boolean }): Promise<string>;
+  /** platform owner only */
+  adminListCompanies(): Promise<CompanyStats[]>;
+  adminUpdateCompany(id: string, patch: { scanLimit: number; status: CompanyStatus }): Promise<void>;
+  adminListFirms(): Promise<FirmRow[]>;
+  adminUpdateFirm(userId: string, maxClients: number): Promise<void>;
   getCompany(): Promise<Company>;
   updateCompany(patch: Partial<Omit<Company, 'id'>>): Promise<Company>;
   listReceipts(): Promise<Receipt[]>;

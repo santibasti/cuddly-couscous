@@ -3,7 +3,7 @@ import { blankReceipt, quarterPeriod } from './bir';
 import { csvOf, reportPack, summaryListOfPurchases } from './exports';
 import type { Company, Receipt } from './types';
 
-const co: Company = { id: 'c1', name: 'Test Co', tin: '123-456-789-00000', vatRegistered: true, address: '', scanLimit: 100 };
+const co: Company = { id: 'c1', name: 'Test Co', tin: '123-456-789-00000', vatRegistered: true, address: '', status: 'active', scanLimit: 100 };
 const r = (o: Partial<Receipt>): Receipt => ({
   ...blankReceipt('c1'), supplierName: 'Shop', supplierTin: '111-222-333-00000', invoiceNo: 'A1', date: '2026-02-10', vatable: 1000, vatAmount: 120, total: 1120, status: 'verified', ...o,
 });

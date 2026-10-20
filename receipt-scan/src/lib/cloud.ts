@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Api, SignUpInput } from './api';
-import type { Company, ExtractResult, Receipt, Session } from './types';
+import type { AccountKind, Company, CompanyStats, CompanyStatus, ExtractResult, FirmRow, Receipt, Session } from './types';
 import { blobToDataUrl } from './image';
 
 type Row = Record<string, any>;
@@ -21,19 +21,42 @@ const fromReceipt = (r: Receipt): Row => ({
   category: r.category, deductible: r.deductible, notes: r.notes, status: r.status, image_path: r.imagePath,
   image_hash: r.imageHash, confidence: r.confidence,
 });
-const toCompany = (c: Row): Company => ({ id: c.id, name: c.name, tin: c.tin, vatRegistered: c.vat_registered, address: c.address, scanLimit: c.scan_limit });
+const toCompany = (c: Row): Company => ({ id: c.id, name: c.name, tin: c.tin, vatRegistered: c.vat_registered, address: c.address, status: c.status, scanLimit: c.scan_limit });
+const toStats = (r: Row): CompanyStats => ({
+  id: r.id, name: r.name, tin: r.tin, vatRegistered: r.vat_registered, status: r.status, scanLimit: r.scan_limit, scansUsed: r.scans_used,
+  receiptsTotal: r.receipts_total, receiptsMonth: r.receipts_month, needsReview: r.needs_review, spendMonth: Number(r.spend_month),
+  lastActivity: r.last_activity, createdAt: r.created_at, ownerEmail: r.owner_email ?? null,
+});
+const ACTIVE_KEY = (userId: string) => `rs.active.${userId}`;
+const readActive = (userId: string) => { try { return localStorage.getItem(ACTIVE_KEY(userId)); } catch { return null; } };
+const writeActive = (userId: string, id: string | null) => { try { if (id) localStorage.setItem(ACTIVE_KEY(userId), id); else localStorage.removeItem(ACTIVE_KEY(userId)); } catch { /* private mode */ } };
 
 export function createCloudApi(): Api {
   const sb: SupabaseClient = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
   const fail = (e: { message: string } | null) => { if (e) throw new Error(e.message); };
 
   async function sessionFor(userId: string, email: string): Promise<Session> {
-    const { data, error } = await sb.from('memberships').select('company_id, role').eq('user_id', userId).limit(1).single();
-    fail(error);
-    return { userId, email, companyId: data!.company_id, role: data!.role };
+    const [mem, prof, adm] = await Promise.all([
+      sb.from('memberships').select('company_id, role').eq('user_id', userId),
+      sb.from('profiles').select('kind').eq('user_id', userId).maybeSingle(),
+      sb.rpc('is_platform_admin'),
+    ]);
+    fail(mem.error); fail(prof.error);
+    const ms = mem.data ?? [];
+    const kind: AccountKind = prof.data?.kind === 'firm' ? 'firm' : 'business';
+    const isAdmin = adm.data === true;
+    // a single-company business opens straight into its workspace; firms and the platform owner start on their own page
+    const saved = readActive(userId);
+    const pick = ms.find((m) => m.company_id === saved) ?? (kind === 'business' && !isAdmin ? ms[0] : undefined);
+    return { userId, email, companyId: pick?.company_id ?? null, role: pick?.role ?? null, isAdmin, kind, companyCount: ms.length };
   }
   let cached: Session | null = null;
   const need = async () => (cached ??= await api.getSession()) ?? (() => { throw new Error('Please sign in'); })();
+  const needCompany = async () => {
+    const s = await need();
+    if (!s.companyId) throw new Error('Open a client workspace first');
+    return { ...s, companyId: s.companyId };
+  };
 
   const api: Api = {
     mode: 'cloud',
@@ -47,7 +70,7 @@ export function createCloudApi(): Api {
       const { data, error } = await sb.auth.signUp({ email: i.email, password: i.password });
       fail(error);
       if (!data.session) throw new Error('Check your email to confirm your account, then sign in.');
-      const { error: e2 } = await sb.rpc('create_company', { p_name: i.companyName, p_tin: i.tin, p_vat_registered: i.vatRegistered });
+      const { error: e2 } = await sb.rpc('signup_setup', { p_kind: i.kind, p_name: i.companyName, p_tin: i.tin, p_vat: i.vatRegistered });
       fail(e2);
       return (cached = await sessionFor(data.user!.id, i.email));
     },
@@ -57,13 +80,43 @@ export function createCloudApi(): Api {
       return (cached = await sessionFor(data.user!.id, email));
     },
     async signOut() { cached = null; await sb.auth.signOut(); },
-    async getCompany() {
+    async switchCompany(companyId) {
       const s = await need();
+      writeActive(s.userId, companyId);
+      return (cached = await sessionFor(s.userId, s.email));
+    },
+    async listClients() {
+      const { data, error } = await sb.rpc('my_company_stats');
+      fail(error); return ((data ?? []) as Row[]).map(toStats);
+    },
+    async addClient(i) {
+      const { data, error } = await sb.rpc('add_client', { p_name: i.name, p_tin: i.tin, p_vat: i.vatRegistered });
+      fail(error); return data as string;
+    },
+    async adminListCompanies() {
+      const { data, error } = await sb.rpc('admin_company_stats');
+      fail(error); return ((data ?? []) as Row[]).map(toStats);
+    },
+    async adminUpdateCompany(id, patch: { scanLimit: number; status: CompanyStatus }) {
+      const { error } = await sb.rpc('admin_update_company', { p_id: id, p_scan_limit: patch.scanLimit, p_status: patch.status });
+      fail(error);
+    },
+    async adminListFirms(): Promise<FirmRow[]> {
+      const { data, error } = await sb.rpc('admin_list_firms');
+      fail(error);
+      return ((data ?? []) as Row[]).map((r) => ({ userId: r.user_id, email: r.email, name: r.display_name, clients: r.clients, maxClients: r.max_clients, createdAt: r.created_at }));
+    },
+    async adminUpdateFirm(userId, maxClients) {
+      const { error } = await sb.rpc('admin_update_firm', { p_user: userId, p_max_clients: maxClients });
+      fail(error);
+    },
+    async getCompany() {
+      const s = await needCompany();
       const { data, error } = await sb.from('companies').select('*').eq('id', s.companyId).single();
       fail(error); return toCompany(data!);
     },
     async updateCompany(p) {
-      const s = await need();
+      const s = await needCompany();
       const row: Row = {};
       if (p.name !== undefined) row.name = p.name;
       if (p.tin !== undefined) row.tin = p.tin;
@@ -73,12 +126,12 @@ export function createCloudApi(): Api {
       fail(error); return toCompany(data!);
     },
     async listReceipts() {
-      const s = await need();
+      const s = await needCompany();
       const { data, error } = await sb.from('receipts').select('*').eq('company_id', s.companyId).order('doc_date', { ascending: false }).limit(5000);
       fail(error); return (data ?? []).map(toReceipt);
     },
     async saveReceipt(r) {
-      const s = await need();
+      const s = await needCompany();
       const { data, error } = await sb.from('receipts').upsert(fromReceipt({ ...r, companyId: s.companyId })).select().single();
       fail(error); return toReceipt(data!);
     },
@@ -87,7 +140,7 @@ export function createCloudApi(): Api {
       fail(error);
     },
     async uploadImage(blob, hash) {
-      const s = await need();
+      const s = await needCompany();
       const path = `${s.companyId}/${hash}.jpg`;
       const { error } = await sb.storage.from('receipts').upload(path, blob, { contentType: 'image/jpeg', upsert: true });
       fail(error); return path;
@@ -97,12 +150,12 @@ export function createCloudApi(): Api {
       return data?.signedUrl ?? null;
     },
     async scansUsed() {
-      const s = await need();
+      const s = await needCompany();
       const { data, error } = await sb.rpc('scans_used', { p_company: s.companyId });
       fail(error); return Number(data ?? 0);
     },
     async extract(blob): Promise<ExtractResult> {
-      const s = await need();
+      const s = await needCompany();
       const image = (await blobToDataUrl(blob)).split(',')[1];
       const { data, error } = await sb.functions.invoke('extract-receipt', { body: { companyId: s.companyId, image, mediaType: 'image/jpeg' } });
       if (error) {

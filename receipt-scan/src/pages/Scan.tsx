@@ -74,7 +74,9 @@ export default function Scan() {
           </div>
           <input ref={input} type="file" accept="image/*" capture="environment" multiple hidden onChange={(e) => pick(e.target.files)} />
         </div>
-      ) : <div className="notice info"><Icon name="shield" />Your role is read-only.</div>}
+      ) : company.status === 'suspended'
+        ? <div className="notice bad"><Icon name="alert" />Scanning is turned off while this account is paused. Contact support to reactivate it.</div>
+        : <div className="notice info"><Icon name="shield" />Your role is read-only.</div>}
 
       {jobs.length > 0 && (
         <div className="card">
