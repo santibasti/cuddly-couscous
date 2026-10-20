@@ -20,7 +20,7 @@ export const media = {
     { src: "/images/g-class-front-end.webp", alt: "Technicians inspecting the front end of a black SUV during reassembly", label: "Inspection" },
     { src: "/images/silver-suv-polish.webp", alt: "Technician hand-finishing the paint of a silver SUV", label: "Paint correction" },
     { src: "/images/suzuki-jimny.webp", alt: "Lime-green Suzuki Jimny presented in the finishing studio", label: "Final presentation" },
-    { src: "/images/show-trophy-1.webp", alt: "Alex Car Restoration team member lifting a trophy at a car show", label: "At the show" },
+    { src: "/images/steam-cleaning.webp", alt: "Technician steam-cleaning the bonnet of a white car with black stripes", label: "Steam cleaning" },
     { src: "/images/team-workshop.webp", alt: "The Alex Car Restoration team in the workshop", label: "The team" },
   ] as M[],
 };
