@@ -12,6 +12,8 @@ import { confirmLeave } from '@/lib/sync';
 import { getTheme, setTheme } from '@/lib/theme';
 import { Logo } from '@/components/Logo';
 import { AvailabilityPrompt } from '@/components/AvailabilityPrompt';
+import { AnnouncementPopup } from '@/components/AnnouncementPopup';
+import { useAnnouncements } from '@/lib/announcements';
 import { fmtStamp } from '@/lib/util';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
@@ -34,6 +36,7 @@ const Assets = lazy(() => import('@/pages/Assets'));
 const Finance = lazy(() => import('@/pages/Finance'));
 const Reports = lazy(() => import('@/pages/Reports'));
 const Executive = lazy(() => import('@/pages/Executive'));
+const Announcements = lazy(() => import('@/pages/Announcements'));
 const Admin = lazy(() => import('@/pages/Admin'));
 const Notifications = lazy(() => import('@/pages/Notifications'));
 const Portal = lazy(() => import('@/pages/Portal'));
@@ -55,6 +58,7 @@ const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: st
   { to: '/dashboard', key: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'Overview' },
   { to: '/today', key: 'today', label: 'Happening Today', icon: 'dispatch' },
   { to: '/executive', key: 'executive', label: 'Executive', icon: 'finance' },
+  { to: '/announcements', key: 'announcements', label: 'Announcements', icon: 'bell' },
   { to: '/jobs', key: 'jobs', label: 'Jobs & Calendar', icon: 'calendar', group: 'Operations' },
   { to: '/service-reports', key: 'servicereports', label: 'Service Reports', icon: 'reports' },
   { to: '/photos', key: 'photos', label: 'Photo Library', icon: 'camera' },
@@ -94,6 +98,7 @@ function Shell() {
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const ann = useAnnouncements();
   const refreshNow = async () => {
     setRefreshing(true);
     try { const r = await store.pullNow(); toast(r === 'busy' ? 'Some changes are still being sent — try again in a moment.' : r === 'offline' ? 'No connection right now.' : 'Up to date', r === 'updated' ? 'ok' : 'err'); } finally { setRefreshing(false); }
@@ -130,7 +135,7 @@ function Shell() {
             return (
               <div key={n.to} style={{ display: 'contents' }}>
                 {g && <div className="sep">{g}</div>}
-                <NavLink to={n.to} title={n.label} aria-label={n.label} className={({ isActive }) => (isActive ? 'active' : '')}><Icon name={n.icon} /><span className="lbl">{n.label}</span></NavLink>
+                <NavLink to={n.to} title={n.label} aria-label={n.label} className={({ isActive }) => (isActive ? 'active' : '')}><Icon name={n.icon} /><span className="lbl">{n.label}</span>{n.key === 'announcements' && ann.unread.length > 0 && <span className="dot nav-dot">{ann.unread.length}</span>}</NavLink>
               </div>
             );
           })}
@@ -144,6 +149,7 @@ function Shell() {
         </div>
       </aside>
       {pw && <PasswordModal onClose={() => setPw(false)} />}
+      <AnnouncementPopup />
       <div className={open ? 'scrim open' : 'scrim'} onClick={() => setOpen(false)} />
       <div className="main">
         <header className="topbar">
@@ -206,6 +212,7 @@ function Shell() {
             <Route path="/finance" element={<Guard area="finance"><Finance /></Guard>} />
             <Route path="/reports" element={<Guard area="reports"><Reports /></Guard>} />
             <Route path="/executive" element={<Guard area="executive"><Executive /></Guard>} />
+            <Route path="/announcements" element={<Guard area="announcements"><Announcements /></Guard>} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/admin" element={<Guard area="admin"><Admin /></Guard>} />
             <Route path="*" element={<Navigate to={homeFor(any)} replace />} />
