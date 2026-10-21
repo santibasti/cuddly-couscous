@@ -34,3 +34,6 @@ All pages read through `lib/data.ts`. Swap those functions for CMS fetches (Sani
 
 ## Fonts
 Body: Inter via `next/font`. Headings fall back through Neue Haas Grotesk, Helvetica Neue, Arial; add a licensed Neue Haas Grotesk webfont via `next/font/local` if purchased.
+
+## Photo galleries
+Real photography lives in `public/alex-restoration/images/` and is listed in `content/galleries.ts` (alt text, captions, dimensions). Captions describe only what is visible. Confirm image rights and consent from identifiable people (event photos) before publishing, and do not add scope, dates, client names, event or award names without verification. The galleries do not document the Frame-On / Frame-Off processes or the Provenance Book. `sharp` is installed for fast image optimisation.
