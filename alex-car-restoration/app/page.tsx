@@ -1,37 +1,24 @@
 import Hero from "@/components/Hero";
-import About from "@/components/About";
-import Services from "@/components/Services";
+import HeritageTeaser from "@/components/HeritageTeaser";
 import Portfolio from "@/components/Portfolio";
-import Process from "@/components/Process";
-import Provenance from "@/components/Provenance";
-import Philosophy from "@/components/Philosophy";
-import RestorationValue from "@/components/RestorationValue";
-import FaqSection from "@/components/FaqSection";
-import Galleries from "@/components/Galleries";
-import EventsGallery from "@/components/EventsGallery";
-import Workshop from "@/components/Workshop";
-import Testimonials from "@/components/Testimonials";
-import Contact from "@/components/Contact";
-import { getProjects, getServices, getTestimonials } from "@/lib/data";
+import ProcessPreview from "@/components/ProcessPreview";
+import PhilosophyTeaser from "@/components/PhilosophyTeaser";
+import ProvenanceTeaser from "@/components/ProvenanceTeaser";
+import ConsultationCta from "@/components/ConsultationCta";
+import { getProjects } from "@/lib/data";
 
+/** Home: short, cinematic, conversion-focused. Each preview links to its full page. */
 export default async function Home() {
-  const [projects, services, testimonials] = await Promise.all([getProjects(), getServices(), getTestimonials()]);
+  const projects = await getProjects();
   return (
     <>
       <Hero />
-      <About />
-      <Philosophy />
-      <Services services={services} />
-      <Portfolio projects={projects} limit={4} />
-      <Galleries />
-      <Process />
-      <Provenance />
-      <RestorationValue />
-      <Workshop />
-      <EventsGallery />
-      <Testimonials items={testimonials} />
-      <FaqSection />
-      <Contact />
+      <HeritageTeaser />
+      <Portfolio projects={projects} limit={4} showFilters={false} />
+      <ProcessPreview />
+      <PhilosophyTeaser />
+      <ProvenanceTeaser />
+      <ConsultationCta />
     </>
   );
 }

@@ -28,15 +28,19 @@ export default function ProcessTimeline({ methodologies }: { methodologies: Meth
   return (
     <div className="mt-10 sm:mt-16">
       {/* Methodology selector */}
-      <div role="group" aria-label="Choose a restoration approach" className="grid gap-4 md:grid-cols-2 lg:gap-6">
+      <div role="tablist" aria-label="Choose a restoration approach" className="grid gap-4 md:grid-cols-2 lg:gap-6" onKeyDown={(e) => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { const i = methodologies.findIndex((x) => x.id === methodId); const n = methodologies[(i + (e.key === "ArrowRight" ? 1 : -1) + methodologies.length) % methodologies.length]; choose(n.id); document.getElementById(`method-tab-${n.id}`)?.focus(); } }}>
         {methodologies.map((m) => {
           const selected = m.id === methodId;
           return (
             <button
               key={m.id}
               type="button"
+              role="tab"
+              id={`method-tab-${m.id}`}
+              aria-selected={selected}
+              aria-controls={`method-panel-${m.id}`}
+              tabIndex={selected ? 0 : -1}
               onClick={() => choose(m.id)}
-              aria-pressed={selected}
               className={`group relative isolate flex min-h-[300px] flex-col justify-end overflow-hidden border text-left transition-colors duration-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-silver sm:min-h-[380px] ${selected ? "border-racing" : "border-silver/20 hover:border-silver/60"}`}
             >
               <div className="absolute inset-0 -z-10 transition-transform duration-[1200ms] ease-out group-hover:scale-105">
@@ -60,6 +64,9 @@ export default function ProcessTimeline({ methodologies }: { methodologies: Meth
       <AnimatePresence mode="wait">
         <motion.div
           key={method.id}
+          role="tabpanel"
+          id={`method-panel-${method.id}`}
+          aria-labelledby={`method-tab-${method.id}`}
           initial={reduce ? false : { opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           exit={reduce ? undefined : { opacity: 0, y: -12 }}

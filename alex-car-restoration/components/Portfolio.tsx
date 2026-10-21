@@ -14,13 +14,13 @@ const filters: { id: "all" | ProjectCategory; label: string }[] = [
   { id: "custom", label: "Custom" },
 ];
 
-export default function Portfolio({ projects, limit, showHeading = true }: { projects: Project[]; limit?: number; showHeading?: boolean }) {
+export default function Portfolio({ projects, limit, showHeading = true, showFilters = true, tight = false }: { projects: Project[]; limit?: number; showHeading?: boolean; showFilters?: boolean; tight?: boolean }) {
   const [active, setActive] = useState<"all" | ProjectCategory>("all");
   const list = projects.filter((p) => active === "all" || p.category === active);
   const shown = limit ? list.slice(0, limit) : list;
 
   return (
-    <section id="work" className="bg-obsidian py-14 sm:py-20 lg:py-40">
+    <section id="work" className={`bg-obsidian ${tight ? "pb-14 sm:pb-20 lg:pb-40" : "py-14 sm:py-20 lg:py-32"}`}>
       <div className="container-x">
         {showHeading && (
           <>
@@ -30,20 +30,20 @@ export default function Portfolio({ projects, limit, showHeading = true }: { pro
             </Reveal>
           </>
         )}
-        <div role="group" aria-label="Filter projects" className="-mx-5 mt-8 flex gap-2 overflow-x-auto px-5 pb-2 sm:mx-0 sm:flex-wrap sm:px-0">
+        {showFilters && <div role="group" aria-label="Filter projects" className="-mx-5 mt-8 flex gap-2 overflow-x-auto px-5 pb-2 sm:mx-0 sm:flex-wrap sm:px-0">
           {filters.map((f) => (
             <button key={f.id} onClick={() => setActive(f.id)} aria-pressed={active === f.id}
               className={`shrink-0 border px-5 py-3 text-[11px] uppercase tracking-[0.22em] transition-colors ${active === f.id ? "border-warm bg-warm text-obsidian" : "border-silver/30 text-silver hover:border-warm hover:text-warm"}`}>
               {f.label}
             </button>
           ))}
-        </div>
+        </div>}
         <motion.ul layout className="-mx-5 mt-8 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-4 md:mx-0 md:mt-12 md:grid md:snap-none md:grid-cols-2 md:gap-x-6 md:gap-y-16 md:overflow-visible md:px-0">
           <AnimatePresence mode="popLayout">
             {shown.map((p, i) => (
               <motion.li layout key={p.slug} className="w-[82%] shrink-0 snap-center md:w-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
                 <article className="group">
-                  <Link href={`/projects/${p.slug}`} className="block" aria-label={`View project: ${p.make} ${p.model}`}>
+                  <Link href={`/portfolio/${p.slug}`} className="block" aria-label={`View project: ${p.make} ${p.model}`}>
                     <div className="relative aspect-[4/3] overflow-hidden">
                       <div className="h-full w-full transition-transform duration-[900ms] ease-out group-hover:scale-105">
                         <Media src={p.after ?? p.hero} alt={`${p.make} ${p.model}`} label="Project" tone={i} className="h-full w-full" sizes="(min-width:768px) 45vw, 100vw" />
@@ -64,7 +64,7 @@ export default function Portfolio({ projects, limit, showHeading = true }: { pro
           </AnimatePresence>
         </motion.ul>
         {limit && list.length > limit && (
-          <div className="mt-16"><Link href="/projects" className="btn-ghost">View All Projects</Link></div>
+          <div className="mt-16"><Link href="/portfolio" className="btn-ghost">View All Projects</Link></div>
         )}
       </div>
     </section>

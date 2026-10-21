@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   return {
     title: `${p.make} ${p.model} — ${categoryLabels[p.category]}`,
     description: p.summary,
-    alternates: { canonical: `/projects/${p.slug}` },
+    alternates: { canonical: `/portfolio/${p.slug}` },
     robots: p.placeholder || !p.detailsConfirmed ? { index: false, follow: true } : undefined,
   };
 }
@@ -65,8 +65,8 @@ export default async function ProjectPage({ params }: Params) {
         </div>
       ) : null}
       <div className="border-t border-silver/15 py-20 text-center">
-        <Link href="/#contact" className="btn-primary">Start Your Restoration</Link>
-        <div className="mt-8"><Link href="/projects" className="text-[11px] uppercase tracking-[0.22em] text-silver hover:text-warm">← All projects</Link></div>
+        <Link href="/contact" className="btn-primary">Start Your Restoration</Link>
+        <div className="mt-8"><Link href="/portfolio" className="text-[11px] uppercase tracking-[0.22em] text-silver hover:text-warm">← Portfolio</Link></div>
       </div>
     </article>
   );

@@ -8,7 +8,7 @@ import { services } from "@/content/services";
 
 type Status = "idle" | "sending" | "done" | "error";
 
-export default function Contact() {
+export default function Contact({ as: H = "h2" }: { as?: "h1" | "h2" }) {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
   const [appointment, setAppointment] = useState(false);
@@ -38,11 +38,11 @@ export default function Contact() {
   ].filter(Boolean) as { icon: typeof Phone; label: string; value: string; href?: string }[];
 
   return (
-    <section id="contact" className="bg-obsidian py-14 sm:py-20 lg:py-40">
+    <section id="contact" className={`bg-obsidian pb-14 sm:pb-20 lg:pb-32 ${H === "h1" ? "pt-32 sm:pt-40 lg:pt-48" : "pt-14 sm:pt-20 lg:pt-32"}`}>
       <div className="container-x grid gap-10 lg:gap-16 lg:grid-cols-12">
         <div className="lg:col-span-5">
           <Reveal><p className="eyebrow mb-6">Project Inquiry</p></Reveal>
-          <Reveal delay={0.1}><h2 className="h-display text-[clamp(2rem,4.6vw,4.2rem)]">Your vehicle deserves exceptional craftsmanship.</h2></Reveal>
+          <Reveal delay={0.1}><H className="h-display text-[clamp(2rem,4.6vw,4.2rem)]">Your vehicle deserves exceptional craftsmanship.</H></Reveal>
           <Reveal delay={0.2}><p className="mt-8 max-w-md text-base leading-relaxed text-warm/70">Tell us about your vehicle and the restoration you envision.</p></Reveal>
 
           <Reveal delay={0.3}>

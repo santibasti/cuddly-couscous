@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Media from "./Media";
 import Reveal from "./Reveal";
 import Parallax from "./Parallax";
@@ -5,7 +6,7 @@ import { media } from "@/content/media";
 import { site } from "@/content/site";
 import { about } from "@/content/about";
 
-export default function About() {
+export default function About({ as: H = "h2" }: { as?: "h1" | "h2" }) {
   const f = site.facts;
   const facts = [
     { k: "Established", v: f.yearFounded },
@@ -15,19 +16,19 @@ export default function About() {
   ].filter((x) => x.v);
 
   return (
-    <section id="about" className="bg-obsidian py-14 sm:py-20 lg:py-40">
+    <section id="about" className={`bg-obsidian pb-14 sm:pb-20 lg:pb-32 ${H === "h1" ? "pt-32 sm:pt-40 lg:pt-48" : "pt-14 sm:pt-20 lg:pt-32"}`}>
       <div className="container-x grid gap-10 lg:grid-cols-12 lg:gap-20">
         <div className="lg:col-span-6 lg:pt-16">
           <Reveal><p className="eyebrow mb-6">{about.eyebrow}</p></Reveal>
           <Reveal delay={0.1}>
-            <h2 className="h-display text-[clamp(2rem,5vw,4.5rem)]">{about.heading}</h2>
+            <H className="h-display text-[clamp(2rem,5vw,4.5rem)]">{about.heading}</H>
             <p className="mt-4 font-display text-lg uppercase tracking-tight text-silver sm:text-2xl">{about.subheading}</p>
           </Reveal>
           <Reveal delay={0.2}>
             <div className="mt-6 max-w-xl space-y-4 text-base leading-relaxed text-warm/75 sm:mt-10 sm:space-y-6">
               {about.paragraphs.map((t, i) => <p key={i} className={i === about.paragraphs.length - 1 ? "text-warm" : undefined}>{t}</p>)}
             </div>
-            <a href="/#work" className="mt-8 inline-block border-b border-silver/40 pb-1 text-[11px] uppercase tracking-[0.22em] text-silver transition-colors hover:border-warm hover:text-warm">View our work</a>
+            <Link href="/portfolio" className="mt-8 inline-block border-b border-silver/40 pb-1 text-[11px] uppercase tracking-[0.22em] text-silver transition-colors hover:border-warm hover:text-warm">View our work</Link>
           </Reveal>
           {facts.length > 0 && (
             <dl className="mt-12 grid max-w-xl grid-cols-2 gap-8 border-t border-silver/20 pt-8">

@@ -27,11 +27,11 @@ export default function Hero() {
           Preserving automotive heritage. Perfecting every detail. Bringing exceptional vehicles back to life through precision, passion, and uncompromising craftsmanship.
         </motion.p>
         <motion.div {...line(1)} className="mt-10 flex flex-col gap-3 sm:flex-row">
-          <Link href="/#work" className="btn-ghost">Explore Our Work</Link>
-          <Link href="/#contact" className="btn-primary">Start Your Restoration</Link>
+          <Link href="/portfolio" className="btn-ghost">Explore Our Work</Link>
+          <Link href="/contact" className="btn-primary">Start Your Restoration</Link>
         </motion.div>
       </div>
-      <motion.a href="#about" aria-label="Scroll to content" className="absolute bottom-6 left-1/2 hidden -translate-x-1/2 text-silver sm:block"
+      <motion.a href="#heritage" aria-label="Scroll to content" className="absolute bottom-6 left-1/2 hidden -translate-x-1/2 text-silver sm:block"
         animate={reduce ? undefined : { y: [0, 8, 0] }} transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}>
         <ChevronDown />
       </motion.a>

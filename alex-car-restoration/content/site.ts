@@ -43,10 +43,10 @@ export const site = {
 } as const;
 
 export const nav = [
-  { label: "Home", href: "/#top" },
-  { label: "About", href: "/#about" },
-  { label: "Services", href: "/#services" },
-  { label: "Our Work", href: "/#work" },
-  { label: "Our Process", href: "/#process" },
-  { label: "Contact", href: "/#contact" },
+  { label: "Home", href: "/" },
+  { label: "About", href: "/about" },
+  { label: "Services", href: "/services" },
+  { label: "Our Process", href: "/process" },
+  { label: "Portfolio", href: "/portfolio" },
+  { label: "Contact", href: "/contact" },
 ];

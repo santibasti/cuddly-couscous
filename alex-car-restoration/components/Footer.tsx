@@ -25,13 +25,13 @@ export default function Footer() {
             </div>
           )}
         </div>
-        <nav aria-label="Footer" className="hidden md:col-span-2 md:block">
+        <nav aria-label="Footer" className="md:col-span-2">
           <p className="eyebrow mb-4">Navigate</p>
           <ul className="space-y-2 text-sm">{nav.map((n) => <li key={n.href}><Link href={n.href} className="text-warm/70 hover:text-warm">{n.label}</Link></li>)}</ul>
         </nav>
         <div className="hidden md:col-span-3 md:block">
           <p className="eyebrow mb-4">Services</p>
-          <ul className="space-y-2 text-sm text-warm/70">{services.map((s) => <li key={s.id}>{s.title}</li>)}</ul>
+          <ul className="space-y-2 text-sm text-warm/70">{services.map((s) => <li key={s.id}><Link href="/services" className="hover:text-warm">{s.title}</Link></li>)}</ul>
         </div>
         <div className="md:col-span-3">
           <p className="eyebrow mb-4">Contact</p>

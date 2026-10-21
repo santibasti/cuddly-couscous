@@ -40,3 +40,16 @@ Real photography lives in `public/alex-restoration/images/` and is listed in `co
 
 ## Adding a new car to the portfolio
 Edit `content/projects.ts` only (full instructions and a template are at the top of that file): put the WebP photos in `public/projects/<slug>/`, add one entry with each photo's `src`, `alt`, `width` and `height`. The card, detail page, gallery with full-screen viewer, filters, SEO and sitemap are generated automatically. Keep one vehicle per entry, and only add `before`/`after` or `scope` once verified.
+
+## Site structure (multi-page)
+| Route | Page | Main content |
+|---|---|---|
+| `/` | Home | Hero, Since 1992 heritage, featured projects, process preview, philosophy teaser, Provenance teaser, consultation CTA |
+| `/about` | About | Full story, Source/Restore/Manufacture philosophy, workshop, events, testimonials |
+| `/services` | Services | Six services, restoration value and timeline |
+| `/process` | Our Process | Frame-On / Frame-Off tabs (10 stages each) and the Provenance Collection |
+| `/portfolio` | Portfolio | Filterable project grid |
+| `/portfolio/[slug]` | Project | One vehicle, its photos and viewer |
+| `/contact` | Contact | Inquiry form, contact details, client FAQ |
+
+Old `/projects` URLs redirect to `/portfolio`. Navigation items live in `content/site.ts`; previews on the home page link to the full pages (no section is repeated in full on two pages).

@@ -32,7 +32,7 @@ export const provenanceIntro = {
   cta: {
     heading: "Preserve more than a vehicle. Preserve its story.",
     button: "Discuss Your Frame-Off Restoration",
-    href: "/#contact",
+    href: "/contact",
   },
 };
 
