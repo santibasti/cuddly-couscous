@@ -66,9 +66,30 @@ export const categoryLabels: Record<ProjectCategory, string> = {
 const pending = ["The full project story and scope of work will be added once confirmed by the workshop."];
 
 export const projects: Project[] = [
+  { slug: "porsche-911", make: "Porsche", model: "911", category: "classic", placeholder: false, detailsConfirmed: false,
+    headline: "Porsche 911 \u2014 An Icon Preserved.",
+    hero: "/projects/porsche-911/front-three-quarter.webp",
+    summary: "A red classic Porsche 911, photographed inside and out in the Alex Restoration studio.", narrative: pending, scope: [],
+    gallery: [
+      { src: "/projects/porsche-911/front-three-quarter.webp", alt: "Front three-quarter view of a red classic Porsche 911 coupe in the studio", width: 2000, height: 1333 },
+      { src: "/projects/porsche-911/rear-three-quarter.webp", alt: "Rear three-quarter view of a red classic Porsche 911 with a rear spoiler", width: 2000, height: 1335 },
+      { src: "/projects/porsche-911/side-detail.webp", alt: "Side view of a red classic Porsche 911 showing its rear wheel and bodywork", width: 2000, height: 1333 },
+      { src: "/projects/porsche-911/cockpit-interior.webp", alt: "Black leather cockpit interior of a classic Porsche 911 with steering wheel and instruments", width: 2000, height: 1333 },
+      { src: "/projects/porsche-911/front-trunk.webp", alt: "Open front luggage compartment of a red classic Porsche 911", width: 2000, height: 1333 },
+      { src: "/projects/porsche-911/engine-bay.webp", alt: "Open rear engine bay of a red classic Porsche 911", width: 2000, height: 1333 },
+    ] },
+  { slug: "classic-mini", make: "Classic", model: "Mini", category: "classic", placeholder: false, detailsConfirmed: false,
+    headline: "Classic Mini \u2014 Timeless Character.",
+    hero: "/projects/classic-mini/rear-three-quarter.webp",
+    summary: "A red classic Mini, photographed in the workshop with its interior and engine bay.", narrative: pending, scope: [],
+    gallery: [
+      { src: "/projects/classic-mini/rear-three-quarter.webp", alt: "Rear three-quarter view of a red classic Mini parked in the workshop", width: 2000, height: 1333 },
+      { src: "/projects/classic-mini/leather-interior.webp", alt: "Black leather front seats inside a classic Mini", width: 2000, height: 1333 },
+      { src: "/projects/classic-mini/engine-bay.webp", alt: "Open engine bay of a red classic Mini", width: 2000, height: 1333 },
+    ] },
   { slug: "ford-mustang", make: "Ford", model: "Mustang", category: "classic", placeholder: false, detailsConfirmed: false,
     hero: "/images/mustang-showroom.webp", summary: "A classic Mustang presented in the Alex Restoration studio.", narrative: pending, scope: [] },
-  { slug: "porsche-911", make: "Porsche", model: "911", category: "custom", placeholder: false, detailsConfirmed: false,
+  { slug: "porsche-911-white", make: "Porsche", model: "911 (White)", category: "custom", placeholder: false, detailsConfirmed: false,
     hero: "/images/porsche-911-white.webp", summary: "A white 911 with carbon-fibre details and forged wheels.", narrative: pending, scope: [] },
   { slug: "ford-gt", make: "Ford", model: "GT", category: "luxury", placeholder: false, detailsConfirmed: false,
     hero: "/images/ford-gt-rear.webp", summary: "A Ford GT presented in the finishing studio.", narrative: pending, scope: [] },
