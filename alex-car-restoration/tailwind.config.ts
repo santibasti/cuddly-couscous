@@ -10,6 +10,7 @@ const config: Config = {
         silver: "#B8BDC3",
         warm: "#F5F5F2",
         racing: "#A51C30",
+        brass: "#B59A6D",
       },
       fontFamily: {
         display: ['"Neue Haas Grotesk Display"', '"Neue Haas Grotesk"', '"Helvetica Neue"', "Helvetica", "Arial", "sans-serif"],

@@ -69,7 +69,14 @@ export default function ProcessTimeline({ methodologies }: { methodologies: Meth
           {/* Progress indicator */}
           <div className="mb-8 sm:mb-10">
             <div className="flex items-end justify-between gap-4">
-              <p className="eyebrow">{method.name}</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:gap-6">
+                <p className="eyebrow">{method.name}</p>
+                {method.link && (
+                  <a href={method.link.href} className="inline-flex items-center gap-2 self-start border-b border-brass/50 pb-0.5 text-[11px] uppercase tracking-[0.2em] text-brass transition-colors hover:border-brass hover:text-warm">
+                    {method.link.label} <span aria-hidden>&darr;</span>
+                  </a>
+                )}
+              </div>
               <p className="font-display text-sm tabular-nums text-silver" aria-live="polite">
                 <span className="text-warm">{current.n}</span> / {String(stages.length).padStart(2, "0")}
               </p>

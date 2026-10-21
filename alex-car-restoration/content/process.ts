@@ -112,6 +112,8 @@ export type Methodology = {
   image?: string;
   imageAlt: string;
   stages: ProcessStage[];
+  /** Optional small link shown in the timeline header of this methodology */
+  link?: { label: string; href: string };
 };
 
 export const methodologies: Methodology[] = [
@@ -130,5 +132,6 @@ export const methodologies: Methodology[] = [
     image: "/images/porsche-911-black-hero.webp",
     imageAlt: "Black classic Porsche 911 in the Alex Restoration studio",
     stages: frameOffStages,
+    link: { label: "Discover the Provenance Collection", href: "#provenance" },
   },
 ];
