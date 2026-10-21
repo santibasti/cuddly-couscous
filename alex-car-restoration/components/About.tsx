@@ -3,6 +3,7 @@ import Reveal from "./Reveal";
 import Parallax from "./Parallax";
 import { media } from "@/content/media";
 import { site } from "@/content/site";
+import { about } from "@/content/about";
 
 export default function About() {
   const f = site.facts;
@@ -17,15 +18,16 @@ export default function About() {
     <section id="about" className="bg-obsidian py-14 sm:py-20 lg:py-40">
       <div className="container-x grid gap-10 lg:grid-cols-12 lg:gap-20">
         <div className="lg:col-span-6 lg:pt-16">
-          <Reveal><p className="eyebrow mb-6">The Art of Restoration</p></Reveal>
+          <Reveal><p className="eyebrow mb-6">{about.eyebrow}</p></Reveal>
           <Reveal delay={0.1}>
-            <h2 className="h-display text-[clamp(2rem,5vw,4.5rem)]">More than restoration. A commitment to excellence.</h2>
+            <h2 className="h-display text-[clamp(2rem,5vw,4.5rem)]">{about.heading}</h2>
+            <p className="mt-4 font-display text-lg uppercase tracking-tight text-silver sm:text-2xl">{about.subheading}</p>
           </Reveal>
           <Reveal delay={0.2}>
-            <div className="mt-6 max-w-xl space-y-4 sm:mt-10 sm:space-y-6 text-base leading-relaxed text-warm/75">
-              <p>Alex Car Restoration is a specialist in automotive craftsmanship, restoration and refinishing, serving owners of classic, vintage and luxury vehicles in the Philippines.</p>
-              <p>Our philosophy is simple: preserve each vehicle&rsquo;s character while achieving exceptional workmanship. Every panel, line and finish is treated with respect for the heritage it carries.</p>
+            <div className="mt-6 max-w-xl space-y-4 text-base leading-relaxed text-warm/75 sm:mt-10 sm:space-y-6">
+              {about.paragraphs.map((t, i) => <p key={i} className={i === about.paragraphs.length - 1 ? "text-warm" : undefined}>{t}</p>)}
             </div>
+            <a href="/#work" className="mt-8 inline-block border-b border-silver/40 pb-1 text-[11px] uppercase tracking-[0.22em] text-silver transition-colors hover:border-warm hover:text-warm">View our work</a>
           </Reveal>
           {facts.length > 0 && (
             <dl className="mt-12 grid max-w-xl grid-cols-2 gap-8 border-t border-silver/20 pt-8">

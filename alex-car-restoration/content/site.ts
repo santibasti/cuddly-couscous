@@ -36,7 +36,7 @@ export const site = {
   // Editable fields for later verification. Never invent these.
   facts: {
     yearFounded: "1992" as string | null, // "Established 1992" on workshop signage (supplied photo); confirm
-    yearsOfExperience: null as string | null,
+    yearsOfExperience: "30+ years" as string | null, // as stated by the business; confirm
     certifications: [] as string[],
     awards: [] as string[],
   },

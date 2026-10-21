@@ -81,7 +81,19 @@ export default function ProcessTimeline({ methodologies }: { methodologies: Meth
                 <span className="text-warm">{current.n}</span> / {String(stages.length).padStart(2, "0")}
               </p>
             </div>
-            <ol className="mt-4 flex gap-1.5" aria-label="Stage progress">
+            {method.intro && <p className="mt-5 max-w-3xl text-base leading-relaxed text-warm/80 sm:text-lg">{method.intro}</p>}
+            {method.featured && (
+              <div className="mt-6 flex items-center gap-4 border border-silver/15 bg-obsidian/40 p-3 sm:max-w-xl sm:gap-6 sm:p-4">
+                <div className="w-28 shrink-0 sm:w-40">
+                  <Media src={method.featured.image} alt={method.featured.imageAlt} label={method.featured.title} tone={3} className="aspect-[4/3] w-full" sizes="160px" />
+                </div>
+                <div>
+                  <p className="eyebrow !text-[10px]">{method.featured.label}</p>
+                  <p className="mt-1 font-display text-lg font-semibold uppercase leading-tight tracking-tight sm:text-xl">{method.featured.title}</p>
+                </div>
+              </div>
+            )}
+            <ol className="mt-5 flex gap-1.5" aria-label="Stage progress">
               {stages.map((s, i) => (
                 <li key={s.n} className="flex-1">
                   <button

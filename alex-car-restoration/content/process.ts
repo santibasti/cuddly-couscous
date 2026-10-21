@@ -112,6 +112,10 @@ export type Methodology = {
   image?: string;
   imageAlt: string;
   stages: ProcessStage[];
+  /** Optional introduction shown above the timeline */
+  intro?: string;
+  /** Optional featured example (use only authorised photography) */
+  featured?: { label: string; title: string; image?: string; imageAlt: string };
   /** Optional small link shown in the timeline header of this methodology */
   link?: { label: string; href: string };
 };
@@ -123,6 +127,13 @@ export const methodologies: Methodology[] = [
     description: "A comprehensive body restoration process that retains the vehicle's mechanical and electrical systems.",
     image: "/images/mustang-showroom.webp",
     imageAlt: "Classic Ford Mustang presented in the Alex Restoration studio",
+    intro: "A comprehensive cosmetic and structural restoration performed with the mechanical and electrical systems retained on the chassis.",
+    featured: {
+      label: "Featured Frame-On example",
+      title: "Mercedes-Benz 280 SL",
+      image: undefined,
+      imageAlt: "Mercedes-Benz 280 SL, featured Frame-On restoration example",
+    },
     stages: frameOnStages,
   },
   {
