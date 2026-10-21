@@ -37,3 +37,6 @@ Body: Inter via `next/font`. Headings fall back through Neue Haas Grotesk, Helve
 
 ## Photo galleries
 Real photography lives in `public/alex-restoration/images/` and is listed in `content/galleries.ts` (alt text, captions, dimensions). Captions describe only what is visible. Confirm image rights and consent from identifiable people (event photos) before publishing, and do not add scope, dates, client names, event or award names without verification. The galleries do not document the Frame-On / Frame-Off processes or the Provenance Book. `sharp` is installed for fast image optimisation.
+
+## Adding a new car to the portfolio
+Edit `content/projects.ts` only (full instructions and a template are at the top of that file): put the WebP photos in `public/projects/<slug>/`, add one entry with each photo's `src`, `alt`, `width` and `height`. The card, detail page, gallery with full-screen viewer, filters, SEO and sitemap are generated automatically. Keep one vehicle per entry, and only add `before`/`after` or `scope` once verified.

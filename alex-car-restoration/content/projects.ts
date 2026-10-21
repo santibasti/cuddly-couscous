@@ -1,11 +1,30 @@
 /**
- * Portfolio data. Shaped so it can later be fetched from a CMS
- * (see lib/data.ts, the single access point used by all pages).
+ * PORTFOLIO DATA: the single place to add or edit projects.
  *
- * Every entry below is a PLACEHOLDER (`placeholder: true`) and is clearly
- * labelled as such on the site. Replace with real, authorised projects and
- * photographs (put images in /public/projects/<slug>/ and reference them).
+ * HOW TO ADD A NEW CAR (no design changes needed)
+ *  1. Put the optimised WebP photos in /public/projects/<slug>/ (one folder per
+ *     vehicle; never mix two vehicles in one folder).
+ *  2. Add one entry to `projects` below (copy the TEMPLATE comment).
+ *  3. Each photo needs: src, alt (describe only what is visible), width, height
+ *     (the file's real pixel size, so aspect ratios are preserved).
+ *  4. Leave `scope` empty and `detailsConfirmed: false` until the work done has
+ *     been verified. Only set `before`/`after` when the sequence is verified.
+ *
+ * The card on the homepage / Our Work page, the detail page, the gallery with
+ * full-screen viewer, filters, SEO and sitemap are all generated from this data.
+ * Shaped so it can later be fetched from a CMS (see lib/data.ts).
+ *
+ * TEMPLATE
+ *   { slug: "make-model", make: "Make", model: "Model", category: "classic",
+ *     headline: "Optional page headline.", // defaults to "Make Model"
+ *     summary: "One neutral sentence about what the photos show.",
+ *     narrative: pending, scope: [], detailsConfirmed: false, placeholder: false,
+ *     hero: "/projects/make-model/01.webp",
+ *     gallery: [ { src: "/projects/make-model/01.webp", alt: "...", width: 1920, height: 1280 } ] },
  */
+import type { GalleryImage } from "./galleries";
+import { vespaImages, landCruiserImages } from "./galleries";
+
 export type ProjectCategory = "classic" | "luxury" | "body" | "custom";
 
 export type Project = {
@@ -19,10 +38,15 @@ export type Project = {
   scope: string[];
   /** false = show only the vehicle and photos, no claims about the work done */
   detailsConfirmed: boolean;
+  /** Optional page headline (defaults to "Make Model") */
+  headline?: string;
+  /** Cover image used on cards and as the large page image */
   hero?: string;
+  /** Only when the real before/after sequence is verified */
   before?: string;
   after?: string;
-  gallery?: string[];
+  /** Project photographs: one vehicle per project */
+  gallery?: GalleryImage[];
   placeholder: boolean;
 };
 
@@ -53,6 +77,9 @@ export const projects: Project[] = [
   { slug: "suzuki-jimny", make: "Suzuki", model: "Jimny", category: "custom", placeholder: false, detailsConfirmed: false,
     hero: "/images/suzuki-jimny.webp", summary: "A lime-green Jimny presented in the finishing studio.", narrative: pending, scope: [] },
   { slug: "vespa", make: "Vespa", model: "Vintage Scooter", category: "classic", placeholder: false, detailsConfirmed: false,
-    hero: "/images/vespa-showroom.webp", gallery: ["/images/vespa-detail.webp"],
+    hero: "/images/vespa-showroom.webp", gallery: vespaImages,
     summary: "A vintage Vespa in deep red with a brown leather seat.", narrative: pending, scope: [] },
+  { slug: "toyota-land-cruiser", make: "Toyota", model: "Land Cruiser", category: "custom", placeholder: false, detailsConfirmed: false,
+    hero: "/alex-restoration/images/land-cruiser/toyota-land-cruiser-rear-workshop.webp", gallery: landCruiserImages,
+    summary: "A white Land Cruiser photographed in the workshop, including a body-kit installation view.", narrative: pending, scope: [] },
 ];
