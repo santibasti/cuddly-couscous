@@ -50,10 +50,25 @@ export function toDb(row: Record<string, unknown>, before?: Record<string, unkno
 
 /* ---------- reading ---------- */
 const NEWER_TABLES = new Set(['maint_profiles', 'maint_plans', 'maint_templates', 'maint_records', 'job_orders', 'service_reports']);
+/** The database answers through a small pool of connections. Loading ~45 tables at once, for everyone signing in together, used it up ("Timed out acquiring connection from connection pool"):
+ *  load a few at a time, and when the pool is full wait a moment and ask again. */
+const BUSY = /timed? ?out acquiring|connection pool|PGRST003|gateway|too many connections|HTTP 50[234]/i;
+const isBusy = (e: { message?: string; code?: string } | null | undefined) => !!e && (e.code === 'PGRST003' || e.code === '53300' || BUSY.test(e.message ?? ''));
+async function patient<T extends { error: { message?: string; code?: string } | null }>(run: () => PromiseLike<T>): Promise<T> {
+  let r = await run();
+  for (let i = 0; i < 4 && isBusy(r.error); i++) { await new Promise((ok) => setTimeout(ok, 700 * 2 ** i + Math.random() * 400)); r = await run(); }
+  return r;
+}
+const LOAD_AT_ONCE = 5;
+async function inBatches<T, R>(items: readonly T[], fn: (x: T) => Promise<R>, n = LOAD_AT_ONCE): Promise<R[]> {
+  const out: R[] = new Array(items.length); let next = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]); } }));
+  return out;
+}
 async function readAll(table: string, order = 'id'): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = []; const page = 1000;
   for (let from = 0; ; from += page) {
-    const { data, error } = await supabase().from(table).select('*').order(order).range(from, from + page - 1);
+    const { data, error } = await patient(() => supabase().from(table).select('*').order(order).range(from, from + page - 1));
     // a table from a newer migration that has not been applied yet reads as empty (the app still works; apply the migration to use it)
     if (error && NEWER_TABLES.has(table) && (error.code === 'PGRST205' || error.code === '42P01' || /schema cache|does not exist/i.test(error.message))) return [];
     if (error) throw new CloudError(`Could not load ${table}: ${error.message}`, error.code);
@@ -137,7 +152,7 @@ export async function fetchAuditDetail(id: string): Promise<{ before?: unknown; 
 }
 export async function fetchAll(): Promise<DB> {
   const [raw, profiles, settings] = await Promise.all([
-    Promise.all(SYNC_TABLES.map(async (t) => [t, await readAll(t)] as const)),
+    inBatches(SYNC_TABLES, async (t) => [t, await readAll(t)] as const),
     readAll('profiles'),
     supabase().from('settings').select('data, updated_at').eq('id', 'main').maybeSingle(),
   ]);
@@ -163,16 +178,16 @@ export async function fetchAll(): Promise<DB> {
 export async function fetchLatest(cur: DB, full = false): Promise<DB> {
   if (full || !fullAt || Date.now() - fullAt > FULL_EVERY) return fetchAll();
   const db = { ...cur } as unknown as Record<string, unknown>;
-  const changes = await Promise.all(SYNC_TABLES.map(async (t) => {
+  const changes = await inBatches(SYNC_TABLES, async (t) => {
     const rows: Record<string, unknown>[] = [];
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase().from(t).select('*').gte('updated_at', marks[t] ?? '1970-01-01T00:00:00Z').order('updated_at').order('id').range(from, from + 999);
+      const { data, error } = await patient(() => supabase().from(t).select('*').gte('updated_at', marks[t] ?? '1970-01-01T00:00:00Z').order('updated_at').order('id').range(from, from + 999));
       if (error) { if (NEWER_TABLES.has(t) && (error.code === 'PGRST205' || error.code === '42P01' || /schema cache|does not exist/i.test(error.message))) break; throw new CloudError(`Could not load ${t}: ${error.message}`, error.code); }
       rows.push(...(data ?? []));
       if (!data || data.length < 1000) break;
     }
     return [t, rows] as const;
-  }));
+  });
   for (const [t, rows] of changes) {
     if (!rows.length) continue;
     marks[t] = maxOf(rows, 'updated_at', marks[t] ?? '');
@@ -321,7 +336,7 @@ export async function reserveNumbers(kind: string, n: number): Promise<number[]>
 
 /* ---------- auth ---------- */
 export async function signIn(email: string, password: string) {
-  const busy = (e: { message: string; status?: number }) => [502, 503, 504].includes(e.status ?? 0) || /^HTTP 50[234]$/.test(e.message) || /timed? ?out|gateway/i.test(e.message);
+  const busy = (e: { message: string; status?: number }) => [502, 503, 504].includes(e.status ?? 0) || /^HTTP 50[234]$/.test(e.message) || /timed? ?out|gateway|connection pool/i.test(e.message);
   let last: { message: string; status?: number } | null = null;
   for (let i = 0; i < 3; i++) {
     const { data, error } = await supabase().auth.signInWithPassword({ email: email.trim(), password });
