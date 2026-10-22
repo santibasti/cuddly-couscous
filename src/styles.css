@@ -944,6 +944,7 @@ body.dark .crpaper .check, body.dark .crpaper label, body.dark .crpaper .small {
 .jchip:hover { text-decoration: none; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.2); }
 .jchip .jt { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
 .jchip .jl1 { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; white-space: nowrap; } .jchip .jl1 b { font-weight: 750; } .jchip .jl1 em { font-style: normal; font-size: 11px; opacity: .75; overflow: hidden; text-overflow: ellipsis; }
+.jchip .jo-ok { color: var(--green); font-weight: 650; } .jchip .jo-no { color: var(--amber); font-weight: 650; }
 .jchip .jl2 { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jg { flex: none; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--jc); color: #fff; } .jg svg { width: 15px; height: 15px; }
 .k-pending { --jc: #8a97ab; --jb: rgba(138,151,171,.18); } .k-confirmed { --jc: #0e9aa7; --jb: rgba(14,154,167,.2); } .k-field { --jc: #2c9a45; --jb: rgba(44,154,69,.24); } .k-done { --jc: #2b7bd1; --jb: rgba(43,123,209,.2); } .k-off { --jc: #8b8f99; --jb: rgba(139,143,153,.15); opacity: .65; } .k-ocular { --jc: #7b4fc9; --jb: rgba(123,79,201,.22); } .k-ocular.done { opacity: .7; }
