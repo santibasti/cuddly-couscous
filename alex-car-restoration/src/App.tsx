@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
 import { Icon } from './components/ui';
 import { todayIso } from './lib/dates';
@@ -13,6 +14,17 @@ import Timeline from './pages/Timeline';
 
 export default function App() {
   const { data, dispatch } = useStore();
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try {
+      const saved = localStorage.getItem('acr-theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch { /* ignore */ }
+    return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem('acr-theme', theme); } catch { /* ignore */ }
+  }, [theme]);
   const today = todayIso();
   const blocked = allBlockers(data).length;
   const partsAlert = data.parts.filter((p) => ['late', 'order_now'].includes(partRisk(p, today))).length;
@@ -27,13 +39,16 @@ export default function App() {
   return (
     <div className="layout">
       <nav className="side">
-        <div className="brand"><div className="logo">A</div><div><b>Alex Car Restoration</b><small>Shop control</small></div></div>
+        <div className="brand"><div className="logo">A</div><div><b>Alex</b><small>Car Restoration</small></div></div>
         {links.map(([to, label, icon, n]) => (
           <NavLink key={to} to={to} end={to === '/'} className="nav"><Icon name={icon} />{label}{n ? <em>{n}</em> : null}</NavLink>
         ))}
         <div className="foot">
-          Demo data · saved in this browser<br />
-          <button className="sm ghost" style={{ marginTop: 8 }} onClick={() => confirm('Reset all data to the demo set?') && dispatch({ type: 'reset' })}>Reset demo data</button>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="sm" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
+            <button className="sm ghost" onClick={() => confirm('Reset all data to the demo set?') && dispatch({ type: 'reset' })}>Reset demo</button>
+          </div>
+          <div style={{ marginTop: 8 }}>Demo data · saved in this browser</div>
         </div>
       </nav>
       <main className="main">

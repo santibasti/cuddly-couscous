@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { partRisk, partStatusLabel, type Health, type PartRisk } from '../lib/logic';
 import type { Mechanic, Part, Project } from '../lib/types';
@@ -90,7 +90,7 @@ export const Avatar = ({ m, size = 24 }: { m?: Mechanic; size?: number }) =>
       {m.name.split(' ').map((w) => w[0]).join('')}
     </span>
   ) : (
-    <span className="avatar empty" style={{ width: size, height: size, fontSize: size * 0.45 }} title="Unassigned">?</span>
+    <span className="avatar none" style={{ width: size, height: size, fontSize: size * 0.45 }} title="Unassigned">?</span>
   );
 
 export const ProjectLink = ({ p }: { p: Project }) => (
@@ -114,3 +114,60 @@ export function Seg<T extends string>({ value, options, onChange }: { value: T; 
 export const Empty = ({ children }: { children: ReactNode }) => <div className="empty">{children}</div>;
 
 export { partRisk };
+
+/** Stylised classic-coupe profile, painted in the job's own colour. */
+export function CarArt({ color, className = '' }: { color: string; className?: string }) {
+  const id = useId().replace(/:/g, '');
+  const mix = (pct: number, other: string) => ({ stopColor: `color-mix(in srgb, ${color} ${pct}%, ${other})` }) as CSSProperties;
+  const wheel = (cx: number) => (
+    <g key={cx}>
+      <circle cx={cx} cy={108} r={31} fill="var(--arch)" />
+      <circle cx={cx} cy={108} r={26} fill="#0a0a0c" />
+      <circle cx={cx} cy={108} r={17} fill={`url(#w${id})`} />
+      <circle cx={cx} cy={108} r={6} fill="#2b2d33" />
+      {[0, 72, 144, 216, 288].map((a) => <line key={a} x1={cx} y1={108} x2={cx + 15 * Math.cos((a * Math.PI) / 180)} y2={108 + 15 * Math.sin((a * Math.PI) / 180)} stroke="#2b2d33" strokeWidth="2.4" />)}
+    </g>
+  );
+  return (
+    <svg className={`car ${className}`} viewBox="0 0 400 150" aria-hidden>
+      <defs>
+        <linearGradient id={`b${id}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style={mix(70, 'white')} /><stop offset=".42" stopColor={color} /><stop offset="1" style={mix(52, 'black')} />
+        </linearGradient>
+        <linearGradient id={`g${id}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#1b2330" /><stop offset="1" stopColor="#56657d" /></linearGradient>
+        <radialGradient id={`w${id}`}><stop offset="0" stopColor="#e9ebf0" /><stop offset="1" stopColor="#7c808a" /></radialGradient>
+        <radialGradient id={`s${id}`}><stop offset="0" stopColor="#000" stopOpacity=".55" /><stop offset="1" stopColor="#000" stopOpacity="0" /></radialGradient>
+      </defs>
+      <ellipse cx="200" cy="138" rx="190" ry="9" fill={`url(#s${id})`} />
+      <path d="M20 100C20 90 26 84 48 82L98 76C116 54 150 38 198 36C240 35 270 48 290 68L342 76C368 80 382 88 382 100V108H20Z" fill={`url(#b${id})`} />
+      <path d="M124 72C142 56 168 47 198 46C230 46 254 55 270 70Z" fill={`url(#g${id})`} />
+      <path d="M198 46V72" stroke="#0b0d12" strokeOpacity=".55" strokeWidth="2.5" />
+      <path d="M30 91H372" stroke="#fff" strokeOpacity=".26" strokeWidth="1.4" />
+      <path d="M196 76V106" stroke="#000" strokeOpacity=".28" strokeWidth="1.5" />
+      <path d="M104 76C122 56 150 42 198 40" stroke="#fff" strokeOpacity=".3" strokeWidth="1.4" fill="none" />
+      <ellipse cx="373" cy="91" rx="7" ry="5" fill="#f4e7c6" /><rect x="19" y="90" width="7" height="8" rx="2" fill="#c0392b" />
+      <rect x="375" y="99" width="9" height="8" rx="2" fill="#d3d6dd" /><rect x="16" y="99" width="9" height="8" rx="2" fill="#d3d6dd" />
+      {wheel(96)}{wheel(304)}
+    </svg>
+  );
+}
+
+export function Ring({ value, size = 52, stroke = 4, tone, label }: { value: number; size?: number; stroke?: number; tone?: string; label?: string }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  return (
+    <svg className={`ring ${tone ?? ''}`} width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${value}% complete`}>
+      <circle className="bg" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} />
+      <circle className="fg" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+      <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central">{label ?? value}</text>
+    </svg>
+  );
+}
+
+export const StripStat = ({ label, value, sub, tone, spark }: { label: string; value: ReactNode; sub?: ReactNode; tone?: string; spark?: number[] }) => (
+  <div>
+    <div className="eyebrow">{label}</div>
+    <div className={`sv ${tone ?? ''}`}><span>{value}</span>{spark && <Spark data={spark} />}</div>
+    <div className="small">{sub}</div>
+  </div>
+);

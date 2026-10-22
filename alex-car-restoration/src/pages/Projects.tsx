@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import ProjectCard from '../components/ProjectCard';
 import { Bar, Card, Empty, HealthPill, Icon, Seg, carName } from '../components/ui';
 import { addDays, fmtDate, todayIso } from '../lib/dates';
 import { BAYS, currentPhase, daysOverdue, money, phaseShort, projectCosts, projectHealth, projectProgress, type Health } from '../lib/logic';
@@ -13,6 +14,7 @@ export default function Projects() {
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
+  const [view, setView] = useState<'gallery' | 'table'>('gallery');
   const today = todayIso();
 
   const all = data.projects.map((p) => ({ p, ...projectHealth(p, data, today) }));
@@ -69,8 +71,14 @@ export default function Projects() {
           { value: 'at_risk', label: 'At risk', count: n('at_risk') }, { value: 'blocked', label: 'Blocked', count: n('blocked') },
           { value: 'late', label: 'Late', count: n('late') }, { value: 'quote', label: 'Quotes', count: n('quote') },
         ]} />
-        <input placeholder="Search code, vehicle, customer…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 260 }} />
+        <div className="row">
+          <input placeholder="Search code, vehicle, customer…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 260 }} />
+          <Seg value={view} onChange={setView} options={[{ value: 'gallery', label: 'Gallery' }, { value: 'table', label: 'Table' }]} />
+        </div>
       </div>
+      {view === 'gallery' ? (
+        rows.length ? <div className="cards">{rows.map(({ p }) => <ProjectCard key={p.id} p={p} data={data} today={today} />)}</div> : <Empty>No projects match.</Empty>
+      ) : (
       <Card flush>
         <table>
           <thead><tr><th>Project</th><th>Health</th><th>Phase</th><th style={{ width: 160 }}>Progress</th><th>Blocking / risk</th><th>Target</th><th style={{ width: 130 }}>Budget</th></tr></thead>
@@ -96,6 +104,7 @@ export default function Projects() {
           </tbody>
         </table>
       </Card>
+      )}
     </>
   );
 }

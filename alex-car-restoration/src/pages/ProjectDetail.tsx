@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Avatar, Bar, Card, HealthPill, Icon, PartStatusPill, Pill, RiskPill, carName, statusLabel } from '../components/ui';
+import { Avatar, CarArt, Card, HealthPill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
+import { paintHex } from '../lib/paint';
 import { diffDays, fmtDate, todayIso } from '../lib/dates';
-import { BAYS, PART_FLOW, PHASES, daysOverdue, isPartIn, money, partRisk, partStatusLabel, phaseLabel, phasePercent, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
+import { BAYS, PART_FLOW, PHASES, currentPhase, daysOverdue, isPartIn, money, partRisk, partStatusLabel, phaseLabel, phasePercent, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { useStore } from '../lib/store';
 import type { BlockReason, PartKind, PartStatus, PhaseKey, ProjectStatus, TaskStatus } from '../lib/types';
 
@@ -14,6 +15,7 @@ export default function ProjectDetail() {
   const [tab, setTab] = useState<Tab>('work');
   const [note, setNote] = useState('');
   const [notePhase, setNotePhase] = useState<PhaseKey | ''>('');
+  const [selKey, setSelKey] = useState<PhaseKey | null>(null);
   const today = todayIso();
   const p = data.projects.find((x) => x.id === id);
   if (!p) return <p>Project not found. <Link to="/projects">Back to projects</Link></p>;
@@ -27,6 +29,7 @@ export default function ProjectDetail() {
   const over = daysOverdue(p, today);
   const { health, reasons } = projectHealth(p, data, today);
   const team = data.mechanics.filter((m) => m.active);
+  const sel = p.phases.find((x) => x.key === selKey) ?? currentPhase(p) ?? p.phases[0];
   const blocked = tasks.map((t) => ({ t, b: taskBlocker(t, data.parts) })).filter((x) => x.b);
   const patch = (id: string, pt: Record<string, unknown>) => dispatch({ type: 'updateTask', id, patch: pt });
 
@@ -45,52 +48,60 @@ export default function ProjectDetail() {
 
   return (
     <>
-      <div className="head">
-        <div>
-          <Link to="/projects" className="crumb">← Projects</Link>
-          <h1>{carName(p)} <span className="muted" style={{ fontWeight: 400 }}>· {p.code}</span></h1>
-          <p>{p.title} · {p.color} · {customer?.name} ({customer?.phone})</p>
+      <Link to="/projects" className="crumb">← Projects</Link>
+      <section className="phero rise" style={{ '--paint': paintHex(p) } as React.CSSProperties}>
+        <div className="art"><CarArt color={paintHex(p)} /></div>
+        <div className="txt">
+          <div className="row" style={{ marginBottom: 14 }}><span className="eyebrow">{p.code} · {p.year} · {p.bay}</span><HealthPill h={health} /></div>
+          <h1>{p.make} <em>{p.model}</em></h1>
+          <p className="muted" style={{ margin: '12px 0 0' }}>{p.title} · {p.color} · {customer?.name} ({customer?.phone})</p>
+          <div className="row" style={{ marginTop: 20 }}>
+            <select value={p.status} onChange={(e) => dispatch({ type: 'setProjectStatus', id: p.id, status: e.target.value as ProjectStatus })}>
+              {(['quote', 'active', 'on_hold', 'completed', 'delivered'] as ProjectStatus[]).map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
+            </select>
+            <select value={p.bay} onChange={(e) => dispatch({ type: 'updateProject', id: p.id, patch: { bay: e.target.value } })}><option>Unassigned</option>{BAYS.map((b) => <option key={b}>{b}</option>)}</select>
+          </div>
         </div>
-        <div className="row">
-          <HealthPill h={health} />
-          <select value={p.bay} onChange={(e) => dispatch({ type: 'updateProject', id: p.id, patch: { bay: e.target.value } })}><option>Unassigned</option>{BAYS.map((b) => <option key={b}>{b}</option>)}</select>
-          <select value={p.status} onChange={(e) => dispatch({ type: 'setProjectStatus', id: p.id, status: e.target.value as ProjectStatus })}>
-            {(['quote', 'active', 'on_hold', 'completed', 'delivered'] as ProjectStatus[]).map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
-          </select>
+        <div className="stats">
+          <div><div className="eyebrow">Progress</div><div className="sv"><span>{pct}%</span></div><div className={`small ${over ? 'over' : 'muted'}`}>{over ? `${over}d past target` : `Target ${fmtDate(p.targetDate)}`}</div></div>
+          <div><div className="eyebrow">Spent</div><div className={`sv ${costs.total > p.budget ? 'red' : ''}`}><span>{money(costs.total)}</span></div><div className="small muted">of {money(p.budget)} budget</div></div>
+          <div><div className="eyebrow">Hours</div><div className="sv"><span>{tasks.reduce((s, t) => s + t.actualHours, 0)}h</span></div><div className="small muted">of {tasks.reduce((s, t) => s + t.estHours, 0)}h planned</div></div>
+          <div><div className="eyebrow">Parts in shop</div><div className="sv"><span>{parts.filter(isPartIn).length}/{parts.length}</span></div><div className="small muted">{blocked.length} task{blocked.length === 1 ? '' : 's'} blocked</div></div>
         </div>
-      </div>
+      </section>
 
       {reasons.length > 0 && health !== 'quote' && health !== 'hold' && (
-        <div className="callout" style={{ marginBottom: 16 }}>
-          <div className="row"><Icon name="warn" /><strong>{health === 'late' ? 'Running late' : health === 'blocked' ? 'Work is blocked' : 'Watch list'}</strong></div>
-          <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18, color: 'var(--ink2)' }}>{reasons.slice(0, 5).map((r, i) => <li key={i}>{r}</li>)}</ul>
+        <div className="callout">
+          <span className="ico orange"><Icon name="warn" /></span>
+          <div><strong>{health === 'late' ? 'Running late' : health === 'blocked' ? 'Work is blocked' : 'Watch list'}</strong>
+            <ul className="small">{reasons.slice(0, 5).map((r, i) => <li key={i}>{r}</li>)}</ul></div>
         </div>
       )}
 
-      <div className="grid g4">
-        <div className="card kpi"><div className="eyebrow">Progress</div><div className="kpi-val">{pct}%</div><Bar value={pct} tone={over ? 'red' : undefined} thin /><div className={`kpi-sub ${over ? 'over' : ''}`} style={{ marginTop: 6 }}>{over ? `${over}d past target` : `Target ${fmtDate(p.targetDate)}`}</div></div>
-        <div className="card kpi"><div className="eyebrow">Budget</div><div className={`kpi-val ${costs.total > p.budget ? 'over' : ''}`}>{money(costs.total)}</div><div className="kpi-sub">of {money(p.budget)} · labor {money(costs.labor)} · parts {money(costs.parts)}</div></div>
-        <div className="card kpi"><div className="eyebrow">Hours</div><div className="kpi-val">{tasks.reduce((s, t) => s + t.actualHours, 0)}h</div><div className="kpi-sub">of {tasks.reduce((s, t) => s + t.estHours, 0)}h estimated</div></div>
-        <div className="card kpi"><div className="eyebrow">Parts in shop</div><div className="kpi-val">{parts.filter(isPartIn).length}/{parts.length}</div><div className="kpi-sub">{blocked.length} task{blocked.length === 1 ? '' : 's'} blocked</div></div>
-      </div>
-
-      <Card className="mt" title="Phases" action={<span className="muted small">{p.scope}</span>}>
-        <div className="steps">
-          {p.phases.map((ph) => {
-            const pc = phasePercent(p, ph.key, data.tasks);
+      <Card title="Phases" action={<span className="muted small">Select a phase to update it</span>}>
+        <div className="stepper">
+          {p.phases.map((ph, i) => {
             const late = ph.status !== 'done' && p.status === 'active' && ph.end < today;
             return (
-              <div key={ph.key} className={`step ${ph.status} ${late ? 'late' : ''}`}>
-                <b>{PHASES.find((x) => x.key === ph.key)!.short}</b>
-                <div className="small muted">{fmtDate(ph.start)} – {fmtDate(ph.end)}</div>
-                <div className="mini"><div style={{ width: `${pc}%` }} /></div>
-                <select className="inline" value={ph.status} style={{ width: '100%' }} onChange={(e) => dispatch({ type: 'setPhaseStatus', projectId: p.id, key: ph.key, status: e.target.value as 'todo' | 'in_progress' | 'done' })}>
-                  <option value="todo">Not started</option><option value="in_progress">In progress</option><option value="done">Signed off</option>
-                </select>
-              </div>
+              <button key={ph.key} className={`stp ${ph.status} ${late ? 'late' : ''} ${sel.key === ph.key ? 'sel' : ''}`} onClick={() => setSelKey(ph.key)}>
+                <span className="n">{ph.status === 'done' ? <Icon name="check" size={14} /> : i + 1}</span>
+                <span className="l">{PHASES.find((x) => x.key === ph.key)!.short}</span>
+                <span className="d">{fmtDate(ph.start)}</span>
+              </button>
             );
           })}
         </div>
+        <div className="row spread" style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--line)' }}>
+          <div>
+            <div className="serif" style={{ fontSize: 24 }}>{phaseLabel(sel.key)}</div>
+            <div className="small muted">{fmtDate(sel.start)} – {fmtDate(sel.end)} · {phasePercent(p, sel.key, data.tasks)}% of tasks done · {tasks.filter((t) => t.phaseKey === sel.key).length} tasks</div>
+          </div>
+          <div className="row">
+            <Seg value={sel.status} onChange={(v) => dispatch({ type: 'setPhaseStatus', projectId: p.id, key: sel.key, status: v })}
+              options={[{ value: 'todo', label: 'Not started' }, { value: 'in_progress', label: 'In progress' }, { value: 'done', label: 'Signed off' }]} />
+          </div>
+        </div>
+        <p className="small muted" style={{ margin: '12px 0 0' }}>{p.scope}</p>
       </Card>
 
       <div className="tabs">
@@ -133,7 +144,7 @@ export default function ProjectDetail() {
               {!tasks.length && <tr><td colSpan={7} className="empty">No tasks yet.</td></tr>}
             </tbody>
           </table>
-          <form className="row" onSubmit={addTask} style={{ padding: 14, borderTop: '1px solid var(--line)' }}>
+          <form className="row addbar" onSubmit={addTask}>
             <input name="title" placeholder="New task" required style={{ flex: 1, minWidth: 160 }} />
             <select name="phase">{PHASES.map((ph) => <option key={ph.key} value={ph.key}>{ph.short}</option>)}</select>
             <select name="mechanic"><option value="">Unassigned</option>{team.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
@@ -167,7 +178,7 @@ export default function ProjectDetail() {
               {!parts.length && <tr><td colSpan={7} className="empty">No parts or sublet jobs yet.</td></tr>}
             </tbody>
           </table>
-          <form className="row" onSubmit={addPart} style={{ padding: 14, borderTop: '1px solid var(--line)' }}>
+          <form className="row addbar" onSubmit={addPart}>
             <input name="name" placeholder="Part or sublet job" required style={{ flex: 1, minWidth: 160 }} />
             <select name="kind"><option value="part">Part</option><option value="sublet">Sublet job</option></select>
             <input name="supplier" placeholder="Supplier / vendor" /><input name="po" placeholder="PO #" style={{ width: 90 }} />

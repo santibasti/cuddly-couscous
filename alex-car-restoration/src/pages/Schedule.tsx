@@ -54,7 +54,7 @@ export default function Schedule() {
                     const b = taskBlocker(t, data.parts);
                     const late = partArrivesLate(t, data.parts);
                     return (
-                      <button key={t.id} className={`chip ${t.status === 'done' ? 'done' : ''} ${b ? 'blocked' : ''} ${t.status === 'in_progress' ? 'running' : ''}`} style={{ background: m.color }}
+                      <button key={t.id} className={`chip ${t.status === 'done' ? 'done' : ''} ${b ? 'blocked' : ''} ${t.status === 'in_progress' ? 'running' : ''}`} style={{ '--mc': m.color } as React.CSSProperties}
                         title={b ? `${b.label}${b.eta ? ` — ETA ${fmtDate(b.eta)}` : ''}` : `${t.title} (${t.estHours}h) – click to advance`}
                         onClick={() => !b && dispatch({ type: 'updateTask', id: t.id, patch: { status: t.status === 'todo' ? 'in_progress' : t.status === 'in_progress' ? 'done' : 'todo' } })}>
                         {b && <Icon name="lock" size={11} />} {p?.code} · {t.title}
