@@ -51,7 +51,7 @@ export default function Timeline() {
           </div>
         </div>
         <div className="small muted" style={{ marginTop: 12 }}>
-          <span style={{ color: 'var(--green)' }}>■</span> done · <span style={{ color: 'var(--accent)' }}>■</span> in progress · <span style={{ color: 'var(--line2)' }}>■</span> upcoming · ◆ incoming part/sublet (red = overdue, amber = lands after needed, blue = on time) · red line = today
+          <span style={{ color: 'var(--green)' }}>■</span> done · <span style={{ color: 'var(--accent2)' }}>■</span> in progress · <span style={{ color: 'var(--line2)' }}>■</span> upcoming · ◆ incoming part/sublet (red = overdue, amber = lands after needed, blue = on time) · red line = today
         </div>
       </Card>
     </>

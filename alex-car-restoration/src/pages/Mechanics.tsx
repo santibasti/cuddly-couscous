@@ -43,7 +43,7 @@ export default function Mechanics() {
               {mine.slice(0, 4).map((t) => {
                 const p = data.projects.find((x) => x.id === t.projectId)!;
                 const b = taskBlocker(t, data.parts);
-                return <div key={t.id} className="small row spread" style={{ flexWrap: 'nowrap', padding: '3px 0' }}><span><Link to={`/projects/${p.id}`} style={{ color: 'var(--accent)' }}>{p.code}</Link> {t.title}{b && ' 🔒'}</span><span className="muted">{fmtDate(t.date)}</span></div>;
+                return <div key={t.id} className="small row spread" style={{ flexWrap: 'nowrap', padding: '3px 0' }}><span><Link to={`/projects/${p.id}`} style={{ color: 'var(--accent2)' }}>{p.code}</Link> {t.title}{b && ' 🔒'}</span><span className="muted">{fmtDate(t.date)}</span></div>;
               })}
               {mine.length === 0 && <div className="small muted">No upcoming tasks.</div>}
             </Card>

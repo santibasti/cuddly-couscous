@@ -104,7 +104,7 @@ export default function Schedule() {
             const p = data.projects.find((x) => x.id === t.projectId)!;
             return (
               <div key={t.id} className="item" style={{ alignItems: 'center' }}>
-                <div className="grow"><Link to={`/projects/${p.id}`} style={{ color: 'var(--accent)' }}>{p.code}</Link> · {t.title}<div className="small muted">{fmtDate(t.date)} · {t.estHours}h</div></div>
+                <div className="grow"><Link to={`/projects/${p.id}`} style={{ color: 'var(--accent2)' }}>{p.code}</Link> · {t.title}<div className="small muted">{fmtDate(t.date)} · {t.estHours}h</div></div>
                 <select value="" onChange={(e) => e.target.value && dispatch({ type: 'updateTask', id: t.id, patch: { mechanicId: e.target.value } })}>
                   <option value="">Assign to…</option>{data.mechanics.filter((m) => m.active).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>

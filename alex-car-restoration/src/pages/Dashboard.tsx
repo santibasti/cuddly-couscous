@@ -147,7 +147,7 @@ export default function Dashboard() {
                 <div className="c h" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink2)', justifyContent: 'flex-start' }}><Avatar m={m} size={20} />{m.name.split(' ')[0]}</div>
                 {days.map((d) => {
                   const pct = Math.round((dayLoad(data.tasks, m.id, d) / m.dailyHours) * 100);
-                  const bg = pct === 0 ? undefined : pct > 100 ? 'var(--red)' : `color-mix(in srgb, var(--accent) ${Math.min(80, 14 + pct * 0.62)}%, transparent)`;
+                  const bg = pct === 0 ? undefined : pct > 100 ? 'var(--red)' : `color-mix(in srgb, var(--ink) ${Math.min(34, 6 + pct * 0.28)}%, transparent)`;
                   return <div key={d} className="c" style={{ background: bg, color: pct > 100 ? '#fff' : pct ? 'var(--ink)' : undefined }} title={`${m.name} · ${fmtDate(d)} · ${pct}%`}>{pct || ''}</div>;
                 })}
               </div>
