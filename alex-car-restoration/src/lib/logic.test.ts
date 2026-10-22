@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addDays, startOfWeek } from './dates';
-import { allBlockers, buildAlerts, buildPhases, dayLoad, daysOverdue, isOverbooked, partRisk, phasePercent, projectHealth, projectProgress, PHASES, taskBlocker } from './logic';
+import { allBlockers, attendanceSummary, buildAlerts, coverageGaps, hoursBetween, isLateIn, isOut, overtimeHours, workedHours, buildPhases, dayLoad, daysOverdue, isOverbooked, partRisk, phasePercent, projectHealth, projectProgress, PHASES, taskBlocker } from './logic';
 import { buildSeed } from './seed';
 import { reducer } from './store';
 
@@ -106,5 +106,53 @@ describe('parts, sublets & blockers', () => {
   });
   it('seed data is not accidentally overbooked', () => {
     for (const m of d.mechanics) for (const t of d.tasks.filter((x) => x.mechanicId === m.id && x.status !== 'done')) expect(isOverbooked(d.tasks, m, t.date)).toBe(false);
+  });
+});
+
+describe('attendance', () => {
+  const d = buildSeed(TODAY);
+  it('flags late arrivals only after the grace period', () => {
+    expect(isLateIn('08:00')).toBe(false);
+    expect(isLateIn('08:10')).toBe(false);
+    expect(isLateIn('08:11')).toBe(true);
+  });
+  it('counts paid hours with an unpaid lunch on long days', () => {
+    expect(hoursBetween('08:00', '17:00')).toBe(8);
+    expect(hoursBetween('08:00', '12:00')).toBe(4); // half day, no lunch deducted
+    expect(hoursBetween('17:00', '08:00')).toBe(0);
+  });
+  it('clocks in once, marks late automatically, and clocks out', () => {
+    let s = reducer(d, { type: 'clockIn', mechanicId: 'm5', date: TODAY, time: '08:25' });
+    const rec = () => s.attendance.find((r) => r.mechanicId === 'm5' && r.date === TODAY)!;
+    expect(rec().status).toBe('late');
+    s = reducer(s, { type: 'clockIn', mechanicId: 'm5', date: TODAY, time: '09:00' }); // second tap ignored
+    expect(rec().timeIn).toBe('08:25');
+    s = reducer(s, { type: 'clockOut', mechanicId: 'm5', date: TODAY, time: '15:25' });
+    expect(workedHours(rec())).toBe(6);
+  });
+  it('clears times when someone is marked absent or on leave', () => {
+    const s = reducer(d, { type: 'setAttendance', mechanicId: 'm1', date: TODAY, status: 'leave', timeIn: '08:00', timeOut: '17:00' });
+    const rec = s.attendance.find((r) => r.mechanicId === 'm1' && r.date === TODAY)!;
+    expect(rec.timeIn).toBeUndefined();
+    expect(isOut(rec)).toBe(true);
+  });
+  it('ignores overruns under half an hour when counting overtime', () => {
+    const m = d.mechanics[0];
+    expect(overtimeHours({ id: 'x', mechanicId: m.id, date: TODAY, status: 'present', timeIn: '08:00', timeOut: '17:10' }, m)).toBe(0);
+    expect(overtimeHours({ id: 'x', mechanicId: m.id, date: TODAY, status: 'present', timeIn: '08:00', timeOut: '18:00' }, m)).toBe(1);
+  });
+  it('summarises a week and ignores leave when working out the attendance rate', () => {
+    const m = d.mechanics[0];
+    const s = attendanceSummary(d.attendance, m, addDays(TODAY, -14), addDays(TODAY, -1));
+    expect(s.present + s.late + s.half + s.absent + s.leave).toBeGreaterThan(5);
+    expect(s.rate).toBeGreaterThan(50);
+    expect(s.hours).toBeGreaterThan(30);
+  });
+  it('finds booked work that lands on a day the mechanic is out, and clears it once reassigned', () => {
+    const gaps = coverageGaps(d, TODAY);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].mechanic.id).toBe('m2');
+    const s = reducer(d, { type: 'updateTask', id: gaps[0].task.id, patch: { mechanicId: 'm1' } });
+    expect(coverageGaps(s, TODAY)).toHaveLength(0);
   });
 });

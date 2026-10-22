@@ -16,6 +16,7 @@ export type PartKind = 'part' | 'sublet';
 export type ProjectStatus = 'quote' | 'active' | 'on_hold' | 'completed' | 'delivered';
 export type PartStatus = 'needed' | 'ordered' | 'shipped' | 'backordered' | 'received' | 'installed';
 export type Priority = 'low' | 'normal' | 'high';
+export type AttendanceStatus = 'present' | 'late' | 'half' | 'absent' | 'leave' | 'off';
 
 export interface Mechanic {
   id: string;
@@ -105,6 +106,17 @@ export interface Update {
   text: string;
 }
 
+export interface Attendance {
+  id: string;
+  mechanicId: string;
+  date: string;
+  status: AttendanceStatus;
+  /** 24h "HH:MM" */
+  timeIn?: string;
+  timeOut?: string;
+  note?: string;
+}
+
 export interface Data {
   mechanics: Mechanic[];
   customers: Customer[];
@@ -112,4 +124,5 @@ export interface Data {
   tasks: Task[];
   parts: Part[];
   updates: Update[];
+  attendance: Attendance[];
 }

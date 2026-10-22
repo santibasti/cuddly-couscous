@@ -1,5 +1,5 @@
 import { addDays, diffDays, fmtDate as fmtShort, isWeekend } from './dates';
-import type { Data, Mechanic, Part, PartKind, PartStatus, Phase, PhaseKey, Project, Task } from './types';
+import type { Attendance, AttendanceStatus, Data, Mechanic, Part, PartKind, PartStatus, Phase, PhaseKey, Project, Task } from './types';
 
 export const PHASES: { key: PhaseKey; label: string; short: string; weight: number }[] = [
   { key: 'intake', label: 'Intake & Assessment', short: 'Intake', weight: 1 },
@@ -233,4 +233,82 @@ export const moneyC = (n: number) => (Math.abs(n) >= 10000 ? PESO_COMPACT.format
 export function nextProjectCode(projects: Project[]): string {
   const max = projects.reduce((m, p) => Math.max(m, Number(p.code.split('-')[1]) || 0), 0);
   return `ACR-${String(max + 1).padStart(3, '0')}`;
+}
+
+/* ───────────── attendance ───────────── */
+
+export const SHIFT_START = '08:00';
+export const GRACE_MIN = 10;
+export const LUNCH_HOURS = 1;
+
+export const toMin = (t: string) => {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+};
+export const fmtTime = (t: string) => {
+  const [h, m] = t.split(':').map(Number);
+  return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+};
+export const nowHHMM = (d = new Date()) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+/** Arrived after the shift start plus the grace period. */
+export const isLateIn = (timeIn: string) => toMin(timeIn) > toMin(SHIFT_START) + GRACE_MIN;
+
+/** Paid hours between clock in and out; an unpaid lunch comes off longer days. */
+export function hoursBetween(timeIn: string, timeOut: string): number {
+  const mins = toMin(timeOut) - toMin(timeIn);
+  if (mins <= 0) return 0;
+  const h = mins / 60 - (mins / 60 > 5 ? LUNCH_HOURS : 0);
+  return Math.round(h * 10) / 10;
+}
+export const workedHours = (r?: Attendance) => (r?.timeIn && r.timeOut ? hoursBetween(r.timeIn, r.timeOut) : 0);
+/** Overtime counts once a day runs half an hour or more past the mechanic's normal hours. */
+export const overtimeHours = (r: Attendance | undefined, m: Mechanic) => {
+  const extra = workedHours(r) - m.dailyHours;
+  return extra >= 0.5 ? Math.round(extra * 10) / 10 : 0;
+};
+
+export const OUT_STATUSES: AttendanceStatus[] = ['absent', 'leave', 'off'];
+export const isOut = (r?: Attendance) => !!r && OUT_STATUSES.includes(r.status);
+export const attFor = (att: Attendance[], mechanicId: string, date: string) => att.find((a) => a.mechanicId === mechanicId && a.date === date);
+
+export const ATT_LABEL: Record<AttendanceStatus, string> = { present: 'Present', late: 'Late', half: 'Half day', absent: 'Absent', leave: 'On leave', off: 'Day off' };
+
+export interface AttendanceSummary { present: number; late: number; half: number; absent: number; leave: number; hours: number; overtime: number; rate: number | null }
+
+/** Totals for a mechanic over [from, to]. Rate = days attended / days they were expected (leave and days off don't count against them). */
+export function attendanceSummary(att: Attendance[], m: Mechanic, from: string, to: string): AttendanceSummary {
+  const out: AttendanceSummary = { present: 0, late: 0, half: 0, absent: 0, leave: 0, hours: 0, overtime: 0, rate: null };
+  for (const r of att) {
+    if (r.mechanicId !== m.id || r.date < from || r.date > to) continue;
+    if (r.status === 'present') out.present++;
+    else if (r.status === 'late') out.late++;
+    else if (r.status === 'half') out.half++;
+    else if (r.status === 'absent') out.absent++;
+    else if (r.status === 'leave') out.leave++;
+    out.hours += workedHours(r);
+    out.overtime += overtimeHours(r, m);
+  }
+  out.hours = Math.round(out.hours * 10) / 10;
+  out.overtime = Math.round(out.overtime * 10) / 10;
+  const attended = out.present + out.late + out.half;
+  const expected = attended + out.absent;
+  out.rate = expected ? Math.round((attended / expected) * 100) : null;
+  return out;
+}
+
+export interface CoverageGap { task: Task; mechanic: Mechanic; record: Attendance }
+
+/** Open work booked on a day the assigned mechanic is absent, on leave or off. */
+export function coverageGaps(d: Data, today: string): CoverageGap[] {
+  const out: CoverageGap[] = [];
+  for (const t of d.tasks) {
+    if (t.status === 'done' || t.date < today || !t.mechanicId) continue;
+    const p = d.projects.find((x) => x.id === t.projectId);
+    if (!p || p.status !== 'active') continue;
+    const mechanic = d.mechanics.find((m) => m.id === t.mechanicId);
+    const record = attFor(d.attendance, t.mechanicId, t.date);
+    if (mechanic && record && isOut(record)) out.push({ task: t, mechanic, record });
+  }
+  return out.sort((a, b) => a.task.date.localeCompare(b.task.date));
 }

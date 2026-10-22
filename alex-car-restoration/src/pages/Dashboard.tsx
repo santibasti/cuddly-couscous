@@ -3,7 +3,7 @@ import ProjectCard from '../components/ProjectCard';
 import { Avatar, CarArt, Card, Empty, Icon, RiskPill, StripStat, carName } from '../components/ui';
 import { paintHex } from '../lib/paint';
 import { addDays, diffDays, fmtDate, fmtDay, isWeekend, todayIso } from '../lib/dates';
-import { allBlockers, dayLoad, money, moneyC, partRisk, projectCosts, projectHealth, RISK_RANK, BAYS } from '../lib/logic';
+import { allBlockers, attFor, dayLoad, isOut, money, moneyC, partRisk, projectCosts, projectHealth, RISK_RANK, BAYS } from '../lib/logic';
 import { useStore } from '../lib/store';
 
 export default function Dashboard() {
@@ -146,6 +146,8 @@ export default function Dashboard() {
               <div key={m.id} style={{ display: 'contents' }}>
                 <div className="c h" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink2)', justifyContent: 'flex-start' }}><Avatar m={m} size={20} />{m.name.split(' ')[0]}</div>
                 {days.map((d) => {
+                  const rec = attFor(data.attendance, m.id, d);
+                  if (isOut(rec)) return <div key={d} className="c out" title={`${m.name} · ${fmtDate(d)} · ${rec!.status === 'leave' ? 'on leave' : rec!.status === 'off' ? 'day off' : 'absent'}`}>OUT</div>;
                   const pct = Math.round((dayLoad(data.tasks, m.id, d) / m.dailyHours) * 100);
                   const bg = pct === 0 ? undefined : pct > 100 ? 'var(--red)' : `color-mix(in srgb, var(--arc) ${Math.min(46, 8 + pct * 0.38)}%, transparent)`;
                   return <div key={d} className="c" style={{ background: bg, color: pct > 100 ? '#fff' : pct ? 'var(--ink)' : undefined }} title={`${m.name} · ${fmtDate(d)} · ${pct}%`}>{pct || ''}</div>;
@@ -154,7 +156,7 @@ export default function Dashboard() {
             ))}
           </div></div>
         </Card>
-        <Card title="Today on the floor" flush>
+        <Card title="Today on the floor" flush action={<Link to="/attendance" className="small muted">{team.filter((m) => attFor(data.attendance, m.id, today)?.timeIn).length} of {team.length} in →</Link>}>
           {todays.length === 0 && <Empty>Nothing scheduled today.</Empty>}
           {todays.slice(0, 6).map((t) => {
             const p = data.projects.find((x) => x.id === t.projectId)!;

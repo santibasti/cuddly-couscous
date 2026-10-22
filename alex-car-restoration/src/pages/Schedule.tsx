@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar, Card, Icon } from '../components/ui';
 import { addDays, fmtDate, fmtDay, isWeekend, startOfWeek, todayIso } from '../lib/dates';
-import { dayLoad, isOverbooked, partArrivesLate, taskBlocker } from '../lib/logic';
+import { ATT_LABEL, attFor, dayLoad, isOut, isOverbooked, partArrivesLate, taskBlocker } from '../lib/logic';
 import { useStore } from '../lib/store';
 
 export default function Schedule() {
@@ -53,8 +53,11 @@ export default function Schedule() {
             {days.map((d) => {
               const ts = data.tasks.filter((t) => t.mechanicId === m.id && t.date === d && (!proj || t.projectId === proj));
               const load = dayLoad(data.tasks, m.id, d);
+              const rec = attFor(data.attendance, m.id, d);
+              const out = isOut(rec) && rec!.status !== 'off';
               return (
-                <div key={d} className={`cell ${d === today ? 'today' : ''} ${isWeekend(d) ? 'wk' : ''} ${d < today ? 'past' : ''}`}>
+                <div key={d} className={`cell ${out ? 'out' : ''} ${d === today ? 'today' : ''} ${isWeekend(d) ? 'wk' : ''} ${d < today ? 'past' : ''}`}>
+                  {out && <div className={`outtag ${ts.length ? 'warn' : ''}`}>{ATT_LABEL[rec!.status]}{ts.length ? ` · ${ts.length} to reassign` : ''}</div>}
                   {ts.map((t) => {
                     const p = data.projects.find((x) => x.id === t.projectId);
                     const b = taskBlocker(t, data.parts);

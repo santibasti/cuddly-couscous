@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
 import { todayIso } from './dates';
-import { buildPhases, nextProjectCode } from './logic';
+import { buildPhases, isLateIn, nextProjectCode, OUT_STATUSES } from './logic';
 import { buildSeed } from './seed';
-import type { Data, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, Task, TaskStatus } from './types';
+import type { AttendanceStatus, Data, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, Task, TaskStatus } from './types';
 
-const KEY = 'alex-car-restoration:v3';
+const KEY = 'alex-car-restoration:v4';
 
 export type Action =
   | { type: 'addProject'; project: Omit<Project, 'id' | 'code' | 'phases' | 'status'> & { status?: ProjectStatus } }
@@ -20,6 +20,10 @@ export type Action =
   | { type: 'addUpdate'; projectId: string; text: string; phaseKey?: PhaseKey; author: string }
   | { type: 'addMechanic'; mechanic: Omit<Mechanic, 'id' | 'active'> }
   | { type: 'toggleMechanic'; id: string }
+  | { type: 'clockIn'; mechanicId: string; date: string; time: string }
+  | { type: 'clockOut'; mechanicId: string; date: string; time: string }
+  | { type: 'setAttendance'; mechanicId: string; date: string; status: AttendanceStatus; timeIn?: string; timeOut?: string; note?: string }
+  | { type: 'clearAttendance'; mechanicId: string; date: string }
   | { type: 'reset' };
 
 const uid = (p: string) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -97,6 +101,24 @@ export function reducer(d: Data, a: Action): Data {
       return { ...d, mechanics: [...d.mechanics, { ...a.mechanic, id: uid('m'), active: true }] };
     case 'toggleMechanic':
       return { ...d, mechanics: d.mechanics.map((m) => (m.id === a.id ? { ...m, active: !m.active } : m)) };
+    case 'clockIn': {
+      const existing = d.attendance.find((r) => r.mechanicId === a.mechanicId && r.date === a.date);
+      if (existing?.timeIn) return d; // already clocked in today
+      const rec = { id: existing?.id ?? uid('a'), mechanicId: a.mechanicId, date: a.date, status: isLateIn(a.time) ? ('late' as const) : ('present' as const), timeIn: a.time, note: existing?.note };
+      return { ...d, attendance: [...d.attendance.filter((r) => r !== existing), rec] };
+    }
+    case 'clockOut':
+      return { ...d, attendance: d.attendance.map((r) => (r.mechanicId === a.mechanicId && r.date === a.date && r.timeIn && !r.timeOut ? { ...r, timeOut: a.time } : r)) };
+    case 'setAttendance': {
+      const existing = d.attendance.find((r) => r.mechanicId === a.mechanicId && r.date === a.date);
+      const out = OUT_STATUSES.includes(a.status);
+      let status = a.status;
+      if ((status === 'present' || status === 'late') && a.timeIn) status = isLateIn(a.timeIn) ? 'late' : 'present';
+      const rec = { id: existing?.id ?? uid('a'), mechanicId: a.mechanicId, date: a.date, status, timeIn: out ? undefined : a.timeIn || undefined, timeOut: out ? undefined : a.timeOut || undefined, note: a.note || undefined };
+      return { ...d, attendance: [...d.attendance.filter((r) => r !== existing), rec] };
+    }
+    case 'clearAttendance':
+      return { ...d, attendance: d.attendance.filter((r) => !(r.mechanicId === a.mechanicId && r.date === a.date)) };
     case 'reset':
       return buildSeed();
   }

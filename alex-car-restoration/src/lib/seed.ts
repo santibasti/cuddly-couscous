@@ -1,6 +1,6 @@
 import { addDays, isWeekend, todayIso } from './dates';
 import { buildPhases, PHASES } from './logic';
-import type { BlockReason, Customer, Data, Mechanic, Part, PartKind, PartStatus, PhaseKey, Project, Task, Update } from './types';
+import type { Attendance, BlockReason, Customer, Data, Mechanic, Part, PartKind, PartStatus, PhaseKey, Project, Task, Update } from './types';
 
 /** Demo figures were drafted in USD; shop money is in pesos. */
 const FX = 56;
@@ -189,5 +189,36 @@ export function buildSeed(today = todayIso()): Data {
     for (const [off, phaseKey, text] of s.notes) updates.push({ id: `u${un++}`, projectId: s.id, date: addDays(today, off), author: 'Alex', phaseKey, text });
   }
   void PHASES;
-  return { mechanics, customers, projects, tasks, parts, updates };
+  // Attendance: three weeks of history, today's clock-ins, and one approved leave that collides with booked work.
+  const attendance: Attendance[] = [];
+  let an = 1;
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  mechanics.forEach((m, mi) => {
+    const shiftOut = m.dailyHours <= 6 ? 15 : 17;
+    for (let back = 21; back >= 1; back--) {
+      const date = addDays(today, -back);
+      if (isWeekend(date)) continue;
+      const r = (mi * 7 + back * 3) % 17;
+      const base = { id: `a${an++}`, mechanicId: m.id, date };
+      if (r === 0) attendance.push({ ...base, status: 'absent', note: 'Sick' });
+      else if (r === 1) attendance.push({ ...base, status: 'late', timeIn: `08:${pad2(24 + (mi % 3) * 6)}`, timeOut: `${shiftOut}:${pad2(30 + (mi % 3) * 5)}` });
+      else if (r === 2 && back > 14) attendance.push({ ...base, status: 'leave', note: 'Vacation' });
+      else {
+        const late = 50 + (r % 9); // 07:50 – 08:08, inside the grace period
+        const timeIn = late < 60 ? `07:${pad2(late)}` : `08:${pad2(late - 60)}`;
+        const ot = r % 6 === 3 ? 90 : r % 4;
+        const outMin = ot + (back % 3) * 4;
+        const timeOut = `${pad2(shiftOut + Math.floor(outMin / 60))}:${pad2(outMin % 60)}`;
+        attendance.push({ ...base, status: 'present', timeIn, timeOut });
+      }
+    }
+  });
+  const clock = (mid: string, status: Attendance['status'], timeIn: string) => attendance.push({ id: `a${an++}`, mechanicId: mid, date: today, status, timeIn });
+  if (!isWeekend(today)) {
+    clock('m1', 'present', '07:52'); clock('m2', 'present', '07:58'); clock('m3', 'late', '08:24'); clock('m4', 'present', '08:03');
+  }
+  const leaveTask = tasks.find((t) => t.mechanicId === 'm2' && t.status !== 'done' && t.date > today && t.title === 'Block sanding & primer');
+  if (leaveTask) attendance.push({ id: `a${an++}`, mechanicId: 'm2', date: leaveTask.date, status: 'leave', note: 'Approved leave' });
+
+  return { mechanics, customers, projects, tasks, parts, updates, attendance };
 }

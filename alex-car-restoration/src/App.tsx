@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
 import { Icon } from './components/ui';
 import { todayIso } from './lib/dates';
-import { allBlockers, partRisk } from './lib/logic';
+import { allBlockers, coverageGaps, partRisk } from './lib/logic';
 import { useStore } from './lib/store';
+import Attendance from './pages/Attendance';
 import Dashboard from './pages/Dashboard';
 import Mechanics from './pages/Mechanics';
 import Parts from './pages/Parts';
@@ -35,6 +36,7 @@ export default function App() {
     ['/schedule', 'Schedule', 'cal'],
     ['/timeline', 'Timeline', 'gantt'],
     ['/mechanics', 'Mechanics', 'wrench'],
+    ['/attendance', 'Attendance', 'clock', coverageGaps(data, today).length || undefined],
     ['/parts', 'Parts & sublets', 'box', partsAlert || undefined],
   ];
   return (
@@ -60,6 +62,7 @@ export default function App() {
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/timeline" element={<Timeline />} />
           <Route path="/mechanics" element={<Mechanics />} />
+          <Route path="/attendance" element={<Attendance />} />
           <Route path="/parts" element={<Parts />} />
           <Route path="*" element={<p>Not found.</p>} />
         </Routes>
