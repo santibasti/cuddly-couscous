@@ -21,7 +21,7 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
       <div className="art">
         <div className="tl"><span className="eyebrow">{p.bay}</span></div>
         <div className="tr"><HealthPill h={health} /></div>
-        <CarArt color={paintHex(p)} />
+        {p.photo ? <img className="photo" src={p.photo} alt={`${p.year} ${p.make} ${p.model}`} /> : <CarArt color={paintHex(p)} car={p} />}
       </div>
       <div className="body">
         <div>

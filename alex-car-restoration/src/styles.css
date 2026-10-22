@@ -271,3 +271,14 @@ button.primary,.btn.primary{box-shadow:0 8px 20px -10px var(--accent)}
 .exec-table tfoot td{border-top:1px solid var(--line2);border-bottom:0;background:var(--panel)}
 .swatch{display:inline-block;width:10px;height:10px;border-radius:3px;flex:none}
 .sup{margin-bottom:10px}.sup .bar{margin-top:5px}
+
+/* brand logo: the supplied image is white on black, so blend the black away in dark mode and invert it in light mode */
+.brand{padding:0 6px 20px}
+.brand img{display:block;width:142px;height:auto}
+:root[data-theme=light] .brand img{filter:invert(1)}
+/* real photos */
+.pcard .art .photo{display:block;width:100%;height:130px;object-fit:cover;border-radius:10px;margin:-4px 0 6px;box-shadow:0 14px 30px -14px rgba(0,0,0,.6)}
+.pcard .art:has(.photo){padding:36px 14px 8px}
+.hero .hart .photo{display:block;width:100%;height:120px;object-fit:cover;border-radius:12px}
+.phero-photo{position:absolute;right:0;top:0;bottom:0;width:52%;object-fit:cover;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent,#000 45%);mask-image:linear-gradient(90deg,transparent,#000 45%);opacity:.95}
+@media(max-width:1180px){.phero-photo{position:relative;width:100%;height:180px;margin-top:16px;-webkit-mask-image:none;mask-image:none;border-radius:12px}}

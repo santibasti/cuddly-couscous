@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
+import logo from './assets/alex-logo.png';
 import { Icon } from './components/ui';
 import { todayIso } from './lib/dates';
 import { allBlockers, coverageGaps, partRisk } from './lib/logic';
@@ -44,7 +45,7 @@ export default function App() {
   return (
     <div className="layout">
       <nav className="side">
-        <div className="brand"><div className="logo">A</div><div><b>Alex</b><small>Car Restoration</small></div></div>
+        <div className="brand"><img src={logo} alt="Alex Restoration" width={142} height={58} /></div>
         {links.map(([to, label, icon, n]) => (
           <NavLink key={to} to={to} end={to === '/'} className="nav"><Icon name={icon} />{label}{n ? <em>{n}</em> : null}</NavLink>
         ))}

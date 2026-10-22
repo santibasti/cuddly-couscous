@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Avatar, CarArt, Card, HealthPill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
+import { Avatar, CarArt, Card, carName, HealthPill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
 import { paintHex } from '../lib/paint';
+import { resizeImage } from '../lib/photo';
 import { diffDays, fmtDate, todayIso } from '../lib/dates';
 import { BAYS, PART_FLOW, PHASES, currentPhase, daysOverdue, isPartIn, money, moneyC, partRisk, partStatusLabel, phaseLabel, phasePercent, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { useStore } from '../lib/store';
@@ -14,6 +15,7 @@ export default function ProjectDetail() {
   const { data, dispatch } = useStore();
   const [tab, setTab] = useState<Tab>('work');
   const [note, setNote] = useState('');
+  const [photoErr, setPhotoErr] = useState('');
   const [notePhase, setNotePhase] = useState<PhaseKey | ''>('');
   const [selKey, setSelKey] = useState<PhaseKey | null>(null);
   const today = todayIso();
@@ -60,7 +62,7 @@ export default function ProjectDetail() {
     <>
       <Link to="/projects" className="crumb">← Projects</Link>
       <section className="phero rise" style={{ '--paint': paintHex(p) } as React.CSSProperties}>
-        <div className="art"><CarArt color={paintHex(p)} /></div>
+        {p.photo ? <img className="phero-photo" src={p.photo} alt={carName(p)} /> : <div className="art"><CarArt color={paintHex(p)} car={p} /></div>}
         <div className="txt">
           <div className="row" style={{ marginBottom: 14 }}><span className="eyebrow">{p.code} · {p.year} · {p.bay}</span><HealthPill h={health} /></div>
           <h1>{p.make} <em>{p.model}</em></h1>
@@ -70,7 +72,18 @@ export default function ProjectDetail() {
               {(['quote', 'active', 'on_hold', 'completed', 'delivered'] as ProjectStatus[]).map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
             </select>
             <select value={p.bay} onChange={(e) => dispatch({ type: 'updateProject', id: p.id, patch: { bay: e.target.value } })}><option>Unassigned</option>{BAYS.map((b) => <option key={b}>{b}</option>)}</select>
+            <label className="btn sm" style={{ cursor: 'pointer' }}>
+              <Icon name="plus" size={13} />{p.photo ? 'Change photo' : 'Add real photo'}
+              <input type="file" accept="image/*" hidden onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) return;
+                try { dispatch({ type: 'updateProject', id: p.id, patch: { photo: await resizeImage(file) } }); setPhotoErr(''); } catch (err) { setPhotoErr(err instanceof Error ? err.message : 'Could not use that image.'); }
+              }} />
+            </label>
+            {p.photo && <button className="sm ghost" onClick={() => dispatch({ type: 'updateProject', id: p.id, patch: { photo: undefined } })}>Remove photo</button>}
           </div>
+          {photoErr && <div className="small over" role="alert" style={{ marginTop: 8 }}>{photoErr}</div>}
         </div>
         <div className="stats">
           <div><div className="eyebrow">Progress</div><div className="sv"><span>{pct}%</span></div><div className={`small ${over ? 'over' : 'muted'}`}>{over ? `${over}d past target` : `Target ${fmtDate(p.targetDate)}`}</div></div>

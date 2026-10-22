@@ -68,6 +68,8 @@ export interface Project {
   budget: number;
   phases: Phase[];
   leadMechanicId?: string;
+  /** Optional real photo of the car, stored as a small data URL. */
+  photo?: string;
   /** Money received from the customer (deposit, progress payments). */
   payments: Payment[];
 }

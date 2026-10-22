@@ -54,7 +54,7 @@ export default function Dashboard() {
         </div>
         {nextOut && (
           <Link to={`/projects/${nextOut.id}`} className="hart">
-            <CarArt color={paintHex(nextOut)} />
+            {nextOut.photo ? <img className="photo" src={nextOut.photo} alt={carName(nextOut)} /> : <CarArt color={paintHex(nextOut)} car={nextOut} />}
             <div className="cap"><div className="eyebrow">Next out the door</div><div className="serif" style={{ fontSize: 22 }}>{carName(nextOut)}</div><div className="small muted">Target {fmtDate(nextOut.targetDate)}</div></div>
           </Link>
         )}

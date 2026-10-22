@@ -117,17 +117,78 @@ export const Empty = ({ children }: { children: ReactNode }) => <div className="
 
 export { partRisk };
 
-/** Stylised classic-coupe profile, painted in the job's own colour. */
-export function CarArt({ color, className = '' }: { color: string; className?: string }) {
+export type CarStyle = 'mustang' | 'porsche' | 'camaro' | 'mercedes' | 'corvette' | 'jaguar' | 'classic';
+
+/** Picks the silhouette for a car from its make and model. */
+export function carStyle(make: string, model: string): CarStyle {
+  const s = `${make} ${model}`.toLowerCase();
+  if (/mustang/.test(s)) return 'mustang';
+  if (/porsche|911/.test(s)) return 'porsche';
+  if (/camaro/.test(s)) return 'camaro';
+  if (/mercedes|190\s?sl|benz/.test(s)) return 'mercedes';
+  if (/corvette|sting ?ray/.test(s)) return 'corvette';
+  if (/jaguar|e-type|xk/.test(s)) return 'jaguar';
+  return 'classic';
+}
+
+interface Shape { body: string; glass: string[]; wheels: [number, number]; r: number; extra?: ReactNode }
+
+const SHAPES: Record<CarStyle, Shape> = {
+  // 1967 Mustang Fastback: long hood, roofline sweeping down to a short tail
+  mustang: {
+    body: 'M18 100C18 92 24 88 42 86L82 82C112 56 148 42 184 40C216 39 244 48 266 66L340 74C366 78 382 86 382 100V108H18Z',
+    glass: ['M124 72C142 55 166 46 190 45C220 45 244 53 262 66Z'], wheels: [96, 304], r: 27,
+    extra: <><path d="M268 69L338 77" stroke="#fff" strokeOpacity=".28" strokeWidth="1.4" /><rect x="352" y="86" width="22" height="9" rx="3" fill="#cfd3da" opacity=".85" /></>,
+  },
+  // 1972 Porsche 911T: compact teardrop, short nose, long sloping roof
+  porsche: {
+    body: 'M26 98C26 88 34 80 58 72C86 52 126 40 168 40C206 40 234 48 256 62L318 74C350 80 370 88 374 100V108H26Z',
+    glass: ['M102 69C122 53 148 44 176 44C206 44 230 52 248 64Z'], wheels: [100, 298], r: 26,
+    extra: <><ellipse cx="352" cy="82" rx="11" ry="9" fill="#f4e7c6" opacity=".95" /><rect x="18" y="98" width="12" height="8" rx="3" fill="#d3d6dd" /><rect x="372" y="99" width="10" height="8" rx="3" fill="#d3d6dd" /></>,
+  },
+  // 1969 Camaro SS: boxier greenhouse set back, long hood, short deck
+  camaro: {
+    body: 'M18 98C18 90 22 86 38 84L96 80L114 62C132 50 162 44 198 44C232 44 254 52 270 66L346 76C372 80 384 88 384 100V108H18Z',
+    glass: ['M132 64C148 53 172 48 198 48C226 48 246 54 260 64Z'], wheels: [98, 304], r: 27,
+    extra: <><path d="M276 69L344 78M282 66L346 74" stroke="#fff" strokeOpacity=".55" strokeWidth="2.6" /><rect x="378" y="92" width="8" height="12" rx="2" fill="#cfd3da" /></>,
+  },
+  // 1958 Mercedes-Benz 190SL: low roadster with a small windscreen and an open cockpit
+  mercedes: {
+    body: 'M18 100C18 92 26 86 46 84L236 76C262 74 280 70 292 68L346 78C370 82 384 90 384 100V108H18Z',
+    glass: ['M232 74L252 54C258 52 266 54 268 58L282 70Z'], wheels: [100, 302], r: 26,
+    extra: <><path d="M118 79L226 77L224 66C190 62 150 64 126 68Z" fill="#14100e" opacity=".85" /><rect x="126" y="62" width="22" height="14" rx="6" fill="#2b221c" /><rect x="168" y="62" width="22" height="14" rx="6" fill="#2b221c" /><ellipse cx="364" cy="88" rx="7" ry="6" fill="#f4e7c6" /><rect x="340" y="92" width="28" height="8" rx="3" fill="#d3d6dd" opacity=".8" /></>,
+  },
+  // 1963 Corvette Sting Ray: low and wide, pointed nose, split rear window
+  corvette: {
+    body: 'M16 102C16 94 22 90 40 88C70 84 96 72 120 62C150 48 188 44 214 46C238 48 254 58 270 70L342 82C370 86 388 94 388 102V108H16Z',
+    glass: ['M136 62C152 52 176 49 194 49L194 62Z', 'M200 49C220 50 240 58 254 68L200 66Z'], wheels: [96, 306], r: 27,
+    extra: <><path d="M196 49L198 66" stroke="#c9ccd3" strokeWidth="3" /><path d="M222 82L262 82M226 87L260 87" stroke="#fff" strokeOpacity=".4" strokeWidth="1.6" /><ellipse cx="376" cy="94" rx="6" ry="4" fill="#f4e7c6" /></>,
+  },
+  // 1963 Jaguar E-Type: very long bonnet, low swept roof
+  jaguar: {
+    body: 'M18 100C18 92 24 88 40 86C66 82 92 70 118 58C146 44 178 42 204 46C226 50 242 60 254 70L348 84C372 88 388 94 388 102V108H18Z',
+    glass: ['M142 58C158 48 180 46 200 49C216 52 228 60 236 68L146 70Z'], wheels: [100, 308], r: 27,
+    extra: <><ellipse cx="372" cy="95" rx="9" ry="6" fill="#1a1a1c" /><ellipse cx="372" cy="95" rx="6" ry="4" fill="#f4e7c6" opacity=".9" /><path d="M262 76L348 88" stroke="#fff" strokeOpacity=".3" strokeWidth="1.4" /></>,
+  },
+  classic: {
+    body: 'M20 100C20 90 26 84 48 82L98 76C116 54 150 38 198 36C240 35 270 48 290 68L342 76C368 80 382 88 382 100V108H20Z',
+    glass: ['M124 72C142 56 168 47 198 46C230 46 254 55 270 70Z'], wheels: [96, 304], r: 27,
+    extra: <><ellipse cx="373" cy="91" rx="7" ry="5" fill="#f4e7c6" /><rect x="19" y="90" width="7" height="8" rx="2" fill="#c0392b" /></>,
+  },
+};
+
+/** Stylised side profile of the actual model, painted in the job's own colour. */
+export function CarArt({ color, car, className = '' }: { color: string; car?: { make: string; model: string }; className?: string }) {
   const id = useId().replace(/:/g, '');
+  const sh = SHAPES[car ? carStyle(car.make, car.model) : 'classic'];
   const mix = (pct: number, other: string) => ({ stopColor: `color-mix(in srgb, ${color} ${pct}%, ${other})` }) as CSSProperties;
   const wheel = (cx: number) => (
     <g key={cx}>
-      <circle cx={cx} cy={108} r={31} fill="var(--arch)" />
-      <circle cx={cx} cy={108} r={26} fill="#0a0a0c" />
-      <circle cx={cx} cy={108} r={17} fill={`url(#w${id})`} />
+      <circle cx={cx} cy={108} r={sh.r + 4} fill="var(--arch)" />
+      <circle cx={cx} cy={108} r={sh.r - 1} fill="#0a0a0c" />
+      <circle cx={cx} cy={108} r={sh.r - 10} fill={`url(#w${id})`} />
       <circle cx={cx} cy={108} r={6} fill="#2b2d33" />
-      {[0, 72, 144, 216, 288].map((a) => <line key={a} x1={cx} y1={108} x2={cx + 15 * Math.cos((a * Math.PI) / 180)} y2={108 + 15 * Math.sin((a * Math.PI) / 180)} stroke="#2b2d33" strokeWidth="2.4" />)}
+      {[0, 72, 144, 216, 288].map((a) => <line key={a} x1={cx} y1={108} x2={cx + (sh.r - 12) * Math.cos((a * Math.PI) / 180)} y2={108 + (sh.r - 12) * Math.sin((a * Math.PI) / 180)} stroke="#2b2d33" strokeWidth="2.4" />)}
     </g>
   );
   return (
@@ -141,15 +202,12 @@ export function CarArt({ color, className = '' }: { color: string; className?: s
         <radialGradient id={`s${id}`}><stop offset="0" stopColor="#000" stopOpacity=".55" /><stop offset="1" stopColor="#000" stopOpacity="0" /></radialGradient>
       </defs>
       <ellipse cx="200" cy="138" rx="190" ry="9" fill={`url(#s${id})`} />
-      <path d="M20 100C20 90 26 84 48 82L98 76C116 54 150 38 198 36C240 35 270 48 290 68L342 76C368 80 382 88 382 100V108H20Z" fill={`url(#b${id})`} />
-      <path d="M124 72C142 56 168 47 198 46C230 46 254 55 270 70Z" fill={`url(#g${id})`} />
-      <path d="M198 46V72" stroke="#0b0d12" strokeOpacity=".55" strokeWidth="2.5" />
-      <path d="M30 91H372" stroke="#fff" strokeOpacity=".26" strokeWidth="1.4" />
-      <path d="M196 76V106" stroke="#000" strokeOpacity=".28" strokeWidth="1.5" />
-      <path d="M104 76C122 56 150 42 198 40" stroke="#fff" strokeOpacity=".3" strokeWidth="1.4" fill="none" />
-      <ellipse cx="373" cy="91" rx="7" ry="5" fill="#f4e7c6" /><rect x="19" y="90" width="7" height="8" rx="2" fill="#c0392b" />
-      <rect x="375" y="99" width="9" height="8" rx="2" fill="#d3d6dd" /><rect x="16" y="99" width="9" height="8" rx="2" fill="#d3d6dd" />
-      {wheel(96)}{wheel(304)}
+      <path d={sh.body} fill={`url(#b${id})`} />
+      {sh.glass.map((g) => <path key={g} d={g} fill={`url(#g${id})`} />)}
+      <path d="M30 91H372" stroke="#fff" strokeOpacity=".22" strokeWidth="1.3" />
+      <path d="M196 78V106" stroke="#000" strokeOpacity=".25" strokeWidth="1.5" />
+      {sh.extra}
+      {sh.wheels.map(wheel)}
     </svg>
   );
 }
