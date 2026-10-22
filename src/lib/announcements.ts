@@ -1,7 +1,7 @@
 // Announcements, rewards, awards and recognition from TopMop to the crew and staff.
 // Live site: the announcements / announcement_reactions tables (row-level security decides who sees what). Demo: this browser only.
 import { useEffect, useSyncExternalStore } from 'react';
-import { CLOUD, supabase } from './cloud';
+import { CLOUD, isMissingTable, supabase } from './cloud';
 import { store } from './store';
 import { today, uid } from './util';
 
@@ -56,7 +56,7 @@ export async function refreshAnnouncements(): Promise<void> {
   if (!CLOUD) { const d = demoLoad(); set({ items: d.items.filter((a) => !a.deleted_at).sort(byNewest), mine: d.mine[store.user.id] ?? {}, stats: d.stats, loaded: true }); return; }
   try {
     const { data, error } = await supabase().from('announcements').select('*').is('deleted_at', null).order('created_at', { ascending: false }).limit(60);
-    if (error) { if (/does not exist|schema cache/i.test(error.message)) { set({ ...feed, loaded: true }); return; } throw new Error(error.message); }
+    if (error) { if (isMissingTable(error)) { set({ ...feed, loaded: true }); return; } throw new Error(error.message); }
     const items = ((data ?? []) as Announcement[]).sort(byNewest);
     const ids = items.map((a) => a.id);
     const [mine, st] = ids.length ? await Promise.all([

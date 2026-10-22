@@ -75,3 +75,14 @@ describe('Supabase mapping', () => {
     expect(server.clients.length).toBe(3);                                                                                // the server copy itself is untouched
   });
 });
+
+describe('busy database vs missing table', () => {
+  it('retries a pool or schema-cache hiccup and never reads it as an empty table', async () => {
+    const { isBusy, isMissingTable } = await import('./cloud');
+    expect(isBusy({ message: 'Timed out acquiring connection from connection pool.', code: 'PGRST003' })).toBe(true);
+    expect(isBusy({ message: 'Could not query the database for the schema cache. Retrying.', code: 'PGRST002' })).toBe(true);
+    expect(isMissingTable({ message: 'Could not query the database for the schema cache. Retrying.', code: 'PGRST002' })).toBe(false);
+    expect(isMissingTable({ message: "Could not find the table 'public.announcements' in the schema cache", code: 'PGRST205' })).toBe(true);
+    expect(isMissingTable({ message: 'relation "public.x" does not exist', code: '42P01' })).toBe(true);
+  });
+});

@@ -1,5 +1,5 @@
 // Saved Executive reports (live site: the executive_reports table) and the two AI calls that write them.
-import { CLOUD, supabase } from './cloud';
+import { CLOUD, isMissingTable, supabase } from './cloud';
 import { callFn } from './fnclient';
 
 export interface Analysis {
@@ -29,7 +29,7 @@ export async function generateTeamTalk(summary: unknown, language: 'english' | '
 export async function listReports(): Promise<SavedReport[]> {
   if (!CLOUD) return [];
   const { data, error } = await supabase().from('executive_reports').select('*').is('deleted_at', null).order('created_at', { ascending: false }).limit(30);
-  if (error) { if (/does not exist|schema cache/i.test(error.message)) return []; throw new Error(error.message); }
+  if (error) { if (isMissingTable(error)) return []; throw new Error(error.message); }
   return (data ?? []) as SavedReport[];
 }
 export async function saveReport(r: { as_of: string; with_research: boolean; model: string | null; metrics: unknown; analysis: Analysis | null; research: Research | null }): Promise<SavedReport> {

@@ -52,11 +52,13 @@ export function toDb(row: Record<string, unknown>, before?: Record<string, unkno
 const NEWER_TABLES = new Set(['maint_profiles', 'maint_plans', 'maint_templates', 'maint_records', 'job_orders', 'service_reports']);
 /** The database answers through a small pool of connections. Loading ~45 tables at once, for everyone signing in together, used it up ("Timed out acquiring connection from connection pool"):
  *  load a few at a time, and when the pool is full wait a moment and ask again. */
-const BUSY = /timed? ?out acquiring|connection pool|PGRST003|gateway|too many connections|HTTP 50[234]/i;
-const isBusy = (e: { message?: string; code?: string } | null | undefined) => !!e && (e.code === 'PGRST003' || e.code === '53300' || BUSY.test(e.message ?? ''));
+const BUSY = /timed? ?out acquiring|connection pool|PGRST00[23]|could not query the database for the schema cache|gateway|too many connections|HTTP 50[234]/i;
+export const isBusy = (e: { message?: string; code?: string } | null | undefined) => !!e && (e.code === 'PGRST002' || e.code === 'PGRST003' || e.code === '53300' || BUSY.test(e.message ?? ''));
+/** A table the database does not have yet. Not the same as the API being briefly unable to read its schema (PGRST002), which must be retried, never read as "empty". */
+export const isMissingTable = (e: { message?: string; code?: string } | null | undefined) => !!e && !isBusy(e) && (e.code === 'PGRST205' || e.code === '42P01' || /could not find the table|does not exist/i.test(e.message ?? ''));
 async function patient<T extends { error: { message?: string; code?: string } | null }>(run: () => PromiseLike<T>): Promise<T> {
   let r = await run();
-  for (let i = 0; i < 4 && isBusy(r.error); i++) { await new Promise((ok) => setTimeout(ok, 700 * 2 ** i + Math.random() * 400)); r = await run(); }
+  for (let i = 0; i < 5 && isBusy(r.error); i++) { await new Promise((ok) => setTimeout(ok, 800 * 2 ** i + Math.random() * 500)); r = await run(); }
   return r;
 }
 const LOAD_AT_ONCE = 5;
@@ -70,7 +72,7 @@ async function readAll(table: string, order = 'id'): Promise<Record<string, unkn
   for (let from = 0; ; from += page) {
     const { data, error } = await patient(() => supabase().from(table).select('*').order(order).range(from, from + page - 1));
     // a table from a newer migration that has not been applied yet reads as empty (the app still works; apply the migration to use it)
-    if (error && NEWER_TABLES.has(table) && (error.code === 'PGRST205' || error.code === '42P01' || /schema cache|does not exist/i.test(error.message))) return [];
+    if (error && NEWER_TABLES.has(table) && isMissingTable(error)) return [];
     if (error) throw new CloudError(`Could not load ${table}: ${error.message}`, error.code);
     rows.push(...(data ?? []));
     if (!data || data.length < page) break;
@@ -182,7 +184,7 @@ export async function fetchLatest(cur: DB, full = false): Promise<DB> {
     const rows: Record<string, unknown>[] = [];
     for (let from = 0; ; from += 1000) {
       const { data, error } = await patient(() => supabase().from(t).select('*').gte('updated_at', marks[t] ?? '1970-01-01T00:00:00Z').order('updated_at').order('id').range(from, from + 999));
-      if (error) { if (NEWER_TABLES.has(t) && (error.code === 'PGRST205' || error.code === '42P01' || /schema cache|does not exist/i.test(error.message))) break; throw new CloudError(`Could not load ${t}: ${error.message}`, error.code); }
+      if (error) { if (NEWER_TABLES.has(t) && isMissingTable(error)) break; throw new CloudError(`Could not load ${t}: ${error.message}`, error.code); }
       rows.push(...(data ?? []));
       if (!data || data.length < 1000) break;
     }
@@ -336,7 +338,7 @@ export async function reserveNumbers(kind: string, n: number): Promise<number[]>
 
 /* ---------- auth ---------- */
 export async function signIn(email: string, password: string) {
-  const busy = (e: { message: string; status?: number }) => [502, 503, 504].includes(e.status ?? 0) || /^HTTP 50[234]$/.test(e.message) || /timed? ?out|gateway|connection pool/i.test(e.message);
+  const busy = (e: { message: string; status?: number }) => [502, 503, 504].includes(e.status ?? 0) || /^HTTP 50[234]$/.test(e.message) || /timed? ?out|gateway|connection pool|schema cache/i.test(e.message);
   let last: { message: string; status?: number } | null = null;
   for (let i = 0; i < 3; i++) {
     const { data, error } = await supabase().auth.signInWithPassword({ email: email.trim(), password });
