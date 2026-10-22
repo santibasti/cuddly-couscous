@@ -25,6 +25,7 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     try { localStorage.setItem('acr-theme', theme); } catch { /* ignore */ }
   }, [theme]);
+  const [confirmReset, setConfirmReset] = useState(false);
   const today = todayIso();
   const blocked = allBlockers(data).length;
   const partsAlert = data.parts.filter((p) => ['late', 'order_now'].includes(partRisk(p, today))).length;
@@ -46,7 +47,7 @@ export default function App() {
         <div className="foot">
           <div className="row" style={{ gap: 6 }}>
             <button className="sm" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
-            <button className="sm ghost" onClick={() => confirm('Reset all data to the demo set?') && dispatch({ type: 'reset' })}>Reset demo</button>
+            <button className="sm ghost" onClick={() => { if (confirmReset) { dispatch({ type: 'reset' }); setConfirmReset(false); } else setConfirmReset(true); }} onBlur={() => setConfirmReset(false)}>{confirmReset ? 'Click to confirm' : 'Reset demo'}</button>
           </div>
           <div style={{ marginTop: 8 }}>Demo data · saved in this browser</div>
         </div>

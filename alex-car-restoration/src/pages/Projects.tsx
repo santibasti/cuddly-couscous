@@ -14,6 +14,7 @@ export default function Projects() {
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
+  const [err, setErr] = useState('');
   const [view, setView] = useState<'gallery' | 'table'>('gallery');
   const today = todayIso();
 
@@ -28,7 +29,8 @@ export default function Projects() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const s = (k: string) => String(f.get(k) ?? '').trim();
-    if (s('target') <= s('start')) return alert('Target date must be after the start date.');
+    if (s('target') <= s('start')) return setErr('Target delivery must be after the start date.');
+    setErr('');
     dispatch({
       type: 'addProject',
       project: {
@@ -62,6 +64,7 @@ export default function Projects() {
           <label>Start date<input name="start" type="date" defaultValue={today} required /></label>
           <label>Target delivery<input name="target" type="date" defaultValue={addDays(today, 90)} required /></label>
           <label className="full">Scope of work<textarea name="scope" /></label>
+          {err && <div className="full over small" role="alert">{err}</div>}
           <div className="full"><button className="primary" type="submit">Create project — phases are scheduled automatically</button></div>
         </form>
       )}

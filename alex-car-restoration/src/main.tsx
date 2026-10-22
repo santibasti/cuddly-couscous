@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { HashRouter } from 'react-router-dom';
+import { HashRouter, MemoryRouter } from 'react-router-dom';
 import App from './App';
 import { StoreProvider } from './lib/store';
 import './styles.css';
@@ -8,9 +8,7 @@ import './styles.css';
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <StoreProvider>
-      <HashRouter>
-        <App />
-      </HashRouter>
+      {import.meta.env.VITE_ROUTER === 'memory' ? <MemoryRouter><App /></MemoryRouter> : <HashRouter><App /></HashRouter>}
     </StoreProvider>
   </StrictMode>,
 );

@@ -16,14 +16,20 @@ export default function Schedule() {
   const unassigned = data.tasks.filter((t) => !t.mechanicId && t.status !== 'done' && inWeek(t));
   const blockedThisWeek = data.tasks.filter((t) => inWeek(t) && taskBlocker(t, data.parts));
 
+  const [draft, setDraft] = useState<{ mechanicId: string; date: string } | null>(null);
   function quickAdd(mechanicId: string, date: string) {
-    const title = prompt('Task title?');
-    if (!title) return;
-    const code = prompt(`Project code (${open.map((p) => p.code).join(', ')})`, open[0]?.code);
-    const project = open.find((p) => p.code === code);
-    if (!project) return alert('Unknown or inactive project code.');
+    setDraft({ mechanicId, date });
+  }
+  function submitDraft(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!draft) return;
+    const f = new FormData(e.currentTarget);
+    const project = open.find((p) => p.id === String(f.get('project')));
+    const title = String(f.get('title')).trim();
+    if (!project || !title) return;
     const phase = project.phases.find((ph) => ph.status === 'in_progress') ?? project.phases[0];
-    dispatch({ type: 'addTask', task: { projectId: project.id, phaseKey: phase.key, title, mechanicId, date, estHours: 4 } });
+    dispatch({ type: 'addTask', task: { projectId: project.id, phaseKey: phase.key, title, mechanicId: draft.mechanicId, date: draft.date, estHours: Number(f.get('hours')) || 4 } });
+    setDraft(null);
   }
 
   return (
@@ -71,6 +77,18 @@ export default function Schedule() {
           </div>
         ))}
       </div>
+      {draft && (
+        <form className="card form f4 mt" onSubmit={submitDraft}>
+          <h2 className="full serif" style={{ fontSize: 22, fontFamily: 'var(--serif)', fontWeight: 400 }}>
+            New task · {data.mechanics.find((m) => m.id === draft.mechanicId)?.name} · {fmtDate(draft.date)}
+          </h2>
+          <label>Task<input id="qa-title" name="title" placeholder="Sand and prime door" required autoFocus /></label>
+          <label>Project<select name="project">{open.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.make} {p.model}</option>)}</select></label>
+          <label>Hours<input name="hours" type="number" min="0.5" step="0.5" defaultValue={4} /></label>
+          <span />
+          <div className="row"><button className="primary" type="submit">Add task</button><button type="button" className="ghost" onClick={() => setDraft(null)}>Cancel</button></div>
+        </form>
+      )}
       <div className="grid g2 mt">
         <Card title="Blocked this week" flush>
           {blockedThisWeek.length === 0 && <div className="empty">No blocked work this week.</div>}
