@@ -79,7 +79,7 @@ export default function Schedule() {
       </div>
       {draft && (
         <form className="card form f4 mt" onSubmit={submitDraft}>
-          <h2 className="full serif" style={{ fontSize: 22, fontFamily: 'var(--serif)', fontWeight: 400 }}>
+          <h2 className="full serif" style={{ fontSize: 22, fontFamily: 'var(--serif)', fontWeight: 600 }}>
             New task · {data.mechanics.find((m) => m.id === draft.mechanicId)?.name} · {fmtDate(draft.date)}
           </h2>
           <label>Task<input id="qa-title" name="title" placeholder="Sand and prime door" required autoFocus /></label>

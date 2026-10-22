@@ -51,7 +51,7 @@ export default function Projects() {
       </div>
       {adding && (
         <form className="card form" onSubmit={submit} style={{ marginBottom: 24 }}>
-          <h2 className="full serif" style={{ fontSize: 26, fontFamily: 'var(--serif)', fontWeight: 400 }}>New project</h2>
+          <h2 className="full serif" style={{ fontSize: 26, fontFamily: 'var(--serif)', fontWeight: 600 }}>New project</h2>
           <label>Customer<select name="customer" required>{data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           <label>Job title<input name="title" placeholder="Full restoration" /></label>
           <label>Bay<select name="bay"><option>Unassigned</option>{BAYS.map((b) => <option key={b}>{b}</option>)}</select></label>
