@@ -231,6 +231,38 @@ export default function Receipts() {
   const gYes = grp('Yes — BIR only', (r) => r.bir_mode === 'yes' && decided(r)); const gBoth = grp('Both — expense and BIR', (r) => r.bir_mode === 'both' && decided(r)); const gNo = grp('No — expense only', (r) => r.bir_mode === 'no' && decided(r));
   const gWait = grp('Not decided yet', (r) => !decided(r));
   const grand = grp('GRAND TOTAL', () => true);
+  /* ---- select several receipts and post them together ---- */
+  const canPost = can('expenses.edit');
+  const [sel, setSel] = useState<Set<string>>(new Set()); const [posting, setPosting] = useState(false);
+  const postable = shown.filter((r) => r.status !== 'Posted' && !isOwnDocument(r, db.settings.company));
+  const picked = postable.filter((r) => sel.has(r.id));
+  const allOn = postable.length > 0 && picked.length === postable.length;
+  const toggle = (id: string) => setSel((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const postMany = async (mode: BirMode) => {
+    const list = picked; if (!list.length) return;
+    const noTotal = list.filter((r) => !r.total_amount);
+    const dups = list.filter((r) => r.total_amount && duplicatesOf(r, r.id, rows, expenseSources(db, r.expense_id)).length > 0);
+    const skipDups = dups.length > 0 && !confirm(`${dups.length} of these look like a double entry of another receipt or expense.\n\nOK = post them too.\nCancel = leave those ${dups.length} out and post the rest.`);
+    const todo = list.filter((r) => r.total_amount && !(skipDups && dups.includes(r)));
+    if (!todo.length) return toast('Nothing to post: the selected receipts have no total amount.', 'err');
+    if (!confirm(`Post ${todo.length} receipt${todo.length === 1 ? '' : 's'} as “${MODE_LABEL[mode]}”?`)) return;
+    setPosting(true); let ok = 0; const failed: string[] = [];
+    for (const r of todo) {
+      try {
+        let expenseId: string | null = null;
+        if (mode !== 'yes') {
+          const e = saveExpense({ date: r.receipt_date ?? today(), payee: r.supplier_name ?? 'Receipt', category: (r.category as ExpenseCategory) ?? 'Other', job_id: r.job_id ?? undefined, branch_id: db.branches[0].id, amount: r.total_amount!, vat: r.supplier_vat === 'VAT' ? (r.vat_amount ?? 0) : 0, wht: 0,
+            method: ((r.payment_method as ExpenseMethod) ?? 'Cash'), approval: 'Pending', paid: true, petty_cash: false, recurring: null, notes: `Scanned receipt ${r.receipt_no ?? ''}${r.description ? ` · ${r.description}` : ''}`.trim(),
+            supplier_name: r.supplier_name ?? undefined, supplier_tin: r.supplier_tin ?? undefined, supplier_address: r.supplier_address ?? undefined, supplier_vat: (r.supplier_vat as ReceiptVat | null) ?? undefined, supplier_invoice_no: r.receipt_no ?? undefined, bir_use: mode === 'both' }) as { id: string };
+          expenseId = e.id;
+        }
+        await updateReceipt(r.id, { status: 'Posted', expense_id: expenseId, bir_mode: mode }); ok += 1;
+      } catch (e) { failed.push(`${r.supplier_name ?? 'receipt'}: ${e instanceof Error ? e.message : 'failed'}`); }
+    }
+    setPosting(false); setSel(new Set()); load();
+    const skipped = list.length - todo.length;
+    toast(`Posted ${ok} receipt${ok === 1 ? '' : 's'}${skipped ? ` · ${skipped} left out (${noTotal.length ? `${noTotal.length} without a total` : ''}${noTotal.length && dups.length && skipDups ? ', ' : ''}${skipDups ? `${dups.length} possible duplicate${dups.length === 1 ? '' : 's'}` : ''})` : ''}${failed.length ? ` · ${failed.length} failed: ${failed[0]}` : ''}`, failed.length ? 'err' : 'ok');
+  };
   const forBir = gYes;
 
   return (
@@ -274,12 +306,26 @@ export default function Receipts() {
         <div className="small muted" style={{ padding: 10 }}>Totals follow the month, search and filter above, so they match the list below. Input VAT counts only receipts from VAT-registered suppliers. The four groups add up to the grand total.</div>
       </Card>
       <div style={{ height: 14 }} />
+      {canPost && postable.length > 0 && (
+        <div className="card row" style={{ padding: 10, flexWrap: 'wrap', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+          <label className="check"><input type="checkbox" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(postable.map((r) => r.id)))} />Select all ({postable.length} not yet posted)</label>
+          <span className="small muted">{picked.length ? `${picked.length} selected` : 'Tick the receipts you want to post, or select them all.'}</span>
+          {picked.length > 0 && <>
+            <span style={{ flex: 1 }} />
+            <span className="small muted">Post selected as:</span>
+            <button className="btn sm" disabled={posting} onClick={() => void postMany('yes')} title="On the BIR list only, not counted as an expense">BIR only</button>
+            <button className="btn sm" disabled={posting} onClick={() => void postMany('no')} title="Counted as an expense, left off the BIR list">Expense only</button>
+            <button className="btn sm primary" disabled={posting} onClick={() => void postMany('both')} title="Counted as an expense and on the BIR list">Both</button>
+            <button className="btn sm" disabled={posting} onClick={() => setSel(new Set())}>Clear</button>
+          </>}
+        </div>
+      )}
       <Card flush>
-        <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Scan</th><th><button type="button" className="linkbtn" style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', fontWeight: 'inherit' }} onClick={() => setOrder(order === 'desc' ? 'asc' : 'desc')} title="Tap to flip the date order">Date {order === 'desc' ? '↓' : '↑'}</button></th><th>Supplier · TIN · Address</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VATable sales</th><th className="num">VAT</th><th>BIR</th><th /></tr></thead>
+        <div className="tbl-wrap"><table className="tbl"><thead><tr>{canPost && <th style={{ width: 28 }}><input type="checkbox" aria-label="Select all receipts" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(postable.map((r) => r.id)))} /></th>}<th>Scan</th><th><button type="button" className="linkbtn" style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', fontWeight: 'inherit' }} onClick={() => setOrder(order === 'desc' ? 'asc' : 'desc')} title="Tap to flip the date order">Date {order === 'desc' ? '↓' : '↑'}</button></th><th>Supplier · TIN · Address</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VATable sales</th><th className="num">VAT</th><th>BIR</th><th /></tr></thead>
           <tbody>
-            {shown.map((r) => <Row key={r.id} r={r} all={rows} exps={expenseSources(db, r.expense_id)} onOpen={() => setOpen(r)} canDelete={manage || (r.status === 'Captured' && r.created_by === user?.id)} onDelete={async () => { if (await removeReceipt(r)) load(); }} />)}
-            {shown.length > 0 && <tr style={{ fontWeight: 800 }}><td colSpan={5}>Grand total ({grand.n})</td><td className="num">{money(grand.total)}</td><td className="num">{money(grand.vatable)}</td><td className="num">{money(grand.vat)}</td><td /><td /></tr>}
-            {!shown.length && <tr><td colSpan={10} className="muted" style={{ padding: 20 }}>{loading ? 'Loading…' : 'No receipts here yet. Tap “Scan a receipt” and take a clear photo of the whole receipt.'}</td></tr>}
+            {shown.map((r) => <Row key={r.id} r={r} all={rows} pick={canPost ? (r.status !== 'Posted' && !isOwnDocument(r, db.settings.company) ? { on: sel.has(r.id), toggle: () => toggle(r.id) } : null) : undefined} exps={expenseSources(db, r.expense_id)} onOpen={() => setOpen(r)} canDelete={manage || (r.status === 'Captured' && r.created_by === user?.id)} onDelete={async () => { if (await removeReceipt(r)) load(); }} />)}
+            {shown.length > 0 && <tr style={{ fontWeight: 800 }}><td colSpan={canPost ? 6 : 5}>Grand total ({grand.n})</td><td className="num">{money(grand.total)}</td><td className="num">{money(grand.vatable)}</td><td className="num">{money(grand.vat)}</td><td /><td /></tr>}
+            {!shown.length && <tr><td colSpan={canPost ? 11 : 10} className="muted" style={{ padding: 20 }}>{loading ? 'Loading…' : 'No receipts here yet. Tap “Scan a receipt” and take a clear photo of the whole receipt.'}</td></tr>}
           </tbody></table></div>
       </Card>
       {draft && <Editor seed={draft.d} scan={draft.scan} reading={draft.reading} others={rows} onClose={() => setDraft(null)} onSaved={load} key="new" onRotate={(deg) => void turn(deg)} />}
@@ -288,11 +334,12 @@ export default function Receipts() {
   );
 }
 
-function Row({ r, all, exps, onOpen, canDelete, onDelete }: { r: Receipt; all: Receipt[]; exps: ReturnType<typeof expenseSources>; onOpen: () => void; canDelete: boolean; onDelete: () => void }) {
+function Row({ r, all, exps, onOpen, canDelete, onDelete, pick }: { pick?: { on: boolean; toggle: () => void } | null; r: Receipt; all: Receipt[]; exps: ReturnType<typeof expenseSources>; onOpen: () => void; canDelete: boolean; onDelete: () => void }) {
   const [src, setSrc] = useState(''); const checks = checkReceipt(r, all, r.id, undefined, exps); const ready = readyForBir(checks); const dup = duplicatesOf(r, r.id, all, exps);
   useEffect(() => { void scanUrl(r).then(setSrc); }, [r.id, r.image_path]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <tr onClick={onOpen} style={{ cursor: 'pointer' }}>
+      {pick !== undefined && <td onClick={(e) => e.stopPropagation()}>{pick && <input type="checkbox" aria-label="Select receipt" checked={pick.on} onChange={pick.toggle} />}</td>}
       <td>{src ? <img src={src} alt="" className="rc-thumb" /> : <span className="rc-thumb" />}</td>
       <td>{r.receipt_date ? fmtDate(r.receipt_date) : <span className="muted">—</span>}</td>
       <td><b>{r.supplier_name || <span className="muted">no name</span>}</b><div className="small muted">{fmtTin(r.supplier_tin ?? '') || 'no TIN'}</div><div className="small muted">{r.supplier_address || 'no address'}</div></td>
