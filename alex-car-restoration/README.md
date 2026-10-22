@@ -22,6 +22,22 @@ Built around what actually happens in a restoration shop: many jobs in parallel,
 - **Timeline** – Gantt of all jobs with incoming part/sublet deliveries as diamonds.
 - **Mechanics** – workload, rates, up-next tasks (with locks on blocked ones).
 
+## Put the demo on your own link
+The app is a static site (no server needed), so any static host works. The address you get is `something.vercel.app`, or your own domain such as `demo.yourdomain.com`.
+
+**Vercel (recommended)**
+1. Sign in at vercel.com with GitHub and choose **Add New → Project**, then import this repository.
+2. Set **Root Directory** to `alex-car-restoration`. The build settings are already in `vercel.json`.
+3. Choose the branch to publish, then **Deploy**. You get a link in about a minute.
+4. For your own domain: **Settings → Domains → Add**, then create the DNS record Vercel shows you.
+
+**Netlify (no GitHub needed)**
+1. Run `npm install && npm run build` in this folder.
+2. Drag the generated `dist` folder onto app.netlify.com/drop.
+3. Rename the site under **Site settings** to get a friendlier address.
+
+Notes for presenting: demo data is saved in each viewer's own browser, so everyone starts with the same sample data and nobody sees anyone else's changes. Fonts load from Google Fonts, so the venue needs internet. Open the link once beforehand to check it.
+
 ## Data
 Demo data lives in the browser (`localStorage`) and is generated relative to today. Use **Reset demo data** in the sidebar to restore it.
 This is a front-end prototype: to go multi-user, replace `src/lib/store.tsx` with a backend (e.g. Supabase/Postgres) – the types in `src/lib/types.ts` map directly to tables.
