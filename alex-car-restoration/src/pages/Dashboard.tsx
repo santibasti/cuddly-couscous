@@ -72,15 +72,36 @@ export default function Dashboard() {
 
       <div className="section-t"><h2>In the shop</h2><span className="muted small">{freeBays.length ? `${freeBays.join(', ')} available` : 'All bays occupied'}</span></div>
       <div className="cards">
-        {[...active, ...quotes].map((p) => <ProjectCard key={p.id} p={p} data={data} today={today} />)}
+        {active.map((p) => <ProjectCard key={p.id} p={p} data={data} today={today} />)}
+        {freeBays.map((bay) => (
+          <Link key={bay} to="/projects" className="pcard free rise">
+            <div className="eyebrow">{bay}</div>
+            <div className="serif" style={{ fontSize: 24 }}>Available</div>
+            <div className="small muted">Open and ready for the next car</div>
+            <span className="btn sm"><Icon name="plus" size={13} />Start a job</span>
+          </Link>
+        ))}
       </div>
 
-      <div className="grid g21 mt2">
+      {quotes.length > 0 && (
+        <Card className="mt" title="Quotes awaiting approval" flush>
+          {quotes.map((p) => (
+            <Link key={p.id} to={`/projects/${p.id}`} className="item">
+              <span className="ico"><Icon name="user" /></span>
+              <div className="grow"><div style={{ fontWeight: 500 }}>{carName(p)}</div><div className="small muted">{p.code} · {data.customers.find((c) => c.id === p.customerId)?.name} · {p.title}</div></div>
+              <div className="small" style={{ textAlign: 'right' }}><div>{money(p.budget)} estimate</div><div className="muted">Starts {fmtDate(p.startDate)}</div></div>
+            </Link>
+          ))}
+        </Card>
+      )}
+
+      <div className="grid g21 mt">
         <Card title="Waiting on" flush action={<span className="muted small">{blockers.length} blocked tasks</span>}>
           {blockers.length === 0 && <Empty>Nothing is blocked. The floor is moving.</Empty>}
           {blockers
             .map((b) => ({ b, t: data.tasks.find((t) => t.id === b.taskId)!, p: data.projects.find((p) => p.id === b.projectId)! }))
             .sort((x, y) => x.t.date.localeCompare(y.t.date))
+            .slice(0, 6)
             .map(({ b, t, p }) => {
               const slip = b.eta ? diffDays(t.date, b.eta) : null;
               const overdue = !!b.eta && b.eta < today;
@@ -97,6 +118,7 @@ export default function Dashboard() {
                 </Link>
               );
             })}
+          {blockers.length > 6 && <Link to="/schedule" className="item small muted" style={{ justifyContent: 'center' }}>+{blockers.length - 6} more blocked tasks · open schedule →</Link>}
         </Card>
         <Card title="Parts watchlist" flush action={<Link to="/parts" className="small muted">Open pipeline →</Link>}>
           {watch.length === 0 && <Empty>Every part is on time.</Empty>}
