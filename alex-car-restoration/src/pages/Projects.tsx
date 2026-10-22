@@ -48,19 +48,19 @@ export default function Projects() {
         <button className="primary" onClick={() => setAdding(!adding)}>{adding ? 'Cancel' : <><Icon name="plus" />New project</>}</button>
       </div>
       {adding && (
-        <form className="card form" onSubmit={submit} style={{ marginBottom: 16 }}>
+        <form className="card form" onSubmit={submit} style={{ marginBottom: 24 }}>
+          <h2 className="full serif" style={{ fontSize: 26, fontFamily: 'var(--serif)', fontWeight: 400 }}>New project</h2>
           <label>Customer<select name="customer" required>{data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           <label>Job title<input name="title" placeholder="Full restoration" /></label>
           <label>Bay<select name="bay"><option>Unassigned</option>{BAYS.map((b) => <option key={b}>{b}</option>)}</select></label>
-          <label>Year<input name="year" type="number" required /></label>
-          <label>Make<input name="make" required /></label>
-          <label>Model<input name="model" required /></label>
-          <label>Colour<input name="color" /></label>
-          <label>VIN<input name="vin" /></label>
-          <label>Budget ($)<input name="budget" type="number" min="0" /></label>
+          <label>Year<input name="year" type="number" placeholder="1967" required /></label>
+          <label>Make<input name="make" placeholder="Ford" required /></label>
+          <label>Model<input name="model" placeholder="Mustang Fastback" required /></label>
+          <label>Colour<input name="color" placeholder="Highland Green" /></label>
+          <label>VIN<input name="vin" placeholder="Optional" /></label>
+          <label>Budget ($)<input name="budget" type="number" min="0" placeholder="40000" /></label>
           <label>Start date<input name="start" type="date" defaultValue={today} required /></label>
           <label>Target delivery<input name="target" type="date" defaultValue={addDays(today, 90)} required /></label>
-          <span />
           <label className="full">Scope of work<textarea name="scope" /></label>
           <div className="full"><button className="primary" type="submit">Create project — phases are scheduled automatically</button></div>
         </form>

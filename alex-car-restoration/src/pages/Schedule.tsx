@@ -39,16 +39,16 @@ export default function Schedule() {
         </div>
       </div>
       <div className="sched">
-        <div className="hd">Mechanic</div>
-        {days.map((d) => <div key={d} className={`hd ${d === today ? 'today' : ''}`}>{fmtDay(d)}</div>)}
+        <div className="hd who">Mechanic</div>
+        {days.map((d) => { const f = fmtDay(d); const dow = f.match(/[A-Za-z]+/)![0]; const dom = f.match(/\d+/)![0]; return <div key={d} className={`hd day ${d === today ? 'today' : ''}`}><span>{dow}</span><b>{dom}</b></div>; })}
         {data.mechanics.filter((m) => m.active).map((m) => (
           <div key={m.id} style={{ display: 'contents' }}>
-            <div><div className="row" style={{ flexWrap: 'nowrap' }}><Avatar m={m} /><div><strong>{m.name.split(' ')[0]}</strong><div className="small muted">{m.specialty}</div></div></div></div>
+            <div className="who"><div className="row" style={{ flexWrap: 'nowrap', gap: 10 }}><Avatar m={m} size={30} /><div><div style={{ fontWeight: 500 }}>{m.name.split(' ')[0]}</div><div className="small muted">{m.specialty}</div></div></div></div>
             {days.map((d) => {
               const ts = data.tasks.filter((t) => t.mechanicId === m.id && t.date === d && (!proj || t.projectId === proj));
               const load = dayLoad(data.tasks, m.id, d);
               return (
-                <div key={d} className={`${d === today ? 'today' : ''} ${isWeekend(d) ? 'wk' : ''}`}>
+                <div key={d} className={`cell ${d === today ? 'today' : ''} ${isWeekend(d) ? 'wk' : ''} ${d < today ? 'past' : ''}`}>
                   {ts.map((t) => {
                     const p = data.projects.find((x) => x.id === t.projectId);
                     const b = taskBlocker(t, data.parts);
@@ -57,15 +57,14 @@ export default function Schedule() {
                       <button key={t.id} className={`chip ${t.status === 'done' ? 'done' : ''} ${b ? 'blocked' : ''} ${t.status === 'in_progress' ? 'running' : ''}`} style={{ '--mc': m.color } as React.CSSProperties}
                         title={b ? `${b.label}${b.eta ? ` — ETA ${fmtDate(b.eta)}` : ''}` : `${t.title} (${t.estHours}h) – click to advance`}
                         onClick={() => !b && dispatch({ type: 'updateTask', id: t.id, patch: { status: t.status === 'todo' ? 'in_progress' : t.status === 'in_progress' ? 'done' : 'todo' } })}>
-                        {b && <Icon name="lock" size={11} />} {p?.code} · {t.title}
-                        <small>{b ? b.label : `${t.estHours}h`}{late && !b?.eta ? '' : late ? ' · lands after this day' : ''}</small>
+                        <span className="cc">{b && <Icon name="lock" size={11} />}{p?.code}</span>
+                        <span className="ct">{t.title}</span>
+                        <small>{b ? b.label : `${t.estHours}h`}{late && b?.eta ? ' · lands after this day' : ''}</small>
                       </button>
                     );
                   })}
-                  <div className="small row spread" style={{ flexWrap: 'nowrap' }}>
-                    <span className={isOverbooked(data.tasks, m, d) ? 'over' : 'muted'}>{load ? `${load}/${m.dailyHours}h` : ''}</span>
-                    {!isWeekend(d) && <button className="sm ghost" style={{ padding: '0 6px' }} onClick={() => quickAdd(m.id, d)} title="Add task">+</button>}
-                  </div>
+                  {load > 0 && <div className={`small load ${isOverbooked(data.tasks, m, d) && d >= today ? 'over' : 'muted'}`}>{load}/{m.dailyHours}h</div>}
+                  {!isWeekend(d) && <button className="addtask" onClick={() => quickAdd(m.id, d)} title="Add task" aria-label="Add task">+</button>}
                 </div>
               );
             })}

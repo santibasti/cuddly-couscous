@@ -118,7 +118,7 @@ export default function Dashboard() {
 
       <div className="grid g21 mt">
         <Card title="Technician capacity" action={<span className="muted small">% of daily hours booked · next 10 working days</span>}>
-          <div className="heat" style={{ gridTemplateColumns: `110px repeat(${days.length}, 1fr)` }}>
+          <div className="scroll"><div className="heat" style={{ gridTemplateColumns: `110px repeat(${days.length}, 1fr)` }}>
             <div className="c h" />{days.map((d) => <div key={d} className="c h">{fmtDay(d)}</div>)}
             {team.map((m) => (
               <div key={m.id} style={{ display: 'contents' }}>
@@ -130,7 +130,7 @@ export default function Dashboard() {
                 })}
               </div>
             ))}
-          </div>
+          </div></div>
         </Card>
         <Card title="Today on the floor" flush>
           {todays.length === 0 && <Empty>Nothing scheduled today.</Empty>}

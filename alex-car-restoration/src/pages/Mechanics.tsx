@@ -50,12 +50,15 @@ export default function Mechanics() {
           );
         })}
       </div>
-      <form className="card form mt" onSubmit={add}>
-        <h2 className="full">Add a mechanic</h2>
-        <label>Name<input name="name" required /></label><label>Specialty<input name="specialty" required /></label>
-        <label>Hourly cost ($)<input name="rate" type="number" min="0" /></label><label>Hours per day<input name="hours" type="number" min="1" max="12" defaultValue={8} /></label>
-        <div className="full"><button className="primary" type="submit">Add mechanic</button></div>
-      </form>
+      <Card className="mt" title="Add a mechanic">
+        <form className="form f4" onSubmit={add}>
+          <label>Name<input name="name" placeholder="Jane Smith" required /></label>
+          <label>Specialty<input name="specialty" placeholder="Paint & finish" required /></label>
+          <label>Hourly cost ($)<input name="rate" type="number" min="0" placeholder="60" /></label>
+          <label>Hours per day<input name="hours" type="number" min="1" max="12" defaultValue={8} /></label>
+          <button className="primary" type="submit">Add mechanic</button>
+        </form>
+      </Card>
     </>
   );
 }
