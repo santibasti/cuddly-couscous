@@ -153,3 +153,32 @@ export function reconcile(db: DB, month: string, receipts: BirReceipt[] = []) {
 
 export const slsIssues = (rows: SlsRow[]) => rows.filter((r) => slsIncluded(r) && r.flags.some((f) => f.level !== 'info')).length;
 export const slpIssues = (rows: SlpRow[]) => rows.filter((r) => !r.skipped && r.flags.some((f) => f.level === 'error')).length;
+
+/** A posted scanned receipt as one SLP row (used by the receipts export; the expense list builds its own rows). */
+export function receiptSlpRow(r: BirReceipt): SlpRow {
+  return slpRow({ id: `rc:${r.id}`, date: r.receipt_date ?? '', supplier: r.supplier_name ?? '', tin: r.supplier_tin ?? '', address: r.supplier_address ?? '', invoice: r.receipt_no ?? '', vat_status: r.supplier_vat ?? undefined, amount: r.total_amount ?? 0, vat: r.vat_amount ?? 0, skipped: false });
+}
+
+/**
+ * RELIEF data file (.dat) for the Summary List of Purchases of one tax month: one header line (H,P) for the taxpayer with the totals, then one detail line (D,P) per supplier invoice.
+ * Rows without a usable supplier TIN or address are left out and counted, because RELIEF rejects them. Always check the file with BIR's RELIEF validation tool before filing.
+ */
+export function slpDat(company: { name: string; tin: string; address: string }, opts: { rdo?: string; fiscalMonth?: number }, month: string, rows: SlpRow[]): { text: string; name: string; included: number; left: { supplier: string; why: string }[] } {
+  const left: { supplier: string; why: string }[] = []; const use: SlpRow[] = [];
+  for (const r of rows) {
+    if (r.skipped) continue;
+    const bad = r.flags.find((f) => f.level === 'error') ?? (tinDigits(r.tin).length < 9 ? { text: 'The TIN is incomplete.' } : null);
+    if (bad) left.push({ supplier: r.supplier || r.invoice || '(no name)', why: bad.text }); else use.push(r);
+  }
+  const q = (v: string) => `"${v.replace(/["\r\n]/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()}"`;
+  const n = (v: number) => (Math.round((v + Number.EPSILON) * 100) / 100).toFixed(2);
+  const tin9 = (t: string) => tinDigits(t).slice(0, 9);
+  const addr = (a: string): [string, string] => { const s = a.replace(/\s+/g, ' ').trim(); return [s.slice(0, 50), s.slice(50, 100)]; };
+  const sum = (f: (r: SlpRow) => number) => use.reduce((t, r) => t + f(r), 0);
+  const lastDay = new Date(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0)).getUTCDate();
+  const period = `${month.slice(5, 7)}/${String(lastDay).padStart(2, '0')}/${month.slice(0, 4)}`;
+  const [a1, a2] = addr(company.address); const own = tin9(company.tin);
+  const lines = [['H', 'P', q(own), q(company.name), '""', '""', '""', '""', q(a1), q(a2), n(sum((r) => r.exempt)), n(sum((r) => r.zero)), n(sum((r) => r.services)), n(sum((r) => r.capital)), n(sum((r) => r.goods)), n(sum((r) => r.input_vat)), (opts.rdo ?? '').padStart(3, '0'), period, String(opts.fiscalMonth ?? 12)].join(',')];
+  for (const r of use) { const [s1, s2] = addr(r.address); lines.push(['D', 'P', q(tin9(r.tin)), q(r.supplier), '""', '""', '""', q(s1), q(s2), n(r.exempt), n(r.zero), n(r.services), n(r.capital), n(r.goods), n(r.input_vat), q(own), reliefDate(r.date)].join(',')); }
+  return { text: lines.join('\r\n') + '\r\n', name: `${own}P${month.slice(5, 7)}${month.slice(0, 4)}.dat`, included: use.length, left };
+}

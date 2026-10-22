@@ -940,7 +940,7 @@ export interface Settings {
   fb_ai?: { mode: 'off' | 'suggest' | 'auto'; notes: string };
   /** Marketing AI: writes and posts to the Facebook Page. approve = I approve each post, auto = posts go out on schedule. */
   /** BIR compliance tab: how a sale is classified on the SLS when it is not plain VATable, and rows left out of the lists (by record id) */
-  bir?: { sls_class?: Record<string, 'vatable' | 'zero' | 'exempt'>; sls_skip?: string[]; slp_skip?: string[] };
+  bir?: { sls_class?: Record<string, 'vatable' | 'zero' | 'exempt'>; sls_skip?: string[]; slp_skip?: string[]; rdo?: string; fiscal_month?: number };
   marketing?: { mode: 'off' | 'approve' | 'auto'; per_week: number; days: number[]; time: string; topics: string[]; voice: string; tone?: string; website?: string; brief?: string; email?: string; phone?: string; facebook?: string };
   client_sms?: { enabled: boolean; day_before_time: string; morning_time: string };
   reminder_days: { quote_expiry: number; doc_expiry: number; chemical_expiry: number; invoice_due: number; maintenance: number };

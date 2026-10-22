@@ -62,3 +62,16 @@ describe('BIR-only receipts', () => {
     expect(reconcile(db, '2026-10', [r('a', 'yes')]).input_vat).toBe(184.29);
   });
 });
+
+describe('RELIEF purchases data file', () => {
+  it('writes one H,P line with the totals and one D,P line per supplier invoice; leaves out rows without a TIN or address', async () => {
+    const { slpDat, receiptSlpRow } = await import('./bir');
+    const mk = (id: string, tin: string, addr: string, total: number, vat: number) => receiptSlpRow({ id, receipt_date: '2026-10-05', supplier_name: `Supplier, ${id} Inc.`, supplier_tin: tin, supplier_address: addr, receipt_no: `OR-${id}`, supplier_vat: 'VAT', total_amount: total, vat_amount: vat, bir_mode: 'yes', status: 'Posted' });
+    const r = slpDat({ name: 'Top Mop WCS Corp', tin: '123-456-789-000', address: 'Metro Manila' }, { rdo: '44' }, '2026-10', [mk('a', '111-222-333-000', 'Pasig City', 1120, 120), mk('b', '', 'Pasig', 560, 60), mk('c', '444-555-666', '', 560, 60)]);
+    const lines = r.text.trim().split('\r\n');
+    expect(r.included).toBe(1); expect(r.left).toHaveLength(2); expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe('H,P,"123456789","TOP MOP WCS CORP","","","","","METRO MANILA","",0.00,0.00,0.00,0.00,1000.00,120.00,044,10/31/2026,12');
+    expect(lines[1]).toBe('D,P,"111222333","SUPPLIER A INC.","","","","PASIG CITY","",0.00,0.00,0.00,0.00,1000.00,120.00,"123456789",10/05/2026');
+    expect(r.name).toBe('123456789P102026.dat');
+  });
+});

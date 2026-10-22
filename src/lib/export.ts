@@ -32,6 +32,12 @@ export function exportCsv(t: ExportTable) {
   store.audit('export', 'reports', t.title, `Exported CSV: ${t.title}`);
 }
 
+/** Save plain text under an exact file name (for example a BIR RELIEF .dat file). */
+export function exportText(filename: string, text: string, what: string) {
+  save(new Blob([text], { type: 'text/plain;charset=utf-8' }), filename);
+  store.audit('export', 'reports', what, `Exported ${what} (${filename})`);
+}
+
 export async function exportXlsx(tables: ExportTable | ExportTable[], filename?: string) {
   const list = Array.isArray(tables) ? tables : [tables];
   const [ExcelJS, logo] = await Promise.all([import('exceljs').then((m) => m.default), logoDataUrl()]);
