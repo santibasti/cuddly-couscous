@@ -2,7 +2,7 @@ import { logoDataUrl } from './logo';
 import { DEFAULT_TECHNOLOGY, defaultIntro, defaultMethodology, durationText, quoteShowsAmounts, RATES_NOTE, paymentLabel, paymentSentence, manpowerText, parseMethodology } from './quote-text';
 import type { DB, Invoice, OcularVisit, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
 import { quoteImagesOf } from './quoteimages';
-import { billRows, paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, packagePanels, panelTotals, rowPanels, variationTotals } from './business';
+import { bankDetails, billRows, paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, packagePanels, panelTotals, rowPanels, variationTotals } from './business';
 import { fmtDate, fmtDateTime, nowLocal, round2, sum } from './util';
 import { store } from './store';
 
@@ -418,7 +418,15 @@ export async function invoicePdf(db: DB, inv: Invoice) {
     doc.setFont('helvetica', 'bold'); doc.text(`Outstanding balance: ${pm(invoiceBalance(db, inv))}`, 12, y + 6);
   }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-  wrapText(doc, `Please make payment by the due date. Payment channels: bank transfer, check, GCash. ${inv.notes ?? ''}`, 12, y + 16, 186);
+  const bank = bankDetails(db.settings.company);
+  if (y + 56 > doc.internal.pageSize.getHeight() - 14) { doc.addPage(); y = 14; }   // keep the payment details together, clear of the footer
+  doc.setFillColor(234, 239, 244); doc.rect(12, y + 12, 186, 22, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...NAVY); doc.text('PAYMENT DETAILS', 16, y + 18);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(20, 36, 58);
+  doc.text(`Bank name: ${bank.bank_name}`, 16, y + 24); doc.text(`Account name: ${bank.account_name}`, 16, y + 29.5);
+  doc.setFont('helvetica', 'bold'); doc.text(`Account number: ${bank.account_number}`, 110, y + 24);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+  wrapText(doc, `Please make payment by the due date. Payment channels: bank transfer, check, GCash. Please send the proof of payment to ${db.settings.company.email}. ${inv.notes ?? ''}`, 12, y + 40, 186);
   footer(doc); doc.save(`${inv.number}.pdf`);
 }
 

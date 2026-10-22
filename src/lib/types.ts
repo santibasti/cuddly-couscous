@@ -919,7 +919,7 @@ export interface StatutoryRate {
   threshold: number; // wtax: taxable pay per period below which none is withheld
 }
 export interface Settings {
-  company: { name: string; tin: string; address: string; phone: string; email: string; tagline: string };
+  company: { name: string; tin: string; address: string; phone: string; email: string; tagline: string; bank?: { bank_name: string; account_name: string; account_number: string } };
   vat_rate: number;
   default_terms: string;
   default_crew_size?: string; default_disclaimer?: string; default_intro?: string; default_methodology?: string;

@@ -4,6 +4,7 @@ import { DEFAULT_DISCLAIMER, DEFAULT_INTRO, DEFAULT_METHODOLOGY } from '@/lib/qu
 import { CLOUD, fetchAuditDetail } from '@/lib/cloud';
 import { useState } from 'react';
 import { live, store, useAuth } from '@/lib/store';
+import { bankDetails } from '@/lib/business';
 import { Badge, Card, Field, Icon, Modal, PageHead, Tabs, attempt, ask, useObj, toast } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { DEFAULT_ACCESS, PERMISSIONS, ROLE_LABEL } from '@/lib/rbac';
@@ -152,6 +153,7 @@ function Rates({ s }: { s: Settings }) {
       </div></Card>
       <Card title="Company profile (printed on PDFs)"><div className="form-grid">
         {(['name', 'tin', 'address', 'phone', 'email', 'tagline'] as const).map((k) => <Field key={k} label={k.toUpperCase()}><input value={draft.company[k]} onChange={(e) => setDraft({ ...draft, company: { ...draft.company, [k]: e.target.value } })} /></Field>)}
+        {(['bank_name', 'account_name', 'account_number'] as const).map((k) => { const b = bankDetails(draft.company); return <Field key={k} label={`BANK — ${k.replace('_', ' ').toUpperCase()}`} hint={k === 'bank_name' ? 'Printed on invoices as the payment details.' : undefined}><input value={b[k]} onChange={(e) => setDraft({ ...draft, company: { ...draft.company, bank: { ...b, [k]: e.target.value } } })} /></Field>; })}
       </div></Card>
       <div className="row" style={{ justifyContent: 'flex-end' }}><button className="btn primary lg" onClick={save}>Save settings</button></div>
     </div>

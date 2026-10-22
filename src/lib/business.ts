@@ -1008,3 +1008,7 @@ export function billRows(sm: FinalQuoteSummary, o: { pendingLabel?: string; depo
     ...(sm.deposit > 0 ? [{ k: 'Less: deposit / prior payment' + (o.depositNote ? ` (${o.depositNote})` : ''), v: -sm.deposit, cls: 'neg' as const }, { k: 'Balance due', v: sm.balance, cls: 'big' as const }] : []),
   ];
 }
+
+/** Where clients pay by bank transfer (printed on invoices). Editable in Admin → Company profile; this is the fallback. */
+export const DEFAULT_BANK = { bank_name: 'Bank of Commerce', account_name: 'Top Mop WCS Corp', account_number: '130-20-003385-1' };
+export const bankDetails = (company?: { bank?: Partial<typeof DEFAULT_BANK> }) => ({ ...DEFAULT_BANK, ...Object.fromEntries(Object.entries(company?.bank ?? {}).filter(([, v]) => !!v)) }) as typeof DEFAULT_BANK;
