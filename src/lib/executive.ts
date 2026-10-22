@@ -10,6 +10,10 @@ export interface CapacityDay { date: string; available: number; demand: number; 
 export type Severity = 'high' | 'medium' | 'low' | 'ok';
 export interface Constraint { key: string; title: string; severity: Severity; metric: string; detail: string; action: string }
 export interface ServiceRow { name: string; revenue: number; share: number; grossMargin: number | null }
+export type Segment = 'Residential' | 'Commercial' | 'Other';
+export interface SegmentRow { segment: Segment; revenue: number; share: number; jobs: number; avgJob: number | null; clients: number; grossMargin: number | null; collected: number; receivables: number }
+export interface TypeRow { type: string; revenue: number; share: number; clients: number }
+export interface SegmentReport { from: string; to: string; total: number; rows: SegmentRow[]; other: TypeRow[]; months: { month: string; Residential: number; Commercial: number; Other: number }[]; headline: string }
 export interface ExecData {
   asOf: string;
   months: MonthRow[];
@@ -23,6 +27,7 @@ export interface ExecData {
     jobs90: number; cancelRate: number | null; lateRate: number | null; rating: number | null; backJobRate: number | null;
   };
   services: ServiceRow[];
+  segments: SegmentReport;
   capacity: {
     fieldStaff: number; avgTeamSize: number; vehicles: number;
     days: CapacityDay[];
@@ -237,7 +242,7 @@ export function buildExecutive(db: DB, T: string): ExecData {
   else verdict = { constraint: 'balanced', text: 'Balanced for now: there is some spare capacity but not much. Watch the busiest days and the booking backlog as sales grow.' };
 
   return {
-    asOf: T, months: history, forecast: fc.rows, forecastMethod: fc.method, kpis, services,
+    asOf: T, months: history, forecast: fc.rows, forecastMethod: fc.method, kpis, services, segments: segmentReport(db, addDays(T, -90), T),
     capacity: { fieldStaff: cap.fieldStaff, avgTeamSize: round2(cap.avgTeamSize), vehicles: cap.vehicles, days: cap.days, avgUtilNext28, avgUtilLast28, peakPct, overbookedDays, tightDays, firstOpenDay: firstOpen, leadTimeDays, maxCrewsAtOnce, peakWeekday },
     constraints, verdict,
   };
@@ -252,8 +257,44 @@ export function aiSummary(d: ExecData) {
     forecast: { method: d.forecastMethod, next_months: d.forecast.map((f) => ({ month: f.month, booked: f.booked, run_rate: f.runRate, base: f.base, low: f.low, high: f.high, booked_share: r(f.bookedShare) })) },
     last_90_days: { ...d.kpis, grossMargin90: r(d.kpis.grossMargin90), netMargin90: r(d.kpis.netMargin90), overduePct: r(d.kpis.overduePct), repeatRate: r(d.kpis.repeatRate), top3Share: r(d.kpis.top3Share), winRate: r(d.kpis.winRate), cancelRate: r(d.kpis.cancelRate), lateRate: r(d.kpis.lateRate), backJobRate: r(d.kpis.backJobRate) },
     services_last_90_days: d.services.map((s) => ({ service: s.name, revenue: s.revenue, share: r(s.share), gross_margin: r(s.grossMargin) })),
+    revenue_by_customer_segment_last_90_days: d.segments.rows.map((x) => ({ segment: x.segment, revenue: x.revenue, share: r(x.share), jobs: x.jobs, avg_job_value: x.avgJob, gross_margin: r(x.grossMargin) })),
     capacity_next_28_days: { field_staff: d.capacity.fieldStaff, average_team_size: d.capacity.avgTeamSize, vehicles: d.capacity.vehicles, utilization_next_28: r(d.capacity.avgUtilNext28), utilization_last_28: r(d.capacity.avgUtilLast28), busiest_day_pct: r(d.capacity.peakPct), overbooked_days: d.capacity.overbookedDays, tight_days: d.capacity.tightDays, first_open_day: d.capacity.firstOpenDay, booking_lead_time_days: d.capacity.leadTimeDays, max_crews_at_once: d.capacity.maxCrewsAtOnce, busiest_weekday: d.capacity.peakWeekday },
     constraint_findings: d.constraints.map((c) => ({ area: c.title, severity: c.severity, metric: c.metric, detail: c.detail })),
     computed_verdict: d.verdict,
   };
+}
+
+/* ---------- Residential vs Commercial vs Other ---------- */
+const segmentOf = (type: string | undefined): Segment => (type === 'Residential' ? 'Residential' : type === 'Commercial' ? 'Commercial' : 'Other');
+
+/** Revenue (billed, net of VAT) split by who the customer is: Residential, Commercial, and everything else (property managers, government, hospitality …). */
+export function segmentReport(db: DB, from: string, to: string): SegmentReport {
+  const typeOf = new Map(db.clients.map((c) => [c.id, c.type] as const));
+  const inv = live(db.invoices).filter((i) => i.status === 'Approved' && i.issue_date >= from && i.issue_date <= to);
+  const segs: Segment[] = ['Residential', 'Commercial', 'Other'];
+  const total = sum(inv, (i) => invoiceTotals(i).net);
+  const rows: SegmentRow[] = segs.map((g) => {
+    const mine = inv.filter((i) => segmentOf(typeOf.get(i.client_id)) === g);
+    const ids = [...new Set(mine.map((i) => i.client_id))];
+    const revenue = sum(mine, (i) => invoiceTotals(i).net);
+    const jobs = live(db.jobs).filter((j) => j.start_at.slice(0, 10) >= from && j.start_at.slice(0, 10) <= to && !OFF.has(j.status) && segmentOf(typeOf.get(j.client_id)) === g).length;
+    const gp = sum(ids, (id) => profitAndLoss(db, from, to, { client: id }).grossProfit);
+    const collected = sum(live(db.payments).filter((p) => paymentCounts(p) && p.date >= from && p.date <= to && segmentOf(typeOf.get(p.client_id)) === g), (p) => p.amount + p.wht_amount);
+    const receivables = sum(mine, (i) => invoiceBalance(db, i));
+    return { segment: g, revenue: round2(revenue), share: total > 0 ? revenue / total : 0, jobs, avgJob: jobs > 0 ? round2(revenue / jobs) : null, clients: ids.length, grossMargin: revenue > 0 ? gp / revenue : null, collected: round2(collected), receivables: round2(receivables) };
+  });
+  const byType = new Map<string, { rev: number; ids: Set<string> }>();
+  for (const i of inv) { const t = typeOf.get(i.client_id) ?? 'Unknown'; if (segmentOf(t) !== 'Other') continue; const e = byType.get(t) ?? { rev: 0, ids: new Set<string>() }; e.rev += invoiceTotals(i).net; e.ids.add(i.client_id); byType.set(t, e); }
+  const other: TypeRow[] = [...byType.entries()].map(([type, e]) => ({ type, revenue: round2(e.rev), share: total > 0 ? e.rev / total : 0, clients: e.ids.size })).sort((a, b) => b.revenue - a.revenue);
+  // six months trend, same rule
+  const cur = to.slice(0, 7); const months = Array.from({ length: 6 }, (_, k) => {
+    const m = monthShift(cur, k - 5); const mi = live(db.invoices).filter((i) => i.status === 'Approved' && i.issue_date.slice(0, 7) === m);
+    const by = (g: Segment) => round2(sum(mi.filter((i) => segmentOf(typeOf.get(i.client_id)) === g), (i) => invoiceTotals(i).net));
+    return { month: m, Residential: by('Residential'), Commercial: by('Commercial'), Other: by('Other') };
+  });
+  const top = [...rows].sort((a, b) => b.revenue - a.revenue)[0];
+  const best = rows.filter((r) => r.grossMargin !== null && r.revenue > 0).sort((a, b) => (b.grossMargin ?? 0) - (a.grossMargin ?? 0))[0];
+  const headline = total <= 0 ? 'No billed revenue in this period yet.'
+    : `${top.segment} is the biggest segment at ${Math.round(top.share * 100)}% of revenue.${best && best.segment !== top.segment ? ` ${best.segment} earns the best margin (${Math.round((best.grossMargin ?? 0) * 100)}%).` : best ? ` It also has the best margin (${Math.round((best.grossMargin ?? 0) * 100)}%).` : ''}`;
+  return { from, to, total: round2(total), rows, other, months, headline };
 }

@@ -46,3 +46,17 @@ describe('team meeting report', () => {
     for (const p of t.praise) expect(s).not.toContain(p);
   });
 });
+
+describe('residential vs commercial vs other', () => {
+  it('splits billed revenue by customer type and the parts add up to the total', async () => {
+    const { segmentReport } = await import('./executive');
+    const s = (await import('./store')).store;
+    await s.login('owner@topmop.ph', 'topmop123');
+    const r = segmentReport(s.getDB(), '2000-01-01', '2100-01-01');
+    expect(r.rows.map((x) => x.segment)).toEqual(['Residential', 'Commercial', 'Other']);
+    expect(Math.round(r.rows.reduce((n, x) => n + x.revenue, 0) * 100) / 100).toBeCloseTo(r.total, 1);
+    expect(Math.round(r.other.reduce((n, x) => n + x.revenue, 0) * 100) / 100).toBeCloseTo(r.rows[2].revenue, 1);
+    expect(r.months).toHaveLength(6);
+    expect(r.headline.length).toBeGreaterThan(5);
+  });
+});

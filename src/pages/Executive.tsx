@@ -1,14 +1,15 @@
 // Executive tab: forecast, operating constraints and an AI business review.
 // Every figure is calculated from the company's own records (lib/executive.ts); the AI only explains them and suggests decisions.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Area, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAuth } from '@/lib/store';
 import { Badge, Card, PageHead, Tabs, attempt, toast } from '@/components/ui';
-import { aiSummary, buildExecutive, type ExecData, type Severity } from '@/lib/executive';
+import { aiSummary, buildExecutive, segmentReport, type ExecData, type Severity } from '@/lib/executive';
+import { exportCsv } from '@/lib/export';
 import { buildTeamMeeting, teamAiSummary, teamMeetingText, type MeetingPeriod, type TeamMeeting } from '@/lib/teammeeting';
 import { deleteReport, generateAnalysis, generateResearch, generateTeamTalk, listReports, saveReport, type Analysis, type Research, type SavedReport, type TeamTalk } from '@/lib/executive-reports';
 import { CLOUD } from '@/lib/cloud';
-import { fmtDate, fmtDateTime, money, today } from '@/lib/util';
+import { addDays, fmtDate, fmtDateTime, money, today } from '@/lib/util';
 
 const TONE: Record<Severity, string> = { high: 'red', medium: 'amber', low: 'blue', ok: 'green' };
 const SEV_LABEL: Record<Severity, string> = { high: 'Constraint', medium: 'Watch', low: 'Spare capacity', ok: 'Fine' };
@@ -65,6 +66,7 @@ export default function Executive() {
       <ForecastCard d={d} />
       <ConstraintsCard d={d} />
       <ServicesCard d={d} />
+      <SegmentsCard />
 
       <Card title="AI business review" actions={saved.length > 0 && <select value={openId} onChange={(e) => { setOpenId(e.target.value); if (e.target.value) setPart(null); }} aria-label="Saved reports"><option value="">{part ? 'Current report' : 'Saved reports…'}</option>{saved.map((s) => <option key={s.id} value={s.id}>{fmtDate(s.as_of)} · {fmtDateTime(s.created_at).split(',').pop()?.trim()}{s.with_research ? ' · with research' : ''}</option>)}</select>}>
         {!view && !busy && (
@@ -276,5 +278,49 @@ function TeamSheet({ t, talk, company }: { t: TeamMeeting; talk: TeamTalk | null
       {!!talk?.questions_for_crew?.length && <><H>❓ Ask the crew</H><List items={talk.questions_for_crew} /></>}
       {talk?.closing && <p style={{ marginTop: 14, fontWeight: 600 }}>{talk.closing}</p>}
     </div>
+  );
+}
+
+const SEG_PERIODS: { id: string; label: string; from: (T: string) => string }[] = [
+  { id: '30', label: 'Last 30 days', from: (T) => addDays(T, -30) },
+  { id: 'month', label: 'This month', from: (T) => `${T.slice(0, 7)}-01` },
+  { id: '90', label: 'Last 90 days', from: (T) => addDays(T, -90) },
+  { id: 'ytd', label: 'This year', from: (T) => `${T.slice(0, 4)}-01-01` },
+  { id: '365', label: 'Last 12 months', from: (T) => addDays(T, -365) },
+];
+const SEG_COLOR = { Residential: '#2ee59d', Commercial: '#4aa8ff', Other: '#f5b83d' } as const;
+
+/** Residential vs Commercial vs Other customers: where the revenue comes from. Billed revenue (net of VAT) from approved invoices. */
+function SegmentsCard() {
+  const { db } = useAuth(); const T = today();
+  const [per, setPer] = useState('90');
+  const r = useMemo(() => segmentReport(db, (SEG_PERIODS.find((x) => x.id === per) ?? SEG_PERIODS[2]).from(T), T), [db, per, T]);
+  const label = SEG_PERIODS.find((x) => x.id === per)?.label ?? '';
+  const csv = () => exportCsv({
+    title: `Revenue by customer segment (${label})`, headers: ['Segment', 'Revenue (ex-VAT)', 'Share', 'Jobs', 'Avg per job', 'Customers billed', 'Gross margin', 'Collected', 'Still unpaid'], types: ['text', 'money', 'text', 'text', 'money', 'text', 'text', 'money', 'money'],
+    rows: [...r.rows.map((x) => [x.segment, x.revenue, pc(x.share), x.jobs, x.avgJob ?? 0, x.clients, pc(x.grossMargin), x.collected, x.receivables]), ...r.other.map((o) => [`   Other: ${o.type}`, o.revenue, pc(o.share), '', 0, o.clients, '', 0, 0])],
+    totals: ['TOTAL', r.total, '100%', r.rows.reduce((n, x) => n + x.jobs, 0), 0, r.rows.reduce((n, x) => n + x.clients, 0), '', r.rows.reduce((n, x) => n + x.collected, 0), r.rows.reduce((n, x) => n + x.receivables, 0)],
+  });
+  return (
+    <Card title="Residential vs Commercial vs Other" actions={<div className="row" style={{ gap: 8 }}><select value={per} onChange={(e) => setPer(e.target.value)} aria-label="Period">{SEG_PERIODS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select><button className="btn sm" onClick={csv}>Export CSV</button></div>}>
+      <div className="small" style={{ marginBottom: 8 }}>{r.headline}</div>
+      <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Customer type</th><th className="num">Revenue</th><th className="num">Share</th><th className="num">Jobs</th><th className="num">Avg / job</th><th className="num">Customers</th><th className="num">Gross margin</th><th className="num">Unpaid</th></tr></thead><tbody>
+        {r.rows.map((x) => <tr key={x.segment}><td><b style={{ color: SEG_COLOR[x.segment] }}>●</b> {x.segment}</td><td className="num">{money(x.revenue)}</td><td className="num">{pc(x.share)}</td><td className="num">{x.jobs}</td><td className="num">{x.avgJob === null ? '—' : money(x.avgJob)}</td><td className="num">{x.clients}</td><td className="num">{pc(x.grossMargin)}</td><td className="num">{money(x.receivables)}</td></tr>)}
+        <tr style={{ fontWeight: 800 }}><td>Total</td><td className="num">{money(r.total)}</td><td className="num">{r.total > 0 ? '100%' : '—'}</td><td className="num">{r.rows.reduce((n, x) => n + x.jobs, 0)}</td><td /><td className="num">{r.rows.reduce((n, x) => n + x.clients, 0)}</td><td /><td className="num">{money(r.rows.reduce((n, x) => n + x.receivables, 0))}</td></tr>
+      </tbody></table></div>
+      {r.other.length > 0 && <>
+        <div className="small muted" style={{ margin: '12px 0 4px' }}>What “Other” is made of</div>
+        <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Customer type</th><th className="num">Revenue</th><th className="num">Share of all revenue</th><th className="num">Customers</th></tr></thead><tbody>
+          {r.other.map((o) => <tr key={o.type}><td>{o.type}</td><td className="num">{money(o.revenue)}</td><td className="num">{pc(o.share)}</td><td className="num">{o.clients}</td></tr>)}
+        </tbody></table></div>
+      </>}
+      <div className="small muted" style={{ margin: '12px 0 4px' }}>Monthly revenue, last 6 months</div>
+      <div style={{ height: 220 }}><ResponsiveContainer width="100%" height="100%"><BarChart data={r.months.map((m) => ({ ...m, label: monthLabel(m.month) }))} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,.25)" /><XAxis dataKey="label" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => k(v)} width={52} />
+        <Tooltip formatter={(v) => money(Number(v))} /><Legend />
+        <Bar dataKey="Residential" stackId="a" fill={SEG_COLOR.Residential} /><Bar dataKey="Commercial" stackId="a" fill={SEG_COLOR.Commercial} /><Bar dataKey="Other" stackId="a" fill={SEG_COLOR.Other} />
+      </BarChart></ResponsiveContainer></div>
+      <div className="small muted" style={{ marginTop: 6 }}>Revenue is billed amount excluding VAT, from approved invoices issued in the period, grouped by the customer type on the client record. Gross margin is after the direct cost of the jobs billed. “Other” covers property management, government, hospitality, auto dealerships, schools, churches and industrial customers.</div>
+    </Card>
   );
 }
