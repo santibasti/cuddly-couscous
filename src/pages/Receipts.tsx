@@ -180,6 +180,8 @@ export default function Receipts() {
   const { can, user, db } = useAuth();
   const [rows, setRows] = useState<Receipt[]>([]); const [loading, setLoading] = useState(true); const [err, setErr] = useState('');
   const [month, setMonth] = useState(today().slice(0, 7)); const [q, setQ] = useState(''); const [only, setOnly] = useState<'' | 'fix' | 'posted' | 'dup'>('');
+  const [order, setOrderS] = useState<'desc' | 'asc'>(() => { try { return localStorage.getItem('topmop-receipt-order') === 'asc' ? 'asc' : 'desc'; } catch { return 'desc'; } });
+  const setOrder = (o: 'desc' | 'asc') => { setOrderS(o); try { localStorage.setItem('topmop-receipt-order', o); } catch { /* private window */ } };
   const [open, setOpen] = useState<Receipt | null>(null);
   const [draft, setDraft] = useState<{ d: ReceiptDraft; scan: { blob: Blob; dataUrl: string; base64?: string }; reading: { busy: boolean; error?: string } } | null>(null);
   const [enhance, setEnhance] = useState(true); const file = useRef<HTMLInputElement>(null);
@@ -218,7 +220,7 @@ export default function Receipts() {
     if (q && !`${r.supplier_name ?? ''} ${r.supplier_tin ?? ''} ${r.receipt_no ?? ''} ${r.description ?? ''}`.toLowerCase().includes(q.toLowerCase())) return false;
     const fix = !readyForBir(checkReceipt(r, rows, r.id));
     return only === 'fix' ? fix : only === 'posted' ? r.status === 'Posted' : only === 'dup' ? duplicatesOf(r, r.id, rows, expenseSources(db, r.expense_id)).length > 0 : true;
-  });
+  }).sort((a, b) => { const k = (r: Receipt) => `${r.receipt_date ?? r.created_at.slice(0, 10)}|${r.created_at}`; return order === 'asc' ? k(a).localeCompare(k(b)) : k(b).localeCompare(k(a)); });
   const fixCount = rows.filter((r) => (r.receipt_date ?? r.created_at).slice(0, 7) === month && !readyForBir(checkReceipt(r, rows, r.id))).length;
   const inMonth = rows.filter((r) => (r.receipt_date ?? r.created_at).slice(0, 7) === month);
   const total = inMonth.reduce((a, r) => a + (r.total_amount ?? 0), 0); const vat = inMonth.reduce((a, r) => a + (r.supplier_vat === 'VAT' ? (r.vat_amount ?? 0) : 0), 0);
@@ -256,6 +258,7 @@ export default function Receipts() {
       <div className="row" style={{ flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
         <input type="month" style={{ width: 180 }} value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Month" />
         <input placeholder="Search supplier, TIN, receipt no." value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 280 }} />
+        <select value={order} onChange={(e) => setOrder(e.target.value as 'desc' | 'asc')} aria-label="Sort by date" style={{ width: 200 }}><option value="desc">Date: newest first</option><option value="asc">Date: oldest first</option></select>
         <select style={{ width: 200 }} value={only} onChange={(e) => setOnly(e.target.value as typeof only)}><option value="">All receipts</option><option value="fix">Need attention</option><option value="posted">Posted</option><option value="dup">Possible duplicates</option></select>
         <button className="btn" disabled={!shown.some((r) => r.bir_mode === 'yes')} title="Exports only the receipts marked Yes (BIR only) for the month shown" onClick={() => exportCsv({ title: `BIR receipts ${month}`, headers: ['Date', 'Supplier', 'TIN', 'Address', 'Receipt no.', 'VAT status', 'Total', 'VATable sales', 'VAT', 'Exempt', 'Zero-rated', 'Category', 'Use for BIR', 'Status'], types: ['text', 'text', 'text', 'text', 'text', 'text', 'money', 'money', 'money', 'money', 'money', 'text', 'text', 'text'],
           totals: ['TOTAL (Yes)', '', '', '', '', '', gYes.total, gYes.vatable, gYes.vat, 0, 0, '', '', ''], rows: shown.filter((r) => r.bir_mode === 'yes').map((r) => [r.receipt_date ?? '', r.supplier_name ?? '', fmtTin(r.supplier_tin ?? ''), r.supplier_address ?? '', r.receipt_no ?? '', r.supplier_vat ?? '', r.total_amount ?? 0, r.vatable_sales ?? 0, r.vat_amount ?? 0, r.exempt_amount ?? 0, r.zero_rated_amount ?? 0, r.category ?? '', r.status !== 'Posted' ? '' : r.bir_mode === 'yes' ? 'Yes (BIR only)' : r.bir_mode === 'no' ? 'No (expense only)' : r.bir_mode === 'both' ? 'Both' : 'Not decided', r.status]) })}>Export CSV (BIR: Yes only)</button>
@@ -272,7 +275,7 @@ export default function Receipts() {
       </Card>
       <div style={{ height: 14 }} />
       <Card flush>
-        <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Scan</th><th>Date</th><th>Supplier · TIN · Address</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VATable sales</th><th className="num">VAT</th><th>BIR</th><th /></tr></thead>
+        <div className="tbl-wrap"><table className="tbl"><thead><tr><th>Scan</th><th><button type="button" className="linkbtn" style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', fontWeight: 'inherit' }} onClick={() => setOrder(order === 'desc' ? 'asc' : 'desc')} title="Tap to flip the date order">Date {order === 'desc' ? '↓' : '↑'}</button></th><th>Supplier · TIN · Address</th><th>Receipt no.</th><th>VAT</th><th className="num">Total</th><th className="num">VATable sales</th><th className="num">VAT</th><th>BIR</th><th /></tr></thead>
           <tbody>
             {shown.map((r) => <Row key={r.id} r={r} all={rows} exps={expenseSources(db, r.expense_id)} onOpen={() => setOpen(r)} canDelete={manage || (r.status === 'Captured' && r.created_by === user?.id)} onDelete={async () => { if (await removeReceipt(r)) load(); }} />)}
             {shown.length > 0 && <tr style={{ fontWeight: 800 }}><td colSpan={5}>Grand total ({grand.n})</td><td className="num">{money(grand.total)}</td><td className="num">{money(grand.vatable)}</td><td className="num">{money(grand.vat)}</td><td /><td /></tr>}
