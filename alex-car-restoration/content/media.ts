@@ -5,7 +5,6 @@
 type M = { src?: string; alt: string; label: string; position?: string };
 
 export const media = {
-  hero: { src: "/images/porsche-911-black-hero.webp", alt: "Black classic Porsche 911 in the Alex Restoration studio under neon lighting", label: "Hero", position: "38% 60%" } as M,
   about: [
     { src: "/images/craftsman-rolls-royce.webp", alt: "Craftsman performing detailed work on the front wing of a Rolls-Royce", label: "Craftsman at work" },
     { src: "/images/shopfront-gtr.webp", alt: "Blue Nissan GT-R parked outside the Alex Restoration workshop", label: "Workshop" },
