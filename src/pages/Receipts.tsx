@@ -5,7 +5,7 @@ import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, attempt, toast } from '@/components/ui';
 import { CLOUD } from '@/lib/cloud';
 import { saveExpense } from '@/lib/actions';
-import { exportCsv } from '@/lib/export';
+import { exportCsv, exportXlsx } from '@/lib/export';
 import { blankDraft, checkReceipt, duplicatesOf, deleteReceipt, draftFromReading, forAi, isOwnDocument, listReceipts, pingReceiptAi, prepareScan, readReceipt, readyForBir, rotateScan, saveNewReceipt, scanUrl, updateReceipt, type Check, type Receipt, type ReceiptDraft, type ReceiptVat } from '@/lib/receipts';
 import { fmtTin } from '@/lib/bir';
 import { fmtDate, money, round2, today } from '@/lib/util';
@@ -231,6 +231,24 @@ export default function Receipts() {
   const gYes = grp('Yes — BIR only', (r) => r.bir_mode === 'yes' && decided(r)); const gBoth = grp('Both — expense and BIR', (r) => r.bir_mode === 'both' && decided(r)); const gNo = grp('No — expense only', (r) => r.bir_mode === 'no' && decided(r));
   const gWait = grp('Not decided yet', (r) => !decided(r));
   const grand = grp('GRAND TOTAL', () => true);
+  /** Export what is on screen (month, search and filter) as the BIR list, the expense list, or everything. Only posted receipts count as BIR / expense. */
+  const runExport = async (v: string) => {
+    const [kind, fmt] = v.split(':') as ['bir' | 'exp' | 'all', 'csv' | 'xlsx'];
+    const list = shown.filter((r) => kind === 'all' ? true : r.status === 'Posted' && (kind === 'bir' ? r.bir_mode === 'yes' || r.bir_mode === 'both' : r.bir_mode === 'no' || r.bir_mode === 'both'));
+    if (!list.length) return toast(kind === 'bir' ? 'No posted receipts are marked for BIR (Yes or Both) in this view.' : kind === 'exp' ? 'No posted receipts are counted as expenses (No or Both) in this view.' : 'There are no receipts in this view.', 'err');
+    const title = `${kind === 'bir' ? 'BIR receipts' : kind === 'exp' ? 'Receipt expenses' : 'Receipts'} ${month || 'all'}`;
+    const use = (r: Receipt) => r.status !== 'Posted' ? 'Not posted' : r.bir_mode === 'yes' ? 'Yes (BIR only)' : r.bir_mode === 'no' ? 'No (expense only)' : r.bir_mode === 'both' ? 'Both' : 'Not decided';
+    const sum = (f: (r: Receipt) => number) => round2(list.reduce((n, r) => n + f(r), 0));
+    const t = {
+      title, subtitle: `${list.length} receipt${list.length === 1 ? '' : 's'}${q ? ` · search “${q}”` : ''}`,
+      headers: ['Date', 'Supplier', 'TIN', 'Address', 'Receipt no.', 'Document', 'VAT status', 'Total', 'VATable sales', 'Input VAT', 'Exempt', 'Zero-rated', 'Category', 'Payment', 'Use for BIR', 'Receipt status', ...(kind === 'exp' ? ['Expense approval'] : [])],
+      types: ['text', 'text', 'text', 'text', 'text', 'text', 'text', 'money', 'money', 'money', 'money', 'money', 'text', 'text', 'text', 'text', ...(kind === 'exp' ? ['text'] : [])] as ('text' | 'money')[],
+      rows: list.map((r) => [r.receipt_date ?? '', r.supplier_name ?? '', fmtTin(r.supplier_tin ?? ''), r.supplier_address ?? '', r.receipt_no ?? '', r.doc_type ?? '', r.supplier_vat ?? '', r.total_amount ?? 0, r.vatable_sales ?? 0, r.vat_amount ?? 0, r.exempt_amount ?? 0, r.zero_rated_amount ?? 0, r.category ?? '', r.payment_method ?? '', use(r), r.status, ...(kind === 'exp' ? [db.expenses.find((x) => x.id === r.expense_id)?.approval ?? ''] : [])]),
+      totals: ['TOTAL', '', '', '', '', '', '', sum((r) => r.total_amount ?? 0), sum((r) => r.vatable_sales ?? 0), sum((r) => r.vat_amount ?? 0), sum((r) => r.exempt_amount ?? 0), sum((r) => r.zero_rated_amount ?? 0), '', '', '', '', ...(kind === 'exp' ? [''] : [])],
+    };
+    try { if (fmt === 'csv') exportCsv(t); else await exportXlsx(t); } catch (e) { toast(e instanceof Error ? e.message : 'Could not export', 'err'); }
+  };
+
   /* ---- select several receipts and post them together ---- */
   const canPost = can('expenses.edit');
   const [sel, setSel] = useState<Set<string>>(new Set()); const [posting, setPosting] = useState(false);
@@ -292,8 +310,12 @@ export default function Receipts() {
         <input placeholder="Search supplier, TIN, receipt no." value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 280 }} />
         <select value={order} onChange={(e) => setOrder(e.target.value as 'desc' | 'asc')} aria-label="Sort by date" style={{ width: 200 }}><option value="desc">Date: newest first</option><option value="asc">Date: oldest first</option></select>
         <select style={{ width: 200 }} value={only} onChange={(e) => setOnly(e.target.value as typeof only)}><option value="">All receipts</option><option value="fix">Need attention</option><option value="posted">Posted</option><option value="dup">Possible duplicates</option></select>
-        <button className="btn" disabled={!shown.some((r) => r.bir_mode === 'yes')} title="Exports only the receipts marked Yes (BIR only) for the month shown" onClick={() => exportCsv({ title: `BIR receipts ${month}`, headers: ['Date', 'Supplier', 'TIN', 'Address', 'Receipt no.', 'VAT status', 'Total', 'VATable sales', 'VAT', 'Exempt', 'Zero-rated', 'Category', 'Use for BIR', 'Status'], types: ['text', 'text', 'text', 'text', 'text', 'text', 'money', 'money', 'money', 'money', 'money', 'text', 'text', 'text'],
-          totals: ['TOTAL (Yes)', '', '', '', '', '', gYes.total, gYes.vatable, gYes.vat, 0, 0, '', '', ''], rows: shown.filter((r) => r.bir_mode === 'yes').map((r) => [r.receipt_date ?? '', r.supplier_name ?? '', fmtTin(r.supplier_tin ?? ''), r.supplier_address ?? '', r.receipt_no ?? '', r.supplier_vat ?? '', r.total_amount ?? 0, r.vatable_sales ?? 0, r.vat_amount ?? 0, r.exempt_amount ?? 0, r.zero_rated_amount ?? 0, r.category ?? '', r.status !== 'Posted' ? '' : r.bir_mode === 'yes' ? 'Yes (BIR only)' : r.bir_mode === 'no' ? 'No (expense only)' : r.bir_mode === 'both' ? 'Both' : 'Not decided', r.status]) })}>Export CSV (BIR: Yes only)</button>
+        <select style={{ width: 230 }} value="" aria-label="Export receipts" title={`Exports the receipts shown for ${month}`} onChange={(e) => { const v = e.target.value; e.target.value = ''; if (v) void runExport(v); }}>
+          <option value="">⬇ Export…</option>
+          <optgroup label="BIR list (Yes + Both)"><option value="bir:csv">BIR list — CSV</option><option value="bir:xlsx">BIR list — Excel</option></optgroup>
+          <optgroup label="Expenses (No + Both)"><option value="exp:csv">Expenses — CSV</option><option value="exp:xlsx">Expenses — Excel</option></optgroup>
+          <optgroup label="Everything shown"><option value="all:csv">All receipts — CSV</option><option value="all:xlsx">All receipts — Excel</option></optgroup>
+        </select>
       </div>
       {err && <div className="alert warn">{err}</div>}
       {!CLOUD && <div className="alert info small" style={{ marginBottom: 10 }}>Demo mode: scans are kept in this browser only. On the live site they go to private storage and the AI reads them.</div>}
