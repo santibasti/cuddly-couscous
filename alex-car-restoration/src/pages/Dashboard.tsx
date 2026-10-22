@@ -49,6 +49,7 @@ export default function Dashboard() {
         </p>
         <div className="row" style={{ marginTop: 26, position: 'relative', zIndex: 1 }}>
           <Link className="btn primary" to="/projects"><Icon name="plus" />New project</Link>
+          <Link className="btn" to="/today"><Icon name="sun" />Today's snapshot</Link>
           <Link className="btn" to="/schedule"><Icon name="cal" />Open schedule</Link>
           <Link className="btn ghost" to="/parts">Parts pipeline <Icon name="arrow" size={14} /></Link>
         </div>

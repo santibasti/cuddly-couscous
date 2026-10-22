@@ -55,6 +55,7 @@ const defs: Def[] = [
       ['axle', 'Rear axle rebuild', 'sublet', 'Driveline Specialists', 1400, 'shipped', 18, 5, -10, 'PO-2231', 'mechanical'],
       ['gasket', 'Engine gasket & seal set', 'part', 'Speed Parts Direct', 380, 'received', 7, -3, -9, 'PO-2240', 'mechanical'],
       ['weather', 'Weatherstrip kit', 'part', 'Classic Fastener Co.', 620, 'ordered', 30, 20, -2, 'PO-2252', 'assembly'],
+      ['glass', 'Door glass & regulators', 'part', 'Classic Glass Co.', 210, 'shipped', 12, 0, -6, 'PO-2260', 'assembly', 'Courier due this afternoon.'],
     ],
     notes: [[-6, 'body', 'Quarter panels welded and ground. Photos sent to Robert.'], [-1, 'body', 'Fender pair backordered — supplier found NOS stock, ETA ~12 days. Body work continues on doors meanwhile.']],
   },
@@ -96,7 +97,7 @@ const defs: Def[] = [
       ['muncie', 'Muncie rebuild kit', 'part', 'Classic Drivetrain', 690, 'installed', -20, -24, -35, 'PO-2102', 'mechanical'],
       ['hoses', 'Brake hose & hardware kit', 'part', 'Inline Tube', 210, 'needed', 2, null, null, null, 'mechanical', 'Not ordered yet.'],
     ],
-    notes: [[-9, 'mechanical', 'Trans rebuild finished and bench tested. Rear end in progress.'], [-3, 'mechanical', 'Crank still at the machine shop. They are running behind; customer told to expect a slip of about a week.']],
+    notes: [[-9, 'mechanical', 'Trans rebuild finished and bench tested. Rear end in progress.'], [-3, 'mechanical', 'Crank still at the machine shop. They are running behind; customer told to expect a slip of about a week.'], [0, 'mechanical', 'Carlos called the machine shop at 9: crank promised for tomorrow morning. Rear end rebuild continues in the meantime.']],
   },
   {
     id: 'p4', code: 'ACR-004', customerId: 'c4', title: 'Interior & trim restoration', year: 1958, make: 'Mercedes-Benz', model: '190SL',
@@ -137,7 +138,7 @@ const defs: Def[] = [
 
 const PAYMENTS: Record<string, [number, number, string][]> = {
   p1: [[54, 0.3, 'Deposit'], [20, 0.15, 'Milestone: teardown complete']],
-  p2: [[39, 0.4, 'Deposit'], [12, 0.2, 'Milestone: bodywork complete']],
+  p2: [[39, 0.4, 'Deposit'], [12, 0.2, 'Milestone: bodywork complete'], [0, 0.1, 'Progress payment']],
   p3: [[94, 0.4, 'Deposit'], [40, 0.3, 'Milestone: engine out and machined'], [8, 0.1, 'Progress payment']],
   p4: [[9, 0.3, 'Deposit']],
   p6: [[119, 0.35, 'Deposit'], [60, 0.35, 'Milestone: mechanical complete'], [18, 0.2, 'Progress payment']],

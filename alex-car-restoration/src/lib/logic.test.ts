@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { addDays, startOfWeek } from './dates';
 import { allBlockers, attendanceSummary, buildAlerts, coverageGaps, hoursBetween, isLateIn, isOut, overtimeHours, workedHours, buildPhases, dayLoad, daysOverdue, isOverbooked, partRisk, phasePercent, projectHealth, projectProgress, PHASES, taskBlocker } from './logic';
 import { buildSeed } from './seed';
+import { dailySnapshot, nextWorkday, snapshotText } from './snapshot';
 import { costMix, forecastCost, jobFinance, monthlyDeliveries, portfolio, riskRegister, supplierExposure, weeklyHours } from './exec';
 import { reducer } from './store';
 
@@ -216,5 +217,51 @@ describe('executive numbers', () => {
     const id = s.projects.find((p) => p.id === 'p4')!.payments.at(-1)!.id;
     s = reducer(s, { type: 'removePayment', projectId: 'p4', id });
     expect(s.projects.find((p) => p.id === 'p4')!.payments).toHaveLength(1);
+  });
+});
+
+describe('daily snapshot', () => {
+  const d = buildSeed(TODAY);
+  const s = dailySnapshot(d, TODAY);
+  it('skips weekends when finding the next workday', () => {
+    expect(nextWorkday('2026-03-20')).toBe('2026-03-23'); // Friday → Monday
+    expect(nextWorkday(TODAY)).toBe('2026-03-19');
+  });
+  it("summarises the team from today's attendance", () => {
+    expect(s.team.total).toBe(5);
+    expect(s.team.clockedIn).toHaveLength(4);
+    expect(s.team.late.map((l) => l.mechanic.id)).toEqual(['m3']);
+    expect(s.team.notIn.map((m) => m.id)).toEqual(['m5']);
+    expect(s.team.hoursSoFar).toBe(0); // nobody has clocked out yet
+  });
+  it("counts today's tasks by state, with blocked work kept out of running and to-start", () => {
+    const f = s.floor;
+    expect(f.tasks.every((t) => t.date === TODAY)).toBe(true);
+    expect(f.done + f.running + f.todo + f.blocked).toBe(f.tasks.length);
+    expect(f.plannedHours).toBe(f.tasks.reduce((x, t) => x + t.estHours, 0));
+  });
+  it('finds what arrives, what is overdue and what was paid or posted today', () => {
+    expect(s.parts.arriving.map((x) => x.name)).toContain('Door glass & regulators');
+    expect(s.parts.overdue.length).toBeGreaterThan(0);
+    expect(s.money.payments).toHaveLength(1);
+    expect(s.money.total).toBe(s.money.payments[0].payment.amount);
+    expect(s.updates.map((u) => u.project.code)).toEqual(['ACR-003']);
+    expect(s.jobs.late.map((j) => j.project.code)).toContain('ACR-003');
+  });
+  it('reflects a clock-in and a new payment straight away', () => {
+    let x = reducer(d, { type: 'clockIn', mechanicId: 'm5', date: TODAY, time: '08:05' });
+    x = reducer(x, { type: 'addPayment', projectId: 'p4', date: TODAY, amount: 50000 });
+    const t = dailySnapshot(x, TODAY);
+    expect(t.team.clockedIn).toHaveLength(5);
+    expect(t.team.notIn).toHaveLength(0);
+    expect(t.money.payments).toHaveLength(2);
+  });
+  it('produces a paste-ready text summary', () => {
+    const text = snapshotText(s, d);
+    expect(text).toMatch(/^Alex Restoration · Daily snapshot/);
+    expect(text).toContain('4 of 5 in');
+    expect(text).toContain('Priya');
+    expect(text).toContain('Door glass & regulators');
+    expect(text.split('\n').length).toBeGreaterThan(6);
   });
 });
