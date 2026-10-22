@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
 import logo from './assets/alex-logo.png';
+import { useInstall } from './lib/pwa';
 import { Icon } from './components/ui';
 import { todayIso } from './lib/dates';
 import { allBlockers, coverageGaps, partRisk } from './lib/logic';
@@ -30,6 +31,14 @@ export default function App() {
     try { localStorage.setItem('acr-theme', theme); } catch { /* ignore */ }
   }, [theme]);
   const [confirmReset, setConfirmReset] = useState(false);
+  const pwa = useInstall();
+  const [update, setUpdate] = useState<(() => void) | null>(null);
+  const [showIosHint, setShowIosHint] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => setUpdate(() => (e as CustomEvent<() => void>).detail);
+    window.addEventListener('acr-update', on);
+    return () => window.removeEventListener('acr-update', on);
+  }, []);
   const today = todayIso();
   const blocked = allBlockers(data).length;
   const partsAlert = data.parts.filter((p) => ['late', 'order_now'].includes(partRisk(p, today))).length;
@@ -52,14 +61,24 @@ export default function App() {
           <NavLink key={to} to={to} end={to === '/'} className="nav"><Icon name={icon} />{label}{n ? <em>{n}</em> : null}</NavLink>
         ))}
         <div className="foot">
+          {(pwa.canPrompt || pwa.iosHint) && (
+            <button className="sm primary install" onClick={() => (pwa.canPrompt ? pwa.install() : setShowIosHint(!showIosHint))}><Icon name="plus" size={13} />Install app</button>
+          )}
+          {showIosHint && <div className="small" style={{ margin: '8px 0' }}>On iPhone or iPad: tap the Share button in Safari, then <b>Add to Home Screen</b>.</div>}
           <div className="row" style={{ gap: 6 }}>
             <button className="sm" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
             <button className="sm ghost" onClick={() => { if (confirmReset) { dispatch({ type: 'reset' }); setConfirmReset(false); } else setConfirmReset(true); }} onBlur={() => setConfirmReset(false)}>{confirmReset ? 'Click to confirm' : 'Reset demo'}</button>
           </div>
-          <div style={{ marginTop: 8 }}>Demo data · saved in this browser</div>
+          <div className="foot-note" style={{ marginTop: 8 }}>Demo data · saved in this browser</div>
         </div>
       </nav>
       <main className="main">
+        {update && (
+          <div className="update-bar" role="status">
+            <span>A new version is ready.</span>
+            <button className="sm primary" onClick={() => update()}>Reload</button>
+          </div>
+        )}
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/today" element={<Today />} />
