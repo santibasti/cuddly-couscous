@@ -31,6 +31,18 @@ describe('business rules enforced by the store', () => {
     expect(() => m.A.invoiceFromQuotation(q.id)).toThrow(/already invoiced/);
   });
 
+  it('the Owner can re-open a cancelled booking, with the reason on the audit trail', async () => {
+    await as('owner@topmop.ph');
+    const base = db().jobs.find((x) => x.status === 'Confirmed')!;
+    const j = m.A.saveJob({ ...base, id: undefined, number: undefined, status: 'Pending', leader_id: undefined, crew_ids: [], vehicle_id: undefined, equipment_ids: [], start_at: '2031-03-03T08:00', end_at: '2031-03-03T17:00' } as never);
+    m.A.setJobStatus(j.id, 'Cancelled', 'client postponed');
+    const c = db().jobs.find((x) => x.id === j.id)!;
+    expect(c.status).toBe('Cancelled');
+    m.A.saveJob({ ...c, status: 'Confirmed' } as never);
+    expect(db().jobs.find((x) => x.id === j.id)!.status).toBe('Confirmed');
+    expect(db().audit.find((a) => a.record_id === j.id && /Re-opened cancelled/.test(a.summary))?.reason).toMatch(/re-opened/);
+  });
+
   it('blocks double-booking crew, vehicle and equipment', async () => {
     await as('owner@topmop.ph');
     const j = db().jobs.find((x) => x.status === 'Confirmed')!;

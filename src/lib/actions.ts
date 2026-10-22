@@ -132,7 +132,10 @@ export const jobSavedHooks: ((jobId: string) => void)[] = [];
 export function saveJob(j: JobInput): Job {
   store.require('jobs.edit');
   checkJob({ ...j, id: j.id ?? '' });
-  if (j.id) { const r = store.update('jobs', j.id, j as never, 'update', `Updated job ${j.number}`); for (const h of jobSavedHooks) h(j.id); if (j.status === 'Cancelled') releaseCancelledJob(j.id); syncJobOrders(j.id); return r; }
+  const before = j.id ? db().jobs.find((x) => x.id === j.id) : undefined;
+  // the Owner / Operations Manager may re-open a cancelled booking; the database wants an override reason for it, recorded on the audit trail
+  const reopen = !!before && before.status === 'Cancelled' && ['Pending', 'Confirmed'].includes(j.status) && store.can('dispatch.approve');
+  if (j.id) { const r = (reopen ? store.withReason('Cancelled booking re-opened by ' + (store.user?.name ?? 'management'), () => store.update('jobs', j.id!, j as never, 'update', `Re-opened cancelled booking ${j.number} as ${j.status}`)) : store.update('jobs', j.id, j as never, 'update', `Updated job ${j.number}`)); for (const h of jobSavedHooks) h(j.id); if (j.status === 'Cancelled') releaseCancelledJob(j.id); syncJobOrders(j.id); return r; }
   const created = store.insert('jobs', { ...j, number: store.nextNumber('JOB') } as never) as Job;
   syncJobOrders(created.id);
   return created;
