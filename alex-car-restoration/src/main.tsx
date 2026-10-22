@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { HashRouter, MemoryRouter } from 'react-router-dom';
 import App from './App';
 import { StoreProvider } from './lib/store';
+import { registerServiceWorker } from './lib/pwa';
 import './styles.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -12,3 +13,5 @@ createRoot(document.getElementById('root')!).render(
     </StoreProvider>
   </StrictMode>,
 );
+
+registerServiceWorker((activate) => window.dispatchEvent(new CustomEvent('acr-update', { detail: activate })));
