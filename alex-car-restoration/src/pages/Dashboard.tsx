@@ -3,7 +3,7 @@ import ProjectCard from '../components/ProjectCard';
 import { Avatar, CarArt, Card, Empty, Icon, RiskPill, StripStat, carName } from '../components/ui';
 import { paintHex } from '../lib/paint';
 import { addDays, diffDays, fmtDate, fmtDay, isWeekend, todayIso } from '../lib/dates';
-import { allBlockers, dayLoad, money, partRisk, projectCosts, projectHealth, RISK_RANK, BAYS } from '../lib/logic';
+import { allBlockers, dayLoad, money, moneyC, partRisk, projectCosts, projectHealth, RISK_RANK, BAYS } from '../lib/logic';
 import { useStore } from '../lib/store';
 
 export default function Dashboard() {
@@ -66,7 +66,7 @@ export default function Dashboard() {
           <StripStat label="Work blocked" tone={blockers.length ? 'orange' : ''} value={blockers.length} sub={`${blockedHours}h waiting · ${byReason('parts')} parts · ${byReason('vendor')} outside · ${byReason('customer')} customer`} />
           <StripStat label="Parts watch" tone={watch.length ? 'amber' : ''} value={watch.length} sub={`${inTransit} on the way · ${data.parts.filter((x) => x.status === 'needed').length} not yet ordered`} />
           <StripStat label="Labor booked" value={`${util}%`} spark={hoursTrend} sub="This week · hours logged, 14 days" />
-          <StripStat label="Committed" value={budget ? `${Math.round((spent / budget) * 100)}%` : '—'} sub={`${money(spent)} of ${money(budget)}${nextDelivery ? ` · next delivery ${fmtDate(nextDelivery)}` : ''}`} />
+          <StripStat label="Committed" value={budget ? `${Math.round((spent / budget) * 100)}%` : '—'} sub={`${moneyC(spent)} of ${moneyC(budget)}${nextDelivery ? ` · next delivery ${fmtDate(nextDelivery)}` : ''}`} />
         </div>
       </Card>
 

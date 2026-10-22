@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Empty, Icon, RiskPill, Seg, carName } from '../components/ui';
 import { diffDays, fmtDate, todayIso } from '../lib/dates';
-import { isPartIn, money, partRisk, partStatusLabel, RISK_RANK } from '../lib/logic';
+import { isPartIn, moneyC, partRisk, partStatusLabel, RISK_RANK } from '../lib/logic';
 import { useStore } from '../lib/store';
 import type { PartKind, PartStatus } from '../lib/types';
 
@@ -23,7 +23,7 @@ export default function Parts() {
     <>
       <div className="head">
         <div>
-          <div className="eyebrow">{open.length} open · {money(open.reduce((s, x) => s + x.cost, 0))} on order</div>
+          <div className="eyebrow">{open.length} open · {moneyC(open.reduce((s, x) => s + x.cost, 0))} on order</div>
           <h1>Parts &amp; sublets</h1>
           <p>Everything the work is waiting on: parts from suppliers and jobs sent to outside specialists such as the machine shop, chrome plater or upholsterer.</p>
         </div>
@@ -53,7 +53,7 @@ export default function Parts() {
                     <div className="kdates">
                       <div><span>Needed</span><b>{fmtDate(x.neededBy)}</b></div>
                       <div><span>ETA</span><b className={r === 'late' || (gap ?? 0) > 0 ? 'over' : ''}>{x.eta ? fmtDate(x.eta) : '—'}</b></div>
-                      <div><span>Cost</span><b>{money(x.cost)}</b></div>
+                      <div><span>Cost</span><b>{moneyC(x.cost)}</b></div>
                     </div>
                     {gap !== null && gap > 0 && <div className="small over">Lands {gap} day{gap > 1 ? 's' : ''} after it is needed</div>}
                     {x.note && <div className="small muted knote">{x.note}</div>}

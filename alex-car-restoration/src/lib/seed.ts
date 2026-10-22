@@ -2,12 +2,18 @@ import { addDays, isWeekend, todayIso } from './dates';
 import { buildPhases, PHASES } from './logic';
 import type { BlockReason, Customer, Data, Mechanic, Part, PartKind, PartStatus, PhaseKey, Project, Task, Update } from './types';
 
+/** Demo figures were drafted in USD; shop money is in pesos. */
+const FX = 56;
+const php = (usd: number) => Math.round((usd * FX) / 1000) * 1000;
+const phpBudget = (usd: number) => Math.round((usd * FX) / 50000) * 50000;
+const phpRate = (usd: number) => Math.round((usd * 25) / 50) * 50;
+
 const mechanics: Mechanic[] = [
-  { id: 'm1', name: 'Carlos Reyes', specialty: 'Engine & drivetrain', color: '#e5553d', hourlyRate: 65, dailyHours: 8, active: true },
-  { id: 'm2', name: 'Jamie Brooks', specialty: 'Bodywork & metal', color: '#e8a33d', hourlyRate: 60, dailyHours: 8, active: true },
-  { id: 'm3', name: 'Priya Nair', specialty: 'Paint & finish', color: '#2fb585', hourlyRate: 70, dailyHours: 8, active: true },
-  { id: 'm4', name: 'Tom Walker', specialty: 'Electrical & assembly', color: '#4c8df0', hourlyRate: 58, dailyHours: 8, active: true },
-  { id: 'm5', name: 'Luis Ortega', specialty: 'Upholstery & trim', color: '#9a6ee0', hourlyRate: 55, dailyHours: 6, active: true },
+  { id: 'm1', name: 'Carlos Reyes', specialty: 'Engine & drivetrain', color: '#e5553d', hourlyRate: phpRate(65), dailyHours: 8, active: true },
+  { id: 'm2', name: 'Jamie Brooks', specialty: 'Bodywork & metal', color: '#e8a33d', hourlyRate: phpRate(60), dailyHours: 8, active: true },
+  { id: 'm3', name: 'Priya Nair', specialty: 'Paint & finish', color: '#2fb585', hourlyRate: phpRate(70), dailyHours: 8, active: true },
+  { id: 'm4', name: 'Tom Walker', specialty: 'Electrical & assembly', color: '#4c8df0', hourlyRate: phpRate(58), dailyHours: 8, active: true },
+  { id: 'm5', name: 'Luis Ortega', specialty: 'Upholstery & trim', color: '#9a6ee0', hourlyRate: phpRate(55), dailyHours: 6, active: true },
 ];
 
 const customers: Customer[] = [
@@ -157,7 +163,7 @@ export function buildSeed(today = todayIso()): Data {
     projects.push({
       id: s.id, code: s.code, customerId: s.customerId, title: s.title, year: s.year, make: s.make, model: s.model,
       color: s.color, vin: s.vin, scope: s.scope, status: s.status ?? 'active', priority: s.priority, bay: s.bay,
-      startDate: start, targetDate: target, budget: s.budget, phases,
+      startDate: start, targetDate: target, budget: phpBudget(s.budget), phases,
       leadMechanicId: s.tasks.find((t) => t[4] === 'doing')?.[2],
     });
 
@@ -165,7 +171,7 @@ export function buildSeed(today = todayIso()): Data {
     s.parts.forEach((d, i) => partId.set(d[0], `${s.id}-pt${i + 1}`));
     s.parts.forEach(([ref, name, kind, supplier, cost, status, need, eta, ord, po, phaseKey, note]) => {
       parts.push({
-        id: partId.get(ref)!, projectId: s.id, name, kind, supplier, cost, status, phaseKey,
+        id: partId.get(ref)!, projectId: s.id, name, kind, supplier, cost: php(cost), status, phaseKey,
         neededBy: addDays(today, need), eta: eta == null ? undefined : addDays(today, eta),
         orderedOn: ord == null ? undefined : addDays(today, ord), po: po ?? undefined, note,
       });

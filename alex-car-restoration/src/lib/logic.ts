@@ -223,7 +223,12 @@ export function buildAlerts(data: Data, today: string): Alert[] {
   return out.sort((a, b) => (a.level === b.level ? 0 : a.level === 'high' ? -1 : 1));
 }
 
-export const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+const PESO = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 });
+const PESO_COMPACT = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', notation: 'compact', maximumFractionDigits: 1 });
+/** Full peso amount, e.g. ₱3,500,000. */
+export const money = (n: number) => PESO.format(n);
+/** Short peso amount for tight spots, e.g. ₱3.5M. */
+export const moneyC = (n: number) => (Math.abs(n) >= 10000 ? PESO_COMPACT.format(n) : PESO.format(n));
 
 export function nextProjectCode(projects: Project[]): string {
   const max = projects.reduce((m, p) => Math.max(m, Number(p.code.split('-')[1]) || 0), 0);

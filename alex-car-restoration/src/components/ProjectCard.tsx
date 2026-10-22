@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { fmtDate } from '../lib/dates';
-import { currentPhase, daysOverdue, money, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
+import { currentPhase, daysOverdue, moneyC, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { paintHex } from '../lib/paint';
 import type { Data, Project } from '../lib/types';
 import { Avatar, Bar, CarArt, HealthPill, Icon, Ring, carName } from './ui';
@@ -45,7 +45,7 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
             <div><div className={`small ${over ? 'over' : ''}`} style={{ fontWeight: 500 }}>{over ? `${over}d overdue` : fmtDate(p.targetDate)}</div><div className="small muted">{cur && p.status === 'active' ? phaseShort(cur.key) : 'Target date'}</div></div>
           </div>
           <div style={{ textAlign: 'right', minWidth: 96 }}>
-            <div className="small num">{money(cost)} <span className="muted">/ {money(p.budget)}</span></div>
+            <div className="small num">{moneyC(cost)} <span className="muted">/ {moneyC(p.budget)}</span></div>
             <Bar thin value={p.budget ? (cost / p.budget) * 100 : 0} tone={cost > p.budget ? 'red' : undefined} />
           </div>
           <Avatar m={data.mechanics.find((m) => m.id === doing?.mechanicId)} size={28} />

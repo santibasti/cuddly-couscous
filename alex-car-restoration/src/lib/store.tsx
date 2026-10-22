@@ -4,7 +4,7 @@ import { buildPhases, nextProjectCode } from './logic';
 import { buildSeed } from './seed';
 import type { Data, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, Task, TaskStatus } from './types';
 
-const KEY = 'alex-car-restoration:v2';
+const KEY = 'alex-car-restoration:v3';
 
 export type Action =
   | { type: 'addProject'; project: Omit<Project, 'id' | 'code' | 'phases' | 'status'> & { status?: ProjectStatus } }

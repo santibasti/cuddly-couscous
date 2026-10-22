@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import ProjectCard from '../components/ProjectCard';
 import { Bar, Card, Empty, HealthPill, Icon, Seg, carName } from '../components/ui';
 import { addDays, fmtDate, todayIso } from '../lib/dates';
-import { BAYS, currentPhase, daysOverdue, money, phaseShort, projectCosts, projectHealth, projectProgress, type Health } from '../lib/logic';
+import { BAYS, currentPhase, daysOverdue, moneyC, phaseShort, projectCosts, projectHealth, projectProgress, type Health } from '../lib/logic';
 import { useStore } from '../lib/store';
 
 type Filter = 'all' | Health;
@@ -60,7 +60,7 @@ export default function Projects() {
           <label>Model<input name="model" placeholder="Mustang Fastback" required /></label>
           <label>Colour<input name="color" placeholder="Highland Green" /></label>
           <label>VIN<input name="vin" placeholder="Optional" /></label>
-          <label>Budget ($)<input name="budget" type="number" min="0" placeholder="40000" /></label>
+          <label>Budget (₱)<input name="budget" type="number" min="0" placeholder="2000000" /></label>
           <label>Start date<input name="start" type="date" defaultValue={today} required /></label>
           <label>Target delivery<input name="target" type="date" defaultValue={addDays(today, 90)} required /></label>
           <label className="full">Scope of work<textarea name="scope" /></label>
@@ -99,7 +99,7 @@ export default function Projects() {
                   <td><div className="row" style={{ flexWrap: 'nowrap' }}><div className="grow"><Bar value={pct} tone={over ? 'red' : undefined} /></div><span className="small num">{pct}%</span></div></td>
                   <td className="small" style={{ maxWidth: 260 }}>{reasons[0] ?? <span className="muted">—</span>}{reasons.length > 1 && <span className="muted"> +{reasons.length - 1}</span>}</td>
                   <td className={`num ${over ? 'over' : ''}`}>{fmtDate(p.targetDate)}</td>
-                  <td><div className="small num">{money(spent)} <span className="muted">/ {money(p.budget)}</span></div><Bar thin value={p.budget ? (spent / p.budget) * 100 : 0} tone={spent > p.budget ? 'red' : spent > p.budget * 0.9 ? 'amber' : 'green'} /></td>
+                  <td><div className="small num">{moneyC(spent)} <span className="muted">/ {moneyC(p.budget)}</span></div><Bar thin value={p.budget ? (spent / p.budget) * 100 : 0} tone={spent > p.budget ? 'red' : spent > p.budget * 0.9 ? 'amber' : 'green'} /></td>
                 </tr>
               );
             })}

@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Avatar, CarArt, Card, HealthPill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
 import { paintHex } from '../lib/paint';
 import { diffDays, fmtDate, todayIso } from '../lib/dates';
-import { BAYS, PART_FLOW, PHASES, currentPhase, daysOverdue, isPartIn, money, partRisk, partStatusLabel, phaseLabel, phasePercent, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
+import { BAYS, PART_FLOW, PHASES, currentPhase, daysOverdue, isPartIn, money, moneyC, partRisk, partStatusLabel, phaseLabel, phasePercent, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { useStore } from '../lib/store';
 import type { BlockReason, PartKind, PartStatus, PhaseKey, ProjectStatus, TaskStatus } from '../lib/types';
 
@@ -64,7 +64,7 @@ export default function ProjectDetail() {
         </div>
         <div className="stats">
           <div><div className="eyebrow">Progress</div><div className="sv"><span>{pct}%</span></div><div className={`small ${over ? 'over' : 'muted'}`}>{over ? `${over}d past target` : `Target ${fmtDate(p.targetDate)}`}</div></div>
-          <div><div className="eyebrow">Spent</div><div className={`sv ${costs.total > p.budget ? 'red' : ''}`}><span>{money(costs.total)}</span></div><div className="small muted">of {money(p.budget)} budget</div></div>
+          <div><div className="eyebrow">Spent</div><div className={`sv ${costs.total > p.budget ? 'red' : ''}`}><span>{moneyC(costs.total)}</span></div><div className="small muted">of {moneyC(p.budget)} budget</div></div>
           <div><div className="eyebrow">Hours</div><div className="sv"><span>{tasks.reduce((s, t) => s + t.actualHours, 0)}h</span></div><div className="small muted">of {tasks.reduce((s, t) => s + t.estHours, 0)}h planned</div></div>
           <div><div className="eyebrow">Parts in shop</div><div className="sv"><span>{parts.filter(isPartIn).length}/{parts.length}</span></div><div className="small muted">{blocked.length} task{blocked.length === 1 ? '' : 's'} blocked</div></div>
         </div>
