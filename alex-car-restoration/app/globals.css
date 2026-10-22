@@ -18,6 +18,13 @@ body { background: #0B0D0F; color: #F5F5F2; -webkit-font-smoothing: antialiased;
   .label { @apply mb-1 block text-[10px] font-medium uppercase tracking-[0.22em] text-silver; }
 }
 
+/* Hero photo on very wide screens (viewport wider than ~1.85:1): the image is
+   limited to 1.85x the hero height, anchored right, with a short fade on its left
+   edge, so the cars are never zoomed in and cropped. */
+@media (min-width: 1024px) and (min-aspect-ratio: 37/20) {
+  .hero-img { left: auto !important; right: 0 !important; width: min(100%, calc(max(min(100svh, 1000px), 640px) * 1.85)) !important; -webkit-mask-image: linear-gradient(to right, transparent, #000 12%); mask-image: linear-gradient(to right, transparent, #000 12%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

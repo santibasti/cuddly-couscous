@@ -52,7 +52,7 @@ export default function Hero() {
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
     >
-      <div className="grid min-h-[100svh] lg:min-h-[640px] lg:h-[88vh] lg:max-h-[1000px]">
+      <div className="grid min-h-[100svh] lg:min-h-[640px] lg:h-[100svh] lg:max-h-[1000px]">
         {heroSlides.map((s, i) => {
           const on = i === active;
           return (
@@ -66,7 +66,7 @@ export default function Hero() {
               style={{ transition: `opacity ${fade}ms ease-in-out, visibility 0s linear ${on ? 0 : fade}ms` }}
             >
               {/* Image: full photograph on mobile, right-anchored on desktop */}
-              <div className="relative mt-16 aspect-[3/2] w-full shrink-0 lg:absolute lg:inset-0 lg:mt-0 lg:aspect-auto">
+              <div className="hero-img relative mt-16 aspect-[3/2] w-full shrink-0 lg:absolute lg:inset-0 lg:mt-0 lg:aspect-auto">
                 <Image
                   src={s.image}
                   alt={s.imageAlt}
