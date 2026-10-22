@@ -43,7 +43,8 @@ const SKIP_PUSH = new Set(['id', 'created_at', 'created_by']);
 /** App row → database row. Fields cleared in the app (present before, gone now) are sent as null. */
 export function toDb(row: Record<string, unknown>, before?: Record<string, unknown>, rename: Record<string, string> = {}): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(row)) if (v !== undefined) out[rename[k] ?? k] = v;
+  // an empty date-time box saves as '' in the app, but a timestamp column takes a value or nothing: '' made the database reject the save ("invalid input syntax for type timestamp with time zone")
+  for (const [k, v] of Object.entries(row)) if (v !== undefined) out[rename[k] ?? k] = v === '' && /_at$/.test(k) ? null : v;
   if (before) for (const k of Object.keys(before)) if (!(k in row) || row[k] === undefined) out[rename[k] ?? k] = null;
   return out;
 }

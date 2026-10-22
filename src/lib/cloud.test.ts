@@ -86,3 +86,9 @@ describe('busy database vs missing table', () => {
     expect(isMissingTable({ message: 'relation "public.x" does not exist', code: '42P01' })).toBe(true);
   });
 });
+
+describe('empty date-time values', () => {
+  it('saves an empty date-time as nothing instead of an empty string the database rejects', () => {
+    expect(toDb({ id: 'x', leave_at: '', hq_at: '2026-10-22T08:00', note: '', start_at: undefined })).toEqual({ id: 'x', leave_at: null, hq_at: '2026-10-22T08:00', note: '' });
+  });
+});
