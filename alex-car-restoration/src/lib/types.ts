@@ -1,0 +1,101 @@
+export type PhaseKey =
+  | 'intake'
+  | 'teardown'
+  | 'body'
+  | 'paint'
+  | 'mechanical'
+  | 'interior'
+  | 'assembly'
+  | 'qc'
+  | 'delivery';
+
+export type PhaseStatus = 'todo' | 'in_progress' | 'done';
+export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type ProjectStatus = 'quote' | 'active' | 'on_hold' | 'completed' | 'delivered';
+export type PartStatus = 'needed' | 'ordered' | 'received' | 'installed';
+export type Priority = 'low' | 'normal' | 'high';
+
+export interface Mechanic {
+  id: string;
+  name: string;
+  specialty: string;
+  color: string;
+  hourlyRate: number;
+  dailyHours: number;
+  active: boolean;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+}
+
+export interface Phase {
+  key: PhaseKey;
+  status: PhaseStatus;
+  start: string;
+  end: string;
+}
+
+export interface Project {
+  id: string;
+  code: string;
+  customerId: string;
+  title: string;
+  year: number;
+  make: string;
+  model: string;
+  color: string;
+  vin: string;
+  scope: string;
+  status: ProjectStatus;
+  priority: Priority;
+  bay: string;
+  startDate: string;
+  targetDate: string;
+  budget: number;
+  phases: Phase[];
+  leadMechanicId?: string;
+}
+
+export interface Task {
+  id: string;
+  projectId: string;
+  phaseKey: PhaseKey;
+  title: string;
+  mechanicId?: string;
+  date: string;
+  estHours: number;
+  actualHours: number;
+  status: TaskStatus;
+}
+
+export interface Part {
+  id: string;
+  projectId: string;
+  name: string;
+  supplier: string;
+  cost: number;
+  status: PartStatus;
+  eta?: string;
+}
+
+export interface Update {
+  id: string;
+  projectId: string;
+  phaseKey?: PhaseKey;
+  date: string;
+  author: string;
+  text: string;
+}
+
+export interface Data {
+  mechanics: Mechanic[];
+  customers: Customer[];
+  projects: Project[];
+  tasks: Task[];
+  parts: Part[];
+  updates: Update[];
+}
