@@ -19,6 +19,7 @@ const ICONS: Record<string, string> = {
   arrow: 'M5 12h14m-6-6l6 6-6 6',
   clock: 'M12 7v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   chart: 'M4 20V10m6 10V4m6 16v-7m4 7H2',
+  sun: 'M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10l1.4 1.4m0-12.8L17 7M7 17l-1.4 1.4M12 8a4 4 0 100 8 4 4 0 000-8z',
 };
 
 export const Icon = ({ name, size = 16 }: { name: keyof typeof ICONS | string; size?: number }) => (
