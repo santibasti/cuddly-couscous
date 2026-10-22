@@ -6,6 +6,7 @@ import { allBlockers, coverageGaps, partRisk } from './lib/logic';
 import { useStore } from './lib/store';
 import Attendance from './pages/Attendance';
 import Dashboard from './pages/Dashboard';
+import Executive from './pages/Executive';
 import Mechanics from './pages/Mechanics';
 import Parts from './pages/Parts';
 import ProjectDetail from './pages/ProjectDetail';
@@ -32,6 +33,7 @@ export default function App() {
   const partsAlert = data.parts.filter((p) => ['late', 'order_now'].includes(partRisk(p, today))).length;
   const links: [string, string, string, number?][] = [
     ['/', 'Operations', 'dash', blocked || undefined],
+    ['/executive', 'Executive', 'chart'],
     ['/projects', 'Projects', 'car'],
     ['/schedule', 'Schedule', 'cal'],
     ['/timeline', 'Timeline', 'gantt'],
@@ -57,6 +59,7 @@ export default function App() {
       <main className="main">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/executive" element={<Executive />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/schedule" element={<Schedule />} />

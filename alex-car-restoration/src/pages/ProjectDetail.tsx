@@ -7,7 +7,7 @@ import { BAYS, PART_FLOW, PHASES, currentPhase, daysOverdue, isPartIn, money, mo
 import { useStore } from '../lib/store';
 import type { BlockReason, PartKind, PartStatus, PhaseKey, ProjectStatus, TaskStatus } from '../lib/types';
 
-type Tab = 'work' | 'parts' | 'log';
+type Tab = 'work' | 'parts' | 'billing' | 'log';
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -27,6 +27,8 @@ export default function ProjectDetail() {
   const pct = projectProgress(p, data.tasks);
   const costs = projectCosts(p, data.tasks, data.parts, data.mechanics);
   const over = daysOverdue(p, today);
+  const collected = p.payments.reduce((x, y) => x + y.amount, 0);
+  const earned = Math.round((p.budget * pct) / 100);
   const { health, reasons } = projectHealth(p, data, today);
   const team = data.mechanics.filter((m) => m.active);
   const sel = p.phases.find((x) => x.key === selKey) ?? currentPhase(p) ?? p.phases[0];
@@ -37,6 +39,14 @@ export default function ProjectDetail() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     dispatch({ type: 'addTask', task: { projectId: p!.id, title: String(f.get('title')), phaseKey: f.get('phase') as PhaseKey, mechanicId: String(f.get('mechanic')) || undefined, date: String(f.get('date')), estHours: Number(f.get('hours')) || 1, partId: String(f.get('part')) || undefined } });
+    e.currentTarget.reset();
+  }
+  function addPayment(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const amount = Number(f.get('amount'));
+    if (!amount) return;
+    dispatch({ type: 'addPayment', projectId: p!.id, date: String(f.get('date')), amount, note: String(f.get('note')).trim() || undefined });
     e.currentTarget.reset();
   }
   function addPart(e: React.FormEvent<HTMLFormElement>) {
@@ -105,7 +115,7 @@ export default function ProjectDetail() {
       </Card>
 
       <div className="tabs">
-        {([['work', `Work (${tasks.length})`], ['parts', `Parts & sublets (${parts.length})`], ['log', `Progress log (${updates.length})`]] as [Tab, string][]).map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
+        {([['work', `Work (${tasks.length})`], ['parts', `Parts & sublets (${parts.length})`], ['billing', `Billing (${p.payments.length})`], ['log', `Progress log (${updates.length})`]] as [Tab, string][]).map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
       </div>
 
       {tab === 'work' && (
@@ -185,6 +195,32 @@ export default function ProjectDetail() {
             <label className="row small muted">Needed by<input name="needed" type="date" defaultValue={today} required /></label>
             <input name="cost" type="number" min="0" placeholder="Cost" style={{ width: 90 }} />
             <button className="primary" type="submit">Add</button>
+          </form>
+        </Card>
+      )}
+
+      {tab === 'billing' && (
+        <Card flush>
+          <div className="grid g4" style={{ padding: 18 }}>
+            <div><div className="eyebrow">Contract</div><div className="sv"><span>{money(p.budget)}</span></div></div>
+            <div><div className="eyebrow">Collected</div><div className="sv"><span>{money(collected)}</span></div><div className="small muted">{p.budget ? Math.round((collected / p.budget) * 100) : 0}% of contract</div></div>
+            <div><div className="eyebrow">Balance due</div><div className="sv"><span>{money(Math.max(0, p.budget - collected))}</span></div></div>
+            <div><div className="eyebrow">Earned by progress</div><div className="sv"><span>{money(earned)}</span></div><div className={`small ${earned > collected ? 'warn' : 'muted'}`}>{earned > collected ? `${money(earned - collected)} ready to bill` : 'Paid ahead of the work'}</div></div>
+          </div>
+          <table>
+            <thead><tr><th>Date</th><th>Note</th><th style={{ textAlign: 'right' }}>Amount</th><th /></tr></thead>
+            <tbody>
+              {[...p.payments].sort((a, b) => b.date.localeCompare(a.date)).map((x) => (
+                <tr key={x.id}><td className="num">{fmtDate(x.date)}</td><td>{x.note ?? '—'}</td><td className="num" style={{ textAlign: 'right' }}>{money(x.amount)}</td><td><button className="sm ghost" title="Remove payment" onClick={() => dispatch({ type: 'removePayment', projectId: p.id, id: x.id })}>✕</button></td></tr>
+              ))}
+              {!p.payments.length && <tr><td colSpan={4} className="empty">No payments recorded yet.</td></tr>}
+            </tbody>
+          </table>
+          <form className="row addbar" onSubmit={addPayment}>
+            <input name="amount" type="number" min="1" step="1" placeholder="Amount (₱)" required style={{ width: 150 }} />
+            <input name="date" type="date" defaultValue={today} required />
+            <input name="note" placeholder="Deposit, progress payment…" style={{ flex: 1, minWidth: 180 }} />
+            <button className="primary" type="submit">Record payment</button>
           </form>
         </Card>
       )}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { addDays, startOfWeek } from './dates';
 import { allBlockers, attendanceSummary, buildAlerts, coverageGaps, hoursBetween, isLateIn, isOut, overtimeHours, workedHours, buildPhases, dayLoad, daysOverdue, isOverbooked, partRisk, phasePercent, projectHealth, projectProgress, PHASES, taskBlocker } from './logic';
 import { buildSeed } from './seed';
+import { costMix, forecastCost, jobFinance, monthlyDeliveries, portfolio, riskRegister, supplierExposure, weeklyHours } from './exec';
 import { reducer } from './store';
 
 const TODAY = '2026-03-18'; // a Wednesday
@@ -154,5 +155,66 @@ describe('attendance', () => {
     expect(gaps[0].mechanic.id).toBe('m2');
     const s = reducer(d, { type: 'updateTask', id: gaps[0].task.id, patch: { mechanicId: 'm1' } });
     expect(coverageGaps(s, TODAY)).toHaveLength(0);
+  });
+});
+
+describe('executive numbers', () => {
+  const d = buildSeed(TODAY);
+  const pf = portfolio(d, TODAY);
+  it('forecasts cost: assumes 70% of contract when a job is barely started, extrapolates later, never below spend', () => {
+    expect(forecastCost(100, 1000, 10)).toBe(700);
+    expect(forecastCost(900, 1000, 10)).toBe(900);
+    expect(forecastCost(300, 1000, 50)).toBe(600);
+    expect(forecastCost(500, 1000, 100)).toBe(500);
+  });
+  it('adds contract, collections and margin across active jobs only', () => {
+    expect(pf.jobs).toHaveLength(5);
+    expect(pf.contract).toBe(pf.jobs.reduce((s, j) => s + j.contract, 0));
+    expect(pf.contract - pf.forecastCost).toBe(pf.margin);
+    expect(pf.outstanding).toBe(pf.contract - pf.collected);
+    expect(pf.quotes).toHaveLength(1);
+    expect(pf.quotesValue).toBe(d.projects.find((p) => p.status === 'quote')!.budget);
+  });
+  it('seed margins are believable', () => {
+    for (const j of pf.jobs) { expect(j.marginPct).toBeGreaterThan(5); expect(j.marginPct).toBeLessThan(60); }
+  });
+  it('splits cost into labor, parts and sublet', () => {
+    const m = costMix(d);
+    expect(m.labor).toBeGreaterThan(0);
+    expect(m.parts).toBeGreaterThan(0);
+    expect(m.sublet).toBeGreaterThan(0);
+  });
+  it('ranks supplier exposure and counts overdue orders', () => {
+    const ex = supplierExposure(d, TODAY);
+    expect(ex.length).toBeGreaterThan(2);
+    for (let i = 1; i < ex.length; i++) expect(ex[i - 1].value).toBeGreaterThanOrEqual(ex[i].value);
+    expect(ex.some((e) => e.late > 0)).toBe(true);
+  });
+  it('buckets deliveries by month and puts overdue jobs in the first month', () => {
+    const m = monthlyDeliveries(d, TODAY, 6);
+    expect(m).toHaveLength(6);
+    expect(m.reduce((s, b) => s + b.value, 0)).toBeLessThanOrEqual(pf.contract);
+    expect(m[0].jobs).toContain('ACR-003'); // Camaro is already late
+  });
+  it('shows weekly hours against capacity', () => {
+    const w = weeklyHours(d, TODAY, 4);
+    expect(w.length).toBeGreaterThanOrEqual(2);
+    expect(w.at(-1)!.current).toBe(true);
+    expect(w[0].capacity).toBe(d.mechanics.reduce((s, m) => s + m.dailyHours * 5, 0)); // first week shown is a full week
+  });
+  it('lists risks most serious first, including the late job and the leave collision', () => {
+    const r = riskRegister(d, TODAY);
+    expect(r[0].level).toBe('high');
+    expect(r.some((x) => /past its delivery date/.test(x.text))).toBe(true);
+    expect(r.some((x) => x.to === '/attendance')).toBe(true);
+    const firstMedium = r.findIndex((x) => x.level === 'medium');
+    expect(r.slice(firstMedium).every((x) => x.level === 'medium')).toBe(true);
+  });
+  it('records and removes a payment', () => {
+    let s = reducer(d, { type: 'addPayment', projectId: 'p4', date: TODAY, amount: 100000, note: 'Progress' });
+    expect(jobFinance(s.projects.find((p) => p.id === 'p4')!, s, TODAY).collected).toBe(d.projects.find((p) => p.id === 'p4')!.payments.reduce((a, x) => a + x.amount, 0) + 100000);
+    const id = s.projects.find((p) => p.id === 'p4')!.payments.at(-1)!.id;
+    s = reducer(s, { type: 'removePayment', projectId: 'p4', id });
+    expect(s.projects.find((p) => p.id === 'p4')!.payments).toHaveLength(1);
   });
 });

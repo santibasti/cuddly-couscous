@@ -4,10 +4,10 @@ import { buildPhases, isLateIn, nextProjectCode, OUT_STATUSES } from './logic';
 import { buildSeed } from './seed';
 import type { AttendanceStatus, Data, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, Task, TaskStatus } from './types';
 
-const KEY = 'alex-car-restoration:v4';
+const KEY = 'alex-car-restoration:v5';
 
 export type Action =
-  | { type: 'addProject'; project: Omit<Project, 'id' | 'code' | 'phases' | 'status'> & { status?: ProjectStatus } }
+  | { type: 'addProject'; project: Omit<Project, 'id' | 'code' | 'phases' | 'status' | 'payments'> & { status?: ProjectStatus } }
   | { type: 'setProjectStatus'; id: string; status: ProjectStatus }
   | { type: 'updateProject'; id: string; patch: Partial<Project> }
   | { type: 'setPhaseStatus'; projectId: string; key: PhaseKey; status: PhaseStatus }
@@ -24,6 +24,8 @@ export type Action =
   | { type: 'clockOut'; mechanicId: string; date: string; time: string }
   | { type: 'setAttendance'; mechanicId: string; date: string; status: AttendanceStatus; timeIn?: string; timeOut?: string; note?: string }
   | { type: 'clearAttendance'; mechanicId: string; date: string }
+  | { type: 'addPayment'; projectId: string; date: string; amount: number; note?: string }
+  | { type: 'removePayment'; projectId: string; id: string }
   | { type: 'reset' };
 
 const uid = (p: string) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -37,6 +39,7 @@ export function reducer(d: Data, a: Action): Data {
         code: nextProjectCode(d.projects),
         status: a.project.status ?? 'quote',
         phases: buildPhases(a.project.startDate, a.project.targetDate),
+        payments: [],
       };
       return { ...d, projects: [...d.projects, project] };
     }
@@ -119,6 +122,10 @@ export function reducer(d: Data, a: Action): Data {
     }
     case 'clearAttendance':
       return { ...d, attendance: d.attendance.filter((r) => !(r.mechanicId === a.mechanicId && r.date === a.date)) };
+    case 'addPayment':
+      return { ...d, projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, payments: [...p.payments, { id: uid('pay'), date: a.date, amount: a.amount, note: a.note }] } : p)) };
+    case 'removePayment':
+      return { ...d, projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, payments: p.payments.filter((x) => x.id !== a.id) } : p)) };
     case 'reset':
       return buildSeed();
   }

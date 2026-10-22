@@ -42,6 +42,13 @@ export interface Phase {
   end: string;
 }
 
+export interface Payment {
+  id: string;
+  date: string;
+  amount: number;
+  note?: string;
+}
+
 export interface Project {
   id: string;
   code: string;
@@ -61,6 +68,8 @@ export interface Project {
   budget: number;
   phases: Phase[];
   leadMechanicId?: string;
+  /** Money received from the customer (deposit, progress payments). */
+  payments: Payment[];
 }
 
 export interface Task {

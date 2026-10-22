@@ -40,7 +40,7 @@ const defs: Def[] = [
   {
     id: 'p1', code: 'ACR-001', customerId: 'c1', title: 'Frame-off restoration', year: 1967, make: 'Ford', model: 'Mustang Fastback',
     color: 'Highland Green', vin: '7R02C123456', scope: 'Frame-off, 289 rebuild, repaint in original Highland Green, new interior.',
-    start: -55, length: 150, current: 2, budget: 62000, priority: 'high', bay: 'Bay 1',
+    start: -55, length: 150, current: 2, budget: 43000, priority: 'high', bay: 'Bay 1',
     tasks: [
       ['intake', 'Inspection & photo documentation', 'm1', 6, 'done', -54],
       ['teardown', 'Strip, tag & catalogue', 'm4', 8, 'done', -48], ['teardown', 'Frame & subframe media blast', 'm2', 8, 'done', -42],
@@ -61,7 +61,7 @@ const defs: Def[] = [
   {
     id: 'p2', code: 'ACR-002', customerId: 'c2', title: 'Body & paint refresh', year: 1972, make: 'Porsche', model: '911T',
     color: 'Signal Orange', vin: '9112300456', scope: 'Rust repair and full respray in original Signal Orange; re-plate brightwork.',
-    start: -40, length: 80, current: 3, budget: 28000, priority: 'normal', bay: 'Paint booth',
+    start: -40, length: 80, current: 3, budget: 18000, priority: 'normal', bay: 'Paint booth',
     tasks: [
       ['intake', 'Inspection & photo documentation', 'm1', 4, 'done', -39], ['teardown', 'Trim & glass removal', 'm4', 8, 'done', -33],
       ['body', 'Rust repair & panel work', 'm2', 8, 'done', -12], ['body', 'Final body prep', 'm2', 8, 'done', -5],
@@ -81,7 +81,7 @@ const defs: Def[] = [
   {
     id: 'p3', code: 'ACR-003', customerId: 'c3', title: 'Engine rebuild & drivetrain', year: 1969, make: 'Chevrolet', model: 'Camaro SS',
     color: 'Hugger Orange', vin: '124379N500123', scope: '396 rebuild, Muncie 4-speed rebuild, rear end and brakes.',
-    start: -95, length: 85, current: 4, budget: 24000, priority: 'high', bay: 'Bay 2',
+    start: -95, length: 85, current: 4, budget: 11500, priority: 'high', bay: 'Bay 2',
     tasks: [
       ['intake', 'Inspection & photo documentation', 'm1', 4, 'done', -94], ['teardown', 'Engine & trans pull', 'm1', 8, 'done', -80],
       ['body', 'Engine bay clean-up & paint', 'm2', 8, 'done', -50],
@@ -101,7 +101,7 @@ const defs: Def[] = [
   {
     id: 'p4', code: 'ACR-004', customerId: 'c4', title: 'Interior & trim restoration', year: 1958, make: 'Mercedes-Benz', model: '190SL',
     color: 'Silver', vin: '121040850087', scope: 'Full teardown, leather, carpets, wood dash and chrome restoration.',
-    start: -10, length: 120, current: 1, budget: 38000, priority: 'low', bay: 'Bay 3',
+    start: -10, length: 120, current: 1, budget: 25000, priority: 'low', bay: 'Bay 3',
     tasks: [
       ['intake', 'Inspection & photo documentation', 'm1', 6, 'done', -9], ['teardown', 'Strip interior & trim', 'm4', 8, 'done', -4],
       ['teardown', 'Remove drivetrain', 'm4', 8, 'doing', 0], ['teardown', 'Bag & tag hardware', 'm4', 6, 'todo', 2],
@@ -117,7 +117,7 @@ const defs: Def[] = [
   {
     id: 'p6', code: 'ACR-006', customerId: 'c2', title: 'Mechanical recommission', year: 1963, make: 'Chevrolet', model: 'Corvette Sting Ray',
     color: 'Riverside Red', vin: '30837S108771', scope: 'Recommission after long storage; fuel, brakes, tune, detail and handover.',
-    start: -120, length: 130, current: 7, budget: 21000, priority: 'normal', bay: 'Bay 4',
+    start: -120, length: 130, current: 7, budget: 5000, priority: 'normal', bay: 'Bay 4',
     tasks: [
       ['intake', 'Inspection', 'm1', 4, 'done', -118], ['teardown', 'Fuel system removal', 'm4', 8, 'done', -100],
       ['mechanical', 'Fuel, brakes & tune-up', 'm1', 8, 'done', -60], ['assembly', 'Reassembly & wiring', 'm4', 8, 'done', -20],
@@ -130,10 +130,18 @@ const defs: Def[] = [
   {
     id: 'p5', code: 'ACR-005', customerId: 'c1', title: 'Pre-purchase assessment & quote', year: 1963, make: 'Jaguar', model: 'E-Type',
     color: 'British Racing Green', vin: '880456', scope: 'Assess condition and quote a full restoration.',
-    start: 14, length: 150, current: -1, budget: 48000, priority: 'normal', bay: 'Unassigned', status: 'quote',
+    start: 14, length: 150, current: -1, budget: 34000, priority: 'normal', bay: 'Unassigned', status: 'quote',
     tasks: [], parts: [], notes: [],
   },
 ];
+
+const PAYMENTS: Record<string, [number, number, string][]> = {
+  p1: [[54, 0.3, 'Deposit'], [20, 0.15, 'Milestone: teardown complete']],
+  p2: [[39, 0.4, 'Deposit'], [12, 0.2, 'Milestone: bodywork complete']],
+  p3: [[94, 0.4, 'Deposit'], [40, 0.3, 'Milestone: engine out and machined'], [8, 0.1, 'Progress payment']],
+  p4: [[9, 0.3, 'Deposit']],
+  p6: [[119, 0.35, 'Deposit'], [60, 0.35, 'Milestone: mechanical complete'], [18, 0.2, 'Progress payment']],
+};
 
 export function buildSeed(today = todayIso()): Data {
   const projects: Project[] = [];
@@ -164,6 +172,7 @@ export function buildSeed(today = todayIso()): Data {
       id: s.id, code: s.code, customerId: s.customerId, title: s.title, year: s.year, make: s.make, model: s.model,
       color: s.color, vin: s.vin, scope: s.scope, status: s.status ?? 'active', priority: s.priority, bay: s.bay,
       startDate: start, targetDate: target, budget: phpBudget(s.budget), phases,
+      payments: (PAYMENTS[s.id] ?? []).map(([ago, share, note], i) => ({ id: `${s.id}-pay${i + 1}`, date: addDays(today, -ago), amount: Math.round((phpBudget(s.budget) * share) / 1000) * 1000, note })),
       leadMechanicId: s.tasks.find((t) => t[4] === 'doing')?.[2],
     });
 
