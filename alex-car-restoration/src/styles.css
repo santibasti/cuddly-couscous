@@ -4,7 +4,7 @@
   --card-a:rgba(255,255,255,.055);--card-b:rgba(255,255,255,.02);--panel:rgba(255,255,255,.035);--panel2:rgba(255,255,255,.05);
   --line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.16);
   --accent:#d6b072;--accent2:#f0d9a8;--accent-soft:rgba(214,176,114,.14);
-  --btn-bg:#f2eee4;--btn-ink:#14120d;--field:rgba(255,255,255,.05);--arch:#050507;
+  --btn-bg:#f2eee4;--btn-ink:#14120d;--field:rgba(255,255,255,.05);--arch:#050507;--opt:#1a1a20;
   --green:#5fc79a;--amber:#e7b65c;--orange:#ee8a4a;--red:#ef6b64;--blue:#7aa7ff;--violet:#b39bf5;
   --shadow:0 1px 0 rgba(255,255,255,.06) inset,0 24px 48px -24px rgba(0,0,0,.6);
   --page:radial-gradient(1100px 560px at 8% -8%,rgba(214,176,114,.11),transparent 60%),radial-gradient(900px 520px at 105% 0%,rgba(122,167,255,.07),transparent 55%);
@@ -16,7 +16,7 @@
   --card-a:#ffffff;--card-b:#fffefb;--panel:#faf8f3;--panel2:#f3f0e8;
   --line:rgba(23,21,15,.09);--line2:rgba(23,21,15,.18);
   --accent:#9a7433;--accent2:#7d5c22;--accent-soft:rgba(154,116,51,.12);
-  --btn-bg:#17150f;--btn-ink:#fff;--field:#fff;--arch:#2a2822;
+  --btn-bg:#17150f;--btn-ink:#fff;--field:#fff;--arch:#2a2822;--opt:#ffffff;
   --green:#1f9a6b;--amber:#b9830f;--orange:#d2601b;--red:#cf453f;--blue:#2c66d8;--violet:#7550cf;
   --shadow:0 1px 2px rgba(23,21,15,.05),0 18px 36px -22px rgba(23,21,15,.25);
   --page:radial-gradient(1000px 520px at 6% -10%,rgba(154,116,51,.10),transparent 60%);
@@ -92,6 +92,8 @@ input:hover,select:hover,textarea:hover{border-color:var(--line2)}
 input:focus,select:focus,textarea:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 select{appearance:none;padding-right:30px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%238f8c84' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;cursor:pointer}
+option,optgroup{background-color:var(--opt);color:var(--ink)}
+option:checked{background-color:color-mix(in srgb,var(--accent) 24%,var(--opt))}
 textarea{width:100%;min-height:84px;resize:vertical}
 input::placeholder,textarea::placeholder{color:var(--muted)}
 .seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;flex-wrap:wrap}
