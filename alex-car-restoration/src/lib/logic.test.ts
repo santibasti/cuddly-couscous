@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addDays, startOfWeek } from './dates';
-import { buildAlerts, buildPhases, dayLoad, daysOverdue, phasePercent, projectProgress, PHASES } from './logic';
+import { allBlockers, buildAlerts, buildPhases, dayLoad, daysOverdue, isOverbooked, partRisk, phasePercent, projectHealth, projectProgress, PHASES, taskBlocker } from './logic';
 import { buildSeed } from './seed';
 import { reducer } from './store';
 
@@ -58,7 +58,7 @@ describe('reducer', () => {
     const base = d.projects[0];
     d = reducer(d, { type: 'addProject', project: { ...base, status: undefined, startDate: TODAY, targetDate: addDays(TODAY, 60) } });
     const added = d.projects[d.projects.length - 1];
-    expect(added.code).toBe('ACR-006');
+    expect(added.code).toBe('ACR-007');
     expect(added.phases).toHaveLength(PHASES.length);
     expect(added.status).toBe('quote');
   });
@@ -74,5 +74,37 @@ describe('scheduling & alerts', () => {
     d = reducer(d, { type: 'addTask', task: { projectId: p.id, phaseKey: 'body', title: 'B', mechanicId: m.id, date: TODAY, estHours: 6 } });
     expect(dayLoad(d.tasks, m.id, TODAY)).toBeGreaterThanOrEqual(12);
     expect(buildAlerts(d, addDays(p.targetDate, 5)).some((a) => a.projectId === p.id && a.level === 'high')).toBe(true);
+  });
+});
+
+describe('parts, sublets & blockers', () => {
+  const d = buildSeed(TODAY);
+  const part = (id: string) => d.parts.find((p) => p.id === id)!;
+  it('classifies part risk from ETA vs needed-by date', () => {
+    expect(partRisk(part('p1-pt1'), TODAY)).toBe('at_risk'); // backordered NOS, lands after needed
+    expect(partRisk(part('p2-pt2'), TODAY)).toBe('late'); // ETA already passed
+    expect(partRisk(part('p4-pt2'), TODAY)).toBe('order_now'); // not sent out, needed within a week
+    expect(partRisk(part('p1-pt3'), TODAY)).toBe('done'); // received
+  });
+  it('blocks tasks that wait on a part and frees them when it arrives', () => {
+    let s = buildSeed(TODAY);
+    const task = s.tasks.find((t) => t.partId === 'p3-pt1')!; // engine assembly waits on the crank
+    expect(taskBlocker(task, s.parts)?.reason).toBe('vendor');
+    s = reducer(s, { type: 'setPartStatus', id: 'p3-pt1', status: 'received' });
+    expect(taskBlocker(s.tasks.find((t) => t.id === task.id)!, s.parts)).toBeNull();
+  });
+  it('treats a customer-approval hold as a blocker without a part', () => {
+    const t = d.tasks.find((x) => x.blockReason === 'customer')!;
+    expect(taskBlocker(t, d.parts)?.reason).toBe('customer');
+  });
+  it('rolls blockers, lateness and risk into a project health', () => {
+    const h = (id: string) => projectHealth(d.projects.find((p) => p.id === id)!, d, TODAY).health;
+    expect(h('p3')).toBe('late'); // Camaro is past its target date
+    expect(h('p6')).toBe('on_track'); // Corvette is in QC with nothing outstanding
+    expect(h('p5')).toBe('quote');
+    expect(allBlockers(d).length).toBeGreaterThan(0);
+  });
+  it('seed data is not accidentally overbooked', () => {
+    for (const m of d.mechanics) for (const t of d.tasks.filter((x) => x.mechanicId === m.id && x.status !== 'done')) expect(isOverbooked(d.tasks, m, t.date)).toBe(false);
   });
 });

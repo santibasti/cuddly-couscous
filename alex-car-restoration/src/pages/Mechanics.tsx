@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom';
-import { Avatar, Badge, Progress } from '../components/ui';
+import { Avatar, Bar, Card, Pill } from '../components/ui';
 import { addDays, fmtDate, startOfWeek, todayIso } from '../lib/dates';
-import { utilisation } from '../lib/logic';
+import { taskBlocker, utilisation } from '../lib/logic';
 import { useStore } from '../lib/store';
 
-const COLORS = ['#d9534f', '#e0933a', '#3a9d7a', '#4a7fd1', '#8e63c9', '#c2478b', '#4a9aa8'];
+const COLORS = ['#e5553d', '#e8a33d', '#2fb585', '#4c8df0', '#9a6ee0', '#d65aa0', '#3fb0c4'];
 
 export default function Mechanics() {
   const { data, dispatch } = useStore();
@@ -16,47 +16,44 @@ export default function Mechanics() {
     const f = new FormData(e.currentTarget);
     dispatch({
       type: 'addMechanic',
-      mechanic: {
-        name: String(f.get('name')), specialty: String(f.get('specialty')), hourlyRate: Number(f.get('rate')) || 0,
-        dailyHours: Number(f.get('hours')) || 8, color: COLORS[data.mechanics.length % COLORS.length],
-      },
+      mechanic: { name: String(f.get('name')), specialty: String(f.get('specialty')), hourlyRate: Number(f.get('rate')) || 0, dailyHours: Number(f.get('hours')) || 8, color: COLORS[data.mechanics.length % COLORS.length] },
     });
     e.currentTarget.reset();
   }
 
   return (
     <>
-      <div className="head"><h1>Mechanics</h1></div>
+      <div className="head"><div><div className="eyebrow">{data.mechanics.filter((m) => m.active).length} technicians</div><h1>Mechanics</h1></div></div>
       <div className="grid g3">
         {data.mechanics.map((m) => {
           const util = utilisation(data.tasks, m, wk, addDays(wk, 4));
           const mine = data.tasks.filter((t) => t.mechanicId === m.id && t.status !== 'done' && t.date >= today).sort((a, b) => a.date.localeCompare(b.date));
-          const doneHrs = data.tasks.filter((t) => t.mechanicId === m.id).reduce((s, t) => s + t.actualHours, 0);
+          const stuck = mine.filter((t) => taskBlocker(t, data.parts)).length;
+          const hrs = data.tasks.filter((t) => t.mechanicId === m.id).reduce((s, t) => s + t.actualHours, 0);
           return (
-            <div key={m.id} className="card" style={{ opacity: m.active ? 1 : 0.55 }}>
-              <div className="row spread">
-                <div className="row"><Avatar m={m} /><div><strong>{m.name}</strong><div className="small muted">{m.specialty}</div></div></div>
-                <button className="sm" onClick={() => dispatch({ type: 'toggleMechanic', id: m.id })}>{m.active ? 'Deactivate' : 'Activate'}</button>
+            <Card key={m.id} className={m.active ? '' : 'muted'}>
+              <div className="row spread" style={{ flexWrap: 'nowrap' }}>
+                <div className="row" style={{ flexWrap: 'nowrap' }}><Avatar m={m} size={36} /><div><strong>{m.name}</strong><div className="small muted">{m.specialty}</div></div></div>
+                <button className="sm ghost" onClick={() => dispatch({ type: 'toggleMechanic', id: m.id })}>{m.active ? 'Deactivate' : 'Activate'}</button>
               </div>
-              <div className="small muted" style={{ margin: '8px 0 2px' }}>This week: {util}% booked · ${m.hourlyRate}/h · {doneHrs}h logged</div>
-              <Progress value={Math.min(100, util)} tone={util > 100 ? 'bad' : util > 85 ? 'warn' : undefined} />
-              <div style={{ marginTop: 10 }}>
-                <div className="small muted">Upcoming tasks ({mine.length})</div>
-                {mine.slice(0, 4).map((t) => {
-                  const p = data.projects.find((x) => x.id === t.projectId)!;
-                  return <div key={t.id} className="small"><Link to={`/projects/${p.id}`}>{p.code}</Link> · {t.title} <Badge>{fmtDate(t.date)}</Badge></div>;
-                })}
-              </div>
-            </div>
+              <div className="row spread small" style={{ margin: '14px 0 6px' }}><span className="muted">This week booked</span><b className={util > 100 ? 'over' : ''}>{util}%</b></div>
+              <Bar value={util} tone={util > 100 ? 'red' : util > 85 ? 'amber' : undefined} />
+              <div className="row small muted" style={{ margin: '10px 0' }}><span>${m.hourlyRate}/h</span><span>·</span><span>{m.dailyHours}h/day</span><span>·</span><span>{hrs}h logged</span>{stuck > 0 && <Pill tone="orange">{stuck} waiting on parts/approval</Pill>}</div>
+              <div className="eyebrow" style={{ marginBottom: 4 }}>Up next</div>
+              {mine.slice(0, 4).map((t) => {
+                const p = data.projects.find((x) => x.id === t.projectId)!;
+                const b = taskBlocker(t, data.parts);
+                return <div key={t.id} className="small row spread" style={{ flexWrap: 'nowrap', padding: '3px 0' }}><span><Link to={`/projects/${p.id}`} style={{ color: 'var(--accent)' }}>{p.code}</Link> {t.title}{b && ' 🔒'}</span><span className="muted">{fmtDate(t.date)}</span></div>;
+              })}
+              {mine.length === 0 && <div className="small muted">No upcoming tasks.</div>}
+            </Card>
           );
         })}
       </div>
-      <form className="card form" onSubmit={add} style={{ marginTop: 14 }}>
+      <form className="card form mt" onSubmit={add}>
         <h2 className="full">Add a mechanic</h2>
-        <label>Name<input name="name" required /></label>
-        <label>Specialty<input name="specialty" required /></label>
-        <label>Hourly cost ($)<input name="rate" type="number" min="0" /></label>
-        <label>Hours per day<input name="hours" type="number" min="1" max="12" defaultValue={8} /></label>
+        <label>Name<input name="name" required /></label><label>Specialty<input name="specialty" required /></label>
+        <label>Hourly cost ($)<input name="rate" type="number" min="0" /></label><label>Hours per day<input name="hours" type="number" min="1" max="12" defaultValue={8} /></label>
         <div className="full"><button className="primary" type="submit">Add mechanic</button></div>
       </form>
     </>

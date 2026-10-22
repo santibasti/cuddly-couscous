@@ -4,17 +4,19 @@ import { buildPhases, nextProjectCode } from './logic';
 import { buildSeed } from './seed';
 import type { Data, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, Task, TaskStatus } from './types';
 
-const KEY = 'alex-car-restoration:v1';
+const KEY = 'alex-car-restoration:v2';
 
 export type Action =
   | { type: 'addProject'; project: Omit<Project, 'id' | 'code' | 'phases' | 'status'> & { status?: ProjectStatus } }
   | { type: 'setProjectStatus'; id: string; status: ProjectStatus }
+  | { type: 'updateProject'; id: string; patch: Partial<Project> }
   | { type: 'setPhaseStatus'; projectId: string; key: PhaseKey; status: PhaseStatus }
   | { type: 'addTask'; task: Omit<Task, 'id' | 'actualHours' | 'status'> }
   | { type: 'updateTask'; id: string; patch: Partial<Task> }
   | { type: 'deleteTask'; id: string }
   | { type: 'addPart'; part: Omit<Part, 'id'> }
   | { type: 'setPartStatus'; id: string; status: PartStatus }
+  | { type: 'updatePart'; id: string; patch: Partial<Part> }
   | { type: 'addUpdate'; projectId: string; text: string; phaseKey?: PhaseKey; author: string }
   | { type: 'addMechanic'; mechanic: Omit<Mechanic, 'id' | 'active'> }
   | { type: 'toggleMechanic'; id: string }
@@ -36,6 +38,8 @@ export function reducer(d: Data, a: Action): Data {
     }
     case 'setProjectStatus':
       return { ...d, projects: d.projects.map((p) => (p.id === a.id ? { ...p, status: a.status } : p)) };
+    case 'updateProject':
+      return { ...d, projects: d.projects.map((p) => (p.id === a.id ? { ...p, ...a.patch } : p)) };
     case 'setPhaseStatus':
       return {
         ...d,
@@ -68,7 +72,19 @@ export function reducer(d: Data, a: Action): Data {
     case 'addPart':
       return { ...d, parts: [...d.parts, { ...a.part, id: uid('pt') }] };
     case 'setPartStatus':
-      return { ...d, parts: d.parts.map((p) => (p.id === a.id ? { ...p, status: a.status } : p)) };
+      return {
+        ...d,
+        parts: d.parts.map((p) => {
+          if (p.id !== a.id) return p;
+          const next = { ...p, status: a.status };
+          // Moving past "to order" stamps the order date; arrival clears the ETA.
+          if (a.status !== 'needed' && !p.orderedOn) next.orderedOn = todayIso();
+          if (a.status === 'received') next.eta = todayIso();
+          return next;
+        }),
+      };
+    case 'updatePart':
+      return { ...d, parts: d.parts.map((p) => (p.id === a.id ? { ...p, ...a.patch } : p)) };
     case 'addUpdate':
       return {
         ...d,

@@ -1,40 +1,38 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Badge, Progress, carName, statusLabel, statusTone } from '../components/ui';
+import { Bar, Card, Empty, HealthPill, Icon, Seg, carName } from '../components/ui';
 import { addDays, fmtDate, todayIso } from '../lib/dates';
-import { daysOverdue, money, projectProgress } from '../lib/logic';
+import { BAYS, currentPhase, daysOverdue, money, phaseShort, projectCosts, projectHealth, projectProgress, type Health } from '../lib/logic';
 import { useStore } from '../lib/store';
-import type { ProjectStatus } from '../lib/types';
 
-const FILTERS: (ProjectStatus | 'all')[] = ['all', 'quote', 'active', 'on_hold', 'completed', 'delivered'];
+type Filter = 'all' | Health;
 
 export default function Projects() {
   const { data, dispatch } = useStore();
   const nav = useNavigate();
-  const [filter, setFilter] = useState<ProjectStatus | 'all'>('all');
+  const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
   const today = todayIso();
 
-  const rows = data.projects.filter((p) => {
+  const all = data.projects.map((p) => ({ p, ...projectHealth(p, data, today) }));
+  const rows = all.filter(({ p, health }) => {
     const cust = data.customers.find((c) => c.id === p.customerId)?.name ?? '';
-    return (filter === 'all' || p.status === filter) && `${p.code} ${carName(p)} ${cust}`.toLowerCase().includes(q.toLowerCase());
+    return (filter === 'all' || health === filter) && `${p.code} ${carName(p)} ${cust}`.toLowerCase().includes(q.toLowerCase());
   });
+  const n = (h: Health) => all.filter((x) => x.health === h).length;
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const s = (k: string) => String(f.get(k) ?? '').trim();
-    const start = s('start');
-    const target = s('target');
-    if (target <= start) return alert('Target date must be after the start date.');
-    const customerId = s('customer');
+    if (s('target') <= s('start')) return alert('Target date must be after the start date.');
     dispatch({
       type: 'addProject',
       project: {
-        customerId, title: s('title') || 'Restoration', year: Number(s('year')) || 1970, make: s('make'), model: s('model'),
+        customerId: s('customer'), title: s('title') || 'Restoration', year: Number(s('year')) || 1970, make: s('make'), model: s('model'),
         color: s('color'), vin: s('vin'), scope: s('scope'), priority: 'normal', bay: s('bay') || 'Unassigned',
-        startDate: start, targetDate: target, budget: Number(s('budget')) || 0,
+        startDate: s('start'), targetDate: s('target'), budget: Number(s('budget')) || 0,
       },
     });
     setAdding(false);
@@ -44,51 +42,60 @@ export default function Projects() {
   return (
     <>
       <div className="head">
-        <h1>Projects</h1>
-        <button className="primary" onClick={() => setAdding(!adding)}>{adding ? 'Cancel' : '+ New project'}</button>
+        <div><div className="eyebrow">{data.projects.length} jobs</div><h1>Projects</h1></div>
+        <button className="primary" onClick={() => setAdding(!adding)}>{adding ? 'Cancel' : <><Icon name="plus" />New project</>}</button>
       </div>
       {adding && (
-        <form className="card form" onSubmit={submit} style={{ marginBottom: 14 }}>
+        <form className="card form" onSubmit={submit} style={{ marginBottom: 16 }}>
           <label>Customer<select name="customer" required>{data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           <label>Job title<input name="title" placeholder="Full restoration" /></label>
+          <label>Bay<select name="bay"><option>Unassigned</option>{BAYS.map((b) => <option key={b}>{b}</option>)}</select></label>
           <label>Year<input name="year" type="number" required /></label>
           <label>Make<input name="make" required /></label>
           <label>Model<input name="model" required /></label>
           <label>Colour<input name="color" /></label>
           <label>VIN<input name="vin" /></label>
-          <label>Bay<input name="bay" placeholder="Bay 1" /></label>
+          <label>Budget ($)<input name="budget" type="number" min="0" /></label>
           <label>Start date<input name="start" type="date" defaultValue={today} required /></label>
           <label>Target delivery<input name="target" type="date" defaultValue={addDays(today, 90)} required /></label>
-          <label>Budget ($)<input name="budget" type="number" min="0" /></label>
+          <span />
           <label className="full">Scope of work<textarea name="scope" /></label>
-          <div className="full"><button className="primary" type="submit">Create project (phases are scheduled automatically)</button></div>
+          <div className="full"><button className="primary" type="submit">Create project — phases are scheduled automatically</button></div>
         </form>
       )}
-      <div className="row" style={{ marginBottom: 12 }}>
-        <input placeholder="Search code, vehicle, customer…" value={q} onChange={(e) => setQ(e.target.value)} />
-        {FILTERS.map((f) => <button key={f} className={`sm ${filter === f ? 'primary' : ''}`} onClick={() => setFilter(f)}>{f === 'all' ? 'All' : statusLabel(f)}</button>)}
+      <div className="row spread" style={{ marginBottom: 14 }}>
+        <Seg<Filter> value={filter} onChange={setFilter} options={[
+          { value: 'all', label: 'All', count: all.length }, { value: 'on_track', label: 'On track', count: n('on_track') },
+          { value: 'at_risk', label: 'At risk', count: n('at_risk') }, { value: 'blocked', label: 'Blocked', count: n('blocked') },
+          { value: 'late', label: 'Late', count: n('late') }, { value: 'quote', label: 'Quotes', count: n('quote') },
+        ]} />
+        <input placeholder="Search code, vehicle, customer…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 260 }} />
       </div>
-      <div className="card">
+      <Card flush>
         <table>
-          <thead><tr><th>Project</th><th>Customer</th><th>Status</th><th style={{ width: '20%' }}>Progress</th><th>Target</th><th>Budget</th></tr></thead>
+          <thead><tr><th>Project</th><th>Health</th><th>Phase</th><th style={{ width: 160 }}>Progress</th><th>Blocking / risk</th><th>Target</th><th style={{ width: 130 }}>Budget</th></tr></thead>
           <tbody>
-            {rows.map((p) => {
+            {rows.map(({ p, health, reasons }) => {
               const pct = projectProgress(p, data.tasks);
+              const spent = projectCosts(p, data.tasks, data.parts, data.mechanics).total;
+              const cp = currentPhase(p);
+              const over = daysOverdue(p, today);
               return (
                 <tr key={p.id}>
-                  <td><Link to={`/projects/${p.id}`}><strong>{p.code}</strong> · {carName(p)}</Link><div className="small muted">{p.title}</div></td>
-                  <td>{data.customers.find((c) => c.id === p.customerId)?.name}</td>
-                  <td><Badge tone={statusTone[p.status]}>{statusLabel(p.status)}</Badge></td>
-                  <td><Progress value={pct} tone={daysOverdue(p, today) ? 'bad' : undefined} /><span className="small muted">{pct}%</span></td>
-                  <td>{fmtDate(p.targetDate)}</td>
-                  <td>{money(p.budget)}</td>
+                  <td><Link to={`/projects/${p.id}`} className="plink"><strong>{p.code} · {data.customers.find((c) => c.id === p.customerId)?.name}</strong><span>{carName(p)} — {p.title}</span></Link></td>
+                  <td><HealthPill h={health} /></td>
+                  <td>{p.status === 'active' && cp ? phaseShort(cp.key) : <span className="muted">—</span>}</td>
+                  <td><div className="row" style={{ flexWrap: 'nowrap' }}><div className="grow"><Bar value={pct} tone={over ? 'red' : undefined} /></div><span className="small num">{pct}%</span></div></td>
+                  <td className="small" style={{ maxWidth: 260 }}>{reasons[0] ?? <span className="muted">—</span>}{reasons.length > 1 && <span className="muted"> +{reasons.length - 1}</span>}</td>
+                  <td className={`num ${over ? 'over' : ''}`}>{fmtDate(p.targetDate)}</td>
+                  <td><div className="small num">{money(spent)} <span className="muted">/ {money(p.budget)}</span></div><Bar thin value={p.budget ? (spent / p.budget) * 100 : 0} tone={spent > p.budget ? 'red' : spent > p.budget * 0.9 ? 'amber' : 'green'} /></td>
                 </tr>
               );
             })}
-            {!rows.length && <tr><td colSpan={6} className="muted">No projects match.</td></tr>}
+            {!rows.length && <tr><td colSpan={7}><Empty>No projects match.</Empty></td></tr>}
           </tbody>
         </table>
-      </div>
+      </Card>
     </>
   );
 }

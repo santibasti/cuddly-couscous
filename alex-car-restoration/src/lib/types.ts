@@ -10,9 +10,11 @@ export type PhaseKey =
   | 'delivery';
 
 export type PhaseStatus = 'todo' | 'in_progress' | 'done';
-export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskStatus = 'todo' | 'in_progress' | 'blocked' | 'done';
+export type BlockReason = 'customer' | 'vendor' | 'other';
+export type PartKind = 'part' | 'sublet';
 export type ProjectStatus = 'quote' | 'active' | 'on_hold' | 'completed' | 'delivered';
-export type PartStatus = 'needed' | 'ordered' | 'received' | 'installed';
+export type PartStatus = 'needed' | 'ordered' | 'shipped' | 'backordered' | 'received' | 'installed';
 export type Priority = 'low' | 'normal' | 'high';
 
 export interface Mechanic {
@@ -70,16 +72,28 @@ export interface Task {
   estHours: number;
   actualHours: number;
   status: TaskStatus;
+  /** Task cannot proceed until this part / sublet job is back in the shop. */
+  partId?: string;
+  /** Manual block (customer approval, vendor, other) when not driven by a part. */
+  blockReason?: BlockReason;
+  blockNote?: string;
 }
 
 export interface Part {
   id: string;
   projectId: string;
   name: string;
+  kind: PartKind;
   supplier: string;
   cost: number;
   status: PartStatus;
+  phaseKey?: PhaseKey;
+  po?: string;
+  orderedOn?: string;
   eta?: string;
+  /** Date the work needs it by. */
+  neededBy: string;
+  note?: string;
 }
 
 export interface Update {
