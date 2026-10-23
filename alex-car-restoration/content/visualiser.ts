@@ -15,22 +15,47 @@ export type Option = { id: string; name: string; hex: string };
 export const visualiserIntro = {
   eyebrow: "Design Visualiser",
   title: "Imagine it. Then we build it.",
-  intro: "Explore paint and interior combinations on an illustrative classic roadster. It is a design aid only; final colours and materials are chosen with you at consultation.",
+  intro: "Explore paint and interior combinations on illustrative classic cars. It is a design aid only; final colours and materials are chosen with you at consultation.",
   disclaimer: "Illustrative recolour of a studio photograph, not a specific vehicle or past project. On-screen colours are approximate; physical paint and trim samples are confirmed at consultation.",
 };
 
-export const car = {
-  base: "/visualiser/mercedes-190sl-base.webp",
-  masks: "/visualiser/mercedes-190sl-masks.png",
-  width: 1200,
-  height: 900,
-  alt: "Classic white roadster with a red interior, shown in a studio. Paint and interior colours can be changed.",
+export type DemoCar = {
+  id: string;
+  name: string;
+  base: string;
+  masks: string;
+  width: number;
+  height: number;
+  alt: string;
   /** Median luminance of the original paint / upholstery, used to keep real shading */
-  paintRef: 0.884,
-  interiorRef: 0.366,
+  paintRef: number;
+  interiorRef: number;
+  /** false = no recolourable interior in this photo (hides the interior swatches) */
+  hasInterior: boolean;
   /** Photo credit / licence note (fill in if required) */
-  credit: "",
+  credit: string;
 };
+
+export const cars: DemoCar[] = [
+  {
+    id: "roadster",
+    name: "Classic Roadster",
+    base: "/visualiser/mercedes-190sl-base.webp",
+    masks: "/visualiser/mercedes-190sl-masks.png",
+    width: 1200, height: 900,
+    alt: "Classic white roadster with a red interior, shown in a studio. Paint and interior colours can be changed.",
+    paintRef: 0.884, interiorRef: 0.366, hasInterior: true, credit: "",
+  },
+  {
+    id: "coupe",
+    name: "Classic Coupe",
+    base: "/visualiser/coupe-base.webp",
+    masks: "/visualiser/coupe-masks.png",
+    width: 1200, height: 900,
+    alt: "Classic red sports coupe on a dark background. The paint colour can be changed.",
+    paintRef: 0.298, interiorRef: 0.366, hasInterior: false, credit: "",
+  },
+];
 
 export const paints: Option[] = [
   { id: "ivory", name: "Ivory White", hex: "#E7E3D6" },

@@ -3,7 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
-import { car, paints, leathers, visualiserIntro, type Option } from "@/content/visualiser";
+import { cars, paints, leathers, visualiserIntro, type Option } from "@/content/visualiser";
 
 type Prepared = { base: Uint8ClampedArray; lum: Float32Array; body: Uint8ClampedArray; inter: Uint8ClampedArray };
 
@@ -55,15 +55,20 @@ function Swatches({ label, options, value, onChange }: { label: string; options:
 
 export default function Visualiser() {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const data = useRef<Prepared | null>(null);
+  const cache = useRef<Record<string, Prepared>>({});
+  const [carId, setCarId] = useState(cars[0].id);
+  const car = cars.find((c) => c.id === carId) ?? cars[0];
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [paint, setPaint] = useState("ivory");
+  const [paint, setPaint] = useState("racing");
   const [leather, setLeather] = useState("red");
   const get = (list: Option[], id: string) => list.find((o) => o.id === id)!;
 
   useEffect(() => {
     let alive = true;
+    setFailed(false);
+    if (cache.current[car.id]) { setReady(true); return; }
+    setReady(false);
     Promise.all([loadImage(car.base), loadImage(car.masks)]).then(([b, m]) => {
       if (!alive) return;
       const base = pixels(b), mk = pixels(m);
@@ -72,14 +77,14 @@ export default function Visualiser() {
         lum[i] = (0.299 * base[i * 4] + 0.587 * base[i * 4 + 1] + 0.114 * base[i * 4 + 2]) / 255;
         body[i] = mk[i * 4]; inter[i] = mk[i * 4 + 1];
       }
-      data.current = { base, lum, body, inter };
+      cache.current[car.id] = { base, lum, body, inter };
       setReady(true);
     }).catch(() => alive && setFailed(true));
     return () => { alive = false; };
-  }, []);
+  }, [car]);
 
   useEffect(() => {
-    const d = data.current, c = canvas.current;
+    const d = cache.current[car.id], c = canvas.current;
     if (!ready || !d || !c) return;
     const ctx = c.getContext("2d")!;
     const img = ctx.createImageData(car.width, car.height), o = img.data;
@@ -102,19 +107,25 @@ export default function Visualiser() {
       o[j + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
-  }, [ready, paint, leather]);
+  }, [ready, paint, leather, car]);
 
-  const summary = `Design visualiser choices (illustrative): Paint - ${get(paints, paint).name}; Interior leather - ${get(leathers, leather).name}.`;
+  const summary = `Design visualiser choices (illustrative, ${car.name}): Paint - ${get(paints, paint).name}${car.hasInterior ? `; Interior leather - ${get(leathers, leather).name}` : ""}.`;
   const href = `/contact?visualiser=${encodeURIComponent(summary)}`;
 
   return (
     <section aria-label="Colour and interior visualiser" className="bg-obsidian pb-14 sm:pb-20 lg:pb-32">
       <div className="container-x grid gap-8 lg:grid-cols-12 lg:gap-14">
         <div className="lg:col-span-7">
+          <div role="group" aria-label="Choose a demo car" className="mb-4 flex flex-wrap gap-2">
+            {cars.map((c) => (
+              <button key={c.id} type="button" onClick={() => setCarId(c.id)} aria-pressed={c.id === carId}
+                className={`border px-5 py-3 text-[11px] uppercase tracking-[0.22em] transition-colors ${c.id === carId ? "border-warm bg-warm text-obsidian" : "border-silver/30 text-silver hover:border-warm hover:text-warm"}`}>{c.name}</button>
+            ))}
+          </div>
           <div className="relative aspect-[4/3] overflow-hidden border border-silver/15 bg-graphite">
-            <Image src={car.base} alt={car.alt} fill priority sizes="(min-width:1024px) 58vw, 100vw" className="object-cover" />
+            <Image key={car.id} src={car.base} alt={car.alt} fill priority sizes="(min-width:1024px) 58vw, 100vw" className="object-cover" />
             <canvas ref={canvas} width={car.width} height={car.height} role="img"
-              aria-label={`Classic roadster shown with ${get(paints, paint).name} paint and ${get(leathers, leather).name} leather interior`}
+              aria-label={`${car.name} shown with ${get(paints, paint).name} paint${car.hasInterior ? ` and ${get(leathers, leather).name} leather interior` : ""}`}
               className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${ready ? "opacity-100" : "opacity-0"}`} />
             <span className="absolute bottom-3 left-3 border border-silver/30 bg-obsidian/70 px-2 py-1 text-[9px] uppercase tracking-[0.22em] text-silver">Illustrative recolour</span>
           </div>
@@ -124,12 +135,12 @@ export default function Visualiser() {
 
         <div className="space-y-6 lg:col-span-5">
           <Swatches label="Paint" options={paints} value={paint} onChange={setPaint} />
-          <Swatches label="Interior" options={leathers} value={leather} onChange={setLeather} />
+          {car.hasInterior ? <Swatches label="Interior" options={leathers} value={leather} onChange={setLeather} /> : <p className="border-t border-silver/15 pt-5 text-xs leading-relaxed text-silver">Interior colours are available on the roadster. This coupe photo shows paint only.</p>}
           <div className="border border-silver/15 bg-graphite p-5" aria-live="polite">
             <p className="eyebrow mb-3">Your selection</p>
             <ul className="space-y-1 text-sm text-warm/80">
               <li>Paint: {get(paints, paint).name}</li>
-              <li>Interior: {get(leathers, leather).name} leather</li>
+              {car.hasInterior && <li>Interior: {get(leathers, leather).name} leather</li>}
             </ul>
             <Link href={href} className="btn-primary mt-5 w-full">Send My Choices</Link>
           </div>
