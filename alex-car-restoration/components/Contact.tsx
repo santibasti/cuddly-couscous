@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2, MessageCircle, Phone, MapPin, Mail } from "lucide-react";
 import Reveal from "./Reveal";
@@ -12,6 +12,11 @@ export default function Contact({ as: H = "h2" }: { as?: "h1" | "h2" }) {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
   const [appointment, setAppointment] = useState(false);
+  const [prefill, setPrefill] = useState("");
+  useEffect(() => {
+    const v = new URLSearchParams(window.location.search).get("visualiser");
+    if (v) setPrefill(v.slice(0, 600));
+  }, []);
   const c = site.contact;
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -97,7 +102,7 @@ export default function Contact({ as: H = "h2" }: { as?: "h1" | "h2" }) {
                       {["Phone call", "WhatsApp", "Messenger", "Email"].map((m) => <option key={m} className="bg-graphite">{m}</option>)}
                     </select></div>
                   <div className="sm:col-span-2"><label className="label" htmlFor="description">Project Description *</label>
-                    <textarea className="field resize-none" id="description" name="description" rows={4} required /></div>
+                    <textarea key={prefill} className="field resize-none" id="description" name="description" rows={4} defaultValue={prefill} required /></div>
                   <div className="sm:col-span-2"><label className="label" htmlFor="photos">Upload Vehicle Photos (up to 6 images, 5 MB each)</label>
                     <input className="field file:mr-4 file:border-0 file:bg-obsidian file:px-4 file:py-2 file:text-[11px] file:uppercase file:tracking-[0.18em] file:text-silver" id="photos" name="photos" type="file" accept="image/*" multiple /></div>
                   <div className="sm:col-span-2">

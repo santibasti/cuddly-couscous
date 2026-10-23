@@ -24,6 +24,10 @@ export default async function ServicesPage() {
           <p className="text-sm text-warm/75">Frame-On or Frame-Off? Explore both 10-stage restoration methodologies.</p>
           <Link href="/process" className="btn-ghost">Our Process</Link>
         </div>
+        <div className="container-x mt-6 flex flex-col gap-4 border-t border-silver/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-warm/75">Curious how a colour or interior might look? Try the design visualiser.</p>
+          <Link href="/visualiser" className="btn-ghost">Colour &amp; Interior Visualiser</Link>
+        </div>
       </section>
       <RestorationValue />
       <ConsultationCta />
