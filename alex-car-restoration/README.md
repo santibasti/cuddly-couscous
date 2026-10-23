@@ -53,3 +53,6 @@ Edit `content/projects.ts` only (full instructions and a template are at the top
 | `/contact` | Contact | Inquiry form, contact details, client FAQ |
 
 Old `/projects` URLs redirect to `/portfolio`. Navigation items live in `content/site.ts`; previews on the home page link to the full pages (no section is repeated in full on two pages).
+
+## Colour & interior visualiser
+`/visualiser` recolours a studio photograph in the browser using a mask image (`public/visualiser/*-masks.png`: red channel = paint, green channel = upholstery). Options live in `content/visualiser.ts`. To change the demo car, replace the base photo and mask (same pixel size) and update `car` in that file. It is labelled illustrative; confirm the licence for the photo before publishing (there is a `credit` field for attribution).
