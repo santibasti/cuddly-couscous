@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Avatar, CarArt, Card, carName, HealthPill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
+import { Avatar, CarArt, Card, carName, HealthPill, ServicePill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
 import { paintHex } from '../lib/paint';
 import { resizeImage } from '../lib/photo';
 import { diffDays, fmtDate, todayIso } from '../lib/dates';
-import { BAYS, PART_FLOW, PHASES, currentPhase, daysOverdue, isPartIn, money, moneyC, partRisk, partStatusLabel, phaseLabel, phasePercent, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
+import { BAYS, PACKAGES, PART_FLOW, currentPhase, daysOverdue, isPartIn, money, moneyC, partRisk, partStatusLabel, phaseLabel, phasePercent, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { useStore } from '../lib/store';
 import type { BlockReason, PartKind, PartStatus, PhaseKey, ProjectStatus, TaskStatus } from '../lib/types';
 
@@ -64,9 +64,9 @@ export default function ProjectDetail() {
       <section className="phero rise" style={{ '--paint': paintHex(p) } as React.CSSProperties}>
         {p.photo ? <img className="phero-photo" src={p.photo} alt={carName(p)} /> : <div className="art"><CarArt color={paintHex(p)} car={p} /></div>}
         <div className="txt">
-          <div className="row" style={{ marginBottom: 14 }}><span className="eyebrow">{p.code} · {p.year} · {p.bay}</span><HealthPill h={health} /></div>
+          <div className="row" style={{ marginBottom: 14 }}><span className="eyebrow">{p.code} · {p.year} · {p.bay}</span><ServicePill s={p.service} /><HealthPill h={health} /></div>
           <h1>{p.make} <em>{p.model}</em></h1>
-          <p className="muted" style={{ margin: '12px 0 0' }}>{p.title} · {p.color} · {customer?.name} ({customer?.phone})</p>
+          <p className="muted" style={{ margin: '12px 0 0' }}>{p.packageName ?? p.title} · {p.color} · {customer?.name} ({customer?.phone})</p>
           <div className="row" style={{ marginTop: 20 }}>
             <select value={p.status} onChange={(e) => dispatch({ type: 'setProjectStatus', id: p.id, status: e.target.value as ProjectStatus })}>
               {(['quote', 'active', 'on_hold', 'completed', 'delivered'] as ProjectStatus[]).map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
@@ -102,13 +102,13 @@ export default function ProjectDetail() {
       )}
 
       <Card title="Phases" action={<span className="muted small">Select a phase to update it</span>}>
-        <div className="stepper">
+        <div className="stepper" style={{ gridTemplateColumns: `repeat(${p.phases.length}, minmax(86px, 1fr))` }}>
           {p.phases.map((ph, i) => {
             const late = ph.status !== 'done' && p.status === 'active' && ph.end < today;
             return (
               <button key={ph.key} className={`stp ${ph.status} ${late ? 'late' : ''} ${sel.key === ph.key ? 'sel' : ''}`} onClick={() => setSelKey(ph.key)}>
                 <span className="n">{ph.status === 'done' ? <Icon name="check" size={14} /> : i + 1}</span>
-                <span className="l">{PHASES.find((x) => x.key === ph.key)!.short}</span>
+                <span className="l">{phaseShort(ph.key)}</span>
                 <span className="d">{fmtDate(ph.start)}</span>
               </button>
             );
@@ -117,7 +117,7 @@ export default function ProjectDetail() {
         <div className="row spread" style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--line)' }}>
           <div>
             <div className="serif" style={{ fontSize: 24 }}>{phaseLabel(sel.key)}</div>
-            <div className="small muted">{fmtDate(sel.start)} – {fmtDate(sel.end)} · {phasePercent(p, sel.key, data.tasks)}% of tasks done · {tasks.filter((t) => t.phaseKey === sel.key).length} tasks</div>
+            <div className="small muted">{fmtDate(sel.start)} – {fmtDate(sel.end)} · {phasePercent(p, sel.key, data.tasks)}% of tasks done · {tasks.filter((t) => t.phaseKey === sel.key).length === 1 ? '1 task' : `${tasks.filter((t) => t.phaseKey === sel.key).length} tasks`}</div>
           </div>
           <div className="row">
             <Seg value={sel.status} onChange={(v) => dispatch({ type: 'setPhaseStatus', projectId: p.id, key: sel.key, status: v })}
@@ -126,6 +126,17 @@ export default function ProjectDetail() {
         </div>
         <p className="small muted" style={{ margin: '12px 0 0' }}>{p.scope}</p>
       </Card>
+
+      {p.service === 'ceramic' && (() => {
+        const years = PACKAGES.ceramic.find((x) => x.name === p.packageName)?.warrantyYears;
+        return years ? (
+          <div className="callout" style={{ marginTop: 16, borderColor: 'color-mix(in srgb, var(--violet) 45%, var(--line))' }}>
+            <span className="ico"><Icon name="check" /></span>
+            <div><strong>{years}-year coating warranty</strong>
+              <div className="small muted">Starts at handover. A free maintenance check is due 12 months later. Keep the product batch number and the before and after photos with the warranty card.</div></div>
+          </div>
+        ) : null;
+      })()}
 
       <div className="tabs">
         {([['work', `Work (${tasks.length})`], ['parts', `Parts & sublets (${parts.length})`], ['billing', `Billing (${p.payments.length})`], ['log', `Progress log (${updates.length})`]] as [Tab, string][]).map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
@@ -144,7 +155,7 @@ export default function ProjectDetail() {
                     <td><div className="row" style={{ flexWrap: 'nowrap' }}><Avatar m={data.mechanics.find((m) => m.id === t.mechanicId)} size={22} />
                       <select className="inline" value={t.mechanicId ?? ''} onChange={(e) => patch(t.id, { mechanicId: e.target.value || undefined })}><option value="">Unassigned</option>{team.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div></td>
                     <td><input type="date" className="inline" value={t.date} onChange={(e) => e.target.value && patch(t.id, { date: e.target.value })} /></td>
-                    <td><input type="number" className="inline" min="0" step="0.5" style={{ width: 58 }} value={t.status === 'done' ? t.actualHours : t.estHours} onChange={(e) => patch(t.id, t.status === 'done' ? { actualHours: Number(e.target.value) } : { estHours: Number(e.target.value) })} /></td>
+                    <td><input type="number" className="inline" min="0" step="0.5" style={{ width: 84 }} value={t.status === 'done' ? t.actualHours : t.estHours} onChange={(e) => patch(t.id, t.status === 'done' ? { actualHours: Number(e.target.value) } : { estHours: Number(e.target.value) })} /></td>
                     <td style={{ maxWidth: 210 }}>
                       <select className="inline" value={t.partId ?? ''} onChange={(e) => patch(t.id, { partId: e.target.value || undefined })}><option value="">Nothing</option>{parts.filter((x) => !isPartIn(x) || x.id === t.partId).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
                       {b && <div className="small" style={{ marginTop: 3 }}><Pill tone="orange">{b.eta ? `ETA ${fmtDate(b.eta)}` : 'Blocked'}</Pill></div>}
@@ -169,7 +180,7 @@ export default function ProjectDetail() {
           </table>
           <form className="row addbar" onSubmit={addTask}>
             <input name="title" placeholder="New task" required style={{ flex: 1, minWidth: 160 }} />
-            <select name="phase">{PHASES.map((ph) => <option key={ph.key} value={ph.key}>{ph.short}</option>)}</select>
+            <select name="phase">{p.phases.map((ph) => <option key={ph.key} value={ph.key}>{phaseShort(ph.key)}</option>)}</select>
             <select name="mechanic"><option value="">Unassigned</option>{team.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
             <select name="part"><option value="">No part needed</option>{parts.filter((x) => !isPartIn(x)).map((x) => <option key={x.id} value={x.id}>Waits on: {x.name}</option>)}</select>
             <input name="date" type="date" defaultValue={today} required />
@@ -243,7 +254,7 @@ export default function ProjectDetail() {
           <form onSubmit={(e) => { e.preventDefault(); if (note.trim()) { dispatch({ type: 'addUpdate', projectId: p.id, text: note.trim(), phaseKey: notePhase || undefined, author: 'Alex' }); setNote(''); } }}>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Post an update for this build — what was done, what's holding it up, what the customer was told…" />
             <div className="row" style={{ marginTop: 8 }}>
-              <select value={notePhase} onChange={(e) => setNotePhase(e.target.value as PhaseKey | '')}><option value="">General</option>{PHASES.map((ph) => <option key={ph.key} value={ph.key}>{ph.label}</option>)}</select>
+              <select value={notePhase} onChange={(e) => setNotePhase(e.target.value as PhaseKey | '')}><option value="">General</option>{p.phases.map((ph) => <option key={ph.key} value={ph.key}>{phaseLabel(ph.key)}</option>)}</select>
               <button className="primary" type="submit">Post update</button>
             </div>
           </form>

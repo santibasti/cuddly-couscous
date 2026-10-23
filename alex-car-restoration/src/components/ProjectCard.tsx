@@ -3,7 +3,7 @@ import { fmtDate } from '../lib/dates';
 import { currentPhase, daysOverdue, moneyC, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { paintHex } from '../lib/paint';
 import type { Data, Project } from '../lib/types';
-import { Avatar, Bar, CarArt, HealthPill, Icon, Ring, carName } from './ui';
+import { Avatar, Bar, CarArt, HealthPill, Icon, Ring, ServicePill } from './ui';
 
 export default function ProjectCard({ p, data, today }: { p: Project; data: Data; today: string }) {
   const { health, reasons } = projectHealth(p, data, today);
@@ -25,9 +25,9 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
       </div>
       <div className="body">
         <div>
-          <div className="eyebrow">{p.code} · {p.year}</div>
+          <div className="row" style={{ gap: 8 }}><span className="eyebrow">{p.code} · {p.year}</span><ServicePill s={p.service} /></div>
           <h3>{p.make} {p.model}</h3>
-          <div className="small muted">{p.title} · {customer?.name}</div>
+          <div className="small muted">{p.packageName ?? p.title} · {customer?.name}</div>
         </div>
         {p.status !== 'quote' && (
           <div className="dots" title={cur ? `Current phase: ${phaseShort(cur.key)}` : undefined}>

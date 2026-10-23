@@ -1,13 +1,16 @@
 import { Link } from 'react-router-dom';
 import ProjectCard from '../components/ProjectCard';
-import { Avatar, CarArt, Card, Empty, Icon, RiskPill, StripStat, carName } from '../components/ui';
+import { useState } from 'react';
+import { Avatar, CarArt, Card, Empty, Icon, RiskPill, Seg, StripStat, carName } from '../components/ui';
 import { paintHex } from '../lib/paint';
 import { addDays, diffDays, fmtDate, fmtDay, isWeekend, todayIso } from '../lib/dates';
-import { allBlockers, attFor, dayLoad, isOut, money, moneyC, partRisk, projectCosts, projectHealth, RISK_RANK, BAYS } from '../lib/logic';
+import { SERVICES, SERVICE_KEYS, allBlockers, attFor, dayLoad, isOut, money, moneyC, partRisk, projectCosts, projectHealth, RISK_RANK, BAYS } from '../lib/logic';
 import { useStore } from '../lib/store';
+import type { ServiceType } from '../lib/types';
 
 export default function Dashboard() {
   const { data } = useStore();
+  const [svcFilter, setSvcFilter] = useState<'all' | ServiceType>('all');
   const today = todayIso();
   const active = data.projects.filter((p) => p.status === 'active');
   const quotes = data.projects.filter((p) => p.status === 'quote');
@@ -72,9 +75,12 @@ export default function Dashboard() {
       </Card>
 
       <div className="section-t"><h2>In the shop</h2><span className="muted small">{freeBays.length ? `${freeBays.join(', ')} available` : 'All bays occupied'}</span></div>
+      <div style={{ marginBottom: 14 }}>
+        <Seg<'all' | ServiceType> value={svcFilter} onChange={setSvcFilter} options={[{ value: 'all', label: 'All services', count: active.length }, ...SERVICE_KEYS.map((k) => ({ value: k as 'all' | ServiceType, label: SERVICES[k].label, count: active.filter((p) => p.service === k).length }))]} />
+      </div>
       <div className="cards">
-        {active.map((p) => <ProjectCard key={p.id} p={p} data={data} today={today} />)}
-        {freeBays.map((bay) => (
+        {active.filter((p) => svcFilter === 'all' || p.service === svcFilter).map((p) => <ProjectCard key={p.id} p={p} data={data} today={today} />)}
+        {svcFilter === 'all' && freeBays.slice(0, 1).map((bay) => (
           <Link key={bay} to="/projects" className="pcard free rise">
             <div className="eyebrow">{bay}</div>
             <div className="serif" style={{ fontSize: 24 }}>Available</div>

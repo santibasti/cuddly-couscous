@@ -4,7 +4,7 @@ import { buildPhases, isLateIn, nextProjectCode, OUT_STATUSES } from './logic';
 import { buildSeed } from './seed';
 import type { AttendanceStatus, Data, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, Task, TaskStatus } from './types';
 
-const KEY = 'alex-car-restoration:v5';
+const KEY = 'alex-car-restoration:v6';
 
 export type Action =
   | { type: 'addProject'; project: Omit<Project, 'id' | 'code' | 'phases' | 'status' | 'payments'> & { status?: ProjectStatus } }
@@ -38,7 +38,7 @@ export function reducer(d: Data, a: Action): Data {
         id: uid('p'),
         code: nextProjectCode(d.projects),
         status: a.project.status ?? 'quote',
-        phases: buildPhases(a.project.startDate, a.project.targetDate),
+        phases: buildPhases(a.project.startDate, a.project.targetDate, a.project.service),
         payments: [],
       };
       return { ...d, projects: [...d.projects, project] };

@@ -1,37 +1,97 @@
 import { addDays, diffDays, fmtDate as fmtShort, isWeekend } from './dates';
-import type { Attendance, AttendanceStatus, Data, Mechanic, Part, PartKind, PartStatus, Phase, PhaseKey, Project, Task } from './types';
+import type { Attendance, AttendanceStatus, Data, Mechanic, Part, PartKind, PartStatus, Phase, PhaseKey, Project, ServiceType, Task } from './types';
 
-export const PHASES: { key: PhaseKey; label: string; short: string; weight: number }[] = [
-  { key: 'intake', label: 'Intake & Assessment', short: 'Intake', weight: 1 },
-  { key: 'teardown', label: 'Teardown', short: 'Teardown', weight: 2 },
-  { key: 'body', label: 'Bodywork', short: 'Body', weight: 5 },
-  { key: 'paint', label: 'Paint', short: 'Paint', weight: 3 },
-  { key: 'mechanical', label: 'Engine & Mechanical', short: 'Mechanical', weight: 5 },
-  { key: 'interior', label: 'Interior', short: 'Interior', weight: 3 },
-  { key: 'assembly', label: 'Reassembly', short: 'Assembly', weight: 3 },
-  { key: 'qc', label: 'Testing & QC', short: 'QC', weight: 1 },
-  { key: 'delivery', label: 'Delivery', short: 'Delivery', weight: 1 },
-];
+/** Every step any service can have, with its label and how much of a job it represents. */
+export const PHASE_DEFS: Record<PhaseKey, { label: string; short: string; weight: number }> = {
+  intake: { label: 'Intake & Assessment', short: 'Intake', weight: 1 },
+  teardown: { label: 'Teardown', short: 'Teardown', weight: 2 },
+  body: { label: 'Bodywork', short: 'Body', weight: 5 },
+  paint: { label: 'Paint', short: 'Paint', weight: 3 },
+  mechanical: { label: 'Engine & Mechanical', short: 'Mechanical', weight: 5 },
+  interior: { label: 'Interior', short: 'Interior', weight: 3 },
+  assembly: { label: 'Reassembly', short: 'Assembly', weight: 3 },
+  qc: { label: 'Testing & QC', short: 'QC', weight: 1 },
+  delivery: { label: 'Delivery', short: 'Delivery', weight: 1 },
+  inspect: { label: 'Inspection & Estimate', short: 'Inspect', weight: 1 },
+  prep: { label: 'Prep & Body Repair', short: 'Prep', weight: 4 },
+  prime: { label: 'Prime & Seal', short: 'Prime', weight: 2 },
+  cure: { label: 'Curing', short: 'Cure', weight: 1 },
+  polish: { label: 'Polish & Finish', short: 'Polish', weight: 2 },
+  checkin: { label: 'Check-in & Photos', short: 'Check-in', weight: 1 },
+  wash: { label: 'Wash & Decontamination', short: 'Wash', weight: 2 },
+  correction: { label: 'Paint Correction', short: 'Correction', weight: 4 },
+  coating: { label: 'Coating Application', short: 'Coating', weight: 3 },
+};
 
-export const phaseLabel = (k: PhaseKey) => PHASES.find((p) => p.key === k)!.label;
-export const phaseShort = (k: PhaseKey) => PHASES.find((p) => p.key === k)!.short;
+export interface ServiceDef {
+  label: string;
+  short: string;
+  /** Pill colour used wherever the service is shown. */
+  tone: 'amber' | 'orange' | 'blue' | 'violet';
+  /** How long a typical job runs, used as the default target date. */
+  typicalDays: number;
+  /** "estimate" jobs are quoted per car; "package" jobs are sold from a price list. */
+  pricing: 'estimate' | 'package';
+  hint: string;
+  phases: PhaseKey[];
+}
 
-export const BAYS = ['Bay 1', 'Bay 2', 'Bay 3', 'Bay 4', 'Paint booth', 'Media blast'];
+export const SERVICES: Record<ServiceType, ServiceDef> = {
+  restoration: { label: 'Restoration', short: 'Restoration', tone: 'amber', typicalDays: 120, pricing: 'estimate', hint: 'Weeks to months', phases: ['intake', 'teardown', 'body', 'paint', 'mechanical', 'interior', 'assembly', 'qc', 'delivery'] },
+  paint: { label: 'Paint', short: 'Paint', tone: 'orange', typicalDays: 10, pricing: 'estimate', hint: 'Days to two weeks', phases: ['inspect', 'prep', 'prime', 'paint', 'cure', 'polish', 'qc', 'delivery'] },
+  detailing: { label: 'Detailing', short: 'Detailing', tone: 'blue', typicalDays: 1, pricing: 'package', hint: 'Hours to two days', phases: ['checkin', 'wash', 'interior', 'polish', 'qc', 'delivery'] },
+  ceramic: { label: 'Ceramic Coating', short: 'Ceramic', tone: 'violet', typicalDays: 3, pricing: 'package', hint: 'One to three days plus curing', phases: ['inspect', 'wash', 'correction', 'coating', 'cure', 'qc', 'delivery'] },
+};
+export const SERVICE_KEYS = Object.keys(SERVICES) as ServiceType[];
 
-/** Spread the phases across [start, target] proportionally to their weight. */
-export function buildPhases(start: string, target: string): Phase[] {
-  const total = Math.max(PHASES.length, diffDays(start, target));
-  const weightSum = PHASES.reduce((s, p) => s + p.weight, 0);
+export interface PackageDef { name: string; price: number; scope: string; warrantyYears?: number }
+
+/** Demo price list for the fixed-price services. Alex replaces these with his real packages. */
+export const PACKAGES: Record<'detailing' | 'ceramic', PackageDef[]> = {
+  detailing: [
+    { name: 'Express Wash & Wax', price: 2500, scope: 'Hand wash, wheels and tyres, spray wax, interior vacuum.' },
+    { name: 'Interior Detail', price: 5500, scope: 'Deep clean of seats, carpets, panels and glass, with leather care.' },
+    { name: 'Full Detail', price: 9500, scope: 'Full interior detail, exterior wash and clay, machine polish and sealant.' },
+    { name: 'Premium Detail', price: 18000, scope: 'Full detail plus engine bay, headlight restoration and a two-step polish.' },
+  ],
+  ceramic: [
+    { name: 'Ceramic Coating · 1 year', price: 22000, scope: 'Single-stage correction and one layer of coating.', warrantyYears: 1 },
+    { name: 'Ceramic Coating · 3 year', price: 38000, scope: 'Two-stage correction and two layers of coating.', warrantyYears: 3 },
+    { name: 'Ceramic Coating · 5 year', price: 58000, scope: 'Full paint correction and a multi-layer coating with wheels and glass.', warrantyYears: 5 },
+  ],
+};
+
+export const phaseLabel = (k: PhaseKey) => PHASE_DEFS[k].label;
+export const phaseShort = (k: PhaseKey) => PHASE_DEFS[k].short;
+export const serviceLabel = (s: ServiceType) => SERVICES[s].label;
+
+export const BAYS = ['Bay 1', 'Bay 2', 'Bay 3', 'Bay 4', 'Paint booth', 'Prep bay', 'Media blast', 'Detail bay', 'Coating room'];
+
+/**
+ * Lay a service's steps across [start, target] in proportion to their weight.
+ * When there are at least as many days as steps, each step gets its own days.
+ * Short jobs (a detail finished in one day) share days, so several steps can fall on the same date.
+ */
+export function buildPhases(start: string, target: string, service: ServiceType = 'restoration'): Phase[] {
+  const keys = SERVICES[service].phases;
+  const weights = keys.map((k) => PHASE_DEFS[k].weight);
+  const weightSum = weights.reduce((s, w) => s + w, 0);
+  const span = Math.max(0, diffDays(start, target));
+  if (span + 1 < keys.length) {
+    let acc = 0;
+    return keys.map((key, i) => {
+      const from = Math.floor((acc / weightSum) * (span + 1));
+      acc += weights[i];
+      const to = Math.max(from, Math.ceil((acc / weightSum) * (span + 1)) - 1);
+      return { key, status: 'todo' as const, start: addDays(start, from), end: addDays(start, Math.min(span, to)) };
+    });
+  }
+  const total = Math.max(keys.length, span);
   let cursor = 0;
-  return PHASES.map((p, i) => {
-    const last = i === PHASES.length - 1;
-    const len = last ? total - cursor : Math.max(1, Math.round((p.weight / weightSum) * total));
-    const phase: Phase = {
-      key: p.key,
-      status: 'todo',
-      start: addDays(start, cursor),
-      end: addDays(start, last ? total : Math.min(total, cursor + len - 1)),
-    };
+  return keys.map((key, i) => {
+    const last = i === keys.length - 1;
+    const len = last ? total - cursor : Math.max(1, Math.round((weights[i] / weightSum) * total));
+    const phase: Phase = { key, status: 'todo', start: addDays(start, cursor), end: addDays(start, last ? total : Math.min(total, cursor + len - 1)) };
     cursor += len;
     return phase;
   });
@@ -48,12 +108,12 @@ export function phasePercent(project: Project, key: PhaseKey, tasks: Task[]): nu
   return Math.min(99, Math.round((done / est) * 100));
 }
 
-/** Weighted progress across all phases, 0–100. */
+/** Weighted progress across the steps this job actually has, 0–100. */
 export function projectProgress(project: Project, tasks: Task[]): number {
   if (project.status === 'completed' || project.status === 'delivered') return 100;
-  const weightSum = PHASES.reduce((s, p) => s + p.weight, 0);
-  const got = PHASES.reduce((s, p) => s + p.weight * phasePercent(project, p.key, tasks), 0);
-  return Math.round(got / weightSum);
+  const weightSum = project.phases.reduce((s, p) => s + PHASE_DEFS[p.key].weight, 0);
+  const got = project.phases.reduce((s, p) => s + PHASE_DEFS[p.key].weight * phasePercent(project, p.key, tasks), 0);
+  return weightSum ? Math.round(got / weightSum) : 0;
 }
 
 export const currentPhase = (project: Project): Phase | undefined =>

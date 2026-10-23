@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { addDays, startOfWeek } from './dates';
-import { allBlockers, attendanceSummary, buildAlerts, coverageGaps, hoursBetween, isLateIn, isOut, overtimeHours, workedHours, buildPhases, dayLoad, daysOverdue, isOverbooked, partRisk, phasePercent, projectHealth, projectProgress, PHASES, taskBlocker } from './logic';
+import { allBlockers, attendanceSummary, buildAlerts, coverageGaps, hoursBetween, isLateIn, isOut, overtimeHours, workedHours, buildPhases, dayLoad, daysOverdue, isOverbooked, partRisk, phasePercent, projectHealth, projectProgress, SERVICES, SERVICE_KEYS, PACKAGES, PHASE_DEFS, taskBlocker } from './logic';
 import { buildSeed } from './seed';
 import { dailySnapshot, nextWorkday, snapshotText } from './snapshot';
-import { costMix, forecastCost, jobFinance, monthlyDeliveries, portfolio, riskRegister, supplierExposure, weeklyHours } from './exec';
+import { byService, costMix, planIsComplete, plannedCost, forecastCost, jobFinance, monthlyDeliveries, portfolio, riskRegister, supplierExposure, weeklyHours } from './exec';
 import { reducer } from './store';
 
 const TODAY = '2026-03-18'; // a Wednesday
@@ -18,7 +18,7 @@ describe('dates', () => {
 describe('buildPhases', () => {
   it('covers every phase, in order, without overlap, ending on the target', () => {
     const ph = buildPhases('2026-01-05', '2026-05-05');
-    expect(ph).toHaveLength(PHASES.length);
+    expect(ph).toHaveLength(SERVICES.restoration.phases.length);
     for (let i = 1; i < ph.length; i++) expect(ph[i].start > ph[i - 1].end).toBe(true);
     expect(ph[ph.length - 1].end).toBe('2026-05-05');
   });
@@ -60,8 +60,8 @@ describe('reducer', () => {
     const base = d.projects[0];
     d = reducer(d, { type: 'addProject', project: { ...base, status: undefined, startDate: TODAY, targetDate: addDays(TODAY, 60) } });
     const added = d.projects[d.projects.length - 1];
-    expect(added.code).toBe('ACR-007');
-    expect(added.phases).toHaveLength(PHASES.length);
+    expect(added.code).toBe('ACR-010');
+    expect(added.phases).toHaveLength(SERVICES.restoration.phases.length);
     expect(added.status).toBe('quote');
   });
 });
@@ -169,7 +169,7 @@ describe('executive numbers', () => {
     expect(forecastCost(500, 1000, 100)).toBe(500);
   });
   it('adds contract, collections and margin across active jobs only', () => {
-    expect(pf.jobs).toHaveLength(5);
+    expect(pf.jobs).toHaveLength(8);
     expect(pf.contract).toBe(pf.jobs.reduce((s, j) => s + j.contract, 0));
     expect(pf.contract - pf.forecastCost).toBe(pf.margin);
     expect(pf.outstanding).toBe(pf.contract - pf.collected);
@@ -228,8 +228,8 @@ describe('daily snapshot', () => {
     expect(nextWorkday(TODAY)).toBe('2026-03-19');
   });
   it("summarises the team from today's attendance", () => {
-    expect(s.team.total).toBe(5);
-    expect(s.team.clockedIn).toHaveLength(4);
+    expect(s.team.total).toBe(6);
+    expect(s.team.clockedIn).toHaveLength(5);
     expect(s.team.late.map((l) => l.mechanic.id)).toEqual(['m3']);
     expect(s.team.notIn.map((m) => m.id)).toEqual(['m5']);
     expect(s.team.hoursSoFar).toBe(0); // nobody has clocked out yet
@@ -252,16 +252,120 @@ describe('daily snapshot', () => {
     let x = reducer(d, { type: 'clockIn', mechanicId: 'm5', date: TODAY, time: '08:05' });
     x = reducer(x, { type: 'addPayment', projectId: 'p4', date: TODAY, amount: 50000 });
     const t = dailySnapshot(x, TODAY);
-    expect(t.team.clockedIn).toHaveLength(5);
+    expect(t.team.clockedIn).toHaveLength(6);
     expect(t.team.notIn).toHaveLength(0);
     expect(t.money.payments).toHaveLength(2);
   });
   it('produces a paste-ready text summary', () => {
     const text = snapshotText(s, d);
     expect(text).toMatch(/^Alex Restoration · Daily snapshot/);
-    expect(text).toContain('4 of 5 in');
+    expect(text).toContain('5 of 6 in');
     expect(text).toContain('Priya');
     expect(text).toContain('Door glass & regulators');
     expect(text.split('\n').length).toBeGreaterThan(6);
+  });
+});
+
+describe('services', () => {
+  const d = buildSeed(TODAY);
+  it('gives every service its own ordered steps, all of which have a label and weight', () => {
+    expect(SERVICE_KEYS).toEqual(['restoration', 'paint', 'detailing', 'ceramic']);
+    for (const k of SERVICE_KEYS) {
+      const keys = SERVICES[k].phases;
+      expect(new Set(keys).size).toBe(keys.length);
+      for (const key of keys) { expect(PHASE_DEFS[key].label).toBeTruthy(); expect(PHASE_DEFS[key].weight).toBeGreaterThan(0); }
+      expect(keys.at(-1)).toBe('delivery');
+    }
+    expect(SERVICES.detailing.phases).toContain('wash');
+    expect(SERVICES.ceramic.phases).toEqual(expect.arrayContaining(['correction', 'coating', 'cure']));
+  });
+  it('builds a same-day detail with every step on one date, in order', () => {
+    const ph = buildPhases('2026-03-18', '2026-03-18', 'detailing');
+    expect(ph.map((p) => p.key)).toEqual(SERVICES.detailing.phases);
+    expect(ph.every((p) => p.start === '2026-03-18' && p.end === '2026-03-18')).toBe(true);
+  });
+  it('spreads a three-day coating job across the days without running past the target', () => {
+    const ph = buildPhases('2026-03-18', '2026-03-20', 'ceramic');
+    expect(ph[0].start).toBe('2026-03-18');
+    expect(ph.at(-1)!.end).toBe('2026-03-20');
+    for (let i = 1; i < ph.length; i++) expect(ph[i].start >= ph[i - 1].start).toBe(true);
+    for (const p of ph) expect(p.end >= p.start && p.end <= '2026-03-20').toBe(true);
+  });
+  it('keeps long restoration jobs on their own days, exactly as before', () => {
+    const ph = buildPhases('2026-01-05', '2026-05-05', 'restoration');
+    for (let i = 1; i < ph.length; i++) expect(ph[i].start > ph[i - 1].end).toBe(true);
+    expect(ph.at(-1)!.end).toBe('2026-05-05');
+  });
+  it('seeds one or more jobs for every service, each using that service\'s own steps', () => {
+    for (const k of SERVICE_KEYS) {
+      const jobs = d.projects.filter((p) => p.service === k);
+      expect(jobs.length, k).toBeGreaterThan(0);
+      for (const p of jobs) expect(p.phases.map((x) => x.key)).toEqual(SERVICES[k].phases);
+    }
+  });
+  it('works out progress from the job\'s own steps, so a nearly finished detail is not held back by restoration steps', () => {
+    const detail = d.projects.find((p) => p.service === 'detailing')!;
+    const pct = projectProgress(detail, d.tasks);
+    expect(pct).toBeGreaterThan(5);
+    expect(pct).toBeLessThan(100);
+    let s = d;
+    for (const ph of detail.phases) s = reducer(s, { type: 'setPhaseStatus', projectId: detail.id, key: ph.key, status: 'done' });
+    expect(s.projects.find((p) => p.id === detail.id)!.status).toBe('completed');
+    expect(projectProgress(s.projects.find((p) => p.id === detail.id)!, s.tasks)).toBe(100);
+  });
+  it('has a price list for the fixed-price services and none for the quoted ones', () => {
+    expect(SERVICES.detailing.pricing).toBe('package');
+    expect(SERVICES.ceramic.pricing).toBe('package');
+    expect(SERVICES.restoration.pricing).toBe('estimate');
+    expect(PACKAGES.ceramic.map((x) => x.warrantyYears)).toEqual([1, 3, 5]);
+    for (const pk of [...PACKAGES.detailing, ...PACKAGES.ceramic]) expect(pk.price).toBeGreaterThan(0);
+    const coating = d.projects.find((p) => p.service === 'ceramic')!;
+    expect(PACKAGES.ceramic.some((x) => x.name === coating.packageName && x.price === coating.budget)).toBe(true);
+  });
+  it('creates a new job with the right steps for the chosen service', () => {
+    const base = d.projects[0];
+    const s = reducer(d, { type: 'addProject', project: { ...base, status: undefined, service: 'ceramic', packageName: PACKAGES.ceramic[0].name, startDate: TODAY, targetDate: addDays(TODAY, 3), budget: PACKAGES.ceramic[0].price } });
+    const added = s.projects.at(-1)!;
+    expect(added.service).toBe('ceramic');
+    expect(added.phases.map((p) => p.key)).toEqual(SERVICES.ceramic.phases);
+    expect(added.payments).toEqual([]);
+  });
+  it('splits the executive numbers by service and the pieces add back up to the whole', () => {
+    const rows = byService(d, TODAY);
+    expect(rows.map((r) => r.service)).toEqual(SERVICE_KEYS);
+    const pf2 = portfolio(d, TODAY);
+    expect(rows.reduce((s, r) => s + r.contract, 0)).toBe(pf2.contract);
+    expect(rows.reduce((s, r) => s + r.jobs, 0)).toBe(pf2.jobs.length);
+    for (const r of rows.filter((x) => x.jobs > 0)) expect(r.avgJob).toBe(Math.round(r.contract / r.jobs));
+  });
+  it('keeps every new job and every mechanic within a normal day', () => {
+    for (const m of d.mechanics) for (const t of d.tasks.filter((x) => x.mechanicId === m.id && x.status !== 'done')) expect(isOverbooked(d.tasks, m, t.date), `${m.name} ${t.date}`).toBe(false);
+  });
+});
+
+describe('forecasting short jobs from their plan', () => {
+  const d = buildSeed(TODAY);
+  const byCode = (code: string) => d.projects.find((p) => p.code === code)!;
+  it('treats a job as fully planned only when every step has a task', () => {
+    expect(planIsComplete(byCode('ACR-008'), d)).toBe(true); // detailing
+    expect(planIsComplete(byCode('ACR-009'), d)).toBe(true); // ceramic
+    expect(planIsComplete(byCode('ACR-007'), d)).toBe(true); // paint
+    expect(planIsComplete(byCode('ACR-001'), d)).toBe(false); // restoration plan still has gaps
+  });
+  it('forecasts a fully planned job from its labor and parts, not from the 70% rule', () => {
+    const p = byCode('ACR-009');
+    const f = jobFinance(p, d, TODAY);
+    expect(f.forecastCost).toBe(Math.max(f.spent, plannedCost(p, d)));
+    expect(f.forecastCost).not.toBe(Math.round(p.budget * 0.7));
+  });
+  it('gives the short services believable, different margins', () => {
+    const margins = ['ACR-007', 'ACR-008', 'ACR-009'].map((c) => jobFinance(byCode(c), d, TODAY).marginPct);
+    for (const m of margins) { expect(m).toBeGreaterThan(10); expect(m).toBeLessThan(65); }
+    expect(new Set(margins).size).toBeGreaterThan(1);
+  });
+  it('still falls back on progress for a restoration whose plan is incomplete', () => {
+    const p = byCode('ACR-001');
+    const f = jobFinance(p, d, TODAY);
+    expect(f.forecastCost).toBe(forecastCost(f.spent, p.budget, f.progress));
   });
 });

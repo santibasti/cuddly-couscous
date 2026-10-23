@@ -1,7 +1,7 @@
 import { useId, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { partRisk, partStatusLabel, type Health, type PartRisk } from '../lib/logic';
-import type { Mechanic, Part, Project } from '../lib/types';
+import { partRisk, partStatusLabel, SERVICES, type Health, type PartRisk } from '../lib/logic';
+import type { Mechanic, Part, Project, ServiceType } from '../lib/types';
 
 const ICONS: Record<string, string> = {
   dash: 'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z',
@@ -46,6 +46,7 @@ const HEALTH: Record<Health, [string, string]> = {
   late: ['red', 'Late'], hold: ['gray', 'On hold'], quote: ['violet', 'Quote'], done: ['blue', 'Complete'],
 };
 export const healthTone = (h: Health) => HEALTH[h][0];
+export const ServicePill = ({ s }: { s: ServiceType }) => <Pill tone={SERVICES[s].tone} dot={false}>{SERVICES[s].short}</Pill>;
 export const HealthPill = ({ h }: { h: Health }) => <Pill tone={HEALTH[h][0]}>{HEALTH[h][1]}</Pill>;
 
 const RISK: Record<PartRisk, [string, string]> = {

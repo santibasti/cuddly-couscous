@@ -9,6 +9,18 @@ npm test         # logic tests (phases, progress, scheduling, alerts, reducer)
 npm run build
 ```
 
+## Services
+The shop offers four services, and each one has its own workflow, typical length and pricing style. These are draft workflows to confirm with the client; they live in one place (`SERVICES` and `PHASE_DEFS` in `src/lib/logic.ts`) so they are quick to change.
+
+| Service | Typical length | Steps | Priced |
+|---|---|---|---|
+| Restoration | Weeks to months | Intake, teardown, body, paint, mechanical, interior, reassembly, QC, delivery | Estimate per car |
+| Paint | Days to two weeks | Inspect, prep and body repair, prime, paint, cure, polish, QC, delivery | Estimate per car |
+| Detailing | Hours to two days | Check-in, wash, interior, polish, QC, handover | Package price list |
+| Ceramic coating | One to three days plus curing | Inspect, wash, paint correction, coating, cure, QC, handover | Package price list, with warranty |
+
+Every job carries its service, so progress, health, the project stepper, the schedule and the executive numbers all follow that job's own steps. Short jobs can fit every step into a single day. The demo price list is in `PACKAGES`.
+
 ## What it does
 Built around what actually happens in a restoration shop: many jobs in parallel, parts that are late or backordered, work sent out to specialists, and customers who have to approve things.
 

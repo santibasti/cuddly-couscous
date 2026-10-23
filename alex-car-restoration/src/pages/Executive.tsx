@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom';
 import { Columns, Donut } from '../components/charts';
-import { Bar, Card, Empty, HealthPill, Icon, StripStat } from '../components/ui';
+import { Bar, Card, Empty, HealthPill, Icon, ServicePill, StripStat } from '../components/ui';
 import { fmtDate, todayIso } from '../lib/dates';
-import { costMix, monthlyDeliveries, portfolio, riskRegister, supplierExposure, weeklyHours } from '../lib/exec';
-import { money, moneyC } from '../lib/logic';
+import { byService, costMix, monthlyDeliveries, portfolio, riskRegister, supplierExposure, weeklyHours } from '../lib/exec';
+import { SERVICES, money, moneyC } from '../lib/logic';
 import { useStore } from '../lib/store';
 
 export default function Executive() {
@@ -17,6 +17,8 @@ export default function Executive() {
   const months = monthlyDeliveries(data, today, 6);
   const weeks = weeklyHours(data, today, 4);
   const risks = riskRegister(data, today);
+  const services = byService(data, today);
+  const svcMax = Math.max(1, ...services.map((x) => x.contract));
   const high = risks.filter((r) => r.level === 'high').length;
   const marginTone = pf.marginPct < 20 ? 'red' : pf.marginPct < 30 ? 'amber' : '';
   const slices = [
@@ -105,6 +107,23 @@ export default function Executive() {
           ))}
         </Card>
       </div>
+
+      <Card className="mt" title="Earnings by service" flush action={<span className="muted small">Active jobs, forecast at completion</span>}>
+        <table className="exec-table" style={{ minWidth: 560 }}>
+          <thead><tr><th>Service</th><th>Jobs</th><th style={{ width: '34%' }}>Contract value</th><th>Average job</th><th>Margin</th></tr></thead>
+          <tbody>
+            {services.map((x) => (
+              <tr key={x.service}>
+                <td><ServicePill s={x.service} /><div className="small muted" style={{ marginTop: 4 }}>{SERVICES[x.service].hint}</div></td>
+                <td className="num">{x.jobs}</td>
+                <td><div className="row" style={{ gap: 10, flexWrap: 'nowrap' }}><div className="grow"><Bar thin value={(x.contract / svcMax) * 100} /></div><span className="num small">{moneyC(x.contract)}</span></div></td>
+                <td className="num">{x.jobs ? moneyC(x.avgJob) : '—'}</td>
+                <td>{x.jobs ? <><b className={x.marginPct < 20 ? 'over' : x.marginPct < 30 ? 'warn' : 'ok'}>{x.marginPct}%</b><div className="small muted num">{moneyC(x.margin)}</div></> : <span className="muted">—</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
 
       <div className="grid g2 mt">
         <Card title="Deliveries ahead" action={<span className="muted small">Contract value due each month</span>}>

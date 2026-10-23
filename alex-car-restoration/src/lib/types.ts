@@ -1,13 +1,9 @@
+export type ServiceType = 'restoration' | 'paint' | 'detailing' | 'ceramic';
+
 export type PhaseKey =
-  | 'intake'
-  | 'teardown'
-  | 'body'
-  | 'paint'
-  | 'mechanical'
-  | 'interior'
-  | 'assembly'
-  | 'qc'
-  | 'delivery';
+  | 'intake' | 'teardown' | 'body' | 'paint' | 'mechanical' | 'interior' | 'assembly' | 'qc' | 'delivery'
+  | 'inspect' | 'prep' | 'prime' | 'cure' | 'polish'
+  | 'checkin' | 'wash' | 'correction' | 'coating';
 
 export type PhaseStatus = 'todo' | 'in_progress' | 'done';
 export type TaskStatus = 'todo' | 'in_progress' | 'blocked' | 'done';
@@ -52,6 +48,9 @@ export interface Payment {
 export interface Project {
   id: string;
   code: string;
+  service: ServiceType;
+  /** Package sold for fixed-price services (detailing, ceramic coating). */
+  packageName?: string;
   customerId: string;
   title: string;
   year: number;

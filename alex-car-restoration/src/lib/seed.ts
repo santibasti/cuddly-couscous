@@ -1,6 +1,6 @@
 import { addDays, isWeekend, todayIso } from './dates';
-import { buildPhases, PHASES } from './logic';
-import type { Attendance, BlockReason, Customer, Data, Mechanic, Part, PartKind, PartStatus, PhaseKey, Project, Task, Update } from './types';
+import { buildPhases, PACKAGES } from './logic';
+import type { Attendance, BlockReason, Customer, Data, Mechanic, Part, PartKind, PartStatus, PhaseKey, Project, ServiceType, Task, Update } from './types';
 
 /** Demo figures were drafted in USD; shop money is in pesos. */
 const FX = 56;
@@ -14,6 +14,7 @@ const mechanics: Mechanic[] = [
   { id: 'm3', name: 'Priya Nair', specialty: 'Paint & finish', color: '#2fb585', hourlyRate: phpRate(70), dailyHours: 8, active: true },
   { id: 'm4', name: 'Tom Walker', specialty: 'Electrical & assembly', color: '#4c8df0', hourlyRate: phpRate(58), dailyHours: 8, active: true },
   { id: 'm5', name: 'Luis Ortega', specialty: 'Upholstery & trim', color: '#9a6ee0', hourlyRate: phpRate(55), dailyHours: 6, active: true },
+  { id: 'm6', name: 'Migs Dela Cruz', specialty: 'Detailing & coatings', color: '#3fb0c4', hourlyRate: phpRate(44), dailyHours: 8, active: true },
 ];
 
 const customers: Customer[] = [
@@ -21,6 +22,9 @@ const customers: Customer[] = [
   { id: 'c2', name: 'Maria Santos', phone: '555-0177', email: 'maria.s@example.com' },
   { id: 'c3', name: 'David Chen', phone: '555-0109', email: 'dchen@example.com' },
   { id: 'c4', name: 'Eleanor Voss', phone: '555-0198', email: 'evoss@example.com' },
+  { id: 'c5', name: 'Jun Mercado', phone: '555-0211', email: 'jun.m@example.com' },
+  { id: 'c6', name: 'Angela Cruz', phone: '555-0224', email: 'angela.c@example.com' },
+  { id: 'c7', name: 'Paolo Lim', phone: '555-0236', email: 'paolo.l@example.com' },
 ];
 
 type State = 'done' | 'doing' | 'todo';
@@ -33,6 +37,11 @@ interface Def {
   id: string; code: string; customerId: string; title: string; year: number; make: string; model: string;
   color: string; vin: string; scope: string; start: number; length: number; current: number;
   budget: number; priority: Project['priority']; bay: string; status?: Project['status'];
+  /** Defaults to restoration. */
+  service?: ServiceType;
+  packageName?: string;
+  /** Contract value in pesos, for jobs priced from a menu instead of the USD-drafted figures. */
+  pesos?: number;
   tasks: TaskDef[]; parts: PartDef[]; notes: [number, PhaseKey | undefined, string][];
 }
 
@@ -134,6 +143,57 @@ const defs: Def[] = [
     start: 14, length: 150, current: -1, budget: 34000, priority: 'normal', bay: 'Unassigned', status: 'quote',
     tasks: [], parts: [], notes: [],
   },
+  {
+    id: 'p7', code: 'ACR-007', customerId: 'c5', service: 'paint', title: 'Full respray', year: 2019, make: 'Toyota', model: 'Fortuner',
+    color: 'Pearl White', vin: 'MHFYZ59G9K0001234', scope: 'Dent repair, full repaint in factory pearl white, polish. Owner keeps the car in the shop for the week.',
+    start: -4, length: 14, current: 1, budget: 0, pesos: 185000, priority: 'normal', bay: 'Prep bay',
+    tasks: [
+      ['inspect', 'Damage inspection & colour match', 'm3', 3, 'done', -4],
+      ['prep', 'Dent repair – left side', 'm2', 8, 'done', -2], ['prep', 'Dent repair – right side', 'm2', 8, 'doing', 0],
+      ['prep', 'Sand & feather all panels', 'm2', 8, 'todo', 1], ['prep', 'Mask, clean & degrease', 'm4', 4, 'todo', 2],
+      ['prime', 'Prime & seal', 'm3', 6, 'todo', 3],
+      ['paint', 'Base coat in the paint booth', 'm3', 8, 'todo', 4, 'paintmat'], ['paint', 'Clear coat', 'm3', 6, 'todo', 5],
+      ['cure', 'Bake & cure', 'm3', 2, 'todo', 6], ['polish', 'Cut & polish', 'm6', 8, 'todo', 7],
+      ['qc', 'Final inspection under lights', 'm1', 2, 'todo', 9], ['delivery', 'Handover to owner', 'm4', 1, 'todo', 10],
+    ],
+    parts: [
+      ['sand', 'Abrasives & masking supplies', 'part', 'Autopro Supplies', 18, 'received', 0, -3, -5, 'PO-2266', 'prep'],
+      ['paintmat', 'Pearl white base & clear coat (mixed)', 'part', 'PPG Distributor', 625, 'ordered', 4, 2, -3, 'PO-2271', 'paint', 'Mixed to the factory colour code.'],
+    ],
+    notes: [[-1, 'prep', 'Right-side dents are out. Customer confirmed the factory pearl white and the colour code was matched.']],
+  },
+  {
+    id: 'p8', code: 'ACR-008', customerId: 'c6', service: 'detailing', packageName: 'Premium Detail', title: 'Premium Detail', year: 2021, make: 'Honda', model: 'Civic',
+    color: 'Gunmetal', vin: 'MRHFC1630MP000123', scope: PACKAGES.detailing[3].scope,
+    start: 0, length: 0, current: 1, budget: 0, pesos: 18000, priority: 'normal', bay: 'Detail bay',
+    tasks: [
+      ['checkin', 'Check-in & condition photos', 'm6', 0.5, 'done', 0],
+      ['wash', 'Wash, clay & decontamination', 'm6', 1.5, 'doing', 0],
+      ['interior', 'Interior deep clean', 'm5', 2, 'todo', 0],
+      ['polish', 'Two-step polish & sealant', 'm3', 3, 'todo', 0],
+      ['qc', 'Final check in daylight', 'm6', 0.5, 'todo', 0], ['delivery', 'Handover to owner', 'm6', 0.5, 'todo', 0],
+    ],
+    parts: [['pads', 'Polishing pads & compound', 'part', 'Autopro Supplies', 18, 'received', 0, -2, -4, 'PO-2268', 'polish']],
+    notes: [[-2, 'checkin', 'Booked by phone. Drop-off at 8:00 AM, collection at 5:00 PM.']],
+  },
+  {
+    id: 'p9', code: 'ACR-009', customerId: 'c7', service: 'ceramic', packageName: 'Ceramic Coating · 5 year', title: 'Ceramic Coating · 5 year', year: 2023, make: 'Mazda', model: 'CX-5',
+    color: 'Soul Red Crystal', vin: 'JM3KFBDM0P0100456', scope: PACKAGES.ceramic[2].scope,
+    start: -1, length: 3, current: 2, budget: 0, pesos: 58000, priority: 'normal', bay: 'Coating room',
+    tasks: [
+      ['inspect', 'Paint inspection & gloss readings', 'm3', 1, 'done', -1],
+      ['wash', 'Wash & clay decontamination', 'm6', 2, 'done', -1],
+      ['correction', 'Compound & polish – bonnet, roof, boot', 'm6', 5, 'doing', 0],
+      ['coating', 'Apply ceramic coating, two layers', 'm6', 4, 'todo', 1, 'kit'],
+      ['cure', 'Cure under lamps & check', 'm6', 1, 'todo', 1],
+      ['qc', 'Final inspection & gloss readings', 'm3', 1, 'todo', 2], ['delivery', 'Handover, care guide & warranty card', 'm6', 1, 'todo', 2],
+    ],
+    parts: [
+      ['kit', 'Ceramic coating kit, 5-year', 'part', 'Coatings Depot', 160, 'received', 1, -3, -6, 'PO-2270', 'coating', 'Batch number kept for the warranty record.'],
+      ['pads', 'Correction pads & compounds', 'part', 'Autopro Supplies', 18, 'received', 0, -2, -4, 'PO-2269', 'correction'],
+    ],
+    notes: [[-1, 'inspect', 'Paint is in good shape, light swirls only. Owner chose the 5-year coating.']],
+  },
 ];
 
 const PAYMENTS: Record<string, [number, number, string][]> = {
@@ -142,6 +202,8 @@ const PAYMENTS: Record<string, [number, number, string][]> = {
   p3: [[94, 0.4, 'Deposit'], [40, 0.3, 'Milestone: engine out and machined'], [8, 0.1, 'Progress payment']],
   p4: [[9, 0.3, 'Deposit']],
   p6: [[119, 0.35, 'Deposit'], [60, 0.35, 'Milestone: mechanical complete'], [18, 0.2, 'Progress payment']],
+  p7: [[4, 0.4, 'Deposit']],
+  p9: [[2, 0.3, 'Deposit']],
 };
 
 export function buildSeed(today = todayIso()): Data {
@@ -150,14 +212,17 @@ export function buildSeed(today = todayIso()): Data {
   const parts: Part[] = [];
   const updates: Update[] = [];
   const load = new Map<string, number>();
+  const leaveDays = new Set<string>(); // mechanic|date pairs a booking must avoid
   const cap = new Map(mechanics.map((m) => [m.id, m.dailyHours]));
   let tn = 1;
   let un = 1;
 
   // Book a mechanic on the first working day with room, so the demo isn't accidentally overbooked.
-  const place = (mech: string, date: string, est: number) => {
+  const place = (mech: string, date: string, est: number, shortJob = false) => {
     let d = date;
-    while (isWeekend(d) || (load.get(`${mech}|${d}`) ?? 0) + est > cap.get(mech)!) d = addDays(d, 1);
+    // Detailing and coating shops usually work Saturdays; longer jobs wait for Monday.
+    const closed = (x: string) => (shortJob ? new Date(x + 'T00:00:00Z').getUTCDay() === 0 : isWeekend(x));
+    while (closed(d) || leaveDays.has(`${mech}|${d}`) || (load.get(`${mech}|${d}`) ?? 0) + est > cap.get(mech)!) d = addDays(d, 1);
     load.set(`${mech}|${d}`, (load.get(`${mech}|${d}`) ?? 0) + est);
     return d;
   };
@@ -165,15 +230,16 @@ export function buildSeed(today = todayIso()): Data {
   for (const s of defs) {
     const start = addDays(today, s.start);
     const target = addDays(start, s.length);
-    const phases = buildPhases(start, target).map((ph, i) => ({
+    const contract = s.pesos ?? phpBudget(s.budget);
+    const phases = buildPhases(start, target, s.service ?? 'restoration').map((ph, i) => ({
       ...ph,
       status: (s.current < 0 ? 'todo' : i < s.current ? 'done' : i === s.current ? 'in_progress' : 'todo') as 'todo' | 'done' | 'in_progress',
     }));
     projects.push({
-      id: s.id, code: s.code, customerId: s.customerId, title: s.title, year: s.year, make: s.make, model: s.model,
+      id: s.id, code: s.code, service: s.service ?? 'restoration', packageName: s.packageName, customerId: s.customerId, title: s.title, year: s.year, make: s.make, model: s.model,
       color: s.color, vin: s.vin, scope: s.scope, status: s.status ?? 'active', priority: s.priority, bay: s.bay,
-      startDate: start, targetDate: target, budget: phpBudget(s.budget), phases,
-      payments: (PAYMENTS[s.id] ?? []).map(([ago, share, note], i) => ({ id: `${s.id}-pay${i + 1}`, date: addDays(today, -ago), amount: Math.round((phpBudget(s.budget) * share) / 1000) * 1000, note })),
+      startDate: start, targetDate: target, budget: contract, phases,
+      payments: (PAYMENTS[s.id] ?? []).map(([ago, share, note], i) => ({ id: `${s.id}-pay${i + 1}`, date: addDays(today, -ago), amount: Math.round((contract * share) / 1000) * 1000, note })),
       leadMechanicId: s.tasks.find((t) => t[4] === 'doing')?.[2],
     });
 
@@ -188,17 +254,18 @@ export function buildSeed(today = todayIso()): Data {
     });
 
     for (const [phaseKey, title, mech, est, state, off, ref, block] of s.tasks) {
-      const date = state === 'done' ? addDays(today, off) : place(mech, addDays(today, off), est);
+      const date = state === 'done' ? addDays(today, off) : place(mech, addDays(today, off), est, s.service === 'detailing' || s.service === 'ceramic');
       tasks.push({
         id: `t${tn++}`, projectId: s.id, phaseKey, title, mechanicId: mech, date, estHours: est,
-        actualHours: state === 'done' ? Math.round(est * (0.9 + (tn % 4) * 0.1)) : 0,
+        actualHours: state === 'done' ? Math.round(est * (0.9 + (tn % 4) * 0.1) * 2) / 2 : 0, // nearest half hour
         status: block ? 'blocked' : state === 'doing' ? 'in_progress' : state,
         partId: ref ? partId.get(ref) : undefined, blockReason: block?.[0], blockNote: block?.[1],
       });
     }
+    const lt = tasks.find((t) => t.mechanicId === 'm2' && t.status !== 'done' && t.date > today && t.title === 'Block sanding & primer');
+    if (lt) leaveDays.add(`m2|${lt.date}`);
     for (const [off, phaseKey, text] of s.notes) updates.push({ id: `u${un++}`, projectId: s.id, date: addDays(today, off), author: 'Alex', phaseKey, text });
   }
-  void PHASES;
   // Attendance: three weeks of history, today's clock-ins, and one approved leave that collides with booked work.
   const attendance: Attendance[] = [];
   let an = 1;
@@ -225,7 +292,7 @@ export function buildSeed(today = todayIso()): Data {
   });
   const clock = (mid: string, status: Attendance['status'], timeIn: string) => attendance.push({ id: `a${an++}`, mechanicId: mid, date: today, status, timeIn });
   if (!isWeekend(today)) {
-    clock('m1', 'present', '07:52'); clock('m2', 'present', '07:58'); clock('m3', 'late', '08:24'); clock('m4', 'present', '08:03');
+    clock('m1', 'present', '07:52'); clock('m2', 'present', '07:58'); clock('m3', 'late', '08:24'); clock('m4', 'present', '08:03'); clock('m6', 'present', '07:55');
   }
   const leaveTask = tasks.find((t) => t.mechanicId === 'm2' && t.status !== 'done' && t.date > today && t.title === 'Block sanding & primer');
   if (leaveTask) attendance.push({ id: `a${an++}`, mechanicId: 'm2', date: leaveTask.date, status: 'leave', note: 'Approved leave' });
