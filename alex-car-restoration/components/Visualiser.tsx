@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "framer-motion";
 import { Check } from "lucide-react";
 import { cars, paints, leathers, visualiserIntro, type Option } from "@/content/visualiser";
 
@@ -56,6 +57,20 @@ function Swatches({ label, options, value, onChange }: { label: string; options:
 export default function Visualiser() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const cache = useRef<Record<string, Prepared>>({});
+  const reduce = useReducedMotion();
+  const px = useMotionValue(0), py = useMotionValue(0);
+  const sx = useSpring(px, { stiffness: 90, damping: 18, mass: 0.6 });
+  const sy = useSpring(py, { stiffness: 90, damping: 18, mass: 0.6 });
+  const rotateY = useTransform(sx, [-0.5, 0.5], [-7, 7]);
+  const rotateX = useTransform(sy, [-0.5, 0.5], [5, -5]);
+  const shiftX = useTransform(sx, [-0.5, 0.5], [5, -5]);
+  const sheen = useTransform(sx, [-0.5, 0.5], ["0%", "100%"]);
+  const track = (e: PointerEvent<HTMLDivElement>) => {
+    if (reduce) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    px.set((e.clientX - r.left) / r.width - 0.5); py.set((e.clientY - r.top) / r.height - 0.5);
+  };
+  const reset = () => { px.set(0); py.set(0); };
   const [carId, setCarId] = useState(cars[0].id);
   const car = cars.find((c) => c.id === carId) ?? cars[0];
   const [ready, setReady] = useState(false);
@@ -122,12 +137,18 @@ export default function Visualiser() {
                 className={`border px-5 py-3 text-[11px] uppercase tracking-[0.22em] transition-colors ${c.id === carId ? "border-warm bg-warm text-obsidian" : "border-silver/30 text-silver hover:border-warm hover:text-warm"}`}>{c.name}</button>
             ))}
           </div>
-          <div className="relative aspect-[4/3] overflow-hidden border border-silver/15 bg-graphite">
-            <Image key={car.id} src={car.base} alt={car.alt} fill priority sizes="(min-width:1024px) 58vw, 100vw" className="object-cover" />
-            <canvas ref={canvas} width={car.width} height={car.height} role="img"
-              aria-label={`${car.name} shown with ${get(paints, paint).name} paint${car.hasInterior ? ` and ${get(leathers, leather).name} leather interior` : ""}`}
-              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${ready ? "opacity-100" : "opacity-0"}`} />
+          <div className="relative aspect-[4/3] cursor-grab touch-pan-y select-none overflow-hidden border border-silver/15 bg-graphite active:cursor-grabbing"
+            style={{ perspective: 1000 }} onPointerMove={track} onPointerLeave={reset} onPointerCancel={reset}>
+            <motion.div className="absolute inset-0" style={reduce ? undefined : { rotateX, rotateY, x: shiftX, scale: 1.03, transformStyle: "preserve-3d" }}>
+              <Image key={car.id} src={car.base} alt={car.alt} fill priority sizes="(min-width:1024px) 58vw, 100vw" className="object-cover" />
+              <canvas ref={canvas} width={car.width} height={car.height} role="img"
+                aria-label={`${car.name} shown with ${get(paints, paint).name} paint${car.hasInterior ? ` and ${get(leathers, leather).name} leather interior` : ""}`}
+                className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${ready ? "opacity-100" : "opacity-0"}`} />
+              {!reduce && <motion.div aria-hidden className="pointer-events-none absolute inset-0 mix-blend-soft-light opacity-40"
+                style={{ background: "linear-gradient(105deg, transparent 35%, rgba(255,255,255,.55) 50%, transparent 65%)", backgroundSize: "260% 100%", backgroundPositionX: sheen }} />}
+            </motion.div>
             <span className="absolute bottom-3 left-3 border border-silver/30 bg-obsidian/70 px-2 py-1 text-[9px] uppercase tracking-[0.22em] text-silver">Illustrative recolour</span>
+            {!reduce && <span className="pointer-events-none absolute bottom-3 right-3 bg-obsidian/70 px-2 py-1 text-[9px] uppercase tracking-[0.22em] text-silver">Move or drag to tilt</span>}
           </div>
           <p className="mt-4 text-xs leading-relaxed text-silver">{visualiserIntro.disclaimer}{car.credit ? ` Photo: ${car.credit}.` : ""}</p>
           {failed && <p role="alert" className="mt-2 text-xs text-racing">The colour tool could not load. Please refresh the page.</p>}
