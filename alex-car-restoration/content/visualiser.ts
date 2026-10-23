@@ -38,15 +38,6 @@ export type DemoCar = {
 
 export const cars: DemoCar[] = [
   {
-    id: "roadster",
-    name: "Classic Roadster",
-    base: "/visualiser/mercedes-190sl-base.webp",
-    masks: "/visualiser/mercedes-190sl-masks.png",
-    width: 1200, height: 900,
-    alt: "Classic white roadster with a red interior, shown in a studio. Paint and interior colours can be changed.",
-    paintRef: 0.884, interiorRef: 0.366, hasInterior: true, credit: "",
-  },
-  {
     id: "coupe",
     name: "Classic Coupe",
     base: "/visualiser/coupe-base.webp",
@@ -54,6 +45,15 @@ export const cars: DemoCar[] = [
     width: 1200, height: 900,
     alt: "Classic red sports coupe on a dark background. The paint colour can be changed.",
     paintRef: 0.298, interiorRef: 0.366, hasInterior: false, credit: "",
+  },
+  {
+    id: "roadster",
+    name: "Classic Roadster",
+    base: "/visualiser/mercedes-190sl-base.webp",
+    masks: "/visualiser/mercedes-190sl-masks.png",
+    width: 1200, height: 900,
+    alt: "Classic white roadster with a red interior, shown in a studio. Paint and interior colours can be changed.",
+    paintRef: 0.884, interiorRef: 0.366, hasInterior: true, credit: "",
   },
 ];
 
