@@ -21,6 +21,9 @@ The shop offers four services, and each one has its own workflow, typical length
 
 Every job carries its service, so progress, health, the project stepper, the schedule and the executive numbers all follow that job's own steps. Short jobs can fit every step into a single day. The demo price list is in `PACKAGES`.
 
+### Ceramic coating records
+Each ceramic job keeps a coating record for the warranty: product and batch number, gloss before and after, paint thickness, when the cure started, the date the car must stay dry until, the handover date, and the free maintenance check. Dates are worked out for you (dry for 7 days after the cure starts, check due 12 months after handover, warranty end from the package), and starting the cure step or signing off delivery fills them in automatically. The Today page lists cars that must stay dry and checks that are due or overdue. The 7-day and 12-month figures are in `NO_WASH_DAYS` and `MAINTENANCE_MONTHS` in `src/lib/logic.ts`; Alex should confirm them.
+
 ## What it does
 Built around what actually happens in a restoration shop: many jobs in parallel, parts that are late or backordered, work sent out to specialists, and customers who have to approve things.
 

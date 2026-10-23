@@ -118,6 +118,25 @@ export default function Today() {
         </div>
       </div>
 
+      {(s.coating.noWash.length > 0 || s.coating.maintenance.length > 0) && (
+        <Card className="mt" title="Coating follow-ups" flush action={<span className="muted small">Ceramic coating jobs</span>}>
+          {s.coating.noWash.map((f) => (
+            <Link key={f.project.id + 'w'} to={`/projects/${f.project.id}`} className="item">
+              <span className="ico"><Icon name="warn" /></span>
+              <div className="grow"><div style={{ fontWeight: 500 }}>{f.project.year} {f.project.make} {f.project.model}: keep it dry</div><div className="small muted">{f.project.code} · cured, do not wash until {fmtDate(f.date)}</div></div>
+              <Pill tone="blue">{f.daysAway === 0 ? 'Last day' : `${f.daysAway} more day${f.daysAway > 1 ? 's' : ''}`}</Pill>
+            </Link>
+          ))}
+          {s.coating.maintenance.map((f) => (
+            <Link key={f.project.id + 'm'} to={`/projects/${f.project.id}`} className="item">
+              <span className={`ico ${f.daysAway < 0 ? 'red' : 'amber'}`}><Icon name="clock" /></span>
+              <div className="grow"><div style={{ fontWeight: 500 }}>{f.project.year} {f.project.make} {f.project.model}: free coating check</div><div className="small muted">{f.project.code} · {data.customers.find((c) => c.id === f.project.customerId)?.name} · due {fmtDate(f.date)}</div></div>
+              <Pill tone={f.daysAway < 0 ? 'red' : 'amber'}>{f.daysAway < 0 ? `${-f.daysAway}d overdue` : f.daysAway === 0 ? 'Due today' : `In ${f.daysAway} days`}</Pill>
+            </Link>
+          ))}
+        </Card>
+      )}
+
       <div className="grid g2 mt">
         <Card title="Money received" flush>
           {s.money.payments.length === 0 && <Empty>No payments recorded today.</Empty>}

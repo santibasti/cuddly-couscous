@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { addDays, startOfWeek } from './dates';
-import { allBlockers, attendanceSummary, buildAlerts, coverageGaps, hoursBetween, isLateIn, isOut, overtimeHours, workedHours, buildPhases, dayLoad, daysOverdue, isOverbooked, partRisk, phasePercent, projectHealth, projectProgress, SERVICES, SERVICE_KEYS, PACKAGES, PHASE_DEFS, taskBlocker } from './logic';
+import { allBlockers, attendanceSummary, buildAlerts, coverageGaps, hoursBetween, isLateIn, isOut, overtimeHours, workedHours, buildPhases, dayLoad, daysOverdue, isOverbooked, partRisk, phasePercent, projectHealth, projectProgress, SERVICES, SERVICE_KEYS, PACKAGES, PHASE_DEFS, taskBlocker, coatingDates, coatingFollowUps } from './logic';
 import { buildSeed } from './seed';
+import { addMonths, addYears } from './dates';
 import { dailySnapshot, nextWorkday, snapshotText } from './snapshot';
 import { byService, costMix, planIsComplete, plannedCost, forecastCost, jobFinance, monthlyDeliveries, portfolio, riskRegister, supplierExposure, weeklyHours } from './exec';
 import { reducer } from './store';
@@ -60,7 +61,7 @@ describe('reducer', () => {
     const base = d.projects[0];
     d = reducer(d, { type: 'addProject', project: { ...base, status: undefined, startDate: TODAY, targetDate: addDays(TODAY, 60) } });
     const added = d.projects[d.projects.length - 1];
-    expect(added.code).toBe('ACR-010');
+    expect(added.code).toBe('ACR-012');
     expect(added.phases).toHaveLength(SERVICES.restoration.phases.length);
     expect(added.status).toBe('quote');
   });
@@ -367,5 +368,81 @@ describe('forecasting short jobs from their plan', () => {
     const p = byCode('ACR-001');
     const f = jobFinance(p, d, TODAY);
     expect(f.forecastCost).toBe(forecastCost(f.spent, p.budget, f.progress));
+  });
+});
+
+describe('ceramic coating records', () => {
+  const d = buildSeed(TODAY);
+  const byCode = (code: string) => d.projects.find((p) => p.code === code)!;
+  it('works out the dry period, warranty end and maintenance check from the dates', () => {
+    const p = { ...byCode('ACR-010'), coating: { cureStarted: '2026-01-10', handoverDate: '2026-01-11', warrantyYears: 3 } };
+    const c = coatingDates(p);
+    expect(c.washAfter).toBe('2026-01-17'); // 7 days after the cure started
+    expect(c.warrantyEnds).toBe('2029-01-11');
+    expect(c.maintenanceDue).toBe('2027-01-11');
+    expect(coatingDates({ ...p, coating: { ...p.coating, washAfter: '2026-01-20' } }).washAfter).toBe('2026-01-20'); // a chosen date wins
+    expect(coatingDates({ ...p, coating: undefined })).toEqual({});
+  });
+  it('keeps leap days and short months sensible', () => {
+    expect(addMonths('2026-01-31', 1)).toBe('2026-02-28');
+    expect(addYears('2028-02-29', 1)).toBe('2029-02-28');
+  });
+  it('seeds a record on every ceramic job, with before and after readings on the finished ones', () => {
+    const jobs = d.projects.filter((p) => p.service === 'ceramic');
+    expect(jobs.length).toBeGreaterThanOrEqual(3);
+    for (const p of jobs) { expect(p.coating?.product).toBeTruthy(); expect(p.coating?.batch).toBeTruthy(); }
+    for (const p of jobs.filter((x) => x.status === 'delivered')) {
+      expect(p.coating!.glossAfter!).toBeGreaterThan(p.coating!.glossBefore!);
+      expect(p.coating!.handoverDate).toBeTruthy();
+    }
+  });
+  it('lists a car that must stay dry and a maintenance check that is coming up', () => {
+    const f = coatingFollowUps(d, TODAY);
+    const dry = f.filter((x) => x.kind === 'no_wash');
+    const checks = f.filter((x) => x.kind === 'maintenance');
+    expect(dry.map((x) => x.project.code)).toEqual(['ACR-011']);
+    expect(dry[0].daysAway).toBe(4);
+    expect(checks.map((x) => x.project.code)).toContain('ACR-010');
+    expect(checks.find((x) => x.project.code === 'ACR-010')!.daysAway).toBeLessThanOrEqual(14);
+    for (let i = 1; i < f.length; i++) expect(f[i].daysAway).toBeGreaterThanOrEqual(f[i - 1].daysAway);
+  });
+  it('stops reminding about a check once it is marked done', () => {
+    const s = reducer(d, { type: 'updateCoating', projectId: 'p10', patch: { maintenanceDone: true } });
+    expect(coatingFollowUps(s, TODAY).some((x) => x.project.code === 'ACR-010')).toBe(false);
+  });
+  it('records the cure date when the cure step starts, and the handover and warranty when delivery is signed off', () => {
+    let s = reducer(d, { type: 'setPhaseStatus', projectId: 'p9', key: 'cure', status: 'in_progress' });
+    expect(s.projects.find((p) => p.id === 'p9')!.coating!.cureStarted).toBeTruthy();
+    for (const k of ['inspect', 'wash', 'correction', 'coating', 'cure', 'qc', 'delivery'] as const) s = reducer(s, { type: 'setPhaseStatus', projectId: 'p9', key: k, status: 'done' });
+    const c = s.projects.find((p) => p.id === 'p9')!.coating!;
+    expect(c.handoverDate).toBeTruthy();
+    expect(c.warrantyYears).toBe(5); // from the 5-year package
+    expect(c.batch).toBe('B24-0916'); // nothing already recorded is lost
+  });
+  it('does not touch the coating record of other services', () => {
+    const s = reducer(d, { type: 'setPhaseStatus', projectId: 'p8', key: 'delivery', status: 'done' });
+    expect(s.projects.find((p) => p.id === 'p8')!.coating).toBeUndefined();
+  });
+  it('shows the follow-ups in the daily snapshot and the text summary', () => {
+    const snap = dailySnapshot(d, TODAY);
+    expect(snap.coating.noWash).toHaveLength(1);
+    expect(snap.coating.maintenance.map((x) => x.project.code)).toContain('ACR-010');
+    const text = snapshotText(snap, d);
+    expect(text).toContain('KEEP DRY');
+    expect(text).toContain('COATING CHECKS');
+  });
+  it('keeps delivered coating jobs out of the active numbers', () => {
+    expect(portfolio(d, TODAY).jobs.map((j) => j.project.code)).not.toContain('ACR-010');
+  });
+});
+
+describe('snapshot noise', () => {
+  it('does not announce every step of a same-day job as starting or finishing today', () => {
+    const d = buildSeed(TODAY);
+    const s = dailySnapshot(d, TODAY);
+    const shortJob = d.projects.find((p) => p.service === 'detailing')!;
+    expect(s.jobs.phasesStarting.some((x) => x.project.id === shortJob.id)).toBe(false);
+    expect(s.jobs.phasesEnding.some((x) => x.project.id === shortJob.id)).toBe(false);
+    expect(s.jobs.dueToday.map((p) => p.id)).toContain(shortJob.id); // it still shows as a delivery today
   });
 });

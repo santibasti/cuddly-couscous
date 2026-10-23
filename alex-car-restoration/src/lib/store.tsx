@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
 import { todayIso } from './dates';
-import { buildPhases, isLateIn, nextProjectCode, OUT_STATUSES } from './logic';
+import { buildPhases, isLateIn, nextProjectCode, OUT_STATUSES, PACKAGES } from './logic';
 import { buildSeed } from './seed';
-import type { AttendanceStatus, Data, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, Task, TaskStatus } from './types';
+import type { AttendanceStatus, CoatingRecord, Data, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, Task, TaskStatus } from './types';
 
 const KEY = 'alex-car-restoration:v6';
 
@@ -10,6 +10,7 @@ export type Action =
   | { type: 'addProject'; project: Omit<Project, 'id' | 'code' | 'phases' | 'status' | 'payments'> & { status?: ProjectStatus } }
   | { type: 'setProjectStatus'; id: string; status: ProjectStatus }
   | { type: 'updateProject'; id: string; patch: Partial<Project> }
+  | { type: 'updateCoating'; projectId: string; patch: Partial<CoatingRecord> }
   | { type: 'setPhaseStatus'; projectId: string; key: PhaseKey; status: PhaseStatus }
   | { type: 'addTask'; task: Omit<Task, 'id' | 'actualHours' | 'status'> }
   | { type: 'updateTask'; id: string; patch: Partial<Task> }
@@ -47,6 +48,14 @@ export function reducer(d: Data, a: Action): Data {
       return { ...d, projects: d.projects.map((p) => (p.id === a.id ? { ...p, status: a.status } : p)) };
     case 'updateProject':
       return { ...d, projects: d.projects.map((p) => (p.id === a.id ? { ...p, ...a.patch } : p)) };
+    case 'updateCoating':
+      return {
+        ...d,
+        projects: d.projects.map((p) => {
+          if (p.id !== a.projectId) return p;
+          return { ...p, coating: { ...p.coating, ...a.patch } };
+        }),
+      };
     case 'setPhaseStatus':
       return {
         ...d,
@@ -58,7 +67,16 @@ export function reducer(d: Data, a: Action): Data {
           if (allDone && (status === 'active' || status === 'quote')) status = 'completed';
           else if (!allDone && status === 'completed') status = 'active';
           else if (status === 'quote' && a.status !== 'todo') status = 'active';
-          return { ...p, phases, status };
+          // Ceramic jobs: the cure starting and the car leaving set the dates the warranty depends on.
+          let coating = p.coating;
+          if (p.service === 'ceramic') {
+            if (a.key === 'cure' && a.status === 'in_progress' && !coating?.cureStarted) coating = { ...coating, cureStarted: todayIso() };
+            if (a.key === 'delivery' && a.status === 'done' && !coating?.handoverDate) {
+              const years = PACKAGES.ceramic.find((x) => x.name === p.packageName)?.warrantyYears;
+              coating = { ...coating, handoverDate: todayIso(), warrantyYears: coating?.warrantyYears ?? years };
+            }
+          }
+          return { ...p, phases, status, coating };
         }),
       };
     case 'addTask':

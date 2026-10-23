@@ -40,6 +40,8 @@ interface Def {
   /** Defaults to restoration. */
   service?: ServiceType;
   packageName?: string;
+  /** Coating record for ceramic jobs; cure and handover are day offsets from today. */
+  coat?: { product?: string; batch?: string; glossBefore?: number; glossAfter?: number; thickness?: number; cure?: number; handover?: number; years?: number };
   /** Contract value in pesos, for jobs priced from a menu instead of the USD-drafted figures. */
   pesos?: number;
   tasks: TaskDef[]; parts: PartDef[]; notes: [number, PhaseKey | undefined, string][];
@@ -180,6 +182,7 @@ const defs: Def[] = [
     id: 'p9', code: 'ACR-009', customerId: 'c7', service: 'ceramic', packageName: 'Ceramic Coating · 5 year', title: 'Ceramic Coating · 5 year', year: 2023, make: 'Mazda', model: 'CX-5',
     color: 'Soul Red Crystal', vin: 'JM3KFBDM0P0100456', scope: PACKAGES.ceramic[2].scope,
     start: -1, length: 3, current: 2, budget: 0, pesos: 58000, priority: 'normal', bay: 'Coating room',
+    coat: { product: '9H ceramic coating, 5-year', batch: 'B24-0916', glossBefore: 82, thickness: 118, years: 5 },
     tasks: [
       ['inspect', 'Paint inspection & gloss readings', 'm3', 1, 'done', -1],
       ['wash', 'Wash & clay decontamination', 'm6', 2, 'done', -1],
@@ -194,6 +197,20 @@ const defs: Def[] = [
     ],
     notes: [[-1, 'inspect', 'Paint is in good shape, light swirls only. Owner chose the 5-year coating.']],
   },
+  {
+    id: 'p10', code: 'ACR-010', customerId: 'c5', service: 'ceramic', packageName: 'Ceramic Coating · 3 year', title: 'Ceramic Coating · 3 year', year: 2023, make: 'Ford', model: 'Ranger Raptor',
+    color: 'Conquer Grey', vin: 'MNAUMFF50PW000789', scope: PACKAGES.ceramic[1].scope, status: 'delivered',
+    start: -355, length: 3, current: 7, budget: 0, pesos: 38000, priority: 'normal', bay: 'Coating room',
+    coat: { product: '9H ceramic coating, 3-year', batch: 'B23-1105', glossBefore: 78, glossAfter: 94, thickness: 124, cure: -353, handover: -352, years: 3 },
+    tasks: [], parts: [], notes: [],
+  },
+  {
+    id: 'p11', code: 'ACR-011', customerId: 'c6', service: 'ceramic', packageName: 'Ceramic Coating · 1 year', title: 'Ceramic Coating · 1 year', year: 2022, make: 'Hyundai', model: 'Tucson',
+    color: 'Polar White', vin: 'KMHJ3814GNU000321', scope: PACKAGES.ceramic[0].scope, status: 'delivered',
+    start: -6, length: 3, current: 7, budget: 0, pesos: 22000, priority: 'normal', bay: 'Coating room',
+    coat: { product: '9H ceramic coating, 1-year', batch: 'B24-0908', glossBefore: 85, glossAfter: 96, thickness: 131, cure: -3, handover: -3, years: 1 },
+    tasks: [], parts: [], notes: [],
+  },
 ];
 
 const PAYMENTS: Record<string, [number, number, string][]> = {
@@ -204,6 +221,8 @@ const PAYMENTS: Record<string, [number, number, string][]> = {
   p6: [[119, 0.35, 'Deposit'], [60, 0.35, 'Milestone: mechanical complete'], [18, 0.2, 'Progress payment']],
   p7: [[4, 0.4, 'Deposit']],
   p9: [[2, 0.3, 'Deposit']],
+  p10: [[355, 0.3, 'Deposit'], [352, 0.7, 'Balance on handover']],
+  p11: [[6, 0.3, 'Deposit'], [3, 0.7, 'Balance on handover']],
 };
 
 export function buildSeed(today = todayIso()): Data {
@@ -239,6 +258,7 @@ export function buildSeed(today = todayIso()): Data {
       id: s.id, code: s.code, service: s.service ?? 'restoration', packageName: s.packageName, customerId: s.customerId, title: s.title, year: s.year, make: s.make, model: s.model,
       color: s.color, vin: s.vin, scope: s.scope, status: s.status ?? 'active', priority: s.priority, bay: s.bay,
       startDate: start, targetDate: target, budget: contract, phases,
+      coating: s.coat ? { product: s.coat.product, batch: s.coat.batch, glossBefore: s.coat.glossBefore, glossAfter: s.coat.glossAfter, thicknessMicrons: s.coat.thickness, cureStarted: s.coat.cure === undefined ? undefined : addDays(today, s.coat.cure), handoverDate: s.coat.handover === undefined ? undefined : addDays(today, s.coat.handover), warrantyYears: s.coat.years } : undefined,
       payments: (PAYMENTS[s.id] ?? []).map(([ago, share, note], i) => ({ id: `${s.id}-pay${i + 1}`, date: addDays(today, -ago), amount: Math.round((contract * share) / 1000) * 1000, note })),
       leadMechanicId: s.tasks.find((t) => t[4] === 'doing')?.[2],
     });

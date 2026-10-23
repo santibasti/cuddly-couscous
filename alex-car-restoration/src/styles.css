@@ -299,3 +299,7 @@ button.primary,.btn.primary{box-shadow:0 8px 20px -10px var(--accent)}
   .install{width:auto;margin:0;white-space:nowrap}
   .main{padding:calc(18px + env(safe-area-inset-top)) 14px calc(96px + env(safe-area-inset-bottom))}
 }
+
+.form.f4c{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:1180px){.form.f4c{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.form.f4c{grid-template-columns:1fr}}

@@ -45,6 +45,26 @@ export interface Payment {
   note?: string;
 }
 
+/** What was used and measured on a ceramic coating job, kept for the warranty. */
+export interface CoatingRecord {
+  product?: string;
+  batch?: string;
+  /** Gloss readings in gloss units, before and after. */
+  glossBefore?: number;
+  glossAfter?: number;
+  /** Paint thickness in microns, checked before polishing. */
+  thicknessMicrons?: number;
+  /** Date the coating went on and started curing. */
+  cureStarted?: string;
+  /** The owner should not wash the car before this date. */
+  washAfter?: string;
+  /** Date the car was handed over; the warranty and the maintenance check count from here. */
+  handoverDate?: string;
+  warrantyYears?: number;
+  /** Set once the free maintenance check has been done. */
+  maintenanceDone?: boolean;
+}
+
 export interface Project {
   id: string;
   code: string;
@@ -67,6 +87,8 @@ export interface Project {
   budget: number;
   phases: Phase[];
   leadMechanicId?: string;
+  /** Coating record, for ceramic jobs. */
+  coating?: CoatingRecord;
   /** Optional real photo of the car, stored as a small data URL. */
   photo?: string;
   /** Money received from the customer (deposit, progress payments). */

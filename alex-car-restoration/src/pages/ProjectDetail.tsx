@@ -4,9 +4,9 @@ import { Avatar, CarArt, Card, carName, HealthPill, ServicePill, Icon, PartStatu
 import { paintHex } from '../lib/paint';
 import { resizeImage } from '../lib/photo';
 import { diffDays, fmtDate, todayIso } from '../lib/dates';
-import { BAYS, PACKAGES, PART_FLOW, currentPhase, daysOverdue, isPartIn, money, moneyC, partRisk, partStatusLabel, phaseLabel, phasePercent, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
+import { BAYS, PACKAGES, PART_FLOW, coatingDates, currentPhase, daysOverdue, isPartIn, money, moneyC, partRisk, partStatusLabel, phaseLabel, phasePercent, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { useStore } from '../lib/store';
-import type { BlockReason, PartKind, PartStatus, PhaseKey, ProjectStatus, TaskStatus } from '../lib/types';
+import type { BlockReason, CoatingRecord, PartKind, PartStatus, PhaseKey, ProjectStatus, TaskStatus } from '../lib/types';
 
 type Tab = 'work' | 'parts' | 'billing' | 'log';
 
@@ -128,14 +128,38 @@ export default function ProjectDetail() {
       </Card>
 
       {p.service === 'ceramic' && (() => {
-        const years = PACKAGES.ceramic.find((x) => x.name === p.packageName)?.warrantyYears;
-        return years ? (
-          <div className="callout" style={{ marginTop: 16, borderColor: 'color-mix(in srgb, var(--violet) 45%, var(--line))' }}>
-            <span className="ico"><Icon name="check" /></span>
-            <div><strong>{years}-year coating warranty</strong>
-              <div className="small muted">Starts at handover. A free maintenance check is due 12 months later. Keep the product batch number and the before and after photos with the warranty card.</div></div>
-          </div>
-        ) : null;
+        const c = p.coating ?? {};
+        const dates = coatingDates(p);
+        const years = c.warrantyYears ?? PACKAGES.ceramic.find((x) => x.name === p.packageName)?.warrantyYears;
+        const set = (patch: Partial<CoatingRecord>) => dispatch({ type: 'updateCoating', projectId: p.id, patch });
+        const num = (v: string) => (v === '' ? undefined : Number(v));
+        const dueIn = dates.maintenanceDue ? diffDays(today, dates.maintenanceDue) : null;
+        return (
+          <Card className="mt" title="Coating record" action={years ? <Pill tone="violet">{years}-year warranty</Pill> : <span className="muted small">Kept for the warranty</span>}>
+            <div className="form f4c">
+              <label>Product used<input value={c.product ?? ''} onChange={(e) => set({ product: e.target.value || undefined })} placeholder="9H ceramic coating" /></label>
+              <label>Batch number<input value={c.batch ?? ''} onChange={(e) => set({ batch: e.target.value || undefined })} placeholder="From the bottle" /></label>
+              <label>Gloss before (GU)<input type="number" min="0" step="0.1" value={c.glossBefore ?? ''} onChange={(e) => set({ glossBefore: num(e.target.value) })} /></label>
+              <label>Gloss after (GU)<input type="number" min="0" step="0.1" value={c.glossAfter ?? ''} onChange={(e) => set({ glossAfter: num(e.target.value) })} /></label>
+              <label>Paint thickness (µm)<input type="number" min="0" value={c.thicknessMicrons ?? ''} onChange={(e) => set({ thicknessMicrons: num(e.target.value) })} /></label>
+              <label>Cure started<input type="date" value={c.cureStarted ?? ''} onChange={(e) => set({ cureStarted: e.target.value || undefined })} /></label>
+              <label>Do not wash until<input type="date" value={dates.washAfter ?? ''} onChange={(e) => set({ washAfter: e.target.value || undefined })} /></label>
+              <label>Handover date<input type="date" value={c.handoverDate ?? ''} onChange={(e) => set({ handoverDate: e.target.value || undefined, warrantyYears: c.warrantyYears ?? years })} /></label>
+            </div>
+            <div className="row spread" style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+              <div className="small">
+                {c.glossBefore !== undefined && c.glossAfter !== undefined && <span style={{ marginRight: 18 }}>Gloss <b className="ok">+{Math.round((c.glossAfter - c.glossBefore) * 10) / 10} GU</b></span>}
+                {dates.warrantyEnds ? <span style={{ marginRight: 18 }}>Warranty ends <b>{fmtDate(dates.warrantyEnds)} {dates.warrantyEnds.slice(0, 4)}</b></span> : <span className="muted" style={{ marginRight: 18 }}>Warranty starts at handover</span>}
+                {dates.maintenanceDue && <span>Free check due <b className={dueIn !== null && dueIn < 0 && !c.maintenanceDone ? 'over' : ''}>{fmtDate(dates.maintenanceDue)}</b>{c.maintenanceDone ? <span className="ok"> · done</span> : dueIn !== null && <span className="muted"> · {dueIn < 0 ? `${-dueIn} days overdue` : dueIn === 0 ? 'today' : `in ${dueIn} days`}</span>}</span>}
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                {!c.cureStarted && <button className="sm" onClick={() => set({ cureStarted: today })}>Start cure today</button>}
+                {!c.handoverDate && <button className="sm" onClick={() => set({ handoverDate: today, warrantyYears: c.warrantyYears ?? years })}>Record handover today</button>}
+                {c.handoverDate && !c.maintenanceDone && <button className="sm" onClick={() => set({ maintenanceDone: true })}>Mark check done</button>}
+              </div>
+            </div>
+          </Card>
+        );
       })()}
 
       <div className="tabs">

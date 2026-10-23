@@ -1,4 +1,4 @@
-import { addDays, diffDays, fmtDate as fmtShort, isWeekend } from './dates';
+import { addDays, addMonths, addYears, diffDays, fmtDate as fmtShort, isWeekend } from './dates';
 import type { Attendance, AttendanceStatus, Data, Mechanic, Part, PartKind, PartStatus, Phase, PhaseKey, Project, ServiceType, Task } from './types';
 
 /** Every step any service can have, with its label and how much of a job it represents. */
@@ -371,4 +371,44 @@ export function coverageGaps(d: Data, today: string): CoverageGap[] {
     if (mechanic && record && isOut(record)) out.push({ task: t, mechanic, record });
   }
   return out.sort((a, b) => a.task.date.localeCompare(b.task.date));
+}
+
+/* ───────────── ceramic coating records ───────────── */
+
+/** Days a freshly coated car should stay dry. Alex sets the real figure from the product's data sheet. */
+export const NO_WASH_DAYS = 7;
+/** Months after handover when the free maintenance check is due. */
+export const MAINTENANCE_MONTHS = 12;
+
+export interface CoatingDates { washAfter?: string; warrantyEnds?: string; maintenanceDue?: string }
+
+/** Dates worked out from the coating record, so nobody has to count days by hand. */
+export function coatingDates(p: Project): CoatingDates {
+  const c = p.coating;
+  if (!c) return {};
+  return {
+    washAfter: c.washAfter ?? (c.cureStarted ? addDays(c.cureStarted, NO_WASH_DAYS) : undefined),
+    warrantyEnds: c.handoverDate && c.warrantyYears ? addYears(c.handoverDate, c.warrantyYears) : undefined,
+    maintenanceDue: c.handoverDate ? addMonths(c.handoverDate, MAINTENANCE_MONTHS) : undefined,
+  };
+}
+
+export interface CoatingFollowUp {
+  project: Project;
+  kind: 'no_wash' | 'maintenance';
+  date: string;
+  /** Days from today; negative means it is overdue. */
+  daysAway: number;
+}
+
+/** Cars that must stay dry for now, and owners due a maintenance check soon or already overdue. */
+export function coatingFollowUps(d: Data, today: string, maintenanceWindowDays = 30): CoatingFollowUp[] {
+  const out: CoatingFollowUp[] = [];
+  for (const p of d.projects) {
+    if (p.service !== 'ceramic' || !p.coating) continue;
+    const dates = coatingDates(p);
+    if (dates.washAfter && dates.washAfter >= today && p.coating.cureStarted) out.push({ project: p, kind: 'no_wash', date: dates.washAfter, daysAway: diffDays(today, dates.washAfter) });
+    if (dates.maintenanceDue && !p.coating.maintenanceDone && diffDays(today, dates.maintenanceDue) <= maintenanceWindowDays) out.push({ project: p, kind: 'maintenance', date: dates.maintenanceDue, daysAway: diffDays(today, dates.maintenanceDue) });
+  }
+  return out.sort((a, b) => a.daysAway - b.daysAway);
 }
