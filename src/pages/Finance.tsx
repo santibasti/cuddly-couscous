@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { BirCompliance } from '@/components/BirCompliance';
+import { Books } from '@/components/Books';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, attempt, ask, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { confirmationOf, paymentPlanLabel, paymentCounts, paymentPending, paymentStatusLabel, isDone, AGING_BUCKETS, aggregateProfit, agingBucket, docTotals, invoiceBalance, invoiceSettled, invoiceState, invoiceTotals, jobProfitRows, profitAndLoss, serviceProfitRows, discountAggregate, discountRows, type AgingBucket, type DiscountAgg, type DiscountRow, type DiscountView } from '@/lib/business';
@@ -13,7 +14,7 @@ import type { ChequeStatus, Expense, ExpenseCategory, ExpenseMethod, Invoice, Pa
 
 const METHODS: ExpenseMethod[] = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Credit Card', 'Other'];
 const CATEGORIES: ExpenseCategory[] = ['Payroll', 'Fuel', 'Materials', 'Equipment Repair', 'Transportation', 'Marketing', 'Rent', 'Utilities', 'Government Fees', 'Subcontractor', 'Toll & Parking', 'Meals & Snacks', 'Other'];
-type Tab = 'overview' | 'invoices' | 'receivables' | 'payments' | 'expenses' | 'profit' | 'discounts' | 'bir';
+type Tab = 'overview' | 'invoices' | 'receivables' | 'payments' | 'expenses' | 'profit' | 'discounts' | 'bir' | 'books';
 
 /* ---------- Invoice editor ---------- */
 function InvoiceModal({ initial, onClose }: { initial?: Invoice; onClose: () => void }) {
@@ -117,7 +118,7 @@ export default function Finance() {
   const tabs: { id: Tab; label: string; count?: number }[] = [
     ...(can('invoices.view') ? [{ id: 'overview' as Tab, label: 'Overview' }, { id: 'invoices' as Tab, label: 'Invoices', count: invoices.length }, { id: 'receivables' as Tab, label: 'Receivables & aging', count: open.length }, { id: 'payments' as Tab, label: 'Payments' }] : []),
     ...(can('expenses.view') ? [{ id: 'expenses' as Tab, label: 'Expenses & petty cash' }] : []), ...(can('profit.view') ? [{ id: 'profit' as Tab, label: 'Profitability' }, { id: 'discounts' as Tab, label: 'Discounts', count: db.discount_requests.filter((r) => r.status === 'Pending Admin Approval' && !r.deleted_at).length || undefined }] : []),
-    ...(can('reports.finance') ? [{ id: 'bir' as Tab, label: 'BIR compliance' }] : []),
+    ...(can('reports.finance') ? [{ id: 'bir' as Tab, label: 'BIR compliance' }, { id: 'books' as Tab, label: 'Bookkeeping' }] : []),
   ];
 
   /* profitability data */
@@ -144,6 +145,7 @@ export default function Finance() {
       </PageHead>
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       {tab === 'bir' && can('reports.finance') && <BirCompliance />}
+      {tab === 'books' && can('reports.finance') && <Books />}
 
       {tab === 'overview' && (
         <div className="stack">

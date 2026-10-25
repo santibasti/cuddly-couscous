@@ -83,6 +83,7 @@ export const PERMISSIONS: { key: string; group: string; label: string }[] = [
   { key: 'reports.ops', group: 'Reports', label: 'Operational reports' },
   { key: 'reports.hr', group: 'Reports', label: 'HR / attendance / payroll reports' },
   { key: 'reports.finance', group: 'Reports', label: 'Financial reports' },
+  { key: 'books.manage', group: 'Reports', label: 'Bookkeeping: enter opening balances and adjusting journal entries' },
   { key: 'maintenance.view', group: 'Maintenance', label: 'View maintenance schedules and assets' },
   { key: 'maintenance.request', group: 'Maintenance', label: 'Report an issue and request maintenance' },
   { key: 'maintenance.manage', group: 'Maintenance', label: 'Plan, edit, defer, approve cost and complete maintenance' },
@@ -109,7 +110,7 @@ export const DEFAULT_ACCESS: Record<Role, string[]> = {
     'jobs.all', 'jobs.close_internal', 'attendance.view', 'employees.view', 'employees.pay',
     'payroll.view', 'payroll.edit', 'inventory.view', 'assets.view',
     'invoices.view', 'invoices.edit', 'invoices.approve', 'payments.record', 'payments.verify', 'expenses.view', 'expenses.edit', 'expenses.approve',
-    'profit.view', 'reports.ops', 'reports.hr', 'reports.finance', 'maintenance.view', 'receipts.capture', 'receipts.manage', 'announce.view',
+    'profit.view', 'reports.ops', 'reports.hr', 'reports.finance', 'books.manage', 'maintenance.view', 'receipts.capture', 'receipts.manage', 'announce.view',
   ],
   leader: [
     'dashboard.view', 'jobs.mine', 'jobs.complete', 'attendance.own', 'attendance.view', 'attendance.approve',
@@ -155,6 +156,6 @@ export const ROUTE_ACCESS: Record<string, string[]> = {
   maintenance: ['maintenance.view', 'maintenance.request'],
   receipts: ['receipts.capture', 'receipts.manage'],
   finance: ['invoices.view', 'expenses.view', 'profit.view'],
-  reports: ['reports.ops', 'reports.hr', 'reports.finance'],
+  reports: ['reports.ops', 'reports.hr', 'reports.finance', 'books.manage'],
   admin: ['admin.users', 'admin.settings', 'admin.audit'],
 };
