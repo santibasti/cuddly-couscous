@@ -1,0 +1,34 @@
+{
+  "series": "Strangers Again",
+  "characters": {
+    "Yuna": {
+      "full_name": "Han Yuna", "age": 20,
+      "palette": {"hair": "#8B5E3C", "eyes": "#7B4A2D", "skin": "#F6DCC8", "cardigan": "#F5EBD7", "skirt": "#A9CBEA", "necklace": "#C0C6CE"},
+      "outfits": {"Main": "cream cardigan, white blouse, light-blue pleated skirt, white socks, white sneakers, silver pendant necklace", "Flashback": "pastel-pink cardigan/dress, silver necklace"},
+      "expressions": ["Neutral","GentleSmile","Happy","Blushing","Surprised","Shocked","Worried","Sad","Crying","Angry","Determined","EyesClosed"],
+      "poses": ["Standing","Talking","Walking","Running","Sitting","LookingDown","Crying","HoldingNecklace","ArmsCrossed","TurningAway"]
+    },
+    "Minho": {
+      "full_name": "Kang Minho", "age": 21,
+      "palette": {"hair": "#1B1B1F", "eyes": "#8A929B", "skin": "#F3D9C6", "jacket": "#1C1C1E", "shirt": "#FFFFFF", "trousers": "#2A2D34"},
+      "outfits": {"Main": "black casual jacket, white inner shirt, dark trousers, black shoes", "Flashback": "plain white shirt, dark trousers"},
+      "expressions": ["Neutral","Cold","Serious","SlightSmile","Happy","Surprised","Shocked","Angry","Jealous","Worried","Sad","EyesClosed"],
+      "poses": ["Standing","Walking","LookingAway","ArmsCrossed","Talking","HoldingUmbrella","HoldingPhotograph","Sitting","LookingDown","ReachingOut"]
+    },
+    "Jihoon": {
+      "full_name": "Lee Jihoon", "age": 21,
+      "palette": {"hair": "#7A5232", "eyes": "#8E6B3E", "skin": "#E9C4A4", "sweater": "#D8C3A5", "trousers": "#2B2E36"},
+      "outfits": {"Main": "beige sweater, dark trousers, white sneakers"},
+      "expressions": ["Neutral","Smiling","Laughing","PlayfulGrin","Blushing","Surprised","Worried","Serious","Sad"],
+      "poses": ["Standing","Walking","Talking","Laughing","HoldingCoffee","OfferingDrink","Sitting","Waving","LookingConcerned"]
+    },
+    "Sera": {
+      "full_name": "Choi Sera", "age": 21,
+      "palette": {"hair": "#141418", "eyes": "#7D7A94", "skin": "#F4DCCB", "blouse": "#FFFFFF", "skirt": "#1A1A1F"},
+      "outfits": {"Main": "white fitted blouse, black pleated skirt, black shoes"},
+      "expressions": ["Neutral","Confident","SlightSmile","Cold","Suspicious","Angry","Shocked","Worried","Sad"],
+      "poses": ["Standing","ArmsCrossed","Talking","Walking","LookingAway","Pointing","Confrontation","LookingConcerned"]
+    }
+  },
+  "frame": {"width": 1080, "height": 1920, "min_height_px": 1080}
+}
