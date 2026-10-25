@@ -34,7 +34,8 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
   const emp = (id?: string) => db.employees.find((e) => e.id === id)?.full_name ?? '—';
   const equip = wf.items.filter((i) => (i.loaded_qty ?? 0) > 0 && i.kind !== 'material' && i.kind !== 'ppe').map((i) => i.label);
   const site = db.sites.find((s) => s.id === job.site_id);
-  const autoScope = `${q?.scope ?? job.scope}${adds.length ? `\nAdditional work (approved): ${adds.flatMap((v) => v.items.map((i) => `${i.description} (${i.qty} ${i.unit})`)).join('; ')}` : ''}`;
+  const baseScope = (q?.scope || job.scope || '').trim() || `${job.service_codes.map((c) => db.services.find((x) => x.code === c)?.name ?? c).join(', ')} at ${site?.name ?? 'the site'}`;   // never start empty: an empty box silently kept the button off
+  const autoScope = `${baseScope}${adds.length ? `\nAdditional work (approved): ${adds.flatMap((v) => v.items.map((i) => `${i.description} (${i.qty} ${i.unit})`)).join('; ')}` : ''}`;
   const [f, setF] = useState({ scope: autoScope, findings: '', recs: '', limits: '', complimentary: '', client_name: wf.conf_name ?? site?.contact_person ?? '', tm_name: emp(job.leader_id) !== '—' ? emp(job.leader_id) : user?.name ?? '' });
   const [sat, setSat] = useState<Partial<SatisfactionInput>>({});
   const [stage, setStage] = useState<null | 'rate' | 'tl' | 'sign'>(null);
@@ -42,7 +43,7 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
   const chips = (key: string, opts: readonly string[]) => [...(more[key] ? opts : opts.slice(0, FEW))];
   const moreBtn = (key: string, opts: readonly string[]) => opts.length > FEW && <button type="button" className="btn sm" onClick={() => setMore({ ...more, [key]: !more[key] })}>{more[key] ? 'Fewer options' : `More options (${opts.length - FEW})`}</button>;
   const allGood = () => setF({ ...f, findings: 'Work completed without issues', recs: 'None', limits: 'None' });
-  const dr = useDraft(`d:${wf.id}:rep`, { f, csig, tsig, sat }, (d) => { setF(d.f); setCsig(d.csig); setTsig(d.tsig); setSat(d.sat ?? {}); }, run && !signed);
+  const dr = useDraft(`d:${wf.id}:rep`, { f, csig, tsig, sat }, (d) => { setF({ ...d.f, scope: d.f.scope?.trim() ? d.f.scope : autoScope }); setCsig(d.csig); setTsig(d.tsig); setSat(d.sat ?? {}); }, run && !signed);
   if (signed) {
     return (
       <div className="stack">
@@ -72,7 +73,7 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
         <PaymentMethodConfirm wf={wf} job={job} run={run} />
       </Sec>
       <Sec n={2} title="Write the report" hint="Work completed is filled in for you">
-        <details className="card" style={{ padding: 12 }}><summary style={{ cursor: 'pointer' }}><span className="small muted">Work completed</span><div style={{ whiteSpace: 'pre-wrap' }}>{f.scope}</div></summary>
+        <details className="card" style={{ padding: 12 }} open={!f.scope.trim()}><summary style={{ cursor: 'pointer' }}><span className="small muted">Work completed</span><div style={{ whiteSpace: 'pre-wrap' }}>{f.scope}</div></summary>
           <Field label="Edit work completed" required><textarea rows={3} disabled={!run} value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })} /></Field></details>
         {run && <button type="button" className="btn" onClick={allGood}>✨ All good — use the standard wording</button>}
         <Field label="Findings" required><textarea rows={2} disabled={!run} value={f.findings} onChange={(e) => setF({ ...f, findings: e.target.value })} placeholder="Tap a finding below, type, or enter “None”" /><PresetChips replace options={chips('f', PRESETS.findings)} value={f.findings} onChange={(v) => setF({ ...f, findings: v })} disabled={!run} />{moreBtn('f', PRESETS.findings)}</Field>
@@ -91,6 +92,7 @@ export function HandoverStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run:
       {run && <div><div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>TopMop team leader signature</div><SignaturePad value={tsig} onChange={setTsig} /></div>}
       {run && <Confirm checked={ok} onChange={setOk}>The work and findings above were reviewed with the client.</Confirm>}
       {run && <div className="alert info">Next: hand the tablet to the client. They will answer a short rating on its own page, then review the final bill and sign.</div>}
+      {run && (() => { const need = [!f.scope.trim() && 'Work completed', !f.findings.trim() && 'Findings', !f.recs.trim() && 'Recommendations', !f.limits.trim() && 'Limitations / exclusions', !f.client_name.trim() && 'Client name', !tsig && 'Your signature', !ok && 'the “reviewed with the client” switch', !!block && 'the discount request (see the warning above)'].filter(Boolean); return need.length > 0 && <div className="alert warn" role="status">To continue, still needed: <b>{need.join(', ')}</b>.</div>; })()}
       {run && <button className="btn primary lg" disabled={!ok || !!block || !tsig || !f.scope.trim() || !f.findings.trim() || !f.recs.trim() || !f.limits.trim() || !f.client_name.trim()} onClick={() => setStage('rate')}>Hand tablet to the client →</button>}
       </Sec>
       {stage && (
