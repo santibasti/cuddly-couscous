@@ -324,7 +324,8 @@ describe('services', () => {
     expect(PACKAGES.ceramic.some((x) => x.name === coating.packageName && x.price === coating.budget)).toBe(true);
   });
   it('creates a new job with the right steps for the chosen service', () => {
-    const base = d.projects[0];
+    // Form values only: a new job is given its own id, and starts with no payments.
+    const { id: _id, payments: _pay, ...base } = d.projects[0];
     const s = reducer(d, { type: 'addProject', project: { ...base, status: undefined, service: 'ceramic', packageName: PACKAGES.ceramic[0].name, startDate: TODAY, targetDate: addDays(TODAY, 3), budget: PACKAGES.ceramic[0].price } });
     const added = s.projects.at(-1)!;
     expect(added.service).toBe('ceramic');

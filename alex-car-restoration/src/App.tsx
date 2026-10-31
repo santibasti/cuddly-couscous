@@ -12,8 +12,10 @@ import { useStore } from './lib/store';
 import Attendance from './pages/Attendance';
 import CustomerDetail from './pages/CustomerDetail';
 import Customers from './pages/Customers';
+import EstimatePage from './pages/Estimate';
+import Intake from './pages/Intake';
 import Insights from './pages/Insights';
-import Dashboard from './pages/Dashboard';
+import Home from './pages/Home';
 import Today from './pages/Today';
 import Executive from './pages/Executive';
 import Mechanics from './pages/Mechanics';
@@ -53,6 +55,8 @@ export default function App() {
   const links: [string, string, string, number?][] = [
     ['/', 'Operations', 'dash', blocked || undefined],
     ['/today', 'Today', 'sun'],
+    ['/intake', 'New job', 'plus'],
+    ['/estimate', 'Estimate', 'calc'],
     ['/executive', 'Executive', 'chart'],
     ['/insights', 'Insights', 'insight'],
     ['/projects', 'Projects', 'car'],
@@ -100,9 +104,11 @@ export default function App() {
         {!ROLES[role].edit && <div className="update-bar" role="status"><span>Monitoring view: you can look at everything here, but changes are turned off.</span></div>}
         {!open ? <p>This page is not part of the {ROLES[role].label} view. <Link to="/">Back to operations</Link></p> : (
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Home />} />
           <Route path="/today" element={<Today />} />
           <Route path="/executive" element={<Executive />} />
+          <Route path="/intake" element={<Intake />} />
+          <Route path="/estimate" element={<EstimatePage />} />
           <Route path="/insights" element={<Insights />} />
           <Route path="/customers" element={<Customers />} />
           <Route path="/customers/:id" element={<CustomerDetail />} />

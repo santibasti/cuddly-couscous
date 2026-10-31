@@ -19,7 +19,7 @@ export default function Mechanics() {
     const f = new FormData(e.currentTarget);
     dispatch({
       type: 'addMechanic',
-      mechanic: { name: String(f.get('name')), specialty: String(f.get('specialty')), hourlyRate: Number(f.get('rate')) || 0, dailyHours: Number(f.get('hours')) || 8, color: COLORS[data.mechanics.length % COLORS.length] },
+      mechanic: { name: String(f.get('name')), specialty: String(f.get('specialty')), dailyHours: Number(f.get('hours')) || 8, color: COLORS[data.mechanics.length % COLORS.length] },
     });
     e.currentTarget.reset();
   }
@@ -52,7 +52,7 @@ export default function Mechanics() {
               </div>
               <div className="row spread small" style={{ margin: '14px 0 6px' }}><span className="muted">This week booked</span><b className={util > 100 ? 'over' : ''}>{util}%</b></div>
               <Bar value={util} tone={util > 100 ? 'red' : util > 85 ? 'amber' : undefined} />
-              <div className="row small muted" style={{ margin: '10px 0' }}><span>₱{m.hourlyRate.toLocaleString('en-PH')}/h</span><span>·</span><span>{m.dailyHours}h/day</span><span>·</span><span>{hrs}h logged</span>{stuck > 0 && <Pill tone="orange">{stuck} waiting on parts/approval</Pill>}</div>
+              <div className="row small muted" style={{ margin: '10px 0' }}><span>{m.dailyHours}h/day</span><span>·</span><span>{hrs}h logged</span>{stuck > 0 && <Pill tone="orange">{stuck} waiting on parts/approval</Pill>}</div>
               <div className="eyebrow" style={{ marginBottom: 4 }}>Up next</div>
               {mine.slice(0, 4).map((t) => {
                 const p = data.projects.find((x) => x.id === t.projectId)!;
@@ -68,7 +68,6 @@ export default function Mechanics() {
         <form className="form f4" onSubmit={add}>
           <label>Name<input name="name" placeholder="Jane Smith" required /></label>
           <label>Specialty<input name="specialty" placeholder="Paint & finish" required /></label>
-          <label>Hourly rate (₱)<input name="rate" type="number" min="0" placeholder="1500" /></label>
           <label>Hours per day<input name="hours" type="number" min="1" max="12" defaultValue={8} /></label>
           <button className="primary" type="submit">Add mechanic</button>
         </form>

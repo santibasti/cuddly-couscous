@@ -16,10 +16,11 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
   const over = daysOverdue(p, today);
   const crew = jobCrew(p.id, data);
   const curBlocked = cur && data.tasks.some((t) => t.projectId === p.id && t.phaseKey === cur.key && taskBlocker(t, data.parts));
+  const urgent = health === 'at_risk' || health === 'blocked' || health === 'late';
   const style = { '--paint': paintHex(p) } as React.CSSProperties;
 
   return (
-    <Link to={`/projects/${p.id}`} className="pcard rise" style={style}>
+    <Link to={`/projects/${p.id}`} className={`pcard rise ${urgent ? `urgent ${health}` : ''}`} style={style}>
       <div className="art">
         <div className="tl"><span className="eyebrow">{p.bay}</span></div>
         <div className="tr"><HealthPill h={health} /></div>
@@ -33,7 +34,7 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
         </div>
         <Journey compact phases={p.phases} tone={health === 'late' ? 'bad' : health === 'blocked' || health === 'at_risk' ? 'warn' : health === 'quote' || health === 'hold' ? 'hold' : 'ok'} />
         {reasons[0] && health !== 'on_track' ? (
-          <div className="note-line"><Icon name="warn" size={14} /><span>{reasons[0]}{reasons.length > 1 && <span className="muted"> · +{reasons.length - 1} more</span>}</span></div>
+          <div className="note-line"><Icon name="warn" size={14} /><span>{urgent && <b className="urgent-tag">{health === 'late' ? 'Overdue: update now' : health === 'blocked' ? 'Resolve now' : 'Needs an update'}</b>}{reasons[0]}{reasons.length > 1 && <span className="muted"> · +{reasons.length - 1} more</span>}</span></div>
         ) : (
           <div className="small muted">{cur && p.status === 'active' ? `${phaseShort(cur.key)} in progress — nothing holding it up` : 'Awaiting customer approval to begin'}</div>
         )}

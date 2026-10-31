@@ -1,4 +1,5 @@
 import { addDays, addMonths, addYears, diffDays, fmtDate as fmtShort, isWeekend } from './dates';
+import { LABOR_COST_PER_HOUR } from './rates';
 import type { Attendance, AttendanceStatus, Data, Mechanic, Part, PartKind, PartStatus, Phase, PhaseKey, Project, ServiceType, Task } from './types';
 
 /** Every step any service can have, with its label and how much of a job it represents. */
@@ -132,11 +133,10 @@ export function latePhases(project: Project, today: string): Phase[] {
   return project.phases.filter((p) => p.status !== 'done' && p.end < today);
 }
 
-export function projectCosts(project: Project, tasks: Task[], parts: Part[], mechanics: Mechanic[]) {
-  const rate = new Map(mechanics.map((m) => [m.id, m.hourlyRate]));
+export function projectCosts(project: Project, tasks: Task[], parts: Part[], _mechanics?: Mechanic[]) {
   const labor = tasks
     .filter((t) => t.projectId === project.id)
-    .reduce((s, t) => s + t.actualHours * (t.mechanicId ? (rate.get(t.mechanicId) ?? 0) : 0), 0);
+    .reduce((s, t) => s + t.actualHours * LABOR_COST_PER_HOUR, 0);
   const partsCost = parts.filter((p) => p.projectId === project.id).reduce((s, p) => s + p.cost, 0);
   return { labor, parts: partsCost, total: labor + partsCost };
 }

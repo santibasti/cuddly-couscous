@@ -7,15 +7,14 @@ import type { Attendance, BlockReason, Customer, Data, Sms, Mechanic, Part, Part
 const FX = 56;
 const php = (usd: number) => Math.round((usd * FX) / 1000) * 1000;
 const phpBudget = (usd: number) => Math.round((usd * FX) / 50000) * 50000;
-const phpRate = (usd: number) => Math.round((usd * 25) / 50) * 50;
 
 const mechanics: Mechanic[] = [
-  { id: 'm1', name: 'Carlos Reyes', specialty: 'Engine & drivetrain', color: '#e5553d', hourlyRate: phpRate(65), dailyHours: 8, active: true },
-  { id: 'm2', name: 'Jamie Brooks', specialty: 'Bodywork & metal', color: '#e8a33d', hourlyRate: phpRate(60), dailyHours: 8, active: true },
-  { id: 'm3', name: 'Priya Nair', specialty: 'Paint & finish', color: '#2fb585', hourlyRate: phpRate(70), dailyHours: 8, active: true },
-  { id: 'm4', name: 'Tom Walker', specialty: 'Electrical & assembly', color: '#4c8df0', hourlyRate: phpRate(58), dailyHours: 8, active: true },
-  { id: 'm5', name: 'Luis Ortega', specialty: 'Upholstery & trim', color: '#9a6ee0', hourlyRate: phpRate(55), dailyHours: 6, active: true },
-  { id: 'm6', name: 'Migs Dela Cruz', specialty: 'Detailing & coatings', color: '#3fb0c4', hourlyRate: phpRate(44), dailyHours: 8, active: true },
+  { id: 'm1', name: 'Carlos Reyes', specialty: 'Engine & drivetrain', color: '#e5553d', dailyHours: 8, active: true },
+  { id: 'm2', name: 'Jamie Brooks', specialty: 'Bodywork & metal', color: '#e8a33d', dailyHours: 8, active: true },
+  { id: 'm3', name: 'Priya Nair', specialty: 'Paint & finish', color: '#2fb585', dailyHours: 8, active: true },
+  { id: 'm4', name: 'Tom Walker', specialty: 'Electrical & assembly', color: '#4c8df0', dailyHours: 8, active: true },
+  { id: 'm5', name: 'Luis Ortega', specialty: 'Upholstery & trim', color: '#9a6ee0', dailyHours: 6, active: true },
+  { id: 'm6', name: 'Migs Dela Cruz', specialty: 'Detailing & coatings', color: '#3fb0c4', dailyHours: 8, active: true },
 ];
 
 /** A birthday that falls `inDays` from today, in a made-up birth year. */

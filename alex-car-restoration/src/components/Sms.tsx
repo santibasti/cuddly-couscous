@@ -48,3 +48,21 @@ export function Outbox({ customerId, projectId, limit = 8 }: { customerId?: stri
     </div>
   );
 }
+
+/** A suggested text after a stage changes. One tap to send, or dismiss. Demo only. */
+export function StageNudge({ customer, project, kind, extra, onClose }: { customer: Customer; project: Project; kind: SmsKind; extra?: string; onClose: () => void }) {
+  const { dispatch } = useStore();
+  const [text, setText] = useState(() => smsText(kind, customer, project, extra));
+  const [sent, setSent] = useState(false);
+  return (
+    <div className="nudge" role="status">
+      <div className="small"><b>Tell {customer.name.split(' ')[0]}?</b> <span className="muted">A text is ready. Edit it if you like.</span></div>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} />
+      <div className="row">
+        <button className="sm primary" disabled={!text.trim() || sent} onClick={() => { dispatch({ type: 'sendSms', customerId: customer.id, projectId: project.id, kind, text: text.trim() }); setSent(true); }}>{sent ? 'Added to outbox' : 'Send'}</button>
+        <button className="sm ghost" onClick={onClose}>{sent ? 'Close' : 'Not now'}</button>
+        <span className="small muted">Demo only. No text message is really sent.</span>
+      </div>
+    </div>
+  );
+}
