@@ -23,6 +23,7 @@ export type Action =
   | { type: 'addUpdate'; projectId: string; text: string; phaseKey?: PhaseKey; author: string }
   | { type: 'addMechanic'; mechanic: Omit<Mechanic, 'id' | 'active'> }
   | { type: 'toggleMechanic'; id: string }
+  | { type: 'updateMechanic'; id: string; patch: Partial<Mechanic> }
   | { type: 'clockIn'; mechanicId: string; date: string; time: string }
   | { type: 'clockOut'; mechanicId: string; date: string; time: string }
   | { type: 'setAttendance'; mechanicId: string; date: string; status: AttendanceStatus; timeIn?: string; timeOut?: string; note?: string }
@@ -132,6 +133,8 @@ export function reducer(d: Data, a: Action): Data {
       return { ...d, mechanics: [...d.mechanics, { ...a.mechanic, id: uid('m'), active: true }] };
     case 'toggleMechanic':
       return { ...d, mechanics: d.mechanics.map((m) => (m.id === a.id ? { ...m, active: !m.active } : m)) };
+    case 'updateMechanic':
+      return { ...d, mechanics: d.mechanics.map((m) => (m.id === a.id ? { ...m, ...a.patch } : m)) };
     case 'clockIn': {
       const existing = d.attendance.find((r) => r.mechanicId === a.mechanicId && r.date === a.date);
       if (existing?.timeIn) return d; // already clocked in today

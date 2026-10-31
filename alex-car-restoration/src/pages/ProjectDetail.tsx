@@ -3,11 +3,11 @@ import { Link, useParams } from 'react-router-dom';
 import { AdviceCard } from '../components/Advice';
 import { Outbox, SmsAction } from '../components/Sms';
 import { adviseJob } from '../lib/advice';
-import { Avatar, CarArt, Card, carName, HealthPill, ServicePill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
+import { Avatar, Crew, CarArt, Card, carName, HealthPill, ServicePill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
 import { paintHex } from '../lib/paint';
 import { resizeImage } from '../lib/photo';
 import { addDays, diffDays, fmtDate, todayIso } from '../lib/dates';
-import { BAYS, PACKAGES, PART_FLOW, coatingDates, currentPhase, daysOverdue, isPartIn, money, moneyC, partRisk, partStatusLabel, phaseLabel, phasePercent, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
+import { BAYS, PACKAGES, PART_FLOW, coatingDates, currentPhase, daysOverdue, isPartIn, money, moneyC, partRisk, partStatusLabel, phaseLabel, phasePercent, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker, jobCrew } from '../lib/logic';
 import { CHECKUP_DAYS, isPaidInFull, missingItems } from '../lib/crm';
 import { useRole } from '../lib/role';
 import { useStore } from '../lib/store';
@@ -74,6 +74,7 @@ export default function ProjectDetail() {
           <div className="row" style={{ marginBottom: 14 }}><span className="eyebrow">{p.code} · {p.year} · {p.bay}</span><ServicePill s={p.service} /><HealthPill h={health} /></div>
           <h1>{p.make} <em>{p.model}</em></h1>
           <p className="muted" style={{ margin: '12px 0 0' }}>{p.packageName ?? p.title} · {p.color} · {customer?.name} ({customer?.phone})</p>
+          {jobCrew(p.id, data).length > 0 && <div className="row" style={{ marginTop: 12, gap: 10 }}><Crew crew={jobCrew(p.id, data)} size={32} max={6} /><span className="small muted">{jobCrew(p.id, data).map((m) => m.name.split(' ')[0]).join(', ')}</span></div>}
           <div className="row" style={{ marginTop: 20 }}>
             <select value={p.status} onChange={(e) => dispatch({ type: 'setProjectStatus', id: p.id, status: e.target.value as ProjectStatus })}>
               {(['quote', 'active', 'on_hold', 'completed', 'delivered'] as ProjectStatus[]).map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}

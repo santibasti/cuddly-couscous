@@ -91,12 +91,23 @@ export const Card = ({ title, action, children, flush, className = '' }: { title
 );
 
 export const Avatar = ({ m, size = 24 }: { m?: Mechanic; size?: number }) =>
-  m ? (
+  m?.photo ? (
+    <img className="avatar photo" src={m.photo} alt={m.name} title={m.name} width={size} height={size} style={{ width: size, height: size }} />
+  ) : m ? (
     <span className="avatar" style={{ background: m.color, width: size, height: size, fontSize: size * 0.4 }} title={m.name}>
       {m.name.split(' ').map((w) => w[0]).join('')}
     </span>
   ) : (
     <span className="avatar none" style={{ width: size, height: size, fontSize: size * 0.45 }} title="Unassigned">?</span>
+  );
+
+/** The people working on a job, as overlapping faces. */
+export const Crew = ({ crew, size = 28, max = 4 }: { crew: Mechanic[]; size?: number; max?: number }) =>
+  crew.length === 0 ? null : (
+    <span className="crew" title={crew.map((m) => m.name).join(', ')}>
+      {crew.slice(0, max).map((m) => <Avatar key={m.id} m={m} size={size} />)}
+      {crew.length > max && <span className="avatar more" style={{ width: size, height: size, fontSize: size * 0.4 }}>+{crew.length - max}</span>}
+    </span>
   );
 
 export const ProjectLink = ({ p }: { p: Project }) => (

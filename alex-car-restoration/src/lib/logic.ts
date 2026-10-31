@@ -412,3 +412,11 @@ export function coatingFollowUps(d: Data, today: string, maintenanceWindowDays =
   }
   return out.sort((a, b) => a.daysAway - b.daysAway);
 }
+
+/** Mechanics with work on a job: those with open tasks first, then anyone who has worked on it. */
+export function jobCrew(projectId: string, d: Data): Mechanic[] {
+  const ids: string[] = [];
+  const mine = d.tasks.filter((t) => t.projectId === projectId && t.mechanicId);
+  for (const t of [...mine.filter((x) => x.status !== 'done'), ...mine.filter((x) => x.status === 'done')]) if (!ids.includes(t.mechanicId!)) ids.push(t.mechanicId!);
+  return ids.map((id) => d.mechanics.find((m) => m.id === id)).filter((m): m is Mechanic => !!m && m.active);
+}

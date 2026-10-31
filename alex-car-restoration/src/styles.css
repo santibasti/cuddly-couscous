@@ -324,3 +324,7 @@ button.primary,.btn.primary{box-shadow:0 8px 20px -10px var(--accent)}
 .reasons .good .mk{background:color-mix(in srgb,var(--green) 22%,transparent);color:var(--green)}
 .reasons .warn .mk{background:color-mix(in srgb,var(--amber) 22%,transparent);color:var(--amber)}
 .reasons .bad .mk{background:color-mix(in srgb,var(--red) 22%,transparent);color:var(--red)}
+
+img.avatar{object-fit:cover;background:var(--panel2)}
+.crew{display:inline-flex;align-items:center;flex:none}.crew .avatar+.avatar{margin-left:-9px}
+.avatar.more{background:var(--panel2);color:var(--ink2);box-shadow:0 0 0 2px var(--bg)}
