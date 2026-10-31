@@ -372,3 +372,24 @@ img.avatar{object-fit:cover;background:var(--panel2)}
 .fold{border:1px solid var(--line);border-radius:16px;padding:14px 18px;background:linear-gradient(180deg,var(--card-a),var(--card-b))}
 .fold summary{cursor:pointer;font:600 20px var(--serif);display:flex;justify-content:space-between;align-items:baseline}
 .fold pre{margin-top:12px}
+
+/* motion: status comes alive. Off for anyone who asked for less movement. */
+@keyframes ring-in{from{stroke-dashoffset:var(--c)}}
+@keyframes gauge-in{from{stroke-dasharray:0.01 var(--c)}}
+@keyframes grow-x{from{transform:scaleX(0);opacity:.3}}
+@keyframes draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes fade-in{from{opacity:0}}
+@keyframes ping{0%{box-shadow:0 0 0 0 color-mix(in srgb,currentColor 55%,transparent)}70%,100%{box-shadow:0 0 0 7px transparent}}
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.55}}
+.ring .fg{animation:ring-in 1.1s cubic-bezier(.2,.8,.2,1) both}
+.gauge .glow{animation:gauge-in 1.3s cubic-bezier(.2,.8,.2,1) both}
+.hbar-track i{transform-origin:left;animation:grow-x .9s cubic-bezier(.2,.8,.2,1) both}
+.hbar-track i:nth-child(2){animation-delay:.08s}.hbar-track i:nth-child(3){animation-delay:.16s}.hbar-track i:nth-child(4){animation-delay:.24s}
+.glow.draw{stroke-dasharray:1;animation:draw 1.4s ease-out both}
+.fadein{animation:fade-in .7s ease-out both}
+.pill.red i,.pill.orange i{animation:ping 1.9s ease-out infinite}
+.pill.blue i{animation:ping 2.4s ease-out infinite}
+.pulse-tile.red .pi svg,.pulse-tile.amber .pi svg{animation:breathe 2.2s ease-in-out infinite}
+.pulse-tile.green .pi{animation:fade-in .6s both}
+.dot.cur,.dot.blk{animation:breathe 1.8s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.ring .fg,.gauge .glow,.hbar-track i,.glow.draw,.fadein,.pill i,.pulse-tile .pi svg,.dot{animation:none!important}}

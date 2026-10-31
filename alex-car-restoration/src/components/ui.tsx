@@ -1,4 +1,4 @@
-import { useId, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { partRisk, partStatusLabel, SERVICES, type Health, type PartRisk } from '../lib/logic';
 import type { Mechanic, Part, Project, ServiceType } from '../lib/types';
@@ -230,11 +230,12 @@ export function CarArt({ color, car, className = '' }: { color: string; car?: { 
 export function Ring({ value, size = 52, stroke = 4, tone, label }: { value: number; size?: number; stroke?: number; tone?: string; label?: string }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
+  const shown = useCountUp(value);
   return (
     <svg className={`ring ${tone ?? ''}`} width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${value}% complete`}>
       <circle className="bg" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} />
-      <circle className="fg" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
-      <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central">{label ?? value}</text>
+      <circle className="fg" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)} transform={`rotate(-90 ${size / 2} ${size / 2})`} style={{ '--c': c } as CSSProperties} />
+      <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central">{label ?? shown}</text>
     </svg>
   );
 }
@@ -242,7 +243,7 @@ export function Ring({ value, size = 52, stroke = 4, tone, label }: { value: num
 export const StripStat = ({ label, value, sub, tone, spark }: { label: string; value: ReactNode; sub?: ReactNode; tone?: string; spark?: number[] }) => (
   <div>
     <div className="eyebrow">{label}</div>
-    <div className={`sv ${tone ?? ''}`}><span>{value}</span>{spark && <Spark data={spark} />}</div>
+    <div className={`sv ${tone ?? ''}`}><span>{typeof value === 'number' ? <CountUp value={value} /> : value}</span>{spark && <Spark data={spark} />}</div>
     <div className="small">{sub}</div>
   </div>
 );
@@ -251,7 +252,7 @@ export const StripStat = ({ label, value, sub, tone, spark }: { label: string; v
 export const PulseTile = ({ to, icon, value, label, tone }: { to: string; icon: string; value: ReactNode; label: string; tone?: 'green' | 'amber' | 'red' | 'blue' }) => (
   <Link to={to} className={`pulse-tile ${tone ?? ''}`}>
     <span className="pi"><Icon name={icon} size={18} /></span>
-    <span className="pv">{value}</span>
+    <span className="pv">{typeof value === 'number' ? <CountUp value={value} /> : value}</span>
     <span className="pl">{label}</span>
   </Link>
 );
@@ -269,3 +270,30 @@ export function HealthBar({ onTrack, atRisk, blocked, late }: { onTrack: number;
     </div>
   );
 }
+
+const reduceMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/** Counts up to `target` when it first shows, and from the old number when it changes. */
+export function useCountUp(target: number, ms = 900): number {
+  const [shown, setShown] = useState(() => (reduceMotion() ? target : 0));
+  const from = useRef(shown);
+  useEffect(() => {
+    if (reduceMotion()) { setShown(target); return; }
+    const start = performance.now();
+    const a = from.current;
+    let raf = 0;
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - start) / ms);
+      const eased = 1 - Math.pow(1 - k, 3);
+      const v = Math.round(a + (target - a) * eased);
+      setShown(v);
+      from.current = v;
+      if (k < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return shown;
+}
+
+export const CountUp = ({ value, prefix = '', suffix = '' }: { value: number; prefix?: string; suffix?: string }) => <>{prefix}{useCountUp(value)}{suffix}</>;
