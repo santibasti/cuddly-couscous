@@ -3,6 +3,7 @@ import { fmtDate } from '../lib/dates';
 import { currentPhase, daysOverdue, jobCrew, moneyC, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { paintHex } from '../lib/paint';
 import type { Data, Project } from '../lib/types';
+import Journey from './Journey';
 import { Avatar, Bar, CarArt, HealthPill, Icon, Ring, ServicePill } from './ui';
 
 export default function ProjectCard({ p, data, today }: { p: Project; data: Data; today: string }) {
@@ -30,11 +31,7 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
           <h3>{p.make} {p.model}</h3>
           <div className="small muted">{p.packageName ?? p.title} · {customer?.name}</div>
         </div>
-        {p.status !== 'quote' && (
-          <div className="dots" title={cur ? `Current phase: ${phaseShort(cur.key)}` : undefined}>
-            {p.phases.map((ph) => <span key={ph.key} className={`dot ${ph.status === 'done' ? 'done' : ph.key === cur?.key ? (curBlocked ? 'blk' : 'cur') : ''}`} />)}
-          </div>
-        )}
+        <Journey compact phases={p.phases} tone={health === 'late' ? 'bad' : health === 'blocked' || health === 'at_risk' ? 'warn' : health === 'quote' || health === 'hold' ? 'hold' : 'ok'} />
         {reasons[0] && health !== 'on_track' ? (
           <div className="note-line"><Icon name="warn" size={14} /><span>{reasons[0]}{reasons.length > 1 && <span className="muted"> · +{reasons.length - 1} more</span>}</span></div>
         ) : (

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AdviceCard } from '../components/Advice';
+import Journey from '../components/Journey';
 import { Outbox, SmsAction } from '../components/Sms';
 import { adviseJob } from '../lib/advice';
 import { Avatar, Crew, CarArt, Card, carName, HealthPill, ServicePill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
@@ -119,18 +120,7 @@ export default function ProjectDetail() {
       )}
 
       <Card title="Phases" action={<span className="muted small">Select a phase to update it</span>}>
-        <div className="stepper" style={{ gridTemplateColumns: `repeat(${p.phases.length}, minmax(86px, 1fr))` }}>
-          {p.phases.map((ph, i) => {
-            const late = ph.status !== 'done' && p.status === 'active' && ph.end < today;
-            return (
-              <button key={ph.key} className={`stp ${ph.status} ${late ? 'late' : ''} ${sel.key === ph.key ? 'sel' : ''}`} onClick={() => setSelKey(ph.key)}>
-                <span className="n">{ph.status === 'done' ? <Icon name="check" size={14} /> : i + 1}</span>
-                <span className="l">{phaseShort(ph.key)}</span>
-                <span className="d">{fmtDate(ph.start)}</span>
-              </button>
-            );
-          })}
-        </div>
+        <Journey phases={p.phases} selected={sel.key} onSelect={setSelKey} tone={health === 'late' ? 'bad' : health === 'blocked' || health === 'at_risk' ? 'warn' : health === 'hold' || health === 'quote' ? 'hold' : 'ok'} />
         <div className="row spread" style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--line)' }}>
           <div>
             <div className="serif" style={{ fontSize: 24 }}>{phaseLabel(sel.key)}</div>
