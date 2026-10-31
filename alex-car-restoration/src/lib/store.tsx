@@ -29,7 +29,7 @@ export type Action =
   | { type: 'clearAttendance'; mechanicId: string; date: string }
   | { type: 'addPayment'; projectId: string; date: string; amount: number; note?: string }
   | { type: 'removePayment'; projectId: string; id: string }
-  | { type: 'addCustomer'; customer: Omit<Customer, 'id'> }
+  | { type: 'addCustomer'; customer: Omit<Customer, 'id'> & { id?: string } }
   | { type: 'updateCustomer'; id: string; patch: Partial<Customer> }
   | { type: 'updateIntake'; projectId: string; patch: Partial<Intake> }
   | { type: 'approvePhase'; projectId: string; key: PhaseKey; by: string }
@@ -155,7 +155,7 @@ export function reducer(d: Data, a: Action): Data {
     case 'removePayment':
       return { ...d, projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, payments: p.payments.filter((x) => x.id !== a.id) } : p)) };
     case 'addCustomer':
-      return { ...d, customers: [...d.customers, { ...a.customer, id: uid('c') }] };
+      return { ...d, customers: [...d.customers, { ...a.customer, id: a.customer.id ?? uid('c') }] };
     case 'updateCustomer':
       return { ...d, customers: d.customers.map((c) => (c.id === a.id ? { ...c, ...a.patch } : c)) };
     case 'updateIntake':

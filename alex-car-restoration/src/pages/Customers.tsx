@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Outbox, SmsAction } from '../components/Sms';
 import { Card, Empty, Pill, Seg } from '../components/ui';
 import { SOURCES, SOURCE_KEYS, customerStats, upcomingBirthdays } from '../lib/crm';
@@ -19,6 +19,7 @@ export default function Customers() {
   const [kind, setKind] = useState<Kind>('all');
   const [src, setSrc] = useState<'all' | LeadSource>('all');
   const [adding, setAdding] = useState(false);
+  const nav = useNavigate();
   const rows = data.customers
     .map((c) => ({ c, ...customerStats(data, c) }))
     .filter((r) => (kind === 'all' || r.kind === kind) && (src === 'all' || r.c.source === src) && `${r.c.name} ${r.c.phone} ${r.cars.map((p) => `${p.make} ${p.model}`).join(' ')}`.toLowerCase().includes(q.toLowerCase()));
@@ -29,9 +30,12 @@ export default function Customers() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const t = (k: string) => String(f.get(k) ?? '').trim();
-    dispatch({ type: 'addCustomer', customer: { name: t('name'), phone: t('phone'), email: t('email'), birthday: t('birthday') || undefined, source: (t('source') || undefined) as LeadSource | undefined } });
+    const id = `c${Date.now().toString(36)}`;
+    dispatch({ type: 'addCustomer', customer: { id, name: t('name'), phone: t('phone'), email: t('email'), birthday: t('birthday') || undefined, source: (t('source') || undefined) as LeadSource | undefined } });
     e.currentTarget.reset();
     setAdding(false);
+    // Next step for a new client: price the job and see whether to go ahead.
+    nav(`/projects?new=1&customer=${id}`);
   }
 
   return (

@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { AdviceCard } from '../components/Advice';
+import { adviseJob } from '../lib/advice';
 import ProjectCard from '../components/ProjectCard';
 import { Bar, Card, Empty, HealthPill, Icon, Seg, ServicePill, carName } from '../components/ui';
 import { addDays, fmtDate, todayIso } from '../lib/dates';
@@ -14,7 +16,9 @@ export default function Projects() {
   const nav = useNavigate();
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
-  const [adding, setAdding] = useState(false);
+  const [params] = useSearchParams();
+  const [adding, setAdding] = useState(params.get('new') === '1');
+  const [custId, setCustId] = useState(params.get('customer') ?? data.customers[0]?.id ?? '');
   const [err, setErr] = useState('');
   const [view, setView] = useState<'gallery' | 'table'>('gallery');
   const [scope_, setScope_] = useState<'open' | 'delivered' | 'all'>('open');
@@ -84,7 +88,7 @@ export default function Projects() {
             </div>
             <span className="small muted" style={{ fontWeight: 400 }}>{SERVICES[svc].hint}. {isPackage ? 'Sold from a price list.' : 'Quoted for each car.'}</span>
           </label>
-          <label>Customer<select name="customer" required>{data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+          <label>Customer<select name="customer" required value={custId} onChange={(e) => setCustId(e.target.value)}>{data.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           {isPackage ? (
             <label>Package<select value={pkgIdx} onChange={(e) => applyPackage(svc, Number(e.target.value))}>{packages.map((p, i) => <option key={p.name} value={i}>{p.name} · ₱{p.price.toLocaleString('en-PH')}</option>)}</select></label>
           ) : (
@@ -100,6 +104,7 @@ export default function Projects() {
           <label>Start date<input type="date" value={start} onChange={(e) => { setStart(e.target.value); setTarget(addDays(e.target.value, SERVICES[svc].typicalDays)); }} required /></label>
           <label>Target delivery<input type="date" value={target} onChange={(e) => setTarget(e.target.value)} required /></label>
           <label className="full">Scope of work<textarea value={scope} onChange={(e) => setScope(e.target.value)} /></label>
+          {Number(budget) > 0 && target >= start && custId && <div className="full"><AdviceCard advice={adviseJob(data, { customerId: custId, service: svc, budget: Number(budget), start, target })} title="Should we go ahead with this job?" /></div>}
           {err && <div className="full over small" role="alert">{err}</div>}
           <div className="full"><button className="primary" type="submit">Create job — the {SERVICES[svc].label.toLowerCase()} steps are scheduled automatically</button></div>
         </form>

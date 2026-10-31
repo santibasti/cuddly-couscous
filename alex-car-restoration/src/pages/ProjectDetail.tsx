@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { AdviceCard } from '../components/Advice';
 import { Outbox, SmsAction } from '../components/Sms';
+import { adviseJob } from '../lib/advice';
 import { Avatar, CarArt, Card, carName, HealthPill, ServicePill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
 import { paintHex } from '../lib/paint';
 import { resizeImage } from '../lib/photo';
@@ -103,6 +105,15 @@ export default function ProjectDetail() {
           <span className="ico orange"><Icon name="warn" /></span>
           <div><strong>{health === 'late' ? 'Running late' : health === 'blocked' ? 'Work is blocked' : 'Watch list'}</strong>
             <ul className="small">{reasons.slice(0, 5).map((r, i) => <li key={i}>{r}</li>)}</ul></div>
+        </div>
+      )}
+
+      {p.status === 'quote' && (
+        <div style={{ marginBottom: 16 }}>
+          <AdviceCard advice={adviseJob(data, { customerId: p.customerId, service: p.service, budget: p.budget, start: p.startDate, target: p.targetDate, excludeId: p.id })}>
+            <button className="primary sm" onClick={() => dispatch({ type: 'setProjectStatus', id: p.id, status: 'active' })}>Customer agreed: start the job</button>
+            {customer && <SmsAction customer={customer} project={p} kind="approval" label="Ask the client to confirm" />}
+          </AdviceCard>
         </div>
       )}
 
