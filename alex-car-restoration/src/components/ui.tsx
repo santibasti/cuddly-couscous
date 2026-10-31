@@ -1,7 +1,7 @@
 import { useId, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { partRisk, partStatusLabel, type Health, type PartRisk } from '../lib/logic';
-import type { Mechanic, Part, Project } from '../lib/types';
+import { partRisk, partStatusLabel, SERVICES, type Health, type PartRisk } from '../lib/logic';
+import type { Mechanic, Part, Project, ServiceType } from '../lib/types';
 
 const ICONS: Record<string, string> = {
   dash: 'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z',
@@ -19,6 +19,8 @@ const ICONS: Record<string, string> = {
   arrow: 'M5 12h14m-6-6l6 6-6 6',
   clock: 'M12 7v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   chart: 'M4 20V10m6 10V4m6 16v-7m4 7H2',
+  users: 'M16 11a3 3 0 100-6 3 3 0 000 6zM8 12a3 3 0 100-6 3 3 0 000 6zM2 20a6 6 0 0112 0M14 20a5 5 0 018 0',
+  insight: 'M3 3v18h18M7 14l4-4 3 3 5-6',
   sun: 'M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10l1.4 1.4m0-12.8L17 7M7 17l-1.4 1.4M12 8a4 4 0 100 8 4 4 0 000-8z',
 };
 
@@ -46,6 +48,7 @@ const HEALTH: Record<Health, [string, string]> = {
   late: ['red', 'Late'], hold: ['gray', 'On hold'], quote: ['violet', 'Quote'], done: ['blue', 'Complete'],
 };
 export const healthTone = (h: Health) => HEALTH[h][0];
+export const ServicePill = ({ s }: { s: ServiceType }) => <Pill tone={SERVICES[s].tone} dot={false}>{SERVICES[s].short}</Pill>;
 export const HealthPill = ({ h }: { h: Health }) => <Pill tone={HEALTH[h][0]}>{HEALTH[h][1]}</Pill>;
 
 const RISK: Record<PartRisk, [string, string]> = {

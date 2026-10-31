@@ -1,6 +1,7 @@
 import { addDays, diffDays, fmtDate, isWeekend, startOfWeek } from './dates';
 import { coverageGaps, daysOverdue, projectCosts, projectHealth, projectProgress, partRisk, isPartIn, taskBlocker, workedHours, type Health } from './logic';
-import type { Data, Project } from './types';
+import { SERVICES, SERVICE_KEYS } from './logic';
+import type { Data, Project, ServiceType } from './types';
 
 export interface JobFinance {
   project: Project;
@@ -28,12 +29,28 @@ export function forecastCost(spent: number, contract: number, progress: number):
   return Math.max(spent, Math.round(spent / (progress / 100)));
 }
 
+/** True when every step of the job has at least one task, so the plan is a fair guide to what the job will cost. */
+export function planIsComplete(p: Project, d: Data): boolean {
+  return p.phases.every((ph) => d.tasks.some((t) => t.projectId === p.id && t.phaseKey === ph.key));
+}
+
+/** Labor at actual hours for finished tasks and estimated hours for the rest, plus every part and sublet on the job. */
+export function plannedCost(p: Project, d: Data): number {
+  const team = d.mechanics.filter((m) => m.active);
+  const avg = team.length ? team.reduce((s, m) => s + m.hourlyRate, 0) / team.length : 0;
+  const rate = new Map(d.mechanics.map((m) => [m.id, m.hourlyRate]));
+  const labor = d.tasks.filter((t) => t.projectId === p.id).reduce((s, t) => s + (t.status === 'done' ? t.actualHours : t.estHours) * (t.mechanicId ? (rate.get(t.mechanicId) ?? avg) : avg), 0);
+  const parts = d.parts.filter((x) => x.projectId === p.id).reduce((s, x) => s + x.cost, 0);
+  return Math.round(labor + parts);
+}
+
 export function jobFinance(p: Project, d: Data, today: string): JobFinance {
   const progress = projectProgress(p, d.tasks);
   const spent = projectCosts(p, d.tasks, d.parts, d.mechanics).total;
   const collected = p.payments.reduce((s, x) => s + x.amount, 0);
   const earned = Math.round((p.budget * progress) / 100);
-  const fc = forecastCost(spent, p.budget, progress);
+  // With every step planned (the short services), forecast from the plan. Otherwise fall back on progress.
+  const fc = planIsComplete(p, d) ? Math.max(spent, plannedCost(p, d)) : forecastCost(spent, p.budget, progress);
   const margin = p.budget - fc;
   const { health, reasons } = projectHealth(p, d, today);
   return { project: p, progress, contract: p.budget, collected, earned, billingGap: earned - collected, spent, forecastCost: fc, margin, marginPct: p.budget ? Math.round((margin / p.budget) * 100) : 0, health, reasons };
@@ -142,3 +159,17 @@ export function riskRegister(d: Data, today: string): Risk[] {
 }
 
 export { diffDays };
+
+export interface ServiceRow { service: ServiceType; jobs: number; contract: number; forecastCost: number; margin: number; marginPct: number; avgJob: number }
+
+/** Active jobs grouped by service, so the owner can see which kind of work earns the most. */
+export function byService(d: Data, today: string): ServiceRow[] {
+  const { jobs } = portfolio(d, today);
+  return SERVICE_KEYS.map((service) => {
+    const mine = jobs.filter((j) => j.project.service === service);
+    const contract = mine.reduce((s, j) => s + j.contract, 0);
+    const forecastCost = mine.reduce((s, j) => s + j.forecastCost, 0);
+    return { service, jobs: mine.length, contract, forecastCost, margin: contract - forecastCost, marginPct: contract ? Math.round(((contract - forecastCost) / contract) * 100) : 0, avgJob: mine.length ? Math.round(contract / mine.length) : 0 };
+  });
+}
+export { SERVICES };

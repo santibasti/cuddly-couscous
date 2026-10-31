@@ -35,3 +35,12 @@ export const fmtDay = (iso: string) =>
 
 export const fmtMonth = (iso: string) =>
   new Date(toUtc(iso)).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+/** Same day of the month, n months later (clamped to the end of a shorter month). */
+export const addMonths = (iso: string, n: number) => {
+  const [y, m, day] = iso.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + n, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return fromUtc(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(day, last)));
+};
+export const addYears = (iso: string, n: number) => addMonths(iso, n * 12);

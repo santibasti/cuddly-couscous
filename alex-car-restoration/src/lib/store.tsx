@@ -1,15 +1,18 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
 import { todayIso } from './dates';
-import { buildPhases, isLateIn, nextProjectCode, OUT_STATUSES } from './logic';
+import { buildPhases, isLateIn, nextProjectCode, OUT_STATUSES, PACKAGES } from './logic';
+import { canEdit } from './role';
 import { buildSeed } from './seed';
-import type { AttendanceStatus, Data, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, Task, TaskStatus } from './types';
+import { DEFAULT_CHECKLIST } from './crm';
+import type { AttendanceStatus, CoatingRecord, Customer, Data, Gatepass, Intake, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, SmsKind, Task, TaskStatus } from './types';
 
-const KEY = 'alex-car-restoration:v5';
+const KEY = 'alex-car-restoration:v7';
 
 export type Action =
   | { type: 'addProject'; project: Omit<Project, 'id' | 'code' | 'phases' | 'status' | 'payments'> & { status?: ProjectStatus } }
   | { type: 'setProjectStatus'; id: string; status: ProjectStatus }
   | { type: 'updateProject'; id: string; patch: Partial<Project> }
+  | { type: 'updateCoating'; projectId: string; patch: Partial<CoatingRecord> }
   | { type: 'setPhaseStatus'; projectId: string; key: PhaseKey; status: PhaseStatus }
   | { type: 'addTask'; task: Omit<Task, 'id' | 'actualHours' | 'status'> }
   | { type: 'updateTask'; id: string; patch: Partial<Task> }
@@ -26,6 +29,13 @@ export type Action =
   | { type: 'clearAttendance'; mechanicId: string; date: string }
   | { type: 'addPayment'; projectId: string; date: string; amount: number; note?: string }
   | { type: 'removePayment'; projectId: string; id: string }
+  | { type: 'addCustomer'; customer: Omit<Customer, 'id'> }
+  | { type: 'updateCustomer'; id: string; patch: Partial<Customer> }
+  | { type: 'updateIntake'; projectId: string; patch: Partial<Intake> }
+  | { type: 'approvePhase'; projectId: string; key: PhaseKey; by: string }
+  | { type: 'updateGatepass'; projectId: string; patch: Partial<Gatepass> }
+  | { type: 'markOut'; projectId: string; date: string }
+  | { type: 'sendSms'; customerId: string; projectId?: string; kind: SmsKind; text: string }
   | { type: 'reset' };
 
 const uid = (p: string) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -38,27 +48,45 @@ export function reducer(d: Data, a: Action): Data {
         id: uid('p'),
         code: nextProjectCode(d.projects),
         status: a.project.status ?? 'quote',
-        phases: buildPhases(a.project.startDate, a.project.targetDate),
+        phases: buildPhases(a.project.startDate, a.project.targetDate, a.project.service),
         payments: [],
       };
       return { ...d, projects: [...d.projects, project] };
     }
     case 'setProjectStatus':
-      return { ...d, projects: d.projects.map((p) => (p.id === a.id ? { ...p, status: a.status } : p)) };
+      return { ...d, projects: d.projects.map((p) => (p.id === a.id ? { ...p, status: a.status, releasedOn: a.status === 'delivered' ? p.releasedOn ?? todayIso() : p.releasedOn } : p)) };
     case 'updateProject':
       return { ...d, projects: d.projects.map((p) => (p.id === a.id ? { ...p, ...a.patch } : p)) };
+    case 'updateCoating':
+      return {
+        ...d,
+        projects: d.projects.map((p) => {
+          if (p.id !== a.projectId) return p;
+          return { ...p, coating: { ...p.coating, ...a.patch } };
+        }),
+      };
     case 'setPhaseStatus':
       return {
         ...d,
         projects: d.projects.map((p) => {
           if (p.id !== a.projectId) return p;
-          const phases = p.phases.map((ph) => (ph.key === a.key ? { ...ph, status: a.status } : ph));
+          // Reopening a stage takes its approval away.
+          const phases = p.phases.map((ph) => (ph.key === a.key ? { ...ph, status: a.status, ...(a.status === 'done' ? {} : { approvedBy: undefined, approvedOn: undefined }) } : ph));
           const allDone = phases.every((ph) => ph.status === 'done');
           let status = p.status;
           if (allDone && (status === 'active' || status === 'quote')) status = 'completed';
           else if (!allDone && status === 'completed') status = 'active';
           else if (status === 'quote' && a.status !== 'todo') status = 'active';
-          return { ...p, phases, status };
+          // Ceramic jobs: the cure starting and the car leaving set the dates the warranty depends on.
+          let coating = p.coating;
+          if (p.service === 'ceramic') {
+            if (a.key === 'cure' && a.status === 'in_progress' && !coating?.cureStarted) coating = { ...coating, cureStarted: todayIso() };
+            if (a.key === 'delivery' && a.status === 'done' && !coating?.handoverDate) {
+              const years = PACKAGES.ceramic.find((x) => x.name === p.packageName)?.warrantyYears;
+              coating = { ...coating, handoverDate: todayIso(), warrantyYears: coating?.warrantyYears ?? years };
+            }
+          }
+          return { ...p, phases, status, coating };
         }),
       };
     case 'addTask':
@@ -126,6 +154,29 @@ export function reducer(d: Data, a: Action): Data {
       return { ...d, projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, payments: [...p.payments, { id: uid('pay'), date: a.date, amount: a.amount, note: a.note }] } : p)) };
     case 'removePayment':
       return { ...d, projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, payments: p.payments.filter((x) => x.id !== a.id) } : p)) };
+    case 'addCustomer':
+      return { ...d, customers: [...d.customers, { ...a.customer, id: uid('c') }] };
+    case 'updateCustomer':
+      return { ...d, customers: d.customers.map((c) => (c.id === a.id ? { ...c, ...a.patch } : c)) };
+    case 'updateIntake':
+      return {
+        ...d,
+        projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, intake: { orcr: false, items: DEFAULT_CHECKLIST.map((label) => ({ label, present: true })), ...p.intake, ...a.patch } } : p)),
+      };
+    case 'approvePhase':
+      return {
+        ...d,
+        projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, phases: p.phases.map((ph) => (ph.key === a.key ? { ...ph, approvedBy: a.by, approvedOn: todayIso() } : ph)) } : p)),
+      };
+    case 'updateGatepass':
+      return { ...d, projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, gatepass: { ...p.gatepass, ...a.patch } } : p)) };
+    case 'markOut':
+      return {
+        ...d,
+        projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, status: 'delivered', releasedOn: a.date, gatepass: { ...p.gatepass, issuedOn: p.gatepass?.issuedOn ?? a.date, outOn: a.date } } : p)),
+      };
+    case 'sendSms':
+      return { ...d, messages: [{ id: uid('sms'), customerId: a.customerId, projectId: a.projectId, date: todayIso(), kind: a.kind, text: a.text }, ...d.messages] };
     case 'reset':
       return buildSeed();
   }
@@ -134,7 +185,10 @@ export function reducer(d: Data, a: Action): Data {
 function load(): Data {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as Data;
+    if (raw) {
+      const saved = JSON.parse(raw) as Data;
+      return { ...saved, messages: saved.messages ?? [] };
+    }
   } catch {
     /* storage unavailable or corrupt – fall through to seed */
   }
@@ -144,7 +198,9 @@ function load(): Data {
 const Ctx = createContext<{ data: Data; dispatch: Dispatch<Action> } | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [data, dispatch] = useReducer(reducer, undefined, load);
+  const [data, rawDispatch] = useReducer(reducer, undefined, load);
+  // A monitoring-only view can look but not change anything.
+  const dispatch = useMemo<Dispatch<Action>>(() => (a) => { if (canEdit()) rawDispatch(a); }, []);
   useEffect(() => {
     try {
       localStorage.setItem(KEY, JSON.stringify(data));
@@ -152,7 +208,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       /* ignore */
     }
   }, [data]);
-  const value = useMemo(() => ({ data, dispatch }), [data]);
+  const value = useMemo(() => ({ data, dispatch }), [data, dispatch]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
