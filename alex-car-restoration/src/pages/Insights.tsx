@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Columns } from '../components/charts';
+import { Columns, Donut, Gauge, TrendChart } from '../components/charts';
 import { Bar, Card, Empty, Pill, ServicePill, StripStat, carName } from '../components/ui';
-import { RANGE_LABEL, RANGE_PREV, hoursByStage, pctChange, rangeOf, rangeText, salesByMonth, teamFor, unitsFor, type RangeKey } from '../lib/crm';
+import { RANGE_LABEL, RANGE_PREV, hoursByStage, onTimeRate, pctChange, rangeOf, rangeText, salesByMonth, shopLoad, sourcesFor, teamFor, trendFor, unitsFor, type RangeKey } from '../lib/crm';
 import { fmtDate, todayIso } from '../lib/dates';
 import { SERVICES, SERVICE_KEYS, moneyC } from '../lib/logic';
 import { ROLES, useRole } from '../lib/role';
@@ -34,10 +34,20 @@ export default function Insights() {
   const money = ROLES[role].money;
   const lateNow = data.projects.filter((p) => p.status === 'active' && p.targetDate < today);
   const billedMax = Math.max(1, ...SERVICE_KEYS.map((k) => Math.max(cur.billedByService[k], compare ? prev.billedByService[k] : 0)));
+  const trend = trendFor(data, r);
+  const onTime = onTimeRate(cur);
+  const onTimePrev = onTimeRate(prev);
+  const load = shopLoad(data, r.start, r.end);
+  const loadPrev = shopLoad(data, r.prevStart, r.prevEnd);
+  const backRate = cur.received.length ? Math.round((cur.backjobs.length / cur.received.length) * 100) : 0;
+  const sources = sourcesFor(data, cur.received);
+  const SRC_COLORS = ['var(--arc)', '#ff4d8d', '#8b7bff', 'var(--amber)', 'var(--green)', 'var(--muted)'];
+  const SVC_COLORS: Record<string, string> = { restoration: '#ff4d8d', paint: '#ffb04d', detailing: 'var(--arc)', ceramic: '#8b7bff' };
+  const vs = (now: number, before: number | null, unit = '%') => (compare && before !== null ? `before: ${before}${unit}` : undefined);
   const brandMax = Math.max(1, ...cur.byBrand.map((b) => b.count));
 
   return (
-    <>
+    <div className="neo">
       <div className="head">
         <div>
           <div className="eyebrow">Database and analysis</div>
@@ -62,6 +72,44 @@ export default function Insights() {
           {money ? <StripStat label="Billed" value={moneyC(cur.billed)} sub={<Delta now={cur.billed} prev={prev.billed} show={compare} money />} /> : <StripStat label="Running late now" value={lateNow.length} tone={lateNow.length ? 'red' : ''} sub="Active jobs past their date" />}
         </div>
       </Card>
+
+      <div className="grid g4 mt">
+        <Card className="panel"><Gauge value={onTime ?? 100} label="On-time release" display={onTime === null ? '–' : `${onTime}%`} color="var(--green)" sub={vs(onTime ?? 0, onTimePrev) ?? (onTime === null ? 'No cars released' : 'Released by the promised date')} /></Card>
+        <Card className="panel"><Gauge value={Math.min(100, load)} label="Shop load" display={`${load}%`} color={load > 100 ? 'var(--red)' : 'var(--arc)'} sub={vs(load, loadPrev) ?? 'Hours worked vs the team can work'} /></Card>
+        <Card className="panel"><Gauge value={Math.min(100, backRate * 5)} label="Back jobs" display={`${backRate}%`} color={backRate > 10 ? 'var(--red)' : '#ffb04d'} sub={`${cur.backjobs.length} of ${cur.received.length} cars came back`} /></Card>
+        <Card className="panel" title="Cars by service">
+          <div className="row" style={{ gap: 14, flexWrap: 'nowrap', alignItems: 'center' }}>
+            <Donut className="glow-soft" size={110} center={String(cur.received.length)} items={SERVICE_KEYS.map((k) => ({ label: SERVICES[k].label, value: cur.byService[k], color: SVC_COLORS[k] }))} />
+            <div className="stack grow">
+              {SERVICE_KEYS.map((k) => <div key={k} className="row spread small" style={{ flexWrap: 'nowrap' }}><span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}><i className="swatch" style={{ background: SVC_COLORS[k] }} />{SERVICES[k].short}</span><span className="num">{cur.byService[k]}</span></div>)}
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid g21 mt">
+        <Card title="Cars in and out" action={<span className="row small" style={{ gap: 12 }}><span className="row" style={{ gap: 5 }}><i className="swatch" style={{ background: 'var(--arc)' }} />Received</span><span className="row" style={{ gap: 5 }}><i className="swatch" style={{ background: '#ff4d8d' }} />Released</span></span>}>
+          <TrendChart labels={trend.map((t) => t.label)} series={[{ label: 'Received', color: 'var(--arc)', values: trend.map((t) => t.received), area: true }, { label: 'Released', color: '#ff4d8d', values: trend.map((t) => t.released) }]} />
+        </Card>
+        <Card title="Where clients came from" action={<span className="muted small">Cars received</span>}>
+          {sources.length === 0 && <div className="muted small">No cars received in this period.</div>}
+          {sources.length > 0 && (
+            <div className="row" style={{ gap: 14, flexWrap: 'nowrap', alignItems: 'center' }}>
+              <Donut className="glow-soft" size={120} center={String(cur.received.length)} items={sources.map((x, i) => ({ label: x.label, value: x.count, color: SRC_COLORS[i % SRC_COLORS.length] }))} />
+              <div className="stack grow">
+                {sources.map((x, i) => <div key={x.key} className="row spread small" style={{ flexWrap: 'nowrap' }}><span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}><i className="swatch" style={{ background: SRC_COLORS[i % SRC_COLORS.length] }} />{x.label}</span><span className="num">{x.count}</span></div>)}
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {money && (
+        <Card className="mt" title="Cash received" action={<span className="muted small">{RANGE_LABEL[key]}</span>}>
+          <TrendChart labels={trend.map((t) => t.label)} format={(n) => moneyC(n).replace('₱', '')} series={[{ label: 'Cash received', color: '#8b7bff', values: trend.map((t) => t.billed), area: true }]} height={200} />
+          <div className="small muted">Values in ₱.</div>
+        </Card>
+      )}
 
       <div className="grid g2 mt">
         <Card title="Units per service" flush>
@@ -141,6 +189,6 @@ export default function Insights() {
           ))}
         </Card>
       </div>
-    </>
+    </div>
   );
 }

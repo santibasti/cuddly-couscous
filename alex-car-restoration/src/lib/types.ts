@@ -22,6 +22,8 @@ export interface Mechanic {
   hourlyRate: number;
   dailyHours: number;
   active: boolean;
+  /** Optional face photo, a small square data URL. */
+  photo?: string;
 }
 
 export type LeadSource = 'organic' | 'ads' | 'sms' | 'social' | 'referral';

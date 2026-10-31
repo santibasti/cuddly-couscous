@@ -324,3 +324,22 @@ button.primary,.btn.primary{box-shadow:0 8px 20px -10px var(--accent)}
 .reasons .good .mk{background:color-mix(in srgb,var(--green) 22%,transparent);color:var(--green)}
 .reasons .warn .mk{background:color-mix(in srgb,var(--amber) 22%,transparent);color:var(--amber)}
 .reasons .bad .mk{background:color-mix(in srgb,var(--red) 22%,transparent);color:var(--red)}
+
+img.avatar{object-fit:cover;background:var(--panel2)}
+.crew{display:inline-flex;align-items:center;flex:none}.crew .avatar+.avatar{margin-left:-9px}
+.avatar.more{background:var(--panel2);color:var(--ink2);box-shadow:0 0 0 2px var(--bg)}
+
+/* Insights: a dark control-room look in both themes */
+.neo{--bg:#080a0e;--ink:#eef1f5;--ink2:#c2cad4;--muted:#8693a3;--card-a:rgba(24,34,54,.82);--card-b:rgba(11,16,26,.82);--panel:rgba(150,180,215,.05);--panel2:rgba(150,180,215,.08);--line:rgba(120,190,255,.14);--line2:rgba(120,190,255,.3);--field:rgba(255,255,255,.06);--opt:#141922;--btn-bg:#a8201f;--btn-ink:#fff6e0;--arc:#5ad3ff;--accent2:#e9b949;--green:#46c08c;--amber:#e9b949;--red:#ff6b5f;color:var(--ink);color-scheme:dark;
+  position:relative;padding:24px;border-radius:24px;border:1px solid rgba(90,211,255,.22);
+  background:radial-gradient(900px 420px at 8% -10%,rgba(255,77,141,.16),transparent 60%),radial-gradient(900px 480px at 100% 0%,rgba(90,211,255,.14),transparent 60%),linear-gradient(rgba(90,211,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(90,211,255,.04) 1px,transparent 1px),#070a11;background-size:auto,auto,34px 34px,34px 34px,auto;
+  box-shadow:0 0 0 1px rgba(255,255,255,.03) inset,0 30px 80px -40px rgba(90,211,255,.45)}
+.neo .card{border-color:rgba(90,211,255,.2);box-shadow:0 0 0 1px rgba(255,255,255,.025) inset,0 0 34px -16px rgba(90,211,255,.55)}
+.neo .card.panel{display:grid;place-items:center;padding:12px 8px}
+.neo .gauge{display:flex;flex-direction:column;align-items:center}
+.neo .glow{filter:drop-shadow(0 0 5px currentColor)}
+.neo .glow-soft{filter:drop-shadow(0 0 7px rgba(90,211,255,.45))}
+.neo .bar>*{box-shadow:0 0 10px -1px currentColor}
+.neo h1{text-shadow:0 0 22px rgba(90,211,255,.35)}
+.neo .seg button.on{box-shadow:0 0 18px -4px #ff4d8d}
+@media(max-width:560px){.neo{padding:14px;border-radius:16px}}

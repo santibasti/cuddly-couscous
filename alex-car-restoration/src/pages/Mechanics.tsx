@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar, Bar, Card, Pill } from '../components/ui';
+import { resizeSquare } from '../lib/photo';
 import { addDays, fmtDate, startOfWeek, todayIso } from '../lib/dates';
 import { taskBlocker, utilisation } from '../lib/logic';
 import { useStore } from '../lib/store';
@@ -10,6 +12,7 @@ export default function Mechanics() {
   const { data, dispatch } = useStore();
   const today = todayIso();
   const wk = startOfWeek(today);
+  const [photoErr, setPhotoErr] = useState('');
 
   function add(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -24,6 +27,7 @@ export default function Mechanics() {
   return (
     <>
       <div className="head"><div><div className="eyebrow">{data.mechanics.filter((m) => m.active).length} technicians</div><h1>Mechanics</h1></div></div>
+      {photoErr && <div className="small over" role="alert" style={{ marginBottom: 10 }}>{photoErr}</div>}
       <div className="grid g3">
         {data.mechanics.map((m) => {
           const util = utilisation(data.tasks, m, wk, addDays(wk, 4));
@@ -33,7 +37,17 @@ export default function Mechanics() {
           return (
             <Card key={m.id} className={m.active ? '' : 'muted'}>
               <div className="row spread" style={{ flexWrap: 'nowrap' }}>
-                <div className="row" style={{ flexWrap: 'nowrap' }}><Avatar m={m} size={36} /><div><strong>{m.name}</strong><div className="small muted">{m.specialty}</div></div></div>
+                <div className="row" style={{ flexWrap: 'nowrap' }}><Avatar m={m} size={44} /><div><strong>{m.name}</strong><div className="small muted">{m.specialty}</div>
+                  <div className="row" style={{ gap: 6, marginTop: 4 }}>
+                    <label className="small" style={{ cursor: 'pointer', color: 'var(--accent2)' }}>{m.photo ? 'Change photo' : 'Add photo'}
+                      <input type="file" accept="image/*" hidden onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        try { dispatch({ type: 'updateMechanic', id: m.id, patch: { photo: await resizeSquare(file) } }); setPhotoErr(''); } catch (err) { setPhotoErr(err instanceof Error ? err.message : 'Could not use that image.'); }
+                      }} /></label>
+                    {m.photo && <button className="sm ghost" style={{ padding: '0 6px' }} onClick={() => dispatch({ type: 'updateMechanic', id: m.id, patch: { photo: undefined } })}>Remove</button>}
+                  </div></div></div>
                 <button className="sm ghost" onClick={() => dispatch({ type: 'toggleMechanic', id: m.id })}>{m.active ? 'Deactivate' : 'Activate'}</button>
               </div>
               <div className="row spread small" style={{ margin: '14px 0 6px' }}><span className="muted">This week booked</span><b className={util > 100 ? 'over' : ''}>{util}%</b></div>
