@@ -3,7 +3,7 @@ import { fmtDate } from '../lib/dates';
 import { currentPhase, daysOverdue, jobCrew, moneyC, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { paintHex } from '../lib/paint';
 import type { Data, Project } from '../lib/types';
-import { Avatar, Bar, CarArt, Crew, HealthPill, Icon, Ring, ServicePill } from './ui';
+import { Avatar, Bar, CarArt, HealthPill, Icon, Ring, ServicePill } from './ui';
 
 export default function ProjectCard({ p, data, today }: { p: Project; data: Data; today: string }) {
   const { health, reasons } = projectHealth(p, data, today);
@@ -13,6 +13,7 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
   const customer = data.customers.find((c) => c.id === p.customerId);
   const doing = data.tasks.find((t) => t.projectId === p.id && t.status === 'in_progress');
   const over = daysOverdue(p, today);
+  const crew = jobCrew(p.id, data);
   const curBlocked = cur && data.tasks.some((t) => t.projectId === p.id && t.phaseKey === cur.key && taskBlocker(t, data.parts));
   const style = { '--paint': paintHex(p) } as React.CSSProperties;
 
@@ -26,10 +27,7 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
       <div className="body">
         <div>
           <div className="row" style={{ gap: 8 }}><span className="eyebrow">{p.code} · {p.year}</span><ServicePill s={p.service} /></div>
-          <div className="row spread" style={{ flexWrap: 'nowrap', gap: 8 }}>
-            <h3>{p.make} {p.model}</h3>
-            <Crew crew={jobCrew(p.id, data)} size={30} max={3} />
-          </div>
+          <h3>{p.make} {p.model}</h3>
           <div className="small muted">{p.packageName ?? p.title} · {customer?.name}</div>
         </div>
         {p.status !== 'quote' && (
@@ -51,8 +49,12 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
             <div className="small num">{moneyC(cost)} <span className="muted">/ {moneyC(p.budget)}</span></div>
             <Bar thin value={p.budget ? (cost / p.budget) * 100 : 0} tone={cost > p.budget ? 'red' : undefined} />
           </div>
-          <Avatar m={data.mechanics.find((m) => m.id === doing?.mechanicId)} size={28} />
         </div>
+        {crew.length > 0 && (
+          <div className="crew-list" aria-label="Crew">
+            {crew.map((m) => <span key={m.id} className="crew-chip" title={`${m.name}${m.id === doing?.mechanicId ? ' · working on it now' : ''}`}><Avatar m={m} size={24} />{m.name.split(' ')[0]}</span>)}
+          </div>
+        )}
       </div>
     </Link>
   );
