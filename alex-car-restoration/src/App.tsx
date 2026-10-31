@@ -4,7 +4,7 @@ import logo from './assets/alex-logo.png';
 import { useInstall } from './lib/pwa';
 import { Icon } from './components/ui';
 import { todayIso } from './lib/dates';
-import { allBlockers, coverageGaps, partRisk } from './lib/logic';
+import { allBlockers, coverageGaps } from './lib/logic';
 import { ROLES, canOpen, useRole } from './lib/role';
 import Login from './pages/Login';
 import { checkupsDue, upcomingBirthdays } from './lib/crm';
@@ -19,7 +19,6 @@ import Home from './pages/Home';
 import Today from './pages/Today';
 import Executive from './pages/Executive';
 import Mechanics from './pages/Mechanics';
-import Parts from './pages/Parts';
 import ProjectDetail from './pages/ProjectDetail';
 import Projects from './pages/Projects';
 import Schedule from './pages/Schedule';
@@ -51,7 +50,6 @@ export default function App() {
   const { pathname } = useLocation();
   const today = todayIso();
   const blocked = allBlockers(data).length;
-  const partsAlert = data.parts.filter((p) => ['late', 'order_now'].includes(partRisk(p, today))).length;
   const links: [string, string, string, number?][] = [
     ['/', 'Operations', 'dash', blocked || undefined],
     ['/today', 'Today', 'sun'],
@@ -65,7 +63,6 @@ export default function App() {
     ['/timeline', 'Timeline', 'gantt'],
     ['/mechanics', 'Mechanics', 'wrench'],
     ['/attendance', 'Attendance', 'clock', coverageGaps(data, today).length || undefined],
-    ['/parts', 'Parts & sublets', 'box', partsAlert || undefined],
   ];
   if (!account) return <Login />;
   const allowed = links.filter(([to]) => canOpen(role, to));
@@ -118,7 +115,6 @@ export default function App() {
           <Route path="/timeline" element={<Timeline />} />
           <Route path="/mechanics" element={<Mechanics />} />
           <Route path="/attendance" element={<Attendance />} />
-          <Route path="/parts" element={<Parts />} />
           <Route path="*" element={<p>Not found.</p>} />
         </Routes>
         )}

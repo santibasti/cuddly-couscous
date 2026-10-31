@@ -2,18 +2,18 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Journey from '../components/Journey';
 import { Outbox, SmsAction, StageNudge } from '../components/Sms';
-import { Avatar, Crew, CarArt, Card, carName, HealthPill, ServicePill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
+import { Avatar, Crew, CarArt, Card, carName, HealthPill, ServicePill, Icon, Pill, Seg, statusLabel } from '../components/ui';
 import { paintHex } from '../lib/paint';
 import { resizeImage } from '../lib/photo';
 import { addDays, diffDays, fmtDate, todayIso } from '../lib/dates';
-import { BAYS, PACKAGES, PART_FLOW, coatingDates, currentPhase, daysOverdue, isPartIn, money, moneyC, partRisk, partStatusLabel, phaseLabel, phasePercent, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker, jobCrew } from '../lib/logic';
+import { BAYS, PACKAGES, coatingDates, currentPhase, daysOverdue, money, moneyC, phaseLabel, phasePercent, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker, jobCrew } from '../lib/logic';
 import { estimateTotals } from '../lib/estimate';
 import { CHECKUP_DAYS, STARS, defaultQc, missingItems, releaseGates } from '../lib/crm';
 import { ROLES, useRole } from '../lib/role';
 import { useStore } from '../lib/store';
-import type { BlockReason, CoatingRecord, PartKind, PartStatus, PhaseKey, PhaseStatus, ProjectStatus, SmsKind, TaskStatus } from '../lib/types';
+import type { BlockReason, CoatingRecord, PhaseKey, PhaseStatus, ProjectStatus, SmsKind, TaskStatus } from '../lib/types';
 
-type Tab = 'work' | 'parts' | 'billing' | 'log';
+type Tab = 'work' | 'billing' | 'log';
 const ROLE_NAME = { executive: 'Executive', advisor: 'Service Advisor', leader: 'Team Leader' } as const;
 
 export default function ProjectDetail() {
@@ -36,17 +36,16 @@ export default function ProjectDetail() {
 
   const customer = data.customers.find((c) => c.id === p.customerId);
   const tasks = data.tasks.filter((t) => t.projectId === p.id).sort((a, b) => a.date.localeCompare(b.date));
-  const parts = data.parts.filter((x) => x.projectId === p.id).sort((a, b) => a.neededBy.localeCompare(b.neededBy));
   const updates = data.updates.filter((u) => u.projectId === p.id).sort((a, b) => b.date.localeCompare(a.date));
   const pct = projectProgress(p, data.tasks);
-  const costs = projectCosts(p, data.tasks, data.parts, data.mechanics);
+  const costs = projectCosts(p, data.tasks);
   const over = daysOverdue(p, today);
   const collected = p.payments.reduce((x, y) => x + y.amount, 0);
   const earned = Math.round((p.budget * pct) / 100);
   const { health, reasons } = projectHealth(p, data, today);
   const team = data.mechanics.filter((m) => m.active);
   const sel = p.phases.find((x) => x.key === selKey) ?? currentPhase(p) ?? p.phases[0];
-  const blocked = tasks.map((t) => ({ t, b: taskBlocker(t, data.parts) })).filter((x) => x.b);
+  const blocked = tasks.map((t) => ({ t, b: taskBlocker(t) })).filter((x) => x.b);
   const patch = (id: string, pt: Record<string, unknown>) => dispatch({ type: 'updateTask', id, patch: pt });
   const canEditRole = ROLES[role].edit;
 
@@ -65,7 +64,7 @@ export default function ProjectDetail() {
   function addTask(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    dispatch({ type: 'addTask', task: { projectId: p!.id, title: String(f.get('title')), phaseKey: f.get('phase') as PhaseKey, mechanicId: String(f.get('mechanic')) || undefined, date: String(f.get('date')), estHours: Number(f.get('hours')) || 1, partId: String(f.get('part')) || undefined } });
+    dispatch({ type: 'addTask', task: { projectId: p!.id, title: String(f.get('title')), phaseKey: f.get('phase') as PhaseKey, mechanicId: String(f.get('mechanic')) || undefined, date: String(f.get('date')), estHours: Number(f.get('hours')) || 1 } });
     e.currentTarget.reset();
   }
   function addPayment(e: React.FormEvent<HTMLFormElement>) {
@@ -76,13 +75,6 @@ export default function ProjectDetail() {
     dispatch({ type: 'addPayment', projectId: p!.id, date: String(f.get('date')), amount, note: String(f.get('note')).trim() || undefined });
     e.currentTarget.reset();
   }
-  function addPart(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    dispatch({ type: 'addPart', part: { projectId: p!.id, name: String(f.get('name')), kind: f.get('kind') as PartKind, supplier: String(f.get('supplier')), cost: Number(f.get('cost')) || 0, status: 'needed', neededBy: String(f.get('needed')), po: String(f.get('po')) || undefined } });
-    e.currentTarget.reset();
-  }
-
   return (
     <>
       <Link to="/projects" className="crumb">← Projects</Link>
@@ -115,7 +107,7 @@ export default function ProjectDetail() {
           <div><div className="eyebrow">Progress</div><div className="sv"><span>{pct}%</span></div><div className={`small ${over ? 'over' : 'muted'}`}>{over ? `${over}d past target` : `Target ${fmtDate(p.targetDate)}`}</div></div>
           {role !== 'leader' && <div><div className="eyebrow">Spent</div><div className={`sv ${costs.total > p.budget ? 'red' : ''}`}><span>{moneyC(costs.total)}</span></div><div className="small muted">of {moneyC(p.budget)} budget</div></div>}
           <div><div className="eyebrow">Hours</div><div className="sv"><span>{tasks.reduce((s, t) => s + t.actualHours, 0)}h</span></div><div className="small muted">of {tasks.reduce((s, t) => s + t.estHours, 0)}h planned</div></div>
-          <div><div className="eyebrow">Parts in shop</div><div className="sv"><span>{parts.filter(isPartIn).length}/{parts.length}</span></div><div className="small muted">{blocked.length} task{blocked.length === 1 ? '' : 's'} blocked</div></div>
+          <div><div className="eyebrow">Blocked</div><div className="sv"><span>{blocked.length}</span></div><div className="small muted">task{blocked.length === 1 ? '' : 's'} waiting</div></div>
         </div>
       </section>
 
@@ -324,16 +316,16 @@ export default function ProjectDetail() {
       })()}
 
       <div className="tabs">
-        {([['work', `Work (${tasks.length})`], ['parts', `Parts & sublets (${parts.length})`], ['billing', `Billing (${p.payments.length})`], ['log', `Progress log (${updates.length})`]] as [Tab, string][]).filter(([k]) => k !== 'billing' || role !== 'leader').map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
+        {([['work', `Work (${tasks.length})`], ['billing', `Billing (${p.payments.length})`], ['log', `Progress log (${updates.length})`]] as [Tab, string][]).filter(([k]) => k !== 'billing' || role !== 'leader').map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
       </div>
 
       {tab === 'work' && (
         <Card flush>
           <table>
-            <thead><tr><th>Task</th><th>Mechanic</th><th>Date</th><th>Hrs</th><th>Waiting on</th><th>Status</th><th /></tr></thead>
+            <thead><tr><th>Task</th><th>Mechanic</th><th>Date</th><th>Hrs</th><th>Status</th><th /></tr></thead>
             <tbody>
               {tasks.map((t) => {
-                const b = taskBlocker(t, data.parts);
+                const b = taskBlocker(t);
                 return (
                   <tr key={t.id}>
                     <td><div style={{ opacity: t.status === 'done' ? 0.55 : 1 }}>{t.title}</div><div className="small muted">{phaseLabel(t.phaseKey)}</div></td>
@@ -341,17 +333,13 @@ export default function ProjectDetail() {
                       <select className="inline" value={t.mechanicId ?? ''} onChange={(e) => patch(t.id, { mechanicId: e.target.value || undefined })}><option value="">Unassigned</option>{team.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div></td>
                     <td><input type="date" className="inline" value={t.date} onChange={(e) => e.target.value && patch(t.id, { date: e.target.value })} /></td>
                     <td><input type="number" className="inline" min="0" step="0.5" style={{ width: 84 }} value={t.status === 'done' ? t.actualHours : t.estHours} onChange={(e) => patch(t.id, t.status === 'done' ? { actualHours: Number(e.target.value) } : { estHours: Number(e.target.value) })} /></td>
-                    <td style={{ maxWidth: 210 }}>
-                      <select className="inline" value={t.partId ?? ''} onChange={(e) => patch(t.id, { partId: e.target.value || undefined })}><option value="">Nothing</option>{parts.filter((x) => !isPartIn(x) || x.id === t.partId).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
-                      {b && <div className="small" style={{ marginTop: 3 }}><Pill tone="orange">{b.eta ? `ETA ${fmtDate(b.eta)}` : 'Blocked'}</Pill></div>}
-                    </td>
                     <td>
                       <select className="inline" value={t.status} onChange={(e) => patch(t.id, { status: e.target.value as TaskStatus })}>
                         <option value="todo">To do</option><option value="in_progress">In progress</option><option value="blocked">Blocked</option><option value="done">Done</option>
                       </select>
-                      {t.status === 'blocked' && !t.partId && (
+                      {t.status === 'blocked' && (
                         <div className="row" style={{ marginTop: 4, flexWrap: 'nowrap' }}>
-                          <select className="inline" value={t.blockReason ?? 'other'} onChange={(e) => patch(t.id, { blockReason: e.target.value as BlockReason })}><option value="customer">Customer</option><option value="vendor">Vendor</option><option value="other">Other</option></select>
+                          <select className="inline" value={t.blockReason ?? 'other'} onChange={(e) => patch(t.id, { blockReason: e.target.value as BlockReason })}><option value="customer">Customer</option><option value="other">Other</option></select>
                           <input className="inline" style={{ fontSize: 12, padding: '3px 6px', width: 130 }} placeholder="Why?" value={t.blockNote ?? ''} onChange={(e) => patch(t.id, { blockNote: e.target.value })} />
                         </div>
                       )}
@@ -360,50 +348,16 @@ export default function ProjectDetail() {
                   </tr>
                 );
               })}
-              {!tasks.length && <tr><td colSpan={7} className="empty">No tasks yet.</td></tr>}
+              {!tasks.length && <tr><td colSpan={6} className="empty">No tasks yet.</td></tr>}
             </tbody>
           </table>
           <form className="row addbar" onSubmit={addTask}>
             <input name="title" placeholder="New task" required style={{ flex: 1, minWidth: 160 }} />
             <select name="phase">{p.phases.map((ph) => <option key={ph.key} value={ph.key}>{phaseShort(ph.key)}</option>)}</select>
             <select name="mechanic"><option value="">Unassigned</option>{team.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
-            <select name="part"><option value="">No part needed</option>{parts.filter((x) => !isPartIn(x)).map((x) => <option key={x.id} value={x.id}>Waits on: {x.name}</option>)}</select>
             <input name="date" type="date" defaultValue={today} required />
             <input name="hours" type="number" min="0.5" step="0.5" defaultValue={4} style={{ width: 64 }} />
             <button className="primary" type="submit">Add task</button>
-          </form>
-        </Card>
-      )}
-
-      {tab === 'parts' && (
-        <Card flush>
-          <table>
-            <thead><tr><th>Item</th><th>Supplier / PO</th><th>Needed by</th><th>ETA</th><th>Cost</th><th>Risk</th><th>Status</th></tr></thead>
-            <tbody>
-              {parts.map((x) => {
-                const gap = x.eta ? diffDays(x.neededBy, x.eta) : null;
-                return (
-                  <tr key={x.id}>
-                    <td><strong>{x.name}</strong><div className="small muted">{x.kind === 'sublet' ? 'Sublet job' : 'Part'}{x.note ? ` · ${x.note}` : ''}</div></td>
-                    <td>{x.supplier}<div className="small muted">{x.po ?? '—'}</div></td>
-                    <td className="num">{fmtDate(x.neededBy)}</td>
-                    <td><input type="date" className="inline" value={x.eta ?? ''} onChange={(e) => dispatch({ type: 'updatePart', id: x.id, patch: { eta: e.target.value || undefined } })} />{gap !== null && gap > 0 && !isPartIn(x) && <div className="small over">+{gap}d late</div>}</td>
-                    <td className="num">{money(x.cost)}</td>
-                    <td><RiskPill r={partRisk(x, today)} /></td>
-                    <td><PartStatusPill part={x} /><div><select className="inline" value={x.status} onChange={(e) => dispatch({ type: 'setPartStatus', id: x.id, status: e.target.value as PartStatus })} style={{ marginTop: 4 }}>{PART_FLOW.map((s) => <option key={s} value={s}>{partStatusLabel(x.kind, s)}</option>)}</select></div></td>
-                  </tr>
-                );
-              })}
-              {!parts.length && <tr><td colSpan={7} className="empty">No parts or sublet jobs yet.</td></tr>}
-            </tbody>
-          </table>
-          <form className="row addbar" onSubmit={addPart}>
-            <input name="name" placeholder="Part or sublet job" required style={{ flex: 1, minWidth: 160 }} />
-            <select name="kind"><option value="part">Part</option><option value="sublet">Sublet job</option></select>
-            <input name="supplier" placeholder="Supplier / vendor" /><input name="po" placeholder="PO #" style={{ width: 90 }} />
-            <label className="row small muted">Needed by<input name="needed" type="date" defaultValue={today} required /></label>
-            <input name="cost" type="number" min="0" placeholder="Cost" style={{ width: 90 }} />
-            <button className="primary" type="submit">Add</button>
           </form>
         </Card>
       )}

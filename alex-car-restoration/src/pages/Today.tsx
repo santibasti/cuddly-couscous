@@ -32,13 +32,13 @@ export default function Today() {
   }
 
   const taskState = (t: Task) => {
-    const b = taskBlocker(t, data.parts);
+    const b = taskBlocker(t);
     if (t.status === 'done') return { label: 'Done', tone: 'green' };
     if (b) return { label: 'Blocked', tone: 'orange' };
     if (t.status === 'in_progress') return { label: 'Running', tone: 'blue' };
     return { label: 'To start', tone: 'gray' };
   };
-  const attention = s.parts.overdue.length + s.parts.orderNow.length + s.jobs.late.length + s.floor.blocked;
+  const attention = s.jobs.late.length + s.floor.blocked;
   const longDate = new Date(today + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
 
   return (
@@ -68,7 +68,7 @@ export default function Today() {
           <StripStat label="In the shop" value={`${s.team.clockedIn.length}/${s.team.total}`} sub={s.team.notIn.length ? `${s.team.notIn.length} not in yet` : 'Everyone is in'} />
           <StripStat label="Tasks today" value={`${s.floor.done}/${s.floor.tasks.length}`} sub={`${s.floor.running} running`} />
           <StripStat label="Blocked" value={s.floor.blocked} tone={s.floor.blocked ? 'orange' : ''} sub="Waiting" />
-          <StripStat label="Deliveries due" value={s.parts.arriving.length + s.parts.arrived.length} sub={s.parts.overdue.length ? `${s.parts.overdue.length} more overdue` : 'None overdue'} tone={s.parts.overdue.length ? 'amber' : ''} />
+          <StripStat label="Jobs due today" value={s.jobs.dueToday.length} sub={s.jobs.late.length ? `${s.jobs.late.length} late` : 'None late'} tone={s.jobs.late.length ? 'amber' : ''} />
           <StripStat label="Received today" value={moneyC(s.money.total)} sub={s.money.payments.length ? `${s.money.payments.length} payment${s.money.payments.length > 1 ? 's' : ''}` : 'No payments'} />
         </div>
       </Card>
@@ -89,7 +89,7 @@ export default function Today() {
                   {tasks.length === 0 && <div className="small muted">Nothing booked today.</div>}
                   {tasks.map((t) => {
                     const st = taskState(t);
-                    const b = taskBlocker(t, data.parts);
+                    const b = taskBlocker(t);
                     return (
                       <div key={t.id} className="small" style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '3px 0' }}>
                         <span className={`pill ${st.tone}`} style={{ flex: 'none' }}><i />{st.label}</span>
@@ -105,19 +105,6 @@ export default function Today() {
         </Card>
 
         <div className="stack">
-          <Card title="Parts & deliveries" flush>
-            {[...s.parts.arriving, ...s.parts.arrived].length === 0 && s.parts.overdue.length === 0 && s.parts.orderNow.length === 0 && <Empty>Nothing due or overdue.</Empty>}
-            {[...s.parts.arriving, ...s.parts.arrived].map((x) => (
-              <div key={x.id} className="item"><span className="ico"><Icon name={x.kind === 'sublet' ? 'truck' : 'box'} /></span><div className="grow"><div style={{ fontWeight: 500 }}>{x.name}</div><div className="small muted">{x.supplier} · {proj(x.projectId).code}{x.note ? ` · ${x.note}` : ''}</div></div><Pill tone={x.status === 'received' ? 'green' : 'blue'}>{x.status === 'received' ? 'Arrived' : 'Due today'}</Pill></div>
-            ))}
-            {s.parts.overdue.map((x) => (
-              <div key={x.id} className="item"><span className="ico red"><Icon name="warn" /></span><div className="grow"><div style={{ fontWeight: 500 }}>{x.name}</div><div className="small muted">{x.supplier} · {proj(x.projectId).code} · was due {x.eta ? fmtDate(x.eta) : '—'}</div></div><Pill tone="red">Overdue</Pill></div>
-            ))}
-            {s.parts.orderNow.map((x) => (
-              <div key={x.id} className="item"><span className="ico orange"><Icon name="warn" /></span><div className="grow"><div style={{ fontWeight: 500 }}>{x.name}</div><div className="small muted">Needed {fmtDate(x.neededBy)} · {proj(x.projectId).code}</div></div><Pill tone="orange">Order now</Pill></div>
-            ))}
-          </Card>
-
           <Card title="Jobs" flush>
             {s.jobs.dueToday.length + s.jobs.late.length + s.jobs.phasesStarting.length + s.jobs.phasesEnding.length === 0 && <Empty>No deliveries or phase changes today.</Empty>}
             {s.jobs.dueToday.map((p) => <Link key={p.id} to={`/projects/${p.id}`} className="item"><span className="ico"><Icon name="car" /></span><div className="grow">{p.code} {p.make} {p.model}</div><Pill tone="blue">Delivery today</Pill></Link>)}
@@ -198,7 +185,6 @@ export default function Today() {
         <div className="row" style={{ gap: 28 }}>
           <div><div className="eyebrow">Tasks booked</div><div className="sv"><span>{s.tomorrow.tasks.length}</span></div></div>
           <div><div className="eyebrow">Blocked</div><div className={`sv ${s.tomorrow.blocked ? 'orange' : ''}`}><span>{s.tomorrow.blocked}</span></div></div>
-          <div><div className="eyebrow">Deliveries expected</div><div className="sv"><span>{s.tomorrow.partsDue.length}</span></div></div>
           <div><div className="eyebrow">Need cover</div><div className={`sv ${s.tomorrow.gaps.length ? 'amber' : ''}`}><span>{s.tomorrow.gaps.length}</span></div></div>
         </div>
         {s.tomorrow.gaps.map((g) => <div key={g.task.id} className="small warn" style={{ marginTop: 8 }}>{g.task.title}: {g.mechanic.name} is {ATT_LABEL[g.record.status].toLowerCase()}. <Link to="/attendance" style={{ color: 'var(--accent2)' }}>Reassign →</Link></div>)}

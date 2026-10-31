@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { partRisk, partStatusLabel, SERVICES, type Health, type PartRisk } from '../lib/logic';
-import type { Mechanic, Part, Project, ServiceType } from '../lib/types';
+import { SERVICES, type Health } from '../lib/logic';
+import type { Mechanic, Project, ServiceType } from '../lib/types';
 
 const ICONS: Record<string, string> = {
   dash: 'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z',
@@ -51,17 +51,6 @@ const HEALTH: Record<Health, [string, string]> = {
 export const healthTone = (h: Health) => HEALTH[h][0];
 export const ServicePill = ({ s }: { s: ServiceType }) => <Pill tone={SERVICES[s].tone} dot={false}>{SERVICES[s].short}</Pill>;
 export const HealthPill = ({ h }: { h: Health }) => <Pill tone={HEALTH[h][0]}>{HEALTH[h][1]}</Pill>;
-
-const RISK: Record<PartRisk, [string, string]> = {
-  late: ['red', 'Overdue'], order_now: ['orange', 'Order now'], at_risk: ['amber', 'At risk'], ok: ['green', 'On time'], done: ['gray', 'In shop'],
-};
-export const RiskPill = ({ r }: { r: PartRisk }) => <Pill tone={RISK[r][0]}>{RISK[r][1]}</Pill>;
-
-export const PartStatusPill = ({ part }: { part: Part }) => (
-  <Pill tone={part.status === 'backordered' ? 'red' : part.status === 'shipped' ? 'blue' : part.status === 'ordered' ? 'amber' : part.status === 'needed' ? 'orange' : 'green'}>
-    {partStatusLabel(part.kind, part.status)}
-  </Pill>
-);
 
 export function Spark({ data, tone = 'accent' }: { data: number[]; tone?: string }) {
   const max = Math.max(1, ...data);
@@ -131,7 +120,6 @@ export function Seg<T extends string>({ value, options, onChange }: { value: T; 
 
 export const Empty = ({ children }: { children: ReactNode }) => <div className="empty">{children}</div>;
 
-export { partRisk };
 
 export type CarStyle = 'mustang' | 'porsche' | 'camaro' | 'mercedes' | 'corvette' | 'jaguar' | 'classic';
 

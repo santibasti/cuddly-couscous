@@ -32,7 +32,7 @@ export default function Mechanics() {
         {data.mechanics.map((m) => {
           const util = utilisation(data.tasks, m, wk, addDays(wk, 4));
           const mine = data.tasks.filter((t) => t.mechanicId === m.id && t.status !== 'done' && t.date >= today).sort((a, b) => a.date.localeCompare(b.date));
-          const stuck = mine.filter((t) => taskBlocker(t, data.parts)).length;
+          const stuck = mine.filter((t) => taskBlocker(t)).length;
           const hrs = data.tasks.filter((t) => t.mechanicId === m.id).reduce((s, t) => s + t.actualHours, 0);
           return (
             <Card key={m.id} className={m.active ? '' : 'muted'}>
@@ -52,11 +52,11 @@ export default function Mechanics() {
               </div>
               <div className="row spread small" style={{ margin: '14px 0 6px' }}><span className="muted">This week booked</span><b className={util > 100 ? 'over' : ''}>{util}%</b></div>
               <Bar value={util} tone={util > 100 ? 'red' : util > 85 ? 'amber' : undefined} />
-              <div className="row small muted" style={{ margin: '10px 0' }}><span>{m.dailyHours}h/day</span><span>·</span><span>{hrs}h logged</span>{stuck > 0 && <Pill tone="orange">{stuck} waiting on parts/approval</Pill>}</div>
+              <div className="row small muted" style={{ margin: '10px 0' }}><span>{m.dailyHours}h/day</span><span>·</span><span>{hrs}h logged</span>{stuck > 0 && <Pill tone="orange">{stuck} blocked</Pill>}</div>
               <div className="eyebrow" style={{ marginBottom: 4 }}>Up next</div>
               {mine.slice(0, 4).map((t) => {
                 const p = data.projects.find((x) => x.id === t.projectId)!;
-                const b = taskBlocker(t, data.parts);
+                const b = taskBlocker(t);
                 return <div key={t.id} className="small row spread" style={{ flexWrap: 'nowrap', padding: '3px 0' }}><span><Link to={`/projects/${p.id}`} style={{ color: 'var(--accent2)' }}>{p.code}</Link> {t.title}{b && ' 🔒'}</span><span className="muted">{fmtDate(t.date)}</span></div>;
               })}
               {mine.length === 0 && <div className="small muted">No upcoming tasks.</div>}

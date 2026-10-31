@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar, Card, Icon } from '../components/ui';
 import { addDays, fmtDate, fmtDay, isWeekend, startOfWeek, todayIso } from '../lib/dates';
-import { ATT_LABEL, attFor, dayLoad, isOut, isOverbooked, partArrivesLate, taskBlocker } from '../lib/logic';
+import { ATT_LABEL, attFor, dayLoad, isOut, isOverbooked, taskBlocker } from '../lib/logic';
 import { useStore } from '../lib/store';
 
 export default function Schedule() {
@@ -14,7 +14,7 @@ export default function Schedule() {
   const open = data.projects.filter((p) => p.status === 'active');
   const inWeek = (t: { date: string }) => t.date >= week && t.date <= addDays(week, 6);
   const unassigned = data.tasks.filter((t) => !t.mechanicId && t.status !== 'done' && inWeek(t));
-  const blockedThisWeek = data.tasks.filter((t) => inWeek(t) && taskBlocker(t, data.parts));
+  const blockedThisWeek = data.tasks.filter((t) => inWeek(t) && taskBlocker(t));
 
   const [draft, setDraft] = useState<{ mechanicId: string; date: string } | null>(null);
   function quickAdd(mechanicId: string, date: string) {
@@ -60,15 +60,14 @@ export default function Schedule() {
                   {out && <div className={`outtag ${ts.length ? 'warn' : ''}`}>{ATT_LABEL[rec!.status]}{ts.length ? ` · ${ts.length} to reassign` : ''}</div>}
                   {ts.map((t) => {
                     const p = data.projects.find((x) => x.id === t.projectId);
-                    const b = taskBlocker(t, data.parts);
-                    const late = partArrivesLate(t, data.parts);
+                    const b = taskBlocker(t);
                     return (
                       <button key={t.id} className={`chip ${t.status === 'done' ? 'done' : ''} ${b ? 'blocked' : ''} ${t.status === 'in_progress' ? 'running' : ''}`} style={{ '--mc': m.color } as React.CSSProperties}
-                        title={b ? `${b.label}${b.eta ? ` — ETA ${fmtDate(b.eta)}` : ''}` : `${t.title} (${t.estHours}h) – click to advance`}
+                        title={b ? b.label : `${t.title} (${t.estHours}h) – click to advance`}
                         onClick={() => !b && dispatch({ type: 'updateTask', id: t.id, patch: { status: t.status === 'todo' ? 'in_progress' : t.status === 'in_progress' ? 'done' : 'todo' } })}>
                         <span className="cc">{b && <Icon name="lock" size={11} />}{p?.code}</span>
                         <span className="ct">{t.title}</span>
-                        <small>{b ? b.label : `${t.estHours}h`}{late && b?.eta ? ' · lands after this day' : ''}</small>
+                        <small>{b ? b.label : `${t.estHours}h`}</small>
                       </button>
                     );
                   })}
@@ -97,8 +96,8 @@ export default function Schedule() {
           {blockedThisWeek.length === 0 && <div className="empty">No blocked work this week.</div>}
           {blockedThisWeek.map((t) => {
             const p = data.projects.find((x) => x.id === t.projectId)!;
-            const b = taskBlocker(t, data.parts)!;
-            return <div key={t.id} className="item"><span className={`ico ${b.reason}`}><Icon name="lock" /></span><div className="grow"><strong>{b.label}</strong><div className="small muted">{p.code} · {t.title} · {fmtDate(t.date)}</div></div><div className="small muted">{b.eta ? `ETA ${fmtDate(b.eta)}` : 'No ETA'}</div></div>;
+            const b = taskBlocker(t)!;
+            return <div key={t.id} className="item"><span className={`ico ${b.reason}`}><Icon name="lock" /></span><div className="grow"><strong>{b.label}</strong><div className="small muted">{p.code} · {t.title} · {fmtDate(t.date)}</div></div><div className="small muted">{b.reason === 'customer' ? 'Needs customer' : 'Blocked'}</div></div>;
           })}
         </Card>
         <Card title="Unassigned this week" flush>
@@ -116,7 +115,7 @@ export default function Schedule() {
           })}
         </Card>
       </div>
-      <p className="small muted">Hatched cards are blocked — they clear automatically when the part or sublet job is marked received. Click an unblocked card to advance it.</p>
+      <p className="small muted">Hatched cards are blocked. Click an unblocked card to advance it.</p>
     </>
   );
 }

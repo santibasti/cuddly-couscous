@@ -1,5 +1,5 @@
 import { addDays, diffDays, fmtDate, isWeekend, startOfWeek } from './dates';
-import { coverageGaps, daysOverdue, projectCosts, projectHealth, projectProgress, partRisk, isPartIn, taskBlocker, workedHours, type Health } from './logic';
+import { coverageGaps, daysOverdue, projectCosts, projectHealth, projectProgress, taskBlocker, workedHours, type Health } from './logic';
 import { SERVICES, SERVICE_KEYS } from './logic';
 import { LABOR_COST_PER_HOUR } from './rates';
 import type { Data, Project, ServiceType } from './types';
@@ -35,16 +35,15 @@ export function planIsComplete(p: Project, d: Data): boolean {
   return p.phases.every((ph) => d.tasks.some((t) => t.projectId === p.id && t.phaseKey === ph.key));
 }
 
-/** Labor at actual hours for finished tasks and estimated hours for the rest, plus every part and sublet on the job. */
+/** Labour at actual hours for finished tasks and estimated hours for the rest. */
 export function plannedCost(p: Project, d: Data): number {
   const labor = d.tasks.filter((t) => t.projectId === p.id).reduce((s, t) => s + (t.status === 'done' ? t.actualHours : t.estHours) * LABOR_COST_PER_HOUR, 0);
-  const parts = d.parts.filter((x) => x.projectId === p.id).reduce((s, x) => s + x.cost, 0);
-  return Math.round(labor + parts);
+  return Math.round(labor);
 }
 
 export function jobFinance(p: Project, d: Data, today: string): JobFinance {
   const progress = projectProgress(p, d.tasks);
-  const spent = projectCosts(p, d.tasks, d.parts, d.mechanics).total;
+  const spent = projectCosts(p, d.tasks).total;
   const collected = p.payments.reduce((s, x) => s + x.amount, 0);
   const earned = Math.round((p.budget * progress) / 100);
   // With every step planned (the short services), forecast from the plan. Otherwise fall back on progress.
@@ -77,30 +76,6 @@ export function portfolio(d: Data, today: string) {
     late, onTime: jobs.length - late,
     avgDelay: late ? Math.round(jobs.filter((j) => j.health === 'late').reduce((s, j) => s + daysOverdue(j.project, today), 0) / late) : 0,
   };
-}
-
-/** Where the money goes across active jobs. */
-export function costMix(d: Data) {
-  const active = d.projects.filter((p) => p.status === 'active');
-  const ids = new Set(active.map((p) => p.id));
-  const labor = active.reduce((s, p) => s + projectCosts(p, d.tasks, d.parts, d.mechanics).labor, 0);
-  const parts = d.parts.filter((x) => ids.has(x.projectId) && x.kind === 'part').reduce((s, x) => s + x.cost, 0);
-  const sublet = d.parts.filter((x) => ids.has(x.projectId) && x.kind === 'sublet').reduce((s, x) => s + x.cost, 0);
-  return { labor, parts, sublet };
-}
-
-/** Money tied up in orders not yet in the shop, by supplier. */
-export function supplierExposure(d: Data, today: string) {
-  const by = new Map<string, { supplier: string; value: number; items: number; late: number }>();
-  for (const x of d.parts) {
-    if (isPartIn(x) || x.status === 'needed') continue;
-    const e = by.get(x.supplier) ?? { supplier: x.supplier, value: 0, items: 0, late: 0 };
-    e.value += x.cost;
-    e.items += 1;
-    if (partRisk(x, today) === 'late') e.late += 1;
-    by.set(x.supplier, e);
-  }
-  return [...by.values()].sort((a, b) => b.value - a.value);
 }
 
 /** Contract value due for delivery in each of the next N months. */
@@ -145,12 +120,8 @@ export function riskRegister(d: Data, today: string): Risk[] {
     else if (j.marginPct < 30) out.push({ level: 'medium', text: `${p.code} margin is tight at ${j.marginPct}%`, to: `/projects/${p.id}`, value: j.margin });
     if (j.billingGap > p.budget * 0.1) out.push({ level: 'medium', text: `${p.code}: work is ahead of payments, ${Math.round(j.billingGap / 1000).toLocaleString('en-PH')}K to bill`, to: `/projects/${p.id}`, value: j.billingGap });
   }
-  const overdueParts = d.parts.filter((x) => partRisk(x, today) === 'late');
-  if (overdueParts.length) out.push({ level: 'high', text: `${overdueParts.length} supplier deliveries are overdue`, to: '/parts', value: overdueParts.reduce((s, x) => s + x.cost, 0) });
-  const unordered = d.parts.filter((x) => partRisk(x, today) === 'order_now');
-  if (unordered.length) out.push({ level: 'high', text: `${unordered.length} items are needed within a week and not ordered`, to: '/parts', value: unordered.reduce((s, x) => s + x.cost, 0) });
-  const blocked = d.tasks.filter((t) => d.projects.find((p) => p.id === t.projectId)?.status === 'active' && taskBlocker(t, d.parts));
-  if (blocked.length) out.push({ level: 'medium', text: `${blocked.length} tasks (${blocked.reduce((s, t) => s + t.estHours, 0)}h) are waiting on parts, outside shops or customers`, to: '/schedule' });
+  const blocked = d.tasks.filter((t) => d.projects.find((p) => p.id === t.projectId)?.status === 'active' && taskBlocker(t));
+  if (blocked.length) out.push({ level: 'medium', text: `${blocked.length} tasks (${blocked.reduce((s, t) => s + t.estHours, 0)}h) are blocked`, to: '/schedule' });
   const gaps = coverageGaps(d, today);
   if (gaps.length) out.push({ level: 'medium', text: `${gaps.length} task${gaps.length > 1 ? 's' : ''} booked on days the mechanic is out`, to: '/attendance' });
   return out.sort((a, b) => (a.level === b.level ? 0 : a.level === 'high' ? -1 : 1));

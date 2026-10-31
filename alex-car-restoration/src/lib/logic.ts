@@ -1,6 +1,6 @@
 import { addDays, addMonths, addYears, diffDays, fmtDate as fmtShort, isWeekend } from './dates';
 import { LABOR_COST_PER_HOUR } from './rates';
-import type { Attendance, AttendanceStatus, Data, Mechanic, Part, PartKind, PartStatus, Phase, PhaseKey, Project, ServiceType, Task } from './types';
+import type { Attendance, AttendanceStatus, Data, Mechanic, Phase, PhaseKey, Project, ServiceType, Task } from './types';
 
 /** Every step any service can have, with its label and how much of a job it represents. */
 export const PHASE_DEFS: Record<PhaseKey, { label: string; short: string; weight: number }> = {
@@ -133,12 +133,11 @@ export function latePhases(project: Project, today: string): Phase[] {
   return project.phases.filter((p) => p.status !== 'done' && p.end < today);
 }
 
-export function projectCosts(project: Project, tasks: Task[], parts: Part[], _mechanics?: Mechanic[]) {
+export function projectCosts(project: Project, tasks: Task[]) {
   const labor = tasks
     .filter((t) => t.projectId === project.id)
     .reduce((s, t) => s + t.actualHours * LABOR_COST_PER_HOUR, 0);
-  const partsCost = parts.filter((p) => p.projectId === project.id).reduce((s, p) => s + p.cost, 0);
-  return { labor, parts: partsCost, total: labor + partsCost };
+  return { labor, total: labor };
 }
 
 /** Hours booked for a mechanic on a day (done tasks count their actuals, others their estimate). */
@@ -162,69 +161,26 @@ export function utilisation(tasks: Task[], m: Mechanic, from: string, to: string
   return capacity ? Math.round((booked / capacity) * 100) : 0;
 }
 
-/* ───────────── parts, sublets & blockers ───────────── */
-
-export const PART_FLOW: PartStatus[] = ['needed', 'ordered', 'shipped', 'backordered', 'received', 'installed'];
-
-const PART_LABELS: Record<PartKind, Record<PartStatus, string>> = {
-  part: { needed: 'To order', ordered: 'Ordered', shipped: 'In transit', backordered: 'Backordered', received: 'Received', installed: 'Installed' },
-  sublet: { needed: 'To send out', ordered: 'Booked in', shipped: 'At vendor', backordered: 'Delayed', received: 'Back in shop', installed: 'Refitted' },
-};
-export const partStatusLabel = (kind: PartKind, s: PartStatus) => PART_LABELS[kind][s];
-
-export const isPartIn = (p: Part) => p.status === 'received' || p.status === 'installed';
-
-export type PartRisk = 'done' | 'late' | 'order_now' | 'at_risk' | 'ok';
-
-/** How worried should the shop be about this part arriving when the work needs it? */
-export function partRisk(p: Part, today: string): PartRisk {
-  if (isPartIn(p)) return 'done';
-  if (p.status === 'needed') return diffDays(today, p.neededBy) <= 7 ? 'order_now' : 'ok';
-  if (p.eta && p.eta < today) return 'late';
-  if (p.status === 'backordered' && !p.eta) return 'at_risk';
-  if (p.eta && p.eta > p.neededBy) return 'at_risk';
-  return 'ok';
-}
-
-export const RISK_RANK: Record<PartRisk, number> = { late: 0, order_now: 1, at_risk: 2, ok: 3, done: 4 };
+/* ───────────── blockers ───────────── */
 
 export interface Blocker {
   taskId: string;
   projectId: string;
-  reason: 'parts' | 'vendor' | 'customer' | 'other';
+  reason: 'customer' | 'other';
   label: string;
-  eta?: string;
-  partId?: string;
 }
 
-/** Why a task can't move right now, or null. Parts-driven blocks clear themselves when the part arrives. */
-export function taskBlocker(t: Task, parts: Part[]): Blocker | null {
-  if (t.status === 'done') return null;
-  const part = t.partId ? parts.find((p) => p.id === t.partId) : undefined;
-  if (part && !isPartIn(part)) {
-    const verb = part.kind === 'sublet' ? 'Waiting on' : 'Waiting for';
-    return {
-      taskId: t.id, projectId: t.projectId, reason: part.kind === 'sublet' ? 'vendor' : 'parts',
-      label: `${verb} ${part.name}`, eta: part.eta, partId: part.id,
-    };
-  }
-  if (t.status === 'blocked') {
-    return { taskId: t.id, projectId: t.projectId, reason: t.blockReason ?? 'other', label: t.blockNote || 'Blocked', };
-  }
+/** Why a task can't move right now, or null. A task is blocked when someone marks it so, with a reason and a note. */
+export function taskBlocker(t: Task): Blocker | null {
+  if (t.status === 'blocked') return { taskId: t.id, projectId: t.projectId, reason: t.blockReason ?? 'other', label: t.blockNote || 'Blocked' };
   return null;
 }
 
 export const allBlockers = (d: Data): Blocker[] =>
   d.tasks.flatMap((t) => {
     const p = d.projects.find((x) => x.id === t.projectId);
-    return p && p.status === 'active' ? [taskBlocker(t, d.parts)].filter((b): b is Blocker => !!b) : [];
+    return p && p.status === 'active' ? [taskBlocker(t)].filter((b): b is Blocker => !!b) : [];
   });
-
-/** A task is scheduled for a day before the part it needs will arrive. */
-export function partArrivesLate(t: Task, parts: Part[]): boolean {
-  const part = t.partId ? parts.find((p) => p.id === t.partId) : undefined;
-  return !!part && !isPartIn(part) && t.status !== 'done' && (!part.eta || part.eta > t.date);
-}
 
 export type Health = 'on_track' | 'at_risk' | 'blocked' | 'late' | 'hold' | 'quote' | 'done';
 
@@ -235,16 +191,14 @@ export function projectHealth(p: Project, d: Data, today: string): { health: Hea
   const reasons: string[] = [];
   const over = daysOverdue(p, today);
   if (over > 0) reasons.push(`${over}d past target date`);
-  const blockers = d.tasks.filter((t) => t.projectId === p.id).map((t) => taskBlocker(t, d.parts)).filter((b): b is Blocker => !!b);
+  const blockers = d.tasks.filter((t) => t.projectId === p.id).map((t) => taskBlocker(t)).filter((b): b is Blocker => !!b);
   const urgent = blockers.filter((b) => {
     const t = d.tasks.find((x) => x.id === b.taskId)!;
     return t.date <= addDays(today, 3);
   });
   for (const b of urgent) reasons.push(b.label);
-  const risky = d.parts.filter((x) => x.projectId === p.id && ['late', 'order_now', 'at_risk'].includes(partRisk(x, today)));
-  for (const x of risky) reasons.push(`${x.name}: ${partRisk(x, today).replace('_', ' ')}`);
   for (const ph of latePhases(p, today)) reasons.push(`${phaseLabel(ph.key)} behind schedule`);
-  const { total } = projectCosts(p, d.tasks, d.parts, d.mechanics);
+  const { total } = projectCosts(p, d.tasks);
   if (total > p.budget) reasons.push('Over budget');
   let health: Health = 'on_track';
   if (over > 0) health = 'late';
@@ -267,18 +221,11 @@ export function buildAlerts(data: Data, today: string): Alert[] {
     const over = daysOverdue(p, today);
     if (over > 0) out.push({ level: 'high', projectId: p.id, text: `${name} is ${over} day${over > 1 ? 's' : ''} past its target date` });
     else for (const ph of latePhases(p, today)) out.push({ level: 'medium', projectId: p.id, text: `${name}: ${phaseLabel(ph.key)} is behind schedule` });
-    const { total } = projectCosts(p, data.tasks, data.parts, data.mechanics);
+    const { total } = projectCosts(p, data.tasks);
     if (total > p.budget) out.push({ level: 'high', projectId: p.id, text: `${name} is over budget` });
     else if (total > p.budget * 0.9) out.push({ level: 'medium', projectId: p.id, text: `${name} has used 90%+ of its budget` });
     const unassigned = data.tasks.filter((t) => t.projectId === p.id && !t.mechanicId && t.status !== 'done').length;
     if (unassigned) out.push({ level: 'medium', projectId: p.id, text: `${name} has ${unassigned} unassigned task${unassigned > 1 ? 's' : ''}` });
-  }
-  for (const part of data.parts) {
-    const p = data.projects.find((x) => x.id === part.projectId);
-    if (!p || p.status !== 'active') continue;
-    const r = partRisk(part, today);
-    if (r === 'late') out.push({ level: 'high', projectId: p.id, text: `${p.code}: ${part.name} is overdue from ${part.supplier}` });
-    if (r === 'order_now') out.push({ level: 'high', projectId: p.id, text: `${p.code}: ${part.name} still not ordered, needed ${fmtShort(part.neededBy)}` });
   }
   return out.sort((a, b) => (a.level === b.level ? 0 : a.level === 'high' ? -1 : 1));
 }

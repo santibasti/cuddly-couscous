@@ -7,10 +7,8 @@ export type PhaseKey =
 
 export type PhaseStatus = 'todo' | 'in_progress' | 'done';
 export type TaskStatus = 'todo' | 'in_progress' | 'blocked' | 'done';
-export type BlockReason = 'customer' | 'vendor' | 'other';
-export type PartKind = 'part' | 'sublet';
+export type BlockReason = 'customer' | 'other';
 export type ProjectStatus = 'quote' | 'active' | 'on_hold' | 'completed' | 'delivered';
-export type PartStatus = 'needed' | 'ordered' | 'shipped' | 'backordered' | 'received' | 'installed';
 export type Priority = 'low' | 'normal' | 'high';
 export type AttendanceStatus = 'present' | 'late' | 'half' | 'absent' | 'leave' | 'off';
 
@@ -179,28 +177,9 @@ export interface Task {
   estHours: number;
   actualHours: number;
   status: TaskStatus;
-  /** Task cannot proceed until this part / sublet job is back in the shop. */
-  partId?: string;
-  /** Manual block (customer approval, vendor, other) when not driven by a part. */
+  /** Why the task is blocked: waiting on the customer, or something else. */
   blockReason?: BlockReason;
   blockNote?: string;
-}
-
-export interface Part {
-  id: string;
-  projectId: string;
-  name: string;
-  kind: PartKind;
-  supplier: string;
-  cost: number;
-  status: PartStatus;
-  phaseKey?: PhaseKey;
-  po?: string;
-  orderedOn?: string;
-  eta?: string;
-  /** Date the work needs it by. */
-  neededBy: string;
-  note?: string;
 }
 
 export interface Update {
@@ -240,7 +219,6 @@ export interface Data {
   customers: Customer[];
   projects: Project[];
   tasks: Task[];
-  parts: Part[];
   updates: Update[];
   attendance: Attendance[];
   messages: Sms[];

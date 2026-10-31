@@ -57,7 +57,7 @@ export default function Projects() {
           <tbody>
             {rows.map(({ p, health, reasons }) => {
               const pct = projectProgress(p, data.tasks);
-              const spent = projectCosts(p, data.tasks, data.parts, data.mechanics).total;
+              const spent = projectCosts(p, data.tasks).total;
               const cp = currentPhase(p);
               const over = daysOverdue(p, today);
               return (

@@ -3,9 +3,9 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 export type Role = 'executive' | 'advisor' | 'leader';
 
 export const ROLES: Record<Role, { label: string; hint: string; money: boolean; edit: boolean; customers: boolean; pages: string[] }> = {
-  executive: { label: 'Executive', hint: 'Everything, including sales graphs', money: true, edit: true, customers: true, pages: ['/', '/today', '/executive', '/insights', '/customers', '/intake', '/estimate', '/projects', '/schedule', '/timeline', '/mechanics', '/attendance', '/parts'] },
-  advisor: { label: 'Service Advisor', hint: 'Everything except sales graphs', money: false, edit: true, customers: true, pages: ['/', '/today', '/insights', '/customers', '/intake', '/estimate', '/projects', '/schedule', '/timeline', '/mechanics', '/attendance', '/parts'] },
-  leader: { label: 'Team Leader', hint: 'Monitoring only', money: false, edit: false, customers: false, pages: ['/', '/today', '/insights', '/projects', '/schedule', '/timeline', '/mechanics', '/attendance', '/parts'] },
+  executive: { label: 'Executive', hint: 'Everything, including sales graphs', money: true, edit: true, customers: true, pages: ['/', '/today', '/executive', '/insights', '/customers', '/intake', '/estimate', '/projects', '/schedule', '/timeline', '/mechanics', '/attendance'] },
+  advisor: { label: 'Service Advisor', hint: 'Everything except sales graphs', money: false, edit: true, customers: true, pages: ['/', '/today', '/insights', '/customers', '/intake', '/estimate', '/projects', '/schedule', '/timeline', '/mechanics', '/attendance'] },
+  leader: { label: 'Team Leader', hint: 'Monitoring only', money: false, edit: false, customers: false, pages: ['/', '/today', '/insights', '/projects', '/schedule', '/timeline', '/mechanics', '/attendance'] },
 };
 
 /**
