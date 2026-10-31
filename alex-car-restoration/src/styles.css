@@ -393,3 +393,32 @@ img.avatar{object-fit:cover;background:var(--panel2)}
 .pulse-tile.green .pi{animation:fade-in .6s both}
 .dot.cur,.dot.blk{animation:breathe 1.8s ease-in-out infinite}
 @media(prefers-reduced-motion:reduce){.ring .fg,.gauge .glow,.hbar-track i,.glow.draw,.fadein,.pill i,.pulse-tile .pi svg,.dot{animation:none!important}}
+
+/* job journey: a car travels along the steps */
+.jt-scroll{overflow-x:auto;padding:4px 0 2px}
+.jt{--dot:22px;--bd:38px;--pad:12px;--c:var(--arc);position:relative;padding-top:var(--pad)}
+.jt.warn{--c:var(--amber)}.jt.bad{--c:var(--red)}.jt.hold{--c:var(--muted)}
+.jt-nodes{position:relative;display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr))}
+.jt-node{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;color:var(--muted);padding:0 2px;font-size:12px;text-align:center;border-radius:12px}
+button.jt-node{cursor:pointer}button.jt-node:hover{background:var(--panel);border:0}
+.jt-dot{width:var(--dot);height:var(--dot);border-radius:50%;display:grid;place-items:center;background:var(--bg);border:2px solid var(--line2);position:relative;z-index:1}
+.jt-node.done .jt-dot{background:var(--green);border-color:var(--green);color:#06140d}
+.jt-node.current .jt-dot{opacity:0}
+.jt-l{font-weight:500}.jt-d{font-size:10.5px;opacity:.75}
+.jt-node.current .jt-l{color:var(--c);font-weight:600}.jt-node.sel .jt-l{color:var(--ink);text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--c)}
+.jt-line{position:absolute;top:calc(var(--pad) + var(--dot)/2 - 1px);left:calc(50%/var(--n));right:calc(50%/var(--n));height:2px;background:repeating-linear-gradient(90deg,var(--line2) 0 8px,transparent 8px 14px);z-index:0;animation:jt-march 1.1s linear infinite}
+.jt-fill{position:absolute;left:0;top:-1px;height:4px;width:calc(var(--f)*100%);border-radius:4px;background:linear-gradient(90deg,var(--green),var(--c),var(--green),var(--c));background-size:200% 100%;box-shadow:0 0 10px -1px var(--c);animation:jt-fill 1.3s cubic-bezier(.2,.8,.2,1) both,jt-sheen 2.2s linear infinite}
+.jt-car{position:absolute;pointer-events:none;z-index:2;top:calc(var(--pad) + var(--dot)/2 - var(--bd)/2);left:calc((var(--i) + .5)/var(--n)*100%);width:var(--bd);height:var(--bd);margin-left:calc(var(--bd)/-2);border-radius:50%;display:grid;place-items:center;background:var(--bg);border:2px solid var(--c);color:var(--c);box-shadow:0 0 0 5px color-mix(in srgb,var(--c) 16%,transparent),0 0 18px -2px var(--c);animation:jt-slide 1.3s cubic-bezier(.2,.8,.2,1) both,jt-bob 2.4s ease-in-out 1.3s infinite}
+.jt-car::after{content:"";position:absolute;inset:-2px;border-radius:50%;border:2px solid var(--c);animation:jt-ring 2s ease-out 1.3s infinite;opacity:0}
+.jt.compact{--dot:9px;--bd:26px;--pad:9px}
+.jt.compact .jt-dot{border-width:1.5px}
+.jt.compact .jt-line{background:repeating-linear-gradient(90deg,var(--line2) 0 5px,transparent 5px 9px)}
+.jt.compact .jt-fill{height:3px;top:-.5px}
+.jt.compact .jt-nodes{padding-bottom:0}
+@keyframes jt-march{to{background-position:14px 0}}
+@keyframes jt-sheen{to{background-position:-200% 0}}
+@keyframes jt-fill{from{width:0}}
+@keyframes jt-slide{from{left:calc(.5/var(--n)*100%)}}
+@keyframes jt-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+@keyframes jt-ring{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.7);opacity:0}}
+@media(prefers-reduced-motion:reduce){.jt-line,.jt-fill,.jt-car,.jt-car::after{animation:none!important}}
