@@ -318,12 +318,6 @@ button.primary,.btn.primary{box-shadow:0 8px 20px -10px var(--accent)}
 .login-card label{display:flex;flex-direction:column;gap:6px;font-size:11.5px;color:var(--muted);font-weight:500}
 .login-demo{margin-top:6px;padding-top:14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
 .demo-acct{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px 12px;border-radius:12px}
-.reasons{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-.reasons li{display:flex;gap:10px;font-size:13.5px;align-items:baseline}
-.reasons .mk{flex:none;width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;font-size:12px;font-weight:700}
-.reasons .good .mk{background:color-mix(in srgb,var(--green) 22%,transparent);color:var(--green)}
-.reasons .warn .mk{background:color-mix(in srgb,var(--amber) 22%,transparent);color:var(--amber)}
-.reasons .bad .mk{background:color-mix(in srgb,var(--red) 22%,transparent);color:var(--red)}
 
 img.avatar{object-fit:cover;background:var(--panel2)}
 .crew{display:inline-flex;align-items:center;flex:none}.crew .avatar+.avatar{margin-left:-9px}

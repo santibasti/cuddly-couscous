@@ -1,7 +1,5 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { AdviceCard } from '../components/Advice';
-import { adviseJob } from '../lib/advice';
 import ProjectCard from '../components/ProjectCard';
 import { Bar, Card, Empty, HealthPill, Icon, Seg, ServicePill, carName } from '../components/ui';
 import { addDays, fmtDate, todayIso } from '../lib/dates';
@@ -104,7 +102,6 @@ export default function Projects() {
           <label>Start date<input type="date" value={start} onChange={(e) => { setStart(e.target.value); setTarget(addDays(e.target.value, SERVICES[svc].typicalDays)); }} required /></label>
           <label>Target delivery<input type="date" value={target} onChange={(e) => setTarget(e.target.value)} required /></label>
           <label className="full">Scope of work<textarea value={scope} onChange={(e) => setScope(e.target.value)} /></label>
-          {Number(budget) > 0 && target >= start && custId && <div className="full"><AdviceCard advice={adviseJob(data, { customerId: custId, service: svc, budget: Number(budget), start, target })} title="Should we go ahead with this job?" /></div>}
           {err && <div className="full over small" role="alert">{err}</div>}
           <div className="full"><button className="primary" type="submit">Create job — the {SERVICES[svc].label.toLowerCase()} steps are scheduled automatically</button></div>
         </form>
