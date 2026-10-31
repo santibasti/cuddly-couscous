@@ -1,6 +1,6 @@
 import { addDays, addMonths, diffDays, fmtDate } from './dates';
 import { PHASE_DEFS, SERVICE_KEYS, isOut } from './logic';
-import type { Customer, Data, LeadSource, Mechanic, PhaseKey, Project, ServiceType, SmsKind } from './types';
+import type { ChecklistItem, Customer, Data, LeadSource, Mechanic, PhaseKey, Project, ServiceType, SmsKind } from './types';
 
 export const SOURCES: Record<LeadSource, string> = { organic: 'Organic', ads: 'Ads', sms: 'SMS', social: 'Social media', referral: 'Referral' };
 export const SOURCE_KEYS = Object.keys(SOURCES) as LeadSource[];
@@ -47,7 +47,7 @@ export function customerStats(d: Data, c: Customer) {
 
 /* ---------- Text messages (demo only) ---------- */
 
-export function smsText(kind: SmsKind, c: Customer, p?: Project): string {
+export function smsText(kind: SmsKind, c: Customer, p?: Project, extra?: string): string {
   const hi = `Hi ${c.name.split(' ')[0]},`;
   const car = p ? `${p.make} ${p.model}` : 'car';
   switch (kind) {
@@ -55,12 +55,14 @@ export function smsText(kind: SmsKind, c: Customer, p?: Project): string {
     case 'payment': return `${hi} a friendly reminder: the balance for your ${car} is ₱${p ? Math.max(0, p.budget - paidTotal(p)).toLocaleString('en-PH') : '0'}. Thank you!`;
     case 'checkup': return `${hi} how is your ${car} after the work? We would like to check on it. Reply or call us to book a free check-up.`;
     case 'birthday': return `Happy birthday, ${c.name.split(' ')[0]}! From all of us at Alex Car Restoration. Enjoy your day!`;
+    case 'stage': return `${hi} an update on your ${car}: ${extra ?? 'work is moving along'}.`;
+    case 'estimate': return `${hi} here is your estimate for the ${car}: ${extra ?? ''}. Reply YES to go ahead, or call us with any questions.`;
     case 'approval': return `${hi} we need your OK to continue the work on your ${car}. Please call or reply so we can proceed.`;
     default: return '';
   }
 }
 
-export const SMS_LABEL: Record<SmsKind, string> = { ready: 'Ready for pickup', payment: 'Payment reminder', checkup: 'Check-up', birthday: 'Birthday greeting', approval: 'Approval needed', custom: 'Message' };
+export const SMS_LABEL: Record<SmsKind, string> = { ready: 'Ready for pickup', payment: 'Payment reminder', checkup: 'Check-up', birthday: 'Birthday greeting', approval: 'Approval needed', stage: 'Progress update', estimate: 'Estimate', custom: 'Message' };
 
 /** Check-up with the client is due a week after the car goes out. */
 export const CHECKUP_DAYS = 7;
@@ -212,3 +214,30 @@ export function sourcesFor(d: Data, received: Project[]) {
   for (const p of received) { const k = d.customers.find((c) => c.id === p.customerId)?.source ?? 'unknown'; by.set(k, (by.get(k) ?? 0) + 1); }
   return [...by].map(([key, count]) => ({ key, label: key === 'unknown' ? 'Not recorded' : SOURCES[key as LeadSource], count })).sort((x, y) => y.count - x.count);
 }
+
+/* ---------- Final quality check and release ---------- */
+
+export const QC_ITEMS: Record<ServiceType, string[]> = {
+  restoration: ['Panel gaps and fit checked', 'Paint finish checked under lights', 'Engine starts and runs smoothly', 'Brakes and steering tested', 'Lights, horn and wipers work', 'Interior and trim complete', 'Test drive done', 'No leaks or warning lights'],
+  paint: ['Colour matches the next panel', 'No runs, dust or orange peel', 'Edges and masking lines are clean', 'Polish is even, no swirls', 'Trim and lights refitted', 'Car washed and dried'],
+  detailing: ['Exterior clean, no water spots', 'Interior vacuumed and wiped', 'Glass streak free', 'Wheels and tyres done', 'Valuables returned', 'Final photos taken'],
+  ceramic: ['Coating even, no high spots', 'Gloss reading taken', 'Paint thickness recorded', 'Cure time explained to the owner', 'Warranty card filled in', 'Care guide handed over'],
+};
+
+export const defaultQc = (service: ServiceType): ChecklistItem[] => QC_ITEMS[service].map((label) => ({ label, present: false }));
+
+export interface Gate { label: string; ok: boolean; hint: string }
+
+/** What must be true before the car can go out. The advisor can override with a reason. */
+export function releaseGates(p: Project): { ok: boolean; gates: Gate[] } {
+  const qcDone = !!p.qc?.signedOn || p.phases.find((x) => x.key === 'qc')?.status === 'done';
+  const balance = Math.max(0, p.budget - paidTotal(p));
+  const gates: Gate[] = [
+    { label: 'Quality check signed off', ok: qcDone, hint: 'Sign off the quality check' },
+    { label: 'Paid in full', ok: isPaidInFull(p) || p.budget === 0, hint: `₱${Math.round(balance).toLocaleString('en-PH')} still to collect` },
+    { label: 'OR/CR copy received', ok: !!p.intake?.orcr, hint: 'Tick OR/CR in the car intake' },
+  ];
+  return { ok: gates.every((g) => g.ok), gates };
+}
+
+export const STARS = ['Poor', 'Not good', 'Okay', 'Good', 'Great'];

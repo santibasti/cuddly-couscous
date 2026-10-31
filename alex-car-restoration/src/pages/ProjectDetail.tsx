@@ -1,16 +1,17 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import Journey from '../components/Journey';
-import { Outbox, SmsAction } from '../components/Sms';
+import { Outbox, SmsAction, StageNudge } from '../components/Sms';
 import { Avatar, Crew, CarArt, Card, carName, HealthPill, ServicePill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
 import { paintHex } from '../lib/paint';
 import { resizeImage } from '../lib/photo';
 import { addDays, diffDays, fmtDate, todayIso } from '../lib/dates';
 import { BAYS, PACKAGES, PART_FLOW, coatingDates, currentPhase, daysOverdue, isPartIn, money, moneyC, partRisk, partStatusLabel, phaseLabel, phasePercent, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker, jobCrew } from '../lib/logic';
-import { CHECKUP_DAYS, isPaidInFull, missingItems } from '../lib/crm';
-import { useRole } from '../lib/role';
+import { estimateTotals } from '../lib/estimate';
+import { CHECKUP_DAYS, STARS, defaultQc, missingItems, releaseGates } from '../lib/crm';
+import { ROLES, useRole } from '../lib/role';
 import { useStore } from '../lib/store';
-import type { BlockReason, CoatingRecord, PartKind, PartStatus, PhaseKey, ProjectStatus, TaskStatus } from '../lib/types';
+import type { BlockReason, CoatingRecord, PartKind, PartStatus, PhaseKey, PhaseStatus, ProjectStatus, SmsKind, TaskStatus } from '../lib/types';
 
 type Tab = 'work' | 'parts' | 'billing' | 'log';
 const ROLE_NAME = { executive: 'Executive', advisor: 'Service Advisor', leader: 'Team Leader' } as const;
@@ -19,6 +20,11 @@ export default function ProjectDetail() {
   const { id } = useParams();
   const { data, dispatch } = useStore();
   const { role } = useRole();
+  const nav = useNavigate();
+  const [nudge, setNudge] = useState<{ kind: SmsKind; extra?: string } | null>(null);
+  const [score, setScore] = useState(0);
+  const [fbNote, setFbNote] = useState('');
+  const [why, setWhy] = useState('');
   const [tab, setTab] = useState<Tab>('work');
   const [note, setNote] = useState('');
   const [photoErr, setPhotoErr] = useState('');
@@ -42,6 +48,19 @@ export default function ProjectDetail() {
   const sel = p.phases.find((x) => x.key === selKey) ?? currentPhase(p) ?? p.phases[0];
   const blocked = tasks.map((t) => ({ t, b: taskBlocker(t, data.parts) })).filter((x) => x.b);
   const patch = (id: string, pt: Record<string, unknown>) => dispatch({ type: 'updateTask', id, patch: pt });
+  const canEditRole = ROLES[role].edit;
+
+  function changeStatus(v: PhaseStatus) {
+    dispatch({ type: 'setPhaseStatus', projectId: p!.id, key: sel.key, status: v });
+    if (v === 'todo') return setNudge(null);
+    const nextPh = p!.phases[p!.phases.findIndex((x) => x.key === sel.key) + 1];
+    setNudge({ kind: 'stage', extra: v === 'done' ? `${phaseLabel(sel.key)} is done${nextPh ? `, ${phaseLabel(nextPh.key)} is next` : ''}` : `${phaseLabel(sel.key)} has started` });
+  }
+  function openBackJob() {
+    const id = `p${Date.now().toString(36)}`;
+    dispatch({ type: 'addProject', project: { id, service: p!.service, customerId: p!.customerId, title: 'Back job', year: p!.year, make: p!.make, model: p!.model, color: p!.color, vin: p!.vin, scope: 'Return visit to fix a fault from the earlier job, at no charge.', priority: 'high', bay: 'Unassigned', startDate: today, targetDate: addDays(today, 2), budget: 0, backjobOf: p!.id, receivedOn: today, status: 'active' } });
+    nav(`/projects/${id}`);
+  }
 
   function addTask(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -72,7 +91,7 @@ export default function ProjectDetail() {
         <div className="txt">
           <div className="row" style={{ marginBottom: 14 }}><span className="eyebrow">{p.code} · {p.year} · {p.bay}</span><ServicePill s={p.service} /><HealthPill h={health} /></div>
           <h1>{p.make} <em>{p.model}</em></h1>
-          <p className="muted" style={{ margin: '12px 0 0' }}>{p.packageName ?? p.title} · {p.color} · {customer?.name} ({customer?.phone})</p>
+          <p className="muted" style={{ margin: '12px 0 0' }}>{[p.packageName ?? p.title, p.color, customer ? `${customer.name} (${customer.phone})` : ''].filter(Boolean).join(' · ')}</p>
           {jobCrew(p.id, data).length > 0 && <div className="row" style={{ marginTop: 12, gap: 10 }}><Crew crew={jobCrew(p.id, data)} size={32} max={6} /><span className="small muted">{jobCrew(p.id, data).map((m) => m.name.split(' ')[0]).join(', ')}</span></div>}
           <div className="row" style={{ marginTop: 20 }}>
             <select value={p.status} onChange={(e) => dispatch({ type: 'setProjectStatus', id: p.id, status: e.target.value as ProjectStatus })}>
@@ -123,7 +142,7 @@ export default function ProjectDetail() {
             <div className="small muted">{fmtDate(sel.start)} – {fmtDate(sel.end)} · {phasePercent(p, sel.key, data.tasks)}% of tasks done · {tasks.filter((t) => t.phaseKey === sel.key).length === 1 ? '1 task' : `${tasks.filter((t) => t.phaseKey === sel.key).length} tasks`}</div>
           </div>
           <div className="row">
-            <Seg value={sel.status} onChange={(v) => dispatch({ type: 'setPhaseStatus', projectId: p.id, key: sel.key, status: v })}
+            <Seg value={sel.status} onChange={changeStatus}
               options={[{ value: 'todo', label: 'Not started' }, { value: 'in_progress', label: 'In progress' }, { value: 'done', label: 'Done' }]} />
           </div>
         </div>
@@ -132,12 +151,14 @@ export default function ProjectDetail() {
             {sel.approvedBy
               ? <Pill tone="green">Approved by {sel.approvedBy} on {fmtDate(sel.approvedOn!)}</Pill>
               : sel.status === 'done'
-                ? <><Pill tone="amber">Waiting for approval</Pill><button className="sm primary" onClick={() => dispatch({ type: 'approvePhase', projectId: p.id, key: sel.key, by: ROLE_NAME[role] })}>Approve this stage</button>{customer && <SmsAction customer={customer} project={p} kind="approval" label="Ask the client (SMS)" />}</>
+                ? <><Pill tone="amber">Waiting for approval</Pill>{canEditRole && <button className="sm primary" onClick={() => dispatch({ type: 'approvePhase', projectId: p.id, key: sel.key, by: ROLE_NAME[role] })}>Approve this stage</button>}{customer && canEditRole && <SmsAction customer={customer} project={p} kind="approval" label="Ask the client (SMS)" />}</>
                 : <span className="small muted">Approval is given once the stage is done.</span>}
           </div>
         )}
         <p className="small muted" style={{ margin: '12px 0 0' }}>{p.scope}</p>
       </Card>
+
+      {nudge && customer && canEditRole && <StageNudge key={`${nudge.kind}${nudge.extra}`} customer={customer} project={p} kind={nudge.kind} extra={nudge.extra} onClose={() => setNudge(null)} />}
 
       {p.status !== 'quote' && (() => {
         const it = p.intake;
@@ -167,29 +188,92 @@ export default function ProjectDetail() {
       })()}
 
       {p.status !== 'quote' && (() => {
-        const qcDone = p.phases.find((x) => x.key === 'qc')?.status === 'done';
-        const paid = isPaidInFull(p);
+        const qc = p.qc;
+        const items = qc?.items ?? defaultQc(p.service);
+        const allOk = items.every((i) => i.present);
+        const signed = !!qc?.signedOn;
+        const set = (patch: Partial<NonNullable<typeof qc>>) => dispatch({ type: 'updateQc', projectId: p.id, patch });
+        return (
+          <Card className="mt" title="Final quality check" action={signed ? <Pill tone="green">Signed off by {qc!.signedBy} · {fmtDate(qc!.signedOn!)}</Pill> : <Pill tone={allOk ? 'amber' : 'gray'}>{items.filter((i) => i.present).length}/{items.length} checked</Pill>}>
+            <div className="checklist">
+              {items.map((x, i) => <label key={x.label} className="chk"><input type="checkbox" disabled={signed || !canEditRole} checked={x.present} onChange={(e) => set({ items: items.map((y, j) => (j === i ? { ...y, present: e.target.checked } : y)) })} />{x.label}</label>)}
+            </div>
+            <div className="ba" style={{ marginTop: 14 }}>
+              <div><div className="eyebrow">Before</div>{p.photo ? <img src={p.photo} alt="Before" /> : <div className="ba-empty small muted">Add the car photo at the top of this page.</div>}</div>
+              <div><div className="eyebrow">After</div>
+                {qc?.after ? <img src={qc.after} alt="After" /> : <div className="ba-empty small muted">No after photo yet.</div>}
+                {canEditRole && <label className="small" style={{ cursor: 'pointer', color: 'var(--accent2)' }}>{qc?.after ? 'Change photo' : 'Add after photo'}
+                  <input type="file" accept="image/*" capture="environment" hidden onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (!f) return; try { set({ after: await resizeImage(f) }); setPhotoErr(''); } catch (x) { setPhotoErr(x instanceof Error ? x.message : 'Could not use that image.'); } }} /></label>}
+              </div>
+            </div>
+            {!signed && canEditRole && (
+              <div className="row" style={{ marginTop: 14 }}>
+                <button className="primary sm" disabled={!allOk} onClick={() => {
+                  set({ items, signedBy: ROLE_NAME[role], signedOn: today });
+                  if (p.phases.find((x) => x.key === 'qc')?.status !== 'done') dispatch({ type: 'setPhaseStatus', projectId: p.id, key: 'qc', status: 'done' });
+                  dispatch({ type: 'approvePhase', projectId: p.id, key: 'qc', by: ROLE_NAME[role] });
+                  setNudge({ kind: collected >= p.budget && p.budget > 0 ? 'ready' : 'payment' });
+                }}>Sign off the quality check</button>
+                {!allOk && <span className="small muted">Tick every item first.</span>}
+              </div>
+            )}
+          </Card>
+        );
+      })()}
+
+      {p.status !== 'quote' && (() => {
+        const rg = releaseGates(p);
         const notified = data.messages.some((m) => m.projectId === p.id && m.kind === 'ready');
         const gp = p.gatepass ?? {};
         const checkDue = gp.outOn ? addDays(gp.outOn, CHECKUP_DAYS) : undefined;
-        const steps: [string, boolean, string][] = [['Final quality check done', qcDone, 'Mark the quality-check stage done'], ['Paid in full', paid, `${moneyC(Math.max(0, p.budget - collected))} still to collect`], ['Client told it is ready', notified, 'Send the pickup text'], ['Gatepass issued', !!gp.issuedOn, 'Issue the gatepass'], ['Car out', !!gp.outOn, 'Mark the car out']];
+        const steps: [string, boolean, string][] = [...rg.gates.map((g): [string, boolean, string] => [g.label, g.ok, g.hint]), ['Client told it is ready', notified, 'Send the pickup text'], ['Gatepass issued', !!gp.issuedOn, 'Issue the gatepass'], ['Car out', !!gp.outOn, 'Mark the car out']];
         const origins = data.projects.filter((x) => x.customerId === p.customerId && x.id !== p.id && x.status !== 'quote');
+        const issue = (override?: string) => dispatch({ type: 'updateGatepass', projectId: p.id, patch: { issuedOn: today, override } });
         return (
-          <Card className="mt" title="Release and follow-up" action={gp.outOn ? <Pill tone="green">Out on {fmtDate(gp.outOn)}</Pill> : <span className="muted small">Quality check, billing, pickup, gatepass</span>}>
+          <Card className="mt" title="Release and follow-up" action={gp.outOn ? <Pill tone="green">Out on {fmtDate(gp.outOn)}</Pill> : <span className="muted small">Pickup and gatepass</span>}>
             <div className="steps">
               {steps.map(([label, ok, hint]) => <div key={label} className={`rs ${ok ? 'ok' : ''}`}><span className="n">{ok ? <Icon name="check" size={13} /> : '·'}</span><span>{label}{!ok && <span className="small muted"> — {hint}</span>}</span></div>)}
             </div>
             <div className="row" style={{ marginTop: 14 }}>
-              {customer && !gp.outOn && <SmsAction customer={customer} project={p} kind="ready" label="Notify client: ready" primary={qcDone && paid && !notified} />}
-              {customer && !paid && p.status !== 'delivered' && <SmsAction customer={customer} project={p} kind="payment" />}
-              {!gp.issuedOn && <button className="sm" onClick={() => dispatch({ type: 'updateGatepass', projectId: p.id, patch: { issuedOn: today } })}>Issue gatepass</button>}
-              {gp.issuedOn && !gp.outOn && <button className="sm primary" onClick={() => dispatch({ type: 'markOut', projectId: p.id, date: today })}>Mark car out</button>}
+              {customer && !gp.outOn && canEditRole && <SmsAction customer={customer} project={p} kind="ready" label="Notify client: ready" primary={rg.ok && !notified} />}
+              {customer && !rg.gates[1].ok && p.status !== 'delivered' && canEditRole && <SmsAction customer={customer} project={p} kind="payment" />}
+              {!gp.issuedOn && canEditRole && <button className="sm" disabled={!rg.ok} title={rg.ok ? undefined : 'Finish the checks first, or release with a reason'} onClick={() => issue()}>Issue gatepass</button>}
+              {gp.issuedOn && !gp.outOn && canEditRole && <button className="sm primary" onClick={() => dispatch({ type: 'markOut', projectId: p.id, date: today })}>Mark car out</button>}
               {gp.issuedOn && !gp.outOn && <span className="small muted">Gatepass issued {fmtDate(gp.issuedOn)}</span>}
+              {gp.override && <Pill tone="amber">Released anyway: {gp.override}</Pill>}
             </div>
+            {!gp.issuedOn && !rg.ok && canEditRole && (
+              <div className="row" style={{ marginTop: 12 }}>
+                <input value={why} onChange={(e) => setWhy(e.target.value)} placeholder="Reason to release anyway" style={{ width: 260 }} />
+                <button className="sm ghost" disabled={!why.trim()} onClick={() => { issue(why.trim()); setWhy(''); }}>Release anyway</button>
+              </div>
+            )}
             {gp.outOn && (
-              <div className="row spread" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
-                <div className="small">Check-up with the client {gp.checkupDone ? <b className="ok">done {fmtDate(gp.checkupDone)}</b> : <>due <b className={checkDue! < today ? 'over' : ''}>{fmtDate(checkDue!)}</b></>}</div>
-                {!gp.checkupDone && <div className="row">{customer && <SmsAction customer={customer} project={p} kind="checkup" label="Remind client" />}<button className="sm" onClick={() => dispatch({ type: 'updateGatepass', projectId: p.id, patch: { checkupDone: today } })}>Mark check-up done</button></div>}
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+                <div className="row spread">
+                  <div className="small">Check-up with the client {gp.checkupDone ? <b className="ok">done {fmtDate(gp.checkupDone)}</b> : <>due <b className={checkDue! < today ? 'over' : ''}>{fmtDate(checkDue!)}</b></>}</div>
+                  {!gp.checkupDone && customer && canEditRole && <SmsAction customer={customer} project={p} kind="checkup" label="Remind client" />}
+                </div>
+                {gp.checkupDone && gp.feedback && (
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <span className="stars" aria-label={`${gp.feedback.score} of 5`}>{[1, 2, 3, 4, 5].map((n) => <i key={n} className={n <= gp.feedback!.score ? 'on' : ''}>★</i>)}</span>
+                    <b className="small">{STARS[gp.feedback.score - 1]}</b>{gp.feedback.note && <span className="small muted">“{gp.feedback.note}”</span>}
+                    {gp.feedback.score <= 2 && canEditRole && <button className="sm primary" onClick={openBackJob}>Open a back job</button>}
+                  </div>
+                )}
+                {!gp.checkupDone && canEditRole && (
+                  <div style={{ marginTop: 10 }}>
+                    <div className="small muted" style={{ marginBottom: 6 }}>How did the client rate the work?</div>
+                    <div className="row" style={{ gap: 6 }}>
+                      {[1, 2, 3, 4, 5].map((n) => <button key={n} type="button" className={`star-btn ${n <= score ? 'on' : ''}`} onClick={() => setScore(n)} title={STARS[n - 1]} aria-label={`${n} stars`}>★</button>)}
+                      {score > 0 && <b className="small">{STARS[score - 1]}</b>}
+                    </div>
+                    <div className="row" style={{ marginTop: 8 }}>
+                      <input value={fbNote} onChange={(e) => setFbNote(e.target.value)} placeholder="What the client said (optional)" style={{ width: 300 }} />
+                      <button className="sm primary" disabled={!score} onClick={() => { dispatch({ type: 'updateGatepass', projectId: p.id, patch: { checkupDone: today, feedback: { score, note: fbNote.trim() || undefined } } }); setScore(0); setFbNote(''); }}>Save check-up</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div className="row" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
@@ -323,6 +407,20 @@ export default function ProjectDetail() {
           </form>
         </Card>
       )}
+
+      {tab === 'billing' && role !== 'leader' && p.estimate && (() => {
+        const t = estimateTotals(p.estimate);
+        return (
+          <Card className="mb" title="Estimate" action={<span className="muted small">Made {fmtDate(p.estimate.createdOn)}</span>}>
+            <div className="row" style={{ gap: 22 }}>
+              {([['Labour', t.labor], ['Parts', t.parts], ['Materials', t.materials], ['Outside work', t.outside]] as [string, number][]).filter(([, v]) => v > 0).map(([l, v]) => <div key={l}><div className="eyebrow">{l}</div><div className="num">{moneyC(v)}</div></div>)}
+              <div><div className="eyebrow">Markup</div><div className="num">{p.estimate.markupPct}%</div></div>
+              {t.discount > 0 && <div><div className="eyebrow">Discount</div><div className="num">− {moneyC(t.discount)}</div></div>}
+              <div><div className="eyebrow">Quoted</div><div className="num">{moneyC(t.total)}</div></div>
+            </div>
+          </Card>
+        );
+      })()}
 
       {tab === 'billing' && role !== 'leader' && (
         <Card flush>

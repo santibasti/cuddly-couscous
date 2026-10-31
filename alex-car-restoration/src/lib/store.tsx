@@ -3,13 +3,13 @@ import { todayIso } from './dates';
 import { buildPhases, isLateIn, nextProjectCode, OUT_STATUSES, PACKAGES } from './logic';
 import { canEdit } from './role';
 import { buildSeed } from './seed';
-import { DEFAULT_CHECKLIST } from './crm';
-import type { AttendanceStatus, CoatingRecord, Customer, Data, Gatepass, Intake, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, SmsKind, Task, TaskStatus } from './types';
+import { DEFAULT_CHECKLIST, defaultQc } from './crm';
+import type { AttendanceStatus, CoatingRecord, Customer, Data, Gatepass, Intake, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, QcRecord, SmsKind, Task, TaskStatus } from './types';
 
 const KEY = 'alex-car-restoration:v7';
 
 export type Action =
-  | { type: 'addProject'; project: Omit<Project, 'id' | 'code' | 'phases' | 'status' | 'payments'> & { status?: ProjectStatus } }
+  | { type: 'addProject'; project: Omit<Project, 'id' | 'code' | 'phases' | 'status' | 'payments'> & { id?: string; status?: ProjectStatus; payments?: Project['payments'] } }
   | { type: 'setProjectStatus'; id: string; status: ProjectStatus }
   | { type: 'updateProject'; id: string; patch: Partial<Project> }
   | { type: 'updateCoating'; projectId: string; patch: Partial<CoatingRecord> }
@@ -33,6 +33,7 @@ export type Action =
   | { type: 'addCustomer'; customer: Omit<Customer, 'id'> & { id?: string } }
   | { type: 'updateCustomer'; id: string; patch: Partial<Customer> }
   | { type: 'updateIntake'; projectId: string; patch: Partial<Intake> }
+  | { type: 'updateQc'; projectId: string; patch: Partial<QcRecord> }
   | { type: 'approvePhase'; projectId: string; key: PhaseKey; by: string }
   | { type: 'updateGatepass'; projectId: string; patch: Partial<Gatepass> }
   | { type: 'markOut'; projectId: string; date: string }
@@ -46,11 +47,11 @@ export function reducer(d: Data, a: Action): Data {
     case 'addProject': {
       const project: Project = {
         ...a.project,
-        id: uid('p'),
+        id: a.project.id ?? uid('p'),
         code: nextProjectCode(d.projects),
         status: a.project.status ?? 'quote',
         phases: buildPhases(a.project.startDate, a.project.targetDate, a.project.service),
-        payments: [],
+        payments: a.project.payments ?? [],
       };
       return { ...d, projects: [...d.projects, project] };
     }
@@ -166,6 +167,8 @@ export function reducer(d: Data, a: Action): Data {
         ...d,
         projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, intake: { orcr: false, items: DEFAULT_CHECKLIST.map((label) => ({ label, present: true })), ...p.intake, ...a.patch } } : p)),
       };
+    case 'updateQc':
+      return { ...d, projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, qc: { items: defaultQc(p.service), ...p.qc, ...a.patch } } : p)) };
     case 'approvePhase':
       return {
         ...d,

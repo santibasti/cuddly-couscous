@@ -35,7 +35,7 @@ export default function Customers() {
     e.currentTarget.reset();
     setAdding(false);
     // Next step for a new client: price the job and see whether to go ahead.
-    nav(`/projects?new=1&customer=${id}`);
+    nav(`/intake?customer=${id}`);
   }
 
   return (

@@ -90,12 +90,44 @@ export interface Intake {
   notes?: string;
 }
 
+/** One priced line of an estimate: quantity times unit price. For labour, hours times the hourly rate. */
+export interface EstimateLine {
+  label: string;
+  qty: number;
+  unit: number;
+}
+
+/** The working behind a quote, kept with the job so it can be printed and checked later. */
+export interface Estimate {
+  labor: EstimateLine[];
+  parts: EstimateLine[];
+  materials: EstimateLine[];
+  outside: EstimateLine[];
+  markupPct: number;
+  discount: number;
+  vat: boolean;
+  createdOn: string;
+}
+
+/** The final quality check: a list per service, an after photo and a sign-off. The before photo is the job photo. */
+export interface QcRecord {
+  items: ChecklistItem[];
+  after?: string;
+  note?: string;
+  signedBy?: string;
+  signedOn?: string;
+}
+
 /** Release of the car: gatepass issued, then out the gate. */
 export interface Gatepass {
   issuedOn?: string;
   outOn?: string;
+  /** Why the car was released although a check was not met. */
+  override?: string;
   /** Date the follow-up check-up with the client was done. */
   checkupDone?: string;
+  /** How the client rated the work at the check-up, 1 to 5. */
+  feedback?: { score: number; note?: string };
 }
 
 export interface Project {
@@ -131,6 +163,8 @@ export interface Project {
   /** Day the car left the shop. */
   releasedOn?: string;
   intake?: Intake;
+  estimate?: Estimate;
+  qc?: QcRecord;
   gatepass?: Gatepass;
   /** Set when this job is a back job: a return for a fault in an earlier job. */
   backjobOf?: string;
@@ -190,7 +224,7 @@ export interface Attendance {
   note?: string;
 }
 
-export type SmsKind = 'ready' | 'payment' | 'checkup' | 'birthday' | 'approval' | 'custom';
+export type SmsKind = 'ready' | 'payment' | 'checkup' | 'birthday' | 'approval' | 'stage' | 'estimate' | 'custom';
 
 /** A text message. Demo only: nothing is really sent, it is kept in the outbox. */
 export interface Sms {
