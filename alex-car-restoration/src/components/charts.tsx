@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { useCountUp } from './ui';
 import { moneyC } from '../lib/logic';
 
 export interface Slice { label: string; value: number; color: string }
@@ -86,9 +87,9 @@ export function Gauge({ value, label, sub, color = 'var(--arc)', size = 190, dis
     <div className="gauge">
       <svg width={size} height={size * 0.86} viewBox={`0 0 ${size} ${size * 0.86}`} role="img" aria-label={`${label}: ${display ?? Math.round(v * 100) + '%'}`}>
         <circle cx={cx} cy={cx} r={r} fill="none" strokeWidth={10} strokeLinecap="round" strokeDasharray={`${arc} ${c}`} transform={`rotate(135 ${cx} ${cx})`} style={{ stroke: 'var(--line)' }} />
-        <circle className="glow" cx={cx} cy={cx} r={r} fill="none" strokeWidth={10} strokeLinecap="round" strokeDasharray={`${Math.max(0.01, arc * v)} ${c}`} transform={`rotate(135 ${cx} ${cx})`} style={{ stroke: color, color }} />
+        <circle className="glow" cx={cx} cy={cx} r={r} fill="none" strokeWidth={10} strokeLinecap="round" strokeDasharray={`${Math.max(0.01, arc * v)} ${c}`} transform={`rotate(135 ${cx} ${cx})`} style={{ stroke: color, color, '--c': c, '--arc': arc * v } as React.CSSProperties} />
         {ticks}
-        <text x={cx} y={cx + 4} textAnchor="middle" style={{ fill: 'var(--ink)', font: '600 34px var(--serif)' }}>{display ?? `${Math.round(v * 100)}%`}</text>
+        <text x={cx} y={cx + 4} textAnchor="middle" style={{ fill: 'var(--ink)', font: '600 34px var(--serif)' }}>{display ?? <GaugeNumber value={Math.round(v * 100)} />}</text>
         <text x={cx} y={cx + 26} textAnchor="middle" style={{ fill: 'var(--muted)', font: '600 10.5px Inter, sans-serif', letterSpacing: '.12em' }}>{label.toUpperCase()}</text>
       </svg>
       {sub && <div className="small muted" style={{ textAlign: 'center', marginTop: -6 }}>{sub}</div>}
@@ -121,10 +122,14 @@ export function TrendChart({ labels, series, height = 230, format = (n) => Strin
           <text x={padL - 8} y={y(max * t)} textAnchor="end" dominantBaseline="central" style={{ fill: 'var(--muted)', font: '11px Inter, sans-serif' }}>{format(max * t)}</text>
         </g>
       ))}
-      {series.map((s, k) => s.area && n > 1 && <path key={'a' + k} d={`${path(s.values)} L${x(n - 1)},${y(0)} L${x(0)},${y(0)} Z`} fill={`url(#${uid}g${k})`} />)}
-      {series.map((s, k) => <path key={'l' + k} className="glow" d={path(s.values)} fill="none" strokeWidth={2.4} strokeLinecap="round" style={{ stroke: s.color, color: s.color }} />)}
-      {series.map((s, k) => s.values.map((v, i) => <circle key={`${k}-${i}`} cx={x(i)} cy={y(v)} r={3} style={{ fill: 'var(--bg)', stroke: s.color }} strokeWidth={1.6}><title>{`${s.label}, ${labels[i]}: ${format(v)}`}</title></circle>))}
+      {series.map((s, k) => s.area && n > 1 && <path key={'a' + k} className="fadein" d={`${path(s.values)} L${x(n - 1)},${y(0)} L${x(0)},${y(0)} Z`} fill={`url(#${uid}g${k})`} />)}
+      {series.map((s, k) => <path key={'l' + k} className="glow draw" pathLength={1} d={path(s.values)} fill="none" strokeWidth={2.4} strokeLinecap="round" style={{ stroke: s.color, color: s.color, animationDelay: `${k * 0.15}s` }} />)}
+      {series.map((s, k) => s.values.map((v, i) => <circle key={`${k}-${i}`} className="fadein" cx={x(i)} cy={y(v)} r={3} style={{ fill: 'var(--bg)', stroke: s.color, animationDelay: `${0.5 + i * 0.04}s` }} strokeWidth={1.6}><title>{`${s.label}, ${labels[i]}: ${format(v)}`}</title></circle>))}
       {labels.map((l, i) => (i % every === 0 || i === n - 1) && <text key={i} x={x(i)} y={height - 8} textAnchor="middle" style={{ fill: 'var(--muted)', font: '11px Inter, sans-serif' }}>{l}</text>)}
     </svg>
   );
+}
+
+function GaugeNumber({ value }: { value: number }) {
+  return <>{useCountUp(value)}%</>;
 }

@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
 import ProjectCard from '../components/ProjectCard';
 import { useState } from 'react';
-import { Avatar, CarArt, Card, Empty, Icon, RiskPill, Seg, StripStat, carName } from '../components/ui';
+import { Avatar, CarArt, Card, Empty, HealthBar, Icon, PulseTile, RiskPill, Ring, Seg, StripStat, carName } from '../components/ui';
+import { shopPulse } from '../lib/pulse';
 import { paintHex } from '../lib/paint';
 import { addDays, diffDays, fmtDate, fmtDay, isWeekend, todayIso } from '../lib/dates';
 import { SERVICES, SERVICE_KEYS, allBlockers, attFor, dayLoad, isOut, money, moneyC, partRisk, projectCosts, projectHealth, RISK_RANK, BAYS } from '../lib/logic';
@@ -38,18 +39,23 @@ export default function Dashboard() {
   const nextOut = active.filter((p) => p.targetDate >= today).sort((a, b) => a.targetDate.localeCompare(b.targetDate))[0];
   const hr = new Date().getHours();
   const greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
-  const attention = count('blocked', 'late');
+  const pulse = shopPulse(data, today);
 
   return (
     <>
       <section className="hero rise">
-        <div className="eyebrow" style={{ marginBottom: 14, position: 'relative', zIndex: 1 }}>{fmtDate(today)} · Shop overview</div>
+        <div className="eyebrow" style={{ marginBottom: 14, position: 'relative', zIndex: 1 }}>{fmtDate(today)}</div>
         <h1>{greet}, <em>Alex.</em></h1>
-        <p>
-          <b>{active.length} builds</b> are in the shop{quotes.length ? ` and ${quotes.length} quote is waiting on a customer` : ''}.{' '}
-          {blockers.length > 0 ? <><b>{blockers.length} tasks</b> are held up by parts, outside shops or approvals{attention ? <>, and <b>{attention} {attention === 1 ? 'job needs' : 'jobs need'} your attention</b> today</> : ''}.</> : 'Nothing is blocked — the floor is moving.'}
-          {watch.length > 0 && <> {watch.filter((x) => partRisk(x, today) === 'late').length > 0 ? `${watch.filter((x) => partRisk(x, today) === 'late').length} deliveries are overdue.` : ''}</>}
-        </p>
+        <div className="pulse">
+          <div className="score" title="How the active jobs are doing, from on track to late">
+            <Ring value={pulse.score} size={72} stroke={6} tone={pulse.tone === 'green' ? 'green' : pulse.tone === 'amber' ? 'amber' : 'red'} />
+            <div><div className="eyebrow">Shop score</div><div className={`small ${pulse.tone === 'green' ? 'ok' : pulse.tone === 'amber' ? 'warn' : 'over'}`} style={{ fontWeight: 600 }}>{pulse.label}</div></div>
+          </div>
+          <PulseTile to="/projects" icon="car" value={pulse.active} label="In the shop" />
+          <PulseTile to="/schedule" icon="lock" value={pulse.blockedTasks} label="Tasks blocked" tone={pulse.blockedTasks ? 'amber' : 'green'} />
+          <PulseTile to="/parts" icon="box" value={pulse.overdueParts} label="Parts overdue" tone={pulse.overdueParts ? 'red' : 'green'} />
+          <PulseTile to="/projects" icon="warn" value={pulse.needYou} label="Need you" tone={pulse.needYou ? 'red' : 'green'} />
+        </div>
         <div className="row" style={{ marginTop: 26, position: 'relative', zIndex: 1 }}>
           <Link className="btn primary" to="/projects"><Icon name="plus" />New project</Link>
           <Link className="btn" to="/today"><Icon name="sun" />Today's snapshot</Link>
@@ -66,11 +72,11 @@ export default function Dashboard() {
 
       <Card className="mt rise">
         <div className="strip" style={{ marginTop: 0 }}>
-          <StripStat label="Active builds" value={active.length} sub={<>{count('on_track')} on track · {count('at_risk')} at risk · {count('blocked', 'late')} blocked or late</>} />
-          <StripStat label="Work blocked" tone={blockers.length ? 'orange' : ''} value={blockers.length} sub={`${blockedHours}h waiting · ${byReason('parts')} parts · ${byReason('vendor')} outside · ${byReason('customer')} customer`} />
-          <StripStat label="Parts watch" tone={watch.length ? 'amber' : ''} value={watch.length} sub={`${inTransit} on the way · ${data.parts.filter((x) => x.status === 'needed').length} not yet ordered`} />
-          <StripStat label="Labor booked" value={`${util}%`} spark={hoursTrend} sub="This week · hours logged, 14 days" />
-          <StripStat label="Committed" value={budget ? `${Math.round((spent / budget) * 100)}%` : '—'} sub={`${moneyC(spent)} of ${moneyC(budget)}${nextDelivery ? ` · next delivery ${fmtDate(nextDelivery)}` : ''}`} />
+          <StripStat label="Active builds" value={active.length} sub={<HealthBar {...pulse.health} />} />
+          <StripStat label="Work blocked" tone={blockers.length ? 'orange' : ''} value={blockers.length} sub={`${blockedHours}h waiting`} />
+          <StripStat label="Parts watch" tone={watch.length ? 'amber' : ''} value={watch.length} sub={`${inTransit} on the way`} />
+          <StripStat label="Labor booked" value={`${util}%`} spark={hoursTrend} sub="This week" />
+          <StripStat label="Committed" value={budget ? `${Math.round((spent / budget) * 100)}%` : '—'} sub={`${moneyC(spent)} of ${moneyC(budget)}`} />
         </div>
       </Card>
 
@@ -84,7 +90,7 @@ export default function Dashboard() {
           <Link key={bay} to="/projects" className="pcard free rise">
             <div className="eyebrow">{bay}</div>
             <div className="serif" style={{ fontSize: 24 }}>Available</div>
-            <div className="small muted">Open and ready for the next car</div>
+            <div className="small muted">Ready for a car</div>
             <span className="btn sm"><Icon name="plus" size={13} />Start a job</span>
           </Link>
         ))}
@@ -103,8 +109,8 @@ export default function Dashboard() {
       )}
 
       <div className="grid g21 mt">
-        <Card title="Waiting on" flush action={<span className="muted small">{blockers.length} blocked tasks</span>}>
-          {blockers.length === 0 && <Empty>Nothing is blocked. The floor is moving.</Empty>}
+        <Card title="Waiting on" flush action={<span className="muted small">{blockers.length} blocked</span>}>
+          {blockers.length === 0 && <Empty>Nothing blocked.</Empty>}
           {blockers
             .map((b) => ({ b, t: data.tasks.find((t) => t.id === b.taskId)!, p: data.projects.find((p) => p.id === b.projectId)! }))
             .sort((x, y) => x.t.date.localeCompare(y.t.date))
@@ -117,18 +123,18 @@ export default function Dashboard() {
                   <span className={`ico ${b.reason}`}><Icon name={b.reason === 'parts' ? 'box' : b.reason === 'vendor' ? 'truck' : b.reason === 'customer' ? 'user' : 'lock'} /></span>
                   <div className="grow">
                     <div style={{ fontWeight: 500 }}>{b.label}</div>
-                    <div className="small muted">{p.code} · {t.title} · needed {fmtDate(t.date)}</div>
+                    <div className="small muted">{p.code} · {t.title}</div>
                   </div>
                   <div style={{ textAlign: 'right' }} className="small">
-                    {b.eta ? <><div>ETA {fmtDate(b.eta)}</div><div className={overdue || slip! > 0 ? 'over' : 'ok'}>{overdue ? `${diffDays(b.eta, today)}d overdue` : slip! > 0 ? `${slip}d after needed` : 'in time'}</div></> : <div className="muted">{b.reason === 'customer' ? 'Needs customer' : 'No ETA'}</div>}
+                    {b.eta ? <><div>ETA {fmtDate(b.eta)}</div><div className={overdue || slip! > 0 ? 'over' : 'ok'}>{overdue ? `${diffDays(b.eta, today)}d late` : slip! > 0 ? `${slip}d late` : 'on time'}</div></> : <div className="muted">{b.reason === 'customer' ? 'Needs customer' : 'No ETA'}</div>}
                   </div>
                 </Link>
               );
             })}
-          {blockers.length > 6 && <Link to="/schedule" className="item small muted" style={{ justifyContent: 'center' }}>+{blockers.length - 6} more blocked tasks · open schedule →</Link>}
+          {blockers.length > 6 && <Link to="/schedule" className="item small muted" style={{ justifyContent: 'center' }}>+{blockers.length - 6} more →</Link>}
         </Card>
         <Card title="Parts watchlist" flush action={<Link to="/parts" className="small muted">Open pipeline →</Link>}>
-          {watch.length === 0 && <Empty>Every part is on time.</Empty>}
+          {watch.length === 0 && <Empty>All parts on time.</Empty>}
           {watch.slice(0, 6).map((x) => {
             const p = data.projects.find((y) => y.id === x.projectId)!;
             const gap = x.eta ? diffDays(x.neededBy, x.eta) : null;
@@ -136,8 +142,8 @@ export default function Dashboard() {
               <div className="item" key={x.id} style={{ alignItems: 'flex-start' }}>
                 <div className="grow">
                   <div className="row spread" style={{ flexWrap: 'nowrap' }}><span style={{ fontWeight: 500 }}>{x.name}</span><RiskPill r={partRisk(x, today)} /></div>
-                  <div className="small muted">{p.code} · {x.supplier}{x.po ? ` · ${x.po}` : ''}</div>
-                  <div className="small">Needed {fmtDate(x.neededBy)} · {x.eta ? <>ETA {fmtDate(x.eta)} {gap! > 0 && <span className="over">(+{gap}d)</span>}</> : <span className="over">{x.status === 'needed' ? 'not ordered' : 'no ETA'}</span>}</div>
+                  <div className="small muted">{p.code} · {x.supplier}</div>
+                  <div className="small">{x.eta ? <>ETA {fmtDate(x.eta)} {gap! > 0 && <span className="over">(+{gap}d)</span>}</> : <span className="over">{x.status === 'needed' ? 'not ordered' : 'no ETA'}</span>}</div>
                 </div>
               </div>
             );
@@ -146,7 +152,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid g21 mt">
-        <Card title="Technician capacity" action={<span className="muted small">% of daily hours booked · next 10 working days</span>}>
+        <Card title="Technician capacity" action={<span className="muted small">% booked, next 10 days</span>}>
           <div className="scroll"><div className="heat" style={{ gridTemplateColumns: `110px repeat(${days.length}, 1fr)` }}>
             <div className="c h" />{days.map((d) => <div key={d} className="c h">{fmtDay(d)}</div>)}
             {team.map((m) => (
