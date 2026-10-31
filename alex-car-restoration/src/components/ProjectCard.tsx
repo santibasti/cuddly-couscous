@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { fmtDate } from '../lib/dates';
+import { diffDays, fmtDate } from '../lib/dates';
 import { currentPhase, daysOverdue, jobCrew, phaseShort, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { paintHex } from '../lib/paint';
 import type { Data, Project } from '../lib/types';
@@ -14,6 +14,10 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
   const doing = data.tasks.find((t) => t.projectId === p.id && t.status === 'in_progress');
   const over = daysOverdue(p, today);
   const crew = jobCrew(p.id, data);
+  const live = p.status === 'active' || p.status === 'completed' || p.status === 'on_hold';
+  const left = diffDays(today, p.targetDate);
+  const next = live ? data.tasks.filter((t) => t.projectId === p.id && t.status !== 'done').sort((a, b) => a.date.localeCompare(b.date))[0] : undefined;
+  const nextWho = data.mechanics.find((m) => m.id === next?.mechanicId);
   const curBlocked = cur && data.tasks.some((t) => t.projectId === p.id && t.phaseKey === cur.key && taskBlocker(t));
   const urgent = health === 'at_risk' || health === 'blocked' || health === 'late';
   const style = { '--paint': paintHex(p) } as React.CSSProperties;
@@ -40,9 +44,22 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
         <div className="foot">
           <div className="row" style={{ gap: 12, flexWrap: 'nowrap' }}>
             <Ring value={pct} tone={over ? 'red' : undefined} />
-            <div><div className={`small ${over ? 'over' : ''}`} style={{ fontWeight: 500 }}>{over ? `${over}d overdue` : fmtDate(p.targetDate)}</div><div className="small muted">{cur && p.status === 'active' ? phaseShort(cur.key) : 'Target date'}</div></div>
+            <div><div className="small" style={{ fontWeight: 500 }}>{fmtDate(p.targetDate)}</div><div className="small muted">{cur && p.status === 'active' ? phaseShort(cur.key) : 'Target date'}</div></div>
           </div>
+          {live && (
+            <div className={`dleft ${left < 0 ? 'late' : left <= 3 ? 'soon' : ''}`} title={`Target ${fmtDate(p.targetDate)}`}>
+              <b>{left === 0 ? 'Today' : Math.abs(left)}</b>
+              <span>{left === 0 ? 'due' : left < 0 ? `day${left === -1 ? '' : 's'} late` : `day${left === 1 ? '' : 's'} left`}</span>
+            </div>
+          )}
         </div>
+        {next && (
+          <div className="next-line" title={next.title}>
+            <span className="eyebrow">Next</span>
+            <span className="nt">{next.title}</span>
+            <span className="small muted">{nextWho ? `${nextWho.name.split(' ')[0]} · ` : ''}{fmtDate(next.date)}</span>
+          </div>
+        )}
         {crew.length > 0 && (
           <div className="crew-list" aria-label="Crew">
             {crew.map((m) => <span key={m.id} className="crew-chip" title={`${m.name}${m.id === doing?.mechanicId ? ' · working on it now' : ''}`}><Avatar m={m} size={24} />{m.name.split(' ')[0]}</span>)}
