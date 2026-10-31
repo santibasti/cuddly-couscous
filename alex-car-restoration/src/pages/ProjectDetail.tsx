@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AdviceCard } from '../components/Advice';
 import Journey from '../components/Journey';
 import { Outbox, SmsAction } from '../components/Sms';
-import { adviseJob } from '../lib/advice';
 import { Avatar, Crew, CarArt, Card, carName, HealthPill, ServicePill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
 import { paintHex } from '../lib/paint';
 import { resizeImage } from '../lib/photo';
@@ -111,11 +109,9 @@ export default function ProjectDetail() {
       )}
 
       {p.status === 'quote' && (
-        <div style={{ marginBottom: 16 }}>
-          <AdviceCard advice={adviseJob(data, { customerId: p.customerId, service: p.service, budget: p.budget, start: p.startDate, target: p.targetDate, excludeId: p.id })}>
-            <button className="primary sm" onClick={() => dispatch({ type: 'setProjectStatus', id: p.id, status: 'active' })}>Customer agreed: start the job</button>
-            {customer && <SmsAction customer={customer} project={p} kind="approval" label="Ask the client to confirm" />}
-          </AdviceCard>
+        <div className="row" style={{ marginBottom: 16 }}>
+          <button className="primary sm" onClick={() => dispatch({ type: 'setProjectStatus', id: p.id, status: 'active' })}>Customer agreed: start the job</button>
+          {customer && <SmsAction customer={customer} project={p} kind="approval" label="Ask the client to confirm" />}
         </div>
       )}
 
