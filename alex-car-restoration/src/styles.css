@@ -456,3 +456,12 @@ button.jt-node{cursor:pointer}button.jt-node:hover{background:var(--panel);borde
 .urgent-tag{display:inline-block;margin-right:8px;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#1a1200;background:var(--amber)}
 .pcard.blocked .urgent-tag{background:var(--orange);color:#1c0b00}.pcard.late .urgent-tag{background:var(--red);color:#fff}
 @media(prefers-reduced-motion:reduce){.pcard.urgent,.pcard.urgent .tr .pill,.urgent-tag,.blink-pill{animation:none!important}.pcard.urgent.at_risk{border-color:var(--amber)}.pcard.urgent.blocked{border-color:var(--orange)}.pcard.urgent.late{border-color:var(--red)}}
+
+/* days left and next task on the job card */
+.dleft{text-align:right;line-height:1.05}
+.dleft b{display:block;font:600 34px/1 var(--serif);color:var(--ink)}
+.dleft span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.dleft.soon b{color:var(--amber)}.dleft.late b{color:var(--red)}.dleft.late span{color:var(--red)}
+.next-line{display:flex;gap:8px;align-items:baseline;min-width:0;padding-top:12px;border-top:1px solid var(--line)}
+.next-line .nt{flex:1;min-width:0;font-size:12.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.next-line .small{white-space:nowrap}
