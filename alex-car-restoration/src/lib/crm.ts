@@ -178,3 +178,37 @@ export function hoursByStage(d: Data, a: string, b: string) {
 
 /** Percent change from `prev` to `now`, or null when there is nothing to compare with. */
 export const pctChange = (now: number, prev: number): number | null => (prev === 0 ? null : Math.round(((now - prev) / prev) * 100));
+
+/* ---------- Dashboard series ---------- */
+
+/** Cars in, cars out and cash received, in even steps across the range. */
+export function trendFor(d: Data, r: Range) {
+  const step = r.key === '7d' ? 1 : r.key === '30d' ? 3 : r.key === 'year' ? 30 : 7;
+  const out: { label: string; start: string; received: number; released: number; billed: number }[] = [];
+  for (let a = r.start; a <= r.end; a = addDays(a, step)) {
+    const b = addDays(a, step - 1) > r.end ? r.end : addDays(a, step - 1);
+    const u = unitsFor(d, a, b, r.end);
+    out.push({ label: step >= 30 ? new Date(a + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) : fmtDate(a), start: a, received: u.received.length, released: u.released.length, billed: u.billed });
+  }
+  return out;
+}
+
+/** Share of released cars that left on or before the promised date. */
+export const onTimeRate = (u: Units): number | null => (u.released.length ? Math.round((u.released.filter((p) => !p.releasedOn || p.releasedOn <= p.targetDate).length / u.released.length) * 100) : null);
+
+/** Hours worked in the range as a share of what the active team could have worked. */
+export function shopLoad(d: Data, a: string, b: string): number {
+  const team = d.mechanics.filter((m) => m.active);
+  let capacity = 0;
+  for (let day = a; day <= b; day = addDays(day, 1)) if (!isWeekendDay(day)) capacity += team.reduce((s, m) => s + m.dailyHours, 0);
+  const hours = d.tasks.filter((t) => t.status === 'done' && t.date >= a && t.date <= b).reduce((s, t) => s + t.actualHours, 0);
+  return capacity ? Math.round((hours / capacity) * 100) : 0;
+}
+const isWeekendDay = (iso: string) => { const w = new Date(iso + 'T00:00:00Z').getUTCDay(); return w === 0 || w === 6; };
+
+/** Where the customers of the cars received in the range first heard of the shop. */
+export function sourcesFor(d: Data, received: Project[]) {
+  const by = new Map<string, number>();
+  for (const p of received) { const k = d.customers.find((c) => c.id === p.customerId)?.source ?? 'unknown'; by.set(k, (by.get(k) ?? 0) + 1); }
+  return [...by].map(([key, count]) => ({ key, label: key === 'unknown' ? 'Not recorded' : SOURCES[key as LeadSource], count })).sort((x, y) => y.count - x.count);
+}
