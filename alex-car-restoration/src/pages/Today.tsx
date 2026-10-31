@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { SmsAction } from '../components/Sms';
 import { Avatar, Card, Empty, Icon, Pill, StripStat } from '../components/ui';
 import { fmtDate, todayIso } from '../lib/dates';
 import { ATT_LABEL, attFor, fmtTime, money, moneyC, phaseLabel, taskBlocker, workedHours } from '../lib/logic';
 import { dailySnapshot, snapshotText } from '../lib/snapshot';
+import { ROLES, useRole } from '../lib/role';
 import { useStore } from '../lib/store';
 import type { Task } from '../lib/types';
 
@@ -11,6 +13,8 @@ const TONE = { present: 'green', late: 'amber', half: 'blue', absent: 'red', lea
 
 export default function Today() {
   const { data } = useStore();
+  const { role } = useRole();
+  const canText = ROLES[role].edit;
   const today = todayIso();
   const s = dailySnapshot(data, today);
   const [copied, setCopied] = useState<'' | 'ok' | 'fail'>('');
@@ -133,6 +137,38 @@ export default function Today() {
               <div className="grow"><div style={{ fontWeight: 500 }}>{f.project.year} {f.project.make} {f.project.model}: free coating check</div><div className="small muted">{f.project.code} · {data.customers.find((c) => c.id === f.project.customerId)?.name} · due {fmtDate(f.date)}</div></div>
               <Pill tone={f.daysAway < 0 ? 'red' : 'amber'}>{f.daysAway < 0 ? `${-f.daysAway}d overdue` : f.daysAway === 0 ? 'Due today' : `In ${f.daysAway} days`}</Pill>
             </Link>
+          ))}
+        </Card>
+      )}
+
+      {(s.clients.pickups.length + s.clients.checkups.length + s.clients.birthdays.length > 0) && (
+        <Card className="mt" title="Clients to contact" flush action={<span className="muted small">Demo texts only</span>}>
+          {s.clients.pickups.map((p) => {
+            const c = data.customers.find((x) => x.id === p.customerId);
+            return (
+              <div key={p.id + 'k'} className="item" style={{ flexWrap: 'wrap' }}>
+                <span className="ico"><Icon name="car" /></span>
+                <div className="grow"><Link to={`/projects/${p.id}`} style={{ fontWeight: 500 }}>{p.code} {p.make} {p.model}: ready for pickup</Link><div className="small muted">{c?.name} · all stages done, not out yet</div></div>
+                {c && canText && <SmsAction customer={c} project={p} kind="ready" label="Notify client" />}
+              </div>
+            );
+          })}
+          {s.clients.checkups.map(({ project: p, daysAway }) => {
+            const c = data.customers.find((x) => x.id === p.customerId);
+            return (
+              <div key={p.id + 'u'} className="item" style={{ flexWrap: 'wrap' }}>
+                <span className={`ico ${daysAway < 0 ? 'red' : 'amber'}`}><Icon name="clock" /></span>
+                <div className="grow"><Link to={`/projects/${p.id}`} style={{ fontWeight: 500 }}>{p.code} {p.make} {p.model}: check-up with the client</Link><div className="small muted">{c?.name} · {daysAway < 0 ? `${-daysAway} days overdue` : 'due today'}</div></div>
+                {c && canText && <SmsAction customer={c} project={p} kind="checkup" label="Remind client" />}
+              </div>
+            );
+          })}
+          {s.clients.birthdays.map(({ customer: c, daysAway }) => (
+            <div key={c.id + 'b'} className="item" style={{ flexWrap: 'wrap' }}>
+              <span className="ico"><Icon name="user" /></span>
+              <div className="grow"><Link to={role === 'leader' ? '/' : `/customers/${c.id}`} style={{ fontWeight: 500 }}>{c.name}: birthday {daysAway === 0 ? 'today' : daysAway === 1 ? 'tomorrow' : `in ${daysAway} days`}</Link></div>
+              {canText && <SmsAction customer={c} kind="birthday" label="Send greeting" />}
+            </div>
           ))}
         </Card>
       )}

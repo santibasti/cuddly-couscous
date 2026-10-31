@@ -24,11 +24,17 @@ export interface Mechanic {
   active: boolean;
 }
 
+export type LeadSource = 'organic' | 'ads' | 'sms' | 'social' | 'referral';
+
 export interface Customer {
   id: string;
   name: string;
   phone: string;
   email: string;
+  /** Date of birth, "YYYY-MM-DD". Only the month and day are used for greetings. */
+  birthday?: string;
+  /** Where the customer first heard of the shop. */
+  source?: LeadSource;
 }
 
 export interface Phase {
@@ -36,6 +42,9 @@ export interface Phase {
   status: PhaseStatus;
   start: string;
   end: string;
+  /** Who approved this stage and when. */
+  approvedBy?: string;
+  approvedOn?: string;
 }
 
 export interface Payment {
@@ -63,6 +72,28 @@ export interface CoatingRecord {
   warrantyYears?: number;
   /** Set once the free maintenance check has been done. */
   maintenanceDone?: boolean;
+}
+
+export interface ChecklistItem {
+  label: string;
+  /** True when the item came in with the car. */
+  present: boolean;
+}
+
+/** What came in with the car, checked at drop-off. */
+export interface Intake {
+  /** Copy of the OR/CR (registration papers) received. */
+  orcr: boolean;
+  items: ChecklistItem[];
+  notes?: string;
+}
+
+/** Release of the car: gatepass issued, then out the gate. */
+export interface Gatepass {
+  issuedOn?: string;
+  outOn?: string;
+  /** Date the follow-up check-up with the client was done. */
+  checkupDone?: string;
 }
 
 export interface Project {
@@ -93,6 +124,14 @@ export interface Project {
   photo?: string;
   /** Money received from the customer (deposit, progress payments). */
   payments: Payment[];
+  /** Day the car came into the shop. Falls back to the start date. */
+  receivedOn?: string;
+  /** Day the car left the shop. */
+  releasedOn?: string;
+  intake?: Intake;
+  gatepass?: Gatepass;
+  /** Set when this job is a back job: a return for a fault in an earlier job. */
+  backjobOf?: string;
 }
 
 export interface Task {
@@ -149,6 +188,18 @@ export interface Attendance {
   note?: string;
 }
 
+export type SmsKind = 'ready' | 'payment' | 'checkup' | 'birthday' | 'approval' | 'custom';
+
+/** A text message. Demo only: nothing is really sent, it is kept in the outbox. */
+export interface Sms {
+  id: string;
+  customerId: string;
+  projectId?: string;
+  date: string;
+  kind: SmsKind;
+  text: string;
+}
+
 export interface Data {
   mechanics: Mechanic[];
   customers: Customer[];
@@ -157,4 +208,5 @@ export interface Data {
   parts: Part[];
   updates: Update[];
   attendance: Attendance[];
+  messages: Sms[];
 }

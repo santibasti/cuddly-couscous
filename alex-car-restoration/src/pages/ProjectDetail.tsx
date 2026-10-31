@@ -1,18 +1,23 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Outbox, SmsAction } from '../components/Sms';
 import { Avatar, CarArt, Card, carName, HealthPill, ServicePill, Icon, PartStatusPill, Pill, RiskPill, Seg, statusLabel } from '../components/ui';
 import { paintHex } from '../lib/paint';
 import { resizeImage } from '../lib/photo';
-import { diffDays, fmtDate, todayIso } from '../lib/dates';
+import { addDays, diffDays, fmtDate, todayIso } from '../lib/dates';
 import { BAYS, PACKAGES, PART_FLOW, coatingDates, currentPhase, daysOverdue, isPartIn, money, moneyC, partRisk, partStatusLabel, phaseLabel, phasePercent, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
+import { CHECKUP_DAYS, isPaidInFull, missingItems } from '../lib/crm';
+import { useRole } from '../lib/role';
 import { useStore } from '../lib/store';
 import type { BlockReason, CoatingRecord, PartKind, PartStatus, PhaseKey, ProjectStatus, TaskStatus } from '../lib/types';
 
 type Tab = 'work' | 'parts' | 'billing' | 'log';
+const ROLE_NAME = { executive: 'Executive', advisor: 'Service Advisor', leader: 'Team Leader' } as const;
 
 export default function ProjectDetail() {
   const { id } = useParams();
   const { data, dispatch } = useStore();
+  const { role } = useRole();
   const [tab, setTab] = useState<Tab>('work');
   const [note, setNote] = useState('');
   const [photoErr, setPhotoErr] = useState('');
@@ -87,7 +92,7 @@ export default function ProjectDetail() {
         </div>
         <div className="stats">
           <div><div className="eyebrow">Progress</div><div className="sv"><span>{pct}%</span></div><div className={`small ${over ? 'over' : 'muted'}`}>{over ? `${over}d past target` : `Target ${fmtDate(p.targetDate)}`}</div></div>
-          <div><div className="eyebrow">Spent</div><div className={`sv ${costs.total > p.budget ? 'red' : ''}`}><span>{moneyC(costs.total)}</span></div><div className="small muted">of {moneyC(p.budget)} budget</div></div>
+          {role !== 'leader' && <div><div className="eyebrow">Spent</div><div className={`sv ${costs.total > p.budget ? 'red' : ''}`}><span>{moneyC(costs.total)}</span></div><div className="small muted">of {moneyC(p.budget)} budget</div></div>}
           <div><div className="eyebrow">Hours</div><div className="sv"><span>{tasks.reduce((s, t) => s + t.actualHours, 0)}h</span></div><div className="small muted">of {tasks.reduce((s, t) => s + t.estHours, 0)}h planned</div></div>
           <div><div className="eyebrow">Parts in shop</div><div className="sv"><span>{parts.filter(isPartIn).length}/{parts.length}</span></div><div className="small muted">{blocked.length} task{blocked.length === 1 ? '' : 's'} blocked</div></div>
         </div>
@@ -121,11 +126,85 @@ export default function ProjectDetail() {
           </div>
           <div className="row">
             <Seg value={sel.status} onChange={(v) => dispatch({ type: 'setPhaseStatus', projectId: p.id, key: sel.key, status: v })}
-              options={[{ value: 'todo', label: 'Not started' }, { value: 'in_progress', label: 'In progress' }, { value: 'done', label: 'Signed off' }]} />
+              options={[{ value: 'todo', label: 'Not started' }, { value: 'in_progress', label: 'In progress' }, { value: 'done', label: 'Done' }]} />
           </div>
         </div>
+        {sel.status !== 'todo' && (
+          <div className="row" style={{ marginTop: 14 }}>
+            {sel.approvedBy
+              ? <Pill tone="green">Approved by {sel.approvedBy} on {fmtDate(sel.approvedOn!)}</Pill>
+              : sel.status === 'done'
+                ? <><Pill tone="amber">Waiting for approval</Pill><button className="sm primary" onClick={() => dispatch({ type: 'approvePhase', projectId: p.id, key: sel.key, by: ROLE_NAME[role] })}>Approve this stage</button>{customer && <SmsAction customer={customer} project={p} kind="approval" label="Ask the client (SMS)" />}</>
+                : <span className="small muted">Approval is given once the stage is done.</span>}
+          </div>
+        )}
         <p className="small muted" style={{ margin: '12px 0 0' }}>{p.scope}</p>
       </Card>
+
+      {p.status !== 'quote' && (() => {
+        const it = p.intake;
+        const missing = missingItems(p);
+        const set = (patch: Partial<NonNullable<typeof it>>) => dispatch({ type: 'updateIntake', projectId: p.id, patch });
+        return (
+          <Card className="mt" title="Car intake" action={it ? (missing.length ? <Pill tone="orange">{missing.length} missing</Pill> : <Pill tone="green">Everything came in</Pill>) : <span className="muted small">Checked at drop-off</span>}>
+            {!it ? (
+              <div className="row spread"><span className="small muted">No drop-off checklist yet. Photos of the car go in with “Add real photo” above.</span><button className="sm primary" onClick={() => set({})}>Start checklist</button></div>
+            ) : (
+              <>
+                <div className="checklist">
+                  <label className="chk"><input type="checkbox" checked={it.orcr} onChange={(e) => set({ orcr: e.target.checked })} />OR/CR copy received</label>
+                  {it.items.map((x, i) => (
+                    <label key={x.label} className="chk"><input type="checkbox" checked={x.present} onChange={(e) => set({ items: it.items.map((y, j) => (j === i ? { ...y, present: e.target.checked } : y)) })} />{x.label}</label>
+                  ))}
+                </div>
+                {missing.length > 0 && <div className="small over" style={{ marginTop: 10 }}>Missing: {missing.join(', ')}</div>}
+                <form className="row" style={{ marginTop: 12 }} onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); const label = String(f.get('item')).trim(); if (label) set({ items: [...it.items, { label, present: true }] }); e.currentTarget.reset(); }}>
+                  <input name="item" placeholder="Add an item to check (e.g. dashcam)" style={{ width: 280 }} /><button className="sm" type="submit">Add</button>
+                </form>
+                <label className="small muted" style={{ display: 'block', marginTop: 12 }}>Notes<input style={{ width: '100%', marginTop: 4 }} value={it.notes ?? ''} onChange={(e) => set({ notes: e.target.value || undefined })} placeholder="Anything the owner said at drop-off" /></label>
+              </>
+            )}
+          </Card>
+        );
+      })()}
+
+      {p.status !== 'quote' && (() => {
+        const qcDone = p.phases.find((x) => x.key === 'qc')?.status === 'done';
+        const paid = isPaidInFull(p);
+        const notified = data.messages.some((m) => m.projectId === p.id && m.kind === 'ready');
+        const gp = p.gatepass ?? {};
+        const checkDue = gp.outOn ? addDays(gp.outOn, CHECKUP_DAYS) : undefined;
+        const steps: [string, boolean, string][] = [['Final quality check done', qcDone, 'Mark the quality-check stage done'], ['Paid in full', paid, `${moneyC(Math.max(0, p.budget - collected))} still to collect`], ['Client told it is ready', notified, 'Send the pickup text'], ['Gatepass issued', !!gp.issuedOn, 'Issue the gatepass'], ['Car out', !!gp.outOn, 'Mark the car out']];
+        const origins = data.projects.filter((x) => x.customerId === p.customerId && x.id !== p.id && x.status !== 'quote');
+        return (
+          <Card className="mt" title="Release and follow-up" action={gp.outOn ? <Pill tone="green">Out on {fmtDate(gp.outOn)}</Pill> : <span className="muted small">Quality check, billing, pickup, gatepass</span>}>
+            <div className="steps">
+              {steps.map(([label, ok, hint]) => <div key={label} className={`rs ${ok ? 'ok' : ''}`}><span className="n">{ok ? <Icon name="check" size={13} /> : '·'}</span><span>{label}{!ok && <span className="small muted"> — {hint}</span>}</span></div>)}
+            </div>
+            <div className="row" style={{ marginTop: 14 }}>
+              {customer && !gp.outOn && <SmsAction customer={customer} project={p} kind="ready" label="Notify client: ready" primary={qcDone && paid && !notified} />}
+              {customer && !paid && p.status !== 'delivered' && <SmsAction customer={customer} project={p} kind="payment" />}
+              {!gp.issuedOn && <button className="sm" onClick={() => dispatch({ type: 'updateGatepass', projectId: p.id, patch: { issuedOn: today } })}>Issue gatepass</button>}
+              {gp.issuedOn && !gp.outOn && <button className="sm primary" onClick={() => dispatch({ type: 'markOut', projectId: p.id, date: today })}>Mark car out</button>}
+              {gp.issuedOn && !gp.outOn && <span className="small muted">Gatepass issued {fmtDate(gp.issuedOn)}</span>}
+            </div>
+            {gp.outOn && (
+              <div className="row spread" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+                <div className="small">Check-up with the client {gp.checkupDone ? <b className="ok">done {fmtDate(gp.checkupDone)}</b> : <>due <b className={checkDue! < today ? 'over' : ''}>{fmtDate(checkDue!)}</b></>}</div>
+                {!gp.checkupDone && <div className="row">{customer && <SmsAction customer={customer} project={p} kind="checkup" label="Remind client" />}<button className="sm" onClick={() => dispatch({ type: 'updateGatepass', projectId: p.id, patch: { checkupDone: today } })}>Mark check-up done</button></div>}
+              </div>
+            )}
+            <div className="row" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+              <label className="small muted row" style={{ gap: 8 }}>Back job of
+                <select value={p.backjobOf ?? ''} onChange={(e) => dispatch({ type: 'updateProject', id: p.id, patch: { backjobOf: e.target.value || undefined } })}>
+                  <option value="">Not a back job</option>{origins.map((x) => <option key={x.id} value={x.id}>{x.code} · {carName(x)}</option>)}
+                </select>
+              </label>
+            </div>
+            {data.messages.some((m) => m.projectId === p.id) && <div style={{ marginTop: 14 }}><div className="eyebrow" style={{ marginBottom: 6 }}>Texts for this job (demo)</div><Outbox projectId={p.id} limit={4} /></div>}
+          </Card>
+        );
+      })()}
 
       {p.service === 'ceramic' && (() => {
         const c = p.coating ?? {};
@@ -163,7 +242,7 @@ export default function ProjectDetail() {
       })()}
 
       <div className="tabs">
-        {([['work', `Work (${tasks.length})`], ['parts', `Parts & sublets (${parts.length})`], ['billing', `Billing (${p.payments.length})`], ['log', `Progress log (${updates.length})`]] as [Tab, string][]).map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
+        {([['work', `Work (${tasks.length})`], ['parts', `Parts & sublets (${parts.length})`], ['billing', `Billing (${p.payments.length})`], ['log', `Progress log (${updates.length})`]] as [Tab, string][]).filter(([k]) => k !== 'billing' || role !== 'leader').map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
       </div>
 
       {tab === 'work' && (
@@ -247,7 +326,7 @@ export default function ProjectDetail() {
         </Card>
       )}
 
-      {tab === 'billing' && (
+      {tab === 'billing' && role !== 'leader' && (
         <Card flush>
           <div className="grid g4" style={{ padding: 18 }}>
             <div><div className="eyebrow">Contract</div><div className="sv"><span>{money(p.budget)}</span></div></div>

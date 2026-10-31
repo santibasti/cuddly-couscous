@@ -1,6 +1,7 @@
-import { addDays, isWeekend, todayIso } from './dates';
-import { buildPhases, PACKAGES } from './logic';
-import type { Attendance, BlockReason, Customer, Data, Mechanic, Part, PartKind, PartStatus, PhaseKey, Project, ServiceType, Task, Update } from './types';
+import { addDays, addMonths, isWeekend, todayIso } from './dates';
+import { DEFAULT_CHECKLIST, smsText } from './crm';
+import { buildPhases, PACKAGES, PHASE_DEFS, SERVICES } from './logic';
+import type { Attendance, BlockReason, Customer, Data, Sms, Mechanic, Part, PartKind, PartStatus, PhaseKey, Project, ServiceType, Task, Update } from './types';
 
 /** Demo figures were drafted in USD; shop money is in pesos. */
 const FX = 56;
@@ -17,15 +18,60 @@ const mechanics: Mechanic[] = [
   { id: 'm6', name: 'Migs Dela Cruz', specialty: 'Detailing & coatings', color: '#3fb0c4', hourlyRate: phpRate(44), dailyHours: 8, active: true },
 ];
 
-const customers: Customer[] = [
-  { id: 'c1', name: 'Robert Hale', phone: '555-0142', email: 'rhale@example.com' },
-  { id: 'c2', name: 'Maria Santos', phone: '555-0177', email: 'maria.s@example.com' },
-  { id: 'c3', name: 'David Chen', phone: '555-0109', email: 'dchen@example.com' },
-  { id: 'c4', name: 'Eleanor Voss', phone: '555-0198', email: 'evoss@example.com' },
-  { id: 'c5', name: 'Jun Mercado', phone: '555-0211', email: 'jun.m@example.com' },
-  { id: 'c6', name: 'Angela Cruz', phone: '555-0224', email: 'angela.c@example.com' },
-  { id: 'c7', name: 'Paolo Lim', phone: '555-0236', email: 'paolo.l@example.com' },
+/** A birthday that falls `inDays` from today, in a made-up birth year. */
+const bday = (today: string, inDays: number, year: number) => `${year}${addDays(today, inDays).slice(4)}`;
+
+function makeCustomers(today: string): Customer[] {
+  return [
+    { id: 'c1', name: 'Robert Hale', phone: '555-0142', email: 'rhale@example.com', source: 'referral', birthday: bday(today, 150, 1961) },
+    { id: 'c2', name: 'Maria Santos', phone: '555-0177', email: 'maria.s@example.com', source: 'organic', birthday: bday(today, 3, 1984) },
+    { id: 'c3', name: 'David Chen', phone: '555-0109', email: 'dchen@example.com', source: 'ads', birthday: bday(today, -100, 1975) },
+    { id: 'c4', name: 'Eleanor Voss', phone: '555-0198', email: 'evoss@example.com', source: 'referral', birthday: bday(today, 40, 1958) },
+    { id: 'c5', name: 'Jun Mercado', phone: '555-0211', email: 'jun.m@example.com', source: 'social', birthday: bday(today, -20, 1988) },
+    { id: 'c6', name: 'Angela Cruz', phone: '555-0224', email: 'angela.c@example.com', source: 'sms', birthday: bday(today, 12, 1992) },
+    { id: 'c7', name: 'Paolo Lim', phone: '555-0236', email: 'paolo.l@example.com', source: 'organic', birthday: bday(today, 200, 1990) },
+    { id: 'c8', name: 'Rico Tan', phone: '555-0301', email: 'rico.t@example.com', source: 'referral', birthday: bday(today, 75, 1985) },
+    { id: 'c9', name: 'Lara Gomez', phone: '555-0312', email: 'lara.g@example.com', source: 'social', birthday: bday(today, 260, 1993) },
+    { id: 'c10', name: 'Ben Ocampo', phone: '555-0323', email: 'ben.o@example.com', source: 'ads', birthday: bday(today, 33, 1980) },
+    { id: 'c11', name: 'Tessa Uy', phone: '555-0334', email: 'tessa.u@example.com', source: 'organic', birthday: bday(today, 300, 1987) },
+    { id: 'c12', name: 'Marco Bautista', phone: '555-0345', email: 'marco.b@example.com', source: 'sms', birthday: bday(today, 110, 1991) },
+  ];
+}
+
+/** [id, customer, service, year, make, model, colour, days ago received, days in shop, days late, price in pesos, lead mechanic, back job of] */
+type PastDef = [string, string, ServiceType, number, string, string, string, number, number, number, number, string, string?];
+const PAST: PastDef[] = [
+  ['h1', 'c3', 'restoration', 1971, 'Datsun', '510', 'Bright Yellow', 430, 140, 12, 1500000, 'm2'],
+  ['h2', 'c8', 'paint', 2017, 'Toyota', 'Vios', 'Silver', 400, 9, 0, 48000, 'm3'],
+  ['h3', 'c9', 'detailing', 2020, 'Honda', 'City', 'Modern Steel', 390, 1, 0, 9500, 'm6'],
+  ['h4', 'c10', 'ceramic', 2022, 'Mitsubishi', 'Montero Sport', 'Black', 370, 3, 1, 38000, 'm6'],
+  ['h5', 'c2', 'paint', 2015, 'Nissan', 'Navara', 'White', 340, 12, 3, 85000, 'm3'],
+  ['h6', 'c11', 'detailing', 2019, 'Toyota', 'Hilux', 'Grey', 320, 1, 0, 5500, 'm6'],
+  ['h7', 'c12', 'ceramic', 2023, 'Honda', 'CR-V', 'Platinum White', 300, 3, 0, 58000, 'm6'],
+  ['h8', 'c8', 'detailing', 2017, 'Toyota', 'Vios', 'Silver', 280, 1, 0, 2500, 'm6'],
+  ['h9', 'c5', 'paint', 2020, 'Ford', 'Everest', 'Blue', 255, 10, 4, 98000, 'm3'],
+  ['h10', 'c9', 'ceramic', 2020, 'Honda', 'City', 'Modern Steel', 230, 3, 0, 22000, 'm6'],
+  ['h11', 'c4', 'restoration', 1965, 'Volkswagen', 'Beetle', 'Sea Blue', 225, 100, 20, 1100000, 'm2'],
+  ['h12', 'c10', 'detailing', 2022, 'Mitsubishi', 'Montero Sport', 'Black', 200, 1, 0, 9500, 'm6'],
+  ['h13', 'c11', 'paint', 2019, 'Toyota', 'Hilux', 'Grey', 180, 8, 0, 62000, 'm3'],
+  ['h14', 'c2', 'paint', 2015, 'Nissan', 'Navara', 'White', 165, 2, 0, 0, 'm3', 'h5'],
+  ['h15', 'c12', 'detailing', 2023, 'Honda', 'CR-V', 'Platinum White', 150, 1, 0, 5500, 'm6'],
+  ['h16', 'c6', 'detailing', 2021, 'Honda', 'Civic', 'Rallye Red', 140, 1, 0, 5500, 'm6'],
+  ['h17', 'c3', 'paint', 1971, 'Datsun', '510', 'Bright Yellow', 120, 7, 2, 55000, 'm3'],
+  ['h18', 'c7', 'detailing', 2023, 'Mazda', 'CX-5', 'Soul Red Crystal', 100, 1, 0, 18000, 'm6'],
+  ['h19', 'c8', 'ceramic', 2017, 'Toyota', 'Vios', 'Silver', 85, 3, 0, 22000, 'm6'],
+  ['h20', 'c9', 'paint', 2020, 'Honda', 'City', 'Modern Steel', 70, 9, 5, 72000, 'm3'],
+  ['h21', 'c10', 'detailing', 2022, 'Mitsubishi', 'Montero Sport', 'Black', 55, 1, 0, 5500, 'm6'],
+  ['h22', 'c11', 'ceramic', 2019, 'Toyota', 'Hilux', 'Grey', 45, 3, 2, 38000, 'm6'],
+  ['h23', 'c9', 'paint', 2020, 'Honda', 'City', 'Modern Steel', 40, 2, 0, 0, 'm3', 'h20'],
+  ['h24', 'c5', 'detailing', 2023, 'Ford', 'Ranger Raptor', 'Conquer Grey', 30, 1, 0, 9500, 'm6'],
+  ['h25', 'c12', 'paint', 2023, 'Honda', 'CR-V', 'Platinum White', 22, 8, 0, 68000, 'm3'],
+  ['h26', 'c4', 'detailing', 1958, 'Mercedes-Benz', '190SL', 'Ivory', 14, 1, 0, 18000, 'm6'],
+  ['h27', 'c8', 'detailing', 2017, 'Toyota', 'Vios', 'Silver', 9, 1, 0, 2500, 'm6'],
+  ['h28', 'c10', 'paint', 2022, 'Mitsubishi', 'Montero Sport', 'Black', 8, 5, 0, 52000, 'm3'],
 ];
+/** Who does each stage on a long restoration; short jobs stay with their lead. */
+const STAGE_MECH: Partial<Record<PhaseKey, string>> = { teardown: 'm4', body: 'm2', prep: 'm2', mechanical: 'm1', interior: 'm5', assembly: 'm4' };
 
 type State = 'done' | 'doing' | 'todo';
 /** [phase, title, mechanic, estHours, state, day offset from today, part ref, manual block] */
@@ -230,6 +276,7 @@ export function buildSeed(today = todayIso()): Data {
   const tasks: Task[] = [];
   const parts: Part[] = [];
   const updates: Update[] = [];
+  const customers = makeCustomers(today);
   const load = new Map<string, number>();
   const leaveDays = new Set<string>(); // mechanic|date pairs a booking must avoid
   const cap = new Map(mechanics.map((m) => [m.id, m.dailyHours]));
@@ -286,6 +333,52 @@ export function buildSeed(today = todayIso()): Data {
     if (lt) leaveDays.add(`m2|${lt.date}`);
     for (const [off, phaseKey, text] of s.notes) updates.push({ id: `u${un++}`, projectId: s.id, date: addDays(today, off), author: 'Alex', phaseKey, text });
   }
+  // Past jobs, so the date-range views have something to compare.
+  for (const [id, customerId, service, year, make, model, color, ago, days, late, pesos, lead, backOf] of PAST) {
+    const received = addDays(today, -ago);
+    const target = addDays(received, days);
+    const released = addDays(target, late);
+    const phases = buildPhases(received, target, service).map((ph) => ({ ...ph, status: 'done' as const, approvedBy: 'Alex', approvedOn: ph.end }));
+    const perStage = Math.max(1, Math.round(((days * 4) / phases.length) * 2) / 2);
+    phases.forEach((ph, i) => {
+      const mech = service === 'restoration' || service === 'paint' ? (STAGE_MECH[ph.key] ?? lead) : lead;
+      tasks.push({ id: `t${tn++}`, projectId: id, phaseKey: ph.key, title: PHASE_DEFS[ph.key].label, mechanicId: mech, date: ph.start, estHours: perStage, actualHours: Math.round(perStage * (0.9 + (i % 4) * 0.1) * (late ? 1.15 : 1) * 2) / 2, status: 'done' });
+    });
+    const pkg = service === 'detailing' || service === 'ceramic' ? PACKAGES[service].find((x) => x.price === pesos) : undefined;
+    projects.push({
+      id, code: `ACR-${id.toUpperCase()}`, service, packageName: pkg?.name, customerId, title: pkg?.name ?? (backOf ? 'Back job: touch-up' : SERVICES[service].label), year, make, model, color, vin: '', scope: backOf ? 'Return visit to fix a fault from the earlier job, at no charge.' : (pkg?.scope ?? SERVICES[service].hint),
+      status: 'delivered', priority: 'normal', bay: 'Unassigned', startDate: received, targetDate: target, budget: pesos, phases, leadMechanicId: lead,
+      receivedOn: received, releasedOn: released, backjobOf: backOf,
+      coating: service === 'ceramic' ? { product: `9H ceramic coating, ${pkg?.warrantyYears ?? 1}-year`, batch: `B${received.slice(2, 4)}-${received.slice(5, 7)}${received.slice(8, 10)}`, glossBefore: 80 + (days % 5), glossAfter: 94 + (late % 3), thicknessMicrons: 120 + ((ago * 7) % 15), cureStarted: addDays(released, -1), handoverDate: released, warrantyYears: pkg?.warrantyYears, maintenanceDone: addMonths(released, 12) <= today } : undefined,
+      gatepass: { issuedOn: released, outOn: released, checkupDone: addDays(released, 7) <= today ? addDays(released, 7) : undefined },
+      payments: pesos ? [{ id: `${id}-pay1`, date: received, amount: Math.round(pesos * 0.3), note: 'Deposit' }, { id: `${id}-pay2`, date: released, amount: pesos - Math.round(pesos * 0.3), note: 'Balance on handover' }] : [],
+    });
+  }
+  for (const p of projects) {
+    if (p.status === 'quote') continue;
+    p.receivedOn = p.receivedOn ?? p.startDate;
+    // Cars that are in the shop carry a drop-off checklist; two have something missing.
+    if (!p.intake && p.status !== 'delivered') {
+      p.intake = { orcr: p.id !== 'p7', items: DEFAULT_CHECKLIST.map((label) => ({ label, present: !(p.id === 'p3' && label === 'Spare key') && !(p.id === 'p1' && label === 'Head unit / stereo') })), notes: p.id === 'p7' ? 'Owner will bring the OR/CR copy tomorrow.' : undefined };
+    }
+    // A stage that is done has been approved, except the latest one on a few jobs.
+    p.phases.forEach((ph) => {
+      if (ph.status === 'done' && !ph.approvedBy) {
+        const lastDone = [...p.phases].reverse().find((x) => x.status === 'done');
+        if (!(['p2', 'p4'].includes(p.id) && lastDone?.key === ph.key)) { ph.approvedBy = 'Alex'; ph.approvedOn = ph.end; }
+      }
+    });
+    if (p.status === 'delivered' && !p.releasedOn && p.coating?.handoverDate) {
+      p.releasedOn = p.coating.handoverDate;
+      p.gatepass = { issuedOn: p.releasedOn, outOn: p.releasedOn, checkupDone: addDays(p.releasedOn, 7) <= today ? addDays(p.releasedOn, 7) : undefined };
+    }
+  }
+  // A couple of texts already sent, so the outbox is not empty.
+  const messages: Sms[] = [
+    { id: 'sms1', customerId: 'c6', projectId: 'p11', date: addDays(today, -3), kind: 'ready', text: smsText('ready', customers[5], projects.find((p) => p.id === 'p11')) },
+    { id: 'sms2', customerId: 'c5', date: addDays(today, -20), kind: 'birthday', text: smsText('birthday', customers[4]) },
+  ];
+
   // Attendance: three weeks of history, today's clock-ins, and one approved leave that collides with booked work.
   const attendance: Attendance[] = [];
   let an = 1;
@@ -317,5 +410,5 @@ export function buildSeed(today = todayIso()): Data {
   const leaveTask = tasks.find((t) => t.mechanicId === 'm2' && t.status !== 'done' && t.date > today && t.title === 'Block sanding & primer');
   if (leaveTask) attendance.push({ id: `a${an++}`, mechanicId: 'm2', date: leaveTask.date, status: 'leave', note: 'Approved leave' });
 
-  return { mechanics, customers, projects, tasks, parts, updates, attendance };
+  return { mechanics, customers, projects, tasks, parts, updates, attendance, messages };
 }

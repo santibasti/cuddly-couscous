@@ -17,6 +17,7 @@ export default function Projects() {
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState('');
   const [view, setView] = useState<'gallery' | 'table'>('gallery');
+  const [scope_, setScope_] = useState<'open' | 'delivered' | 'all'>('open');
   const [svcFilter, setSvcFilter] = useState<'all' | ServiceType>('all');
   // New-project form: picking a service sets a sensible timeline, and a package fills in the price
   const [svc, setSvc] = useState<ServiceType>('restoration');
@@ -44,7 +45,7 @@ export default function Projects() {
   const all = data.projects.map((p) => ({ p, ...projectHealth(p, data, today) }));
   const rows = all.filter(({ p, health }) => {
     const cust = data.customers.find((c) => c.id === p.customerId)?.name ?? '';
-    return (filter === 'all' || health === filter) && (svcFilter === 'all' || p.service === svcFilter) && `${p.code} ${carName(p)} ${cust}`.toLowerCase().includes(q.toLowerCase());
+    return (scope_ === 'all' || (scope_ === 'delivered') === (p.status === 'delivered')) && (filter === 'all' || health === filter) && (svcFilter === 'all' || p.service === svcFilter) && `${p.code} ${carName(p)} ${cust}`.toLowerCase().includes(q.toLowerCase());
   });
   const n = (h: Health) => all.filter((x) => x.health === h).length;
 
@@ -103,6 +104,9 @@ export default function Projects() {
           <div className="full"><button className="primary" type="submit">Create job — the {SERVICES[svc].label.toLowerCase()} steps are scheduled automatically</button></div>
         </form>
       )}
+      <div className="row" style={{ marginBottom: 12 }}>
+        <Seg value={scope_} onChange={setScope_} options={[{ value: 'open', label: 'In the shop', count: data.projects.filter((p) => p.status !== 'delivered').length }, { value: 'delivered', label: 'Released', count: data.projects.filter((p) => p.status === 'delivered').length }, { value: 'all', label: 'All' }]} />
+      </div>
       <div style={{ marginBottom: 12 }}>
         <Seg<'all' | ServiceType> value={svcFilter} onChange={setSvcFilter} options={[{ value: 'all', label: 'All services', count: data.projects.length }, ...SERVICE_KEYS.map((k) => ({ value: k as 'all' | ServiceType, label: SERVICES[k].label, count: data.projects.filter((p) => p.service === k).length }))]} />
       </div>

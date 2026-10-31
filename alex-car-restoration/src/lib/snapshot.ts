@@ -1,5 +1,6 @@
 import { addDays, diffDays, fmtDate, isWeekend } from './dates';
 import { ATT_LABEL, attFor, coatingFollowUps, coverageGaps, fmtTime, isOut, isPartIn, money, partRisk, taskBlocker, workedHours, type CoatingFollowUp, type CoverageGap } from './logic';
+import { checkupsDue, upcomingBirthdays } from './crm';
 import type { Data, Mechanic, Part, Payment, Project, Task, Update } from './types';
 
 export interface Snapshot {
@@ -28,6 +29,7 @@ export interface Snapshot {
   jobs: { dueToday: Project[]; late: { project: Project; days: number }[]; phasesStarting: { project: Project; phase: string }[]; phasesEnding: { project: Project; phase: string }[] };
   coating: { noWash: CoatingFollowUp[]; maintenance: CoatingFollowUp[] };
   money: { payments: { project: Project; payment: Payment }[]; total: number };
+  clients: { birthdays: ReturnType<typeof upcomingBirthdays>; checkups: ReturnType<typeof checkupsDue>; pickups: Project[] };
   updates: { project: Project; update: Update }[];
   tomorrow: { tasks: Task[]; blocked: number; gaps: CoverageGap[]; partsDue: Part[] };
 }
@@ -93,6 +95,12 @@ export function dailySnapshot(data: Data, today: string): Snapshot {
     },
     coating: { noWash: coatingFollowUps(data, today).filter((f) => f.kind === 'no_wash'), maintenance: coatingFollowUps(data, today, 14).filter((f) => f.kind === 'maintenance') },
     money: { payments, total: payments.reduce((s, x) => s + x.payment.amount, 0) },
+    clients: {
+      birthdays: upcomingBirthdays(data, today, 3),
+      checkups: checkupsDue(data, today, 0),
+      // Finished and paid cars that are still waiting to go out.
+      pickups: data.projects.filter((p) => (p.status === 'completed' || p.status === 'active') && !p.gatepass?.outOn && p.phases.every((ph) => ph.status === 'done')),
+    },
     updates: data.updates.filter((u) => u.date === today).map((update) => ({ project: proj(update.projectId), update })),
     tomorrow: {
       tasks: tomorrowTasks,
@@ -128,6 +136,9 @@ export function snapshotText(s: Snapshot, data: Data): string {
   if (s.jobs.late.length) lines.push(`LATE JOBS  ${s.jobs.late.map((l) => `${car(l.project)} (${l.days}d)`).join('; ')}`);
   if (s.coating.noWash.length) lines.push(`KEEP DRY  ${s.coating.noWash.map((f) => `${car(f.project)} until ${fmtDate(f.date)}`).join('; ')}`);
   if (s.coating.maintenance.length) lines.push(`COATING CHECKS  ${s.coating.maintenance.map((f) => `${car(f.project)} ${f.daysAway < 0 ? `${-f.daysAway}d overdue` : f.daysAway === 0 ? 'due today' : `due in ${f.daysAway}d`}`).join('; ')}`);
+  if (s.clients.pickups.length) lines.push(`READY FOR PICKUP  ${s.clients.pickups.map(car).join('; ')}`);
+  if (s.clients.checkups.length) lines.push(`CLIENT CHECK-UPS  ${s.clients.checkups.map((c) => `${car(c.project)} ${c.daysAway < 0 ? `${-c.daysAway}d overdue` : 'due today'}`).join('; ')}`);
+  if (s.clients.birthdays.length) lines.push(`BIRTHDAYS  ${s.clients.birthdays.map((b) => `${b.customer.name} ${b.daysAway === 0 ? 'today' : `in ${b.daysAway}d`}`).join('; ')}`);
   lines.push(s.money.payments.length ? `PAYMENTS  ${money(s.money.total)} received: ${s.money.payments.map((x) => `${x.project.code} ${money(x.payment.amount)}`).join(', ')}` : 'PAYMENTS  None received today');
   if (s.updates.length) { lines.push('UPDATES'); for (const u of s.updates) lines.push(`  - ${u.project.code}: ${u.update.text}`); }
 
