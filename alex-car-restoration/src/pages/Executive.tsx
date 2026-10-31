@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
-import { Columns, Donut } from '../components/charts';
+import { Columns } from '../components/charts';
 import { Bar, Card, Empty, HealthPill, Icon, ServicePill, StripStat } from '../components/ui';
 import { fmtDate, todayIso } from '../lib/dates';
-import { byService, costMix, monthlyDeliveries, portfolio, riskRegister, supplierExposure, weeklyHours } from '../lib/exec';
+import { byService, monthlyDeliveries, portfolio, riskRegister, weeklyHours } from '../lib/exec';
 import { money, moneyC } from '../lib/logic';
 import { LABOR_COST_PER_HOUR } from '../lib/rates';
 import { useStore } from '../lib/store';
@@ -11,10 +11,6 @@ export default function Executive() {
   const { data } = useStore();
   const today = todayIso();
   const pf = portfolio(data, today);
-  const mix = costMix(data);
-  const mixTotal = mix.labor + mix.parts + mix.sublet;
-  const suppliers = supplierExposure(data, today);
-  const supMax = Math.max(1, ...suppliers.map((s) => s.value));
   const months = monthlyDeliveries(data, today, 6);
   const weeks = weeklyHours(data, today, 4);
   const risks = riskRegister(data, today);
@@ -22,11 +18,6 @@ export default function Executive() {
   const svcMax = Math.max(1, ...services.map((x) => x.contract));
   const high = risks.filter((r) => r.level === 'high').length;
   const marginTone = pf.marginPct < 20 ? 'red' : pf.marginPct < 30 ? 'amber' : '';
-  const slices = [
-    { label: 'Labor', value: mix.labor, color: 'var(--arc)' },
-    { label: 'Parts', value: mix.parts, color: 'var(--accent2)' },
-    { label: 'Sublet', value: mix.sublet, color: 'var(--accent)' },
-  ];
 
   return (
     <>
@@ -79,27 +70,7 @@ export default function Executive() {
             )}
           </table>
         </Card>
-        <Card title="Where the money goes" action={<span className="muted small">Active jobs</span>}>
-          <div className="row" style={{ gap: 20, flexWrap: 'nowrap', alignItems: 'center' }}>
-            <Donut items={slices} size={132} center={moneyC(mixTotal)} />
-            <div className="stack grow">
-              {slices.map((s) => (
-                <div key={s.label} className="row spread small" style={{ flexWrap: 'nowrap' }}>
-                  <span className="row" style={{ gap: 8, flexWrap: 'nowrap' }}><i className="swatch" style={{ background: s.color }} />{s.label}</span>
-                  <span className="num">{mixTotal ? Math.round((s.value / mixTotal) * 100) : 0}% · {moneyC(s.value)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="eyebrow" style={{ margin: '20px 0 8px' }}>Open orders by supplier</div>
-          {suppliers.length === 0 && <div className="muted small">Nothing on order.</div>}
-          {suppliers.slice(0, 5).map((s) => (
-            <div key={s.supplier} className="sup">
-              <div className="row spread small" style={{ flexWrap: 'nowrap' }}><span style={{ fontWeight: 500 }}>{s.supplier}</span><span className="num">{moneyC(s.value)}{s.late > 0 && <span className="over"> · {s.late} late</span>}</span></div>
-              <Bar thin value={(s.value / supMax) * 100} tone={s.late ? 'red' : undefined} />
-            </div>
-          ))}
-          <div className="eyebrow" style={{ margin: '20px 0 8px' }}>Quotes awaiting approval</div>
+        <Card title="Quotes awaiting approval" action={<span className="muted small">{pf.quotes.length}</span>}>
           {pf.quotes.length === 0 && <div className="muted small">No open quotes.</div>}
           {pf.quotes.map((q) => (
             <Link key={q.id} to={`/projects/${q.id}`} className="row spread small" style={{ flexWrap: 'nowrap', padding: '4px 0' }}>

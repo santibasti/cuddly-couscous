@@ -4,7 +4,7 @@ import { buildPhases, isLateIn, nextProjectCode, OUT_STATUSES, PACKAGES } from '
 import { canEdit } from './role';
 import { buildSeed } from './seed';
 import { DEFAULT_CHECKLIST, defaultQc } from './crm';
-import type { AttendanceStatus, CoatingRecord, Customer, Data, Gatepass, Intake, Mechanic, Part, PartStatus, PhaseKey, PhaseStatus, Project, ProjectStatus, QcRecord, SmsKind, Task, TaskStatus } from './types';
+import type { AttendanceStatus, CoatingRecord, Customer, Data, Gatepass, Intake, Mechanic, PhaseKey, PhaseStatus, Project, ProjectStatus, QcRecord, SmsKind, Task, TaskStatus } from './types';
 
 const KEY = 'alex-car-restoration:v7';
 
@@ -17,9 +17,6 @@ export type Action =
   | { type: 'addTask'; task: Omit<Task, 'id' | 'actualHours' | 'status'> }
   | { type: 'updateTask'; id: string; patch: Partial<Task> }
   | { type: 'deleteTask'; id: string }
-  | { type: 'addPart'; part: Omit<Part, 'id'> }
-  | { type: 'setPartStatus'; id: string; status: PartStatus }
-  | { type: 'updatePart'; id: string; patch: Partial<Part> }
   | { type: 'addUpdate'; projectId: string; text: string; phaseKey?: PhaseKey; author: string }
   | { type: 'addMechanic'; mechanic: Omit<Mechanic, 'id' | 'active'> }
   | { type: 'toggleMechanic'; id: string }
@@ -106,22 +103,6 @@ export function reducer(d: Data, a: Action): Data {
       };
     case 'deleteTask':
       return { ...d, tasks: d.tasks.filter((t) => t.id !== a.id) };
-    case 'addPart':
-      return { ...d, parts: [...d.parts, { ...a.part, id: uid('pt') }] };
-    case 'setPartStatus':
-      return {
-        ...d,
-        parts: d.parts.map((p) => {
-          if (p.id !== a.id) return p;
-          const next = { ...p, status: a.status };
-          // Moving past "to order" stamps the order date; arrival clears the ETA.
-          if (a.status !== 'needed' && !p.orderedOn) next.orderedOn = todayIso();
-          if (a.status === 'received') next.eta = todayIso();
-          return next;
-        }),
-      };
-    case 'updatePart':
-      return { ...d, parts: d.parts.map((p) => (p.id === a.id ? { ...p, ...a.patch } : p)) };
     case 'addUpdate':
       return {
         ...d,
@@ -192,8 +173,8 @@ function load(): Data {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
-      const saved = JSON.parse(raw) as Data;
-      // Older saved data kept a pay rate for each mechanic. Drop it.
+      const { parts: _oldParts, ...saved } = JSON.parse(raw) as Data & { parts?: unknown };
+      // Older saved data kept a pay rate for each mechanic and a list of parts. Drop both.
       return { ...saved, mechanics: saved.mechanics.map(({ hourlyRate: _gone, ...m }: Mechanic & { hourlyRate?: number }) => m), messages: saved.messages ?? [] };
     }
   } catch {

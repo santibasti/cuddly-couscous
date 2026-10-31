@@ -113,7 +113,7 @@ function LeaderHome() {
           <PulseTile to="/attendance" icon="user" value={`${s.team.clockedIn.length}/${s.team.total}`} label="Crew in" tone={s.team.clockedIn.length === s.team.total ? 'green' : 'amber'} />
           <PulseTile to="/schedule" icon="check" value={`${s.floor.done}/${s.floor.tasks.length}`} label="Tasks done" />
           <PulseTile to="/schedule" icon="lock" value={s.floor.blocked} label="Blocked" tone={s.floor.blocked ? 'amber' : 'green'} />
-          <PulseTile to="/parts" icon="box" value={s.parts.arriving.length + s.parts.arrived.length} label="Parts today" />
+          <PulseTile to="/schedule" icon="clock" value={s.floor.running} label="Running now" />
         </div>
       </section>
 
@@ -131,7 +131,7 @@ function LeaderHome() {
               </div>
               <div className="small muted" style={{ margin: '12px 0 6px' }}>{tasks.length ? `${tasks.length} task${tasks.length === 1 ? '' : 's'} · ${hours}h` : 'Nothing booked today'}</div>
               {tasks.map((t) => {
-                const b = taskBlocker(t, data.parts);
+                const b = taskBlocker(t);
                 const st = t.status === 'done' ? ['Done', 'green'] : b ? ['Blocked', 'orange'] : t.status === 'in_progress' ? ['Running', 'blue'] : ['To start', 'gray'];
                 return <div key={t.id} className="small" style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '3px 0' }}><span className={`pill ${st[1]}`} style={{ flex: 'none' }}><i />{st[0]}</span><span><Link to={`/projects/${t.projectId}`} style={{ color: 'var(--accent2)' }}>{proj(t.projectId).code}</Link> {t.title}</span></div>;
               })}

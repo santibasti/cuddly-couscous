@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { addDays, startOfWeek } from './dates';
-import { allBlockers, attendanceSummary, buildAlerts, coverageGaps, hoursBetween, isLateIn, isOut, overtimeHours, workedHours, buildPhases, dayLoad, daysOverdue, isOverbooked, partRisk, phasePercent, projectHealth, projectProgress, SERVICES, SERVICE_KEYS, PACKAGES, PHASE_DEFS, taskBlocker, coatingDates, coatingFollowUps } from './logic';
+import { allBlockers, attendanceSummary, buildAlerts, coverageGaps, hoursBetween, isLateIn, isOut, overtimeHours, workedHours, buildPhases, dayLoad, daysOverdue, isOverbooked, phasePercent, projectHealth, projectProgress, SERVICES, SERVICE_KEYS, PACKAGES, PHASE_DEFS, taskBlocker, coatingDates, coatingFollowUps } from './logic';
 import { buildSeed } from './seed';
 import { addMonths, addYears } from './dates';
 import { dailySnapshot, nextWorkday, snapshotText } from './snapshot';
-import { byService, costMix, planIsComplete, plannedCost, forecastCost, jobFinance, monthlyDeliveries, portfolio, riskRegister, supplierExposure, weeklyHours } from './exec';
+import { byService, planIsComplete, plannedCost, forecastCost, jobFinance, monthlyDeliveries, portfolio, riskRegister, weeklyHours } from './exec';
 import { reducer } from './store';
 
 const TODAY = '2026-03-18'; // a Wednesday
@@ -80,25 +80,18 @@ describe('scheduling & alerts', () => {
   });
 });
 
-describe('parts, sublets & blockers', () => {
+describe('blockers', () => {
   const d = buildSeed(TODAY);
-  const part = (id: string) => d.parts.find((p) => p.id === id)!;
-  it('classifies part risk from ETA vs needed-by date', () => {
-    expect(partRisk(part('p1-pt1'), TODAY)).toBe('at_risk'); // backordered NOS, lands after needed
-    expect(partRisk(part('p2-pt2'), TODAY)).toBe('late'); // ETA already passed
-    expect(partRisk(part('p4-pt2'), TODAY)).toBe('order_now'); // not sent out, needed within a week
-    expect(partRisk(part('p1-pt3'), TODAY)).toBe('done'); // received
-  });
-  it('blocks tasks that wait on a part and frees them when it arrives', () => {
+  it('blocks a task only when someone marks it blocked, and frees it when it moves on', () => {
     let s = buildSeed(TODAY);
-    const task = s.tasks.find((t) => t.partId === 'p3-pt1')!; // engine assembly waits on the crank
-    expect(taskBlocker(task, s.parts)?.reason).toBe('vendor');
-    s = reducer(s, { type: 'setPartStatus', id: 'p3-pt1', status: 'received' });
-    expect(taskBlocker(s.tasks.find((t) => t.id === task.id)!, s.parts)).toBeNull();
+    const task = s.tasks.find((t) => t.status === 'blocked' && t.blockReason === 'other')!;
+    expect(taskBlocker(task)?.reason).toBe('other');
+    s = reducer(s, { type: 'updateTask', id: task.id, patch: { status: 'in_progress' } });
+    expect(taskBlocker(s.tasks.find((t) => t.id === task.id)!)).toBeNull();
   });
-  it('treats a customer-approval hold as a blocker without a part', () => {
+  it('treats a customer-approval hold as a blocker', () => {
     const t = d.tasks.find((x) => x.blockReason === 'customer')!;
-    expect(taskBlocker(t, d.parts)?.reason).toBe('customer');
+    expect(taskBlocker(t)?.reason).toBe('customer');
   });
   it('rolls blockers, lateness and risk into a project health', () => {
     const h = (id: string) => projectHealth(d.projects.find((p) => p.id === id)!, d, TODAY).health;
@@ -177,20 +170,8 @@ describe('executive numbers', () => {
     expect(pf.quotes).toHaveLength(1);
     expect(pf.quotesValue).toBe(d.projects.find((p) => p.status === 'quote')!.budget);
   });
-  it('seed margins are believable', () => {
-    for (const j of pf.jobs) { expect(j.marginPct).toBeGreaterThan(5); expect(j.marginPct).toBeLessThan(60); }
-  });
-  it('splits cost into labor, parts and sublet', () => {
-    const m = costMix(d);
-    expect(m.labor).toBeGreaterThan(0);
-    expect(m.parts).toBeGreaterThan(0);
-    expect(m.sublet).toBeGreaterThan(0);
-  });
-  it('ranks supplier exposure and counts overdue orders', () => {
-    const ex = supplierExposure(d, TODAY);
-    expect(ex.length).toBeGreaterThan(2);
-    for (let i = 1; i < ex.length; i++) expect(ex[i - 1].value).toBeGreaterThanOrEqual(ex[i].value);
-    expect(ex.some((e) => e.late > 0)).toBe(true);
+  it('seed margins are positive', () => {
+    for (const j of pf.jobs) { expect(j.marginPct).toBeGreaterThan(5); expect(j.marginPct).toBeLessThan(95); }
   });
   it('buckets deliveries by month and puts overdue jobs in the first month', () => {
     const m = monthlyDeliveries(d, TODAY, 6);
@@ -241,9 +222,7 @@ describe('daily snapshot', () => {
     expect(f.done + f.running + f.todo + f.blocked).toBe(f.tasks.length);
     expect(f.plannedHours).toBe(f.tasks.reduce((x, t) => x + t.estHours, 0));
   });
-  it('finds what arrives, what is overdue and what was paid or posted today', () => {
-    expect(s.parts.arriving.map((x) => x.name)).toContain('Door glass & regulators');
-    expect(s.parts.overdue.length).toBeGreaterThan(0);
+  it('finds what was paid or posted today', () => {
     expect(s.money.payments).toHaveLength(1);
     expect(s.money.total).toBe(s.money.payments[0].payment.amount);
     expect(s.updates.map((u) => u.project.code)).toEqual(['ACR-003']);
@@ -262,7 +241,6 @@ describe('daily snapshot', () => {
     expect(text).toMatch(/^Alex Restoration · Daily snapshot/);
     expect(text).toContain('5 of 6 in');
     expect(text).toContain('Priya');
-    expect(text).toContain('Door glass & regulators');
     expect(text.split('\n').length).toBeGreaterThan(6);
   });
 });

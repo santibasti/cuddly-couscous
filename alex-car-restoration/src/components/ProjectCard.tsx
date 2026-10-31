@@ -9,13 +9,13 @@ import { Avatar, Bar, CarArt, HealthPill, Icon, Ring, ServicePill } from './ui';
 export default function ProjectCard({ p, data, today }: { p: Project; data: Data; today: string }) {
   const { health, reasons } = projectHealth(p, data, today);
   const pct = projectProgress(p, data.tasks);
-  const cost = projectCosts(p, data.tasks, data.parts, data.mechanics).total;
+  const cost = projectCosts(p, data.tasks).total;
   const cur = currentPhase(p);
   const customer = data.customers.find((c) => c.id === p.customerId);
   const doing = data.tasks.find((t) => t.projectId === p.id && t.status === 'in_progress');
   const over = daysOverdue(p, today);
   const crew = jobCrew(p.id, data);
-  const curBlocked = cur && data.tasks.some((t) => t.projectId === p.id && t.phaseKey === cur.key && taskBlocker(t, data.parts));
+  const curBlocked = cur && data.tasks.some((t) => t.projectId === p.id && t.phaseKey === cur.key && taskBlocker(t));
   const urgent = health === 'at_risk' || health === 'blocked' || health === 'late';
   const style = { '--paint': paintHex(p) } as React.CSSProperties;
 

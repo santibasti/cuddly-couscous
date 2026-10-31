@@ -1,7 +1,7 @@
 import { addDays, diffDays, fmtDate, isWeekend } from './dates';
-import { ATT_LABEL, attFor, coatingFollowUps, coverageGaps, fmtTime, isOut, isPartIn, money, partRisk, taskBlocker, workedHours, type CoatingFollowUp, type CoverageGap } from './logic';
+import { ATT_LABEL, attFor, coatingFollowUps, coverageGaps, fmtTime, isOut, money, taskBlocker, workedHours, type CoatingFollowUp, type CoverageGap } from './logic';
 import { checkupsDue, upcomingBirthdays } from './crm';
-import type { Data, Mechanic, Part, Payment, Project, Task, Update } from './types';
+import type { Data, Mechanic, Payment, Project, Task, Update } from './types';
 
 export interface Snapshot {
   date: string;
@@ -25,13 +25,12 @@ export interface Snapshot {
     byMechanic: { mechanic: Mechanic; tasks: Task[] }[];
     unassigned: Task[];
   };
-  parts: { arriving: Part[]; arrived: Part[]; overdue: Part[]; orderNow: Part[]; orderedToday: Part[] };
   jobs: { dueToday: Project[]; late: { project: Project; days: number }[]; phasesStarting: { project: Project; phase: string }[]; phasesEnding: { project: Project; phase: string }[] };
   coating: { noWash: CoatingFollowUp[]; maintenance: CoatingFollowUp[] };
   money: { payments: { project: Project; payment: Payment }[]; total: number };
   clients: { birthdays: ReturnType<typeof upcomingBirthdays>; checkups: ReturnType<typeof checkupsDue>; pickups: Project[] };
   updates: { project: Project; update: Update }[];
-  tomorrow: { tasks: Task[]; blocked: number; gaps: CoverageGap[]; partsDue: Part[] };
+  tomorrow: { tasks: Task[]; blocked: number; gaps: CoverageGap[] };
 }
 
 /** Next Monday–Friday after `date`. */
@@ -50,7 +49,7 @@ export function dailySnapshot(data: Data, today: string): Snapshot {
 
   const clockedIn = team.filter((m) => rec(m)?.timeIn);
   const tasks = data.tasks.filter((t) => t.date === today && active.has(t.projectId));
-  const isBlocked = (t: Task) => !!taskBlocker(t, data.parts);
+  const isBlocked = (t: Task) => !!taskBlocker(t);
   const open = tasks.filter((t) => t.status !== 'done');
 
   const tomorrowDate = nextWorkday(today);
@@ -80,13 +79,6 @@ export function dailySnapshot(data: Data, today: string): Snapshot {
       byMechanic: team.map((m) => ({ mechanic: m, tasks: tasks.filter((t) => t.mechanicId === m.id) })).filter((x) => x.tasks.length > 0 || !isOut(rec(x.mechanic))),
       unassigned: tasks.filter((t) => !t.mechanicId),
     },
-    parts: {
-      arriving: data.parts.filter((x) => active.has(x.projectId) && !isPartIn(x) && x.eta === today),
-      arrived: data.parts.filter((x) => active.has(x.projectId) && x.status === 'received' && x.eta === today),
-      overdue: data.parts.filter((x) => active.has(x.projectId) && partRisk(x, today) === 'late'),
-      orderNow: data.parts.filter((x) => active.has(x.projectId) && partRisk(x, today) === 'order_now'),
-      orderedToday: data.parts.filter((x) => x.orderedOn === today),
-    },
     jobs: {
       dueToday: data.projects.filter((p) => p.status === 'active' && p.targetDate === today),
       late: data.projects.filter((p) => p.status === 'active' && p.targetDate < today).map((p) => ({ project: p, days: Math.round((Date.parse(today) - Date.parse(p.targetDate)) / 86400000) })),
@@ -106,7 +98,6 @@ export function dailySnapshot(data: Data, today: string): Snapshot {
       tasks: tomorrowTasks,
       blocked: tomorrowTasks.filter(isBlocked).length,
       gaps: coverageGaps(data, tomorrowDate).filter((g) => g.task.date === tomorrowDate),
-      partsDue: data.parts.filter((x) => active.has(x.projectId) && !isPartIn(x) && x.eta === tomorrowDate),
     },
   };
 }
@@ -127,11 +118,8 @@ export function snapshotText(s: Snapshot, data: Data): string {
 
   const f = s.floor;
   lines.push(`FLOOR  ${f.tasks.length} tasks planned (${f.plannedHours}h): ${f.done} done, ${f.running} running, ${f.todo} to start, ${f.blocked} blocked`);
-  for (const t2 of f.tasks.filter((x) => x.status !== 'done' && taskBlocker(x, data.parts))) lines.push(`  - Blocked: ${t2.title} (${car(data.projects.find((p) => p.id === t2.projectId)!)}) — ${taskBlocker(t2, data.parts)!.label}`);
+  for (const t2 of f.tasks.filter((x) => x.status !== 'done' && taskBlocker(x))) lines.push(`  - Blocked: ${t2.title} (${car(data.projects.find((p) => p.id === t2.projectId)!)}) — ${taskBlocker(t2)!.label}`);
 
-  if (s.parts.arriving.length || s.parts.arrived.length) lines.push(`PARTS  Due today: ${[...s.parts.arriving, ...s.parts.arrived].map((x) => `${x.name} (${x.supplier})`).join('; ')}`);
-  if (s.parts.overdue.length) lines.push(`OVERDUE  ${s.parts.overdue.map((x) => `${x.name} (${x.supplier})`).join('; ')}`);
-  if (s.parts.orderNow.length) lines.push(`ORDER NOW  ${s.parts.orderNow.map((x) => x.name).join('; ')}`);
   if (s.jobs.dueToday.length) lines.push(`DELIVERY TODAY  ${s.jobs.dueToday.map(car).join('; ')}`);
   if (s.jobs.late.length) lines.push(`LATE JOBS  ${s.jobs.late.map((l) => `${car(l.project)} (${l.days}d)`).join('; ')}`);
   if (s.coating.noWash.length) lines.push(`KEEP DRY  ${s.coating.noWash.map((f) => `${car(f.project)} until ${fmtDate(f.date)}`).join('; ')}`);
@@ -143,7 +131,7 @@ export function snapshotText(s: Snapshot, data: Data): string {
   if (s.updates.length) { lines.push('UPDATES'); for (const u of s.updates) lines.push(`  - ${u.project.code}: ${u.update.text}`); }
 
   const tm = s.tomorrow;
-  lines.push('', `NEXT WORKDAY (${fmtDate(s.nextWorkday)})  ${tm.tasks.length} tasks booked${tm.blocked ? `, ${tm.blocked} blocked` : ''}${tm.partsDue.length ? `, ${tm.partsDue.length} deliveries expected` : ''}`);
+  lines.push('', `NEXT WORKDAY (${fmtDate(s.nextWorkday)})  ${tm.tasks.length} tasks booked${tm.blocked ? `, ${tm.blocked} blocked` : ''}`);
   for (const g of tm.gaps) lines.push(`  - Needs cover: ${g.task.title} — ${first(g.mechanic)} is ${ATT_LABEL[g.record.status].toLowerCase()}`);
   return lines.join('\n');
 }
