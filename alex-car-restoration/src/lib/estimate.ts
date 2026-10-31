@@ -34,9 +34,6 @@ export function estimateTotals(e: Estimate): EstimateTotals {
   return { labor, parts, materials, outside, cost, markup, discount: Math.max(0, e.discount), net, vat, total: net + vat, marginPct: net > 0 ? Math.round(((net - cost) / net) * 100) : 0 };
 }
 
-/** Share of the price to ask for up front. */
-export const depositShare = (service: ServiceType, newClient: boolean) => Math.max(SERVICES[service].pricing === 'package' ? 0.5 : 0.3, newClient ? 0.5 : 0);
-
 /** A starting point for a service: one labour line at the shop's usual charge for the usual hours, and a markup. */
 export function defaultEstimate(service: ServiceType, _d: Data, today: string): Estimate {
   const hours = Math.max(2, SERVICES[service].typicalDays * (service === 'restoration' ? 3 : 4));

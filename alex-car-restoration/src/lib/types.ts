@@ -46,10 +46,14 @@ export interface Phase {
   approvedOn?: string;
 }
 
+export type PaymentKind = 'cash' | 'deposit' | 'full' | 'cheque';
+
 export interface Payment {
   id: string;
   date: string;
   amount: number;
+  /** How the money came in: cash, a deposit, full payment, or a cheque. */
+  kind?: PaymentKind;
   note?: string;
 }
 
@@ -153,7 +157,7 @@ export interface Project {
   coating?: CoatingRecord;
   /** Optional real photo of the car, stored as a small data URL. */
   photo?: string;
-  /** Money received from the customer (deposit, progress payments). */
+  /** Money received from the customer. */
   payments: Payment[];
   /** Day the car came into the shop. Falls back to the start date. */
   receivedOn?: string;

@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { CarArt, Card, Icon, Pill, Seg } from '../components/ui';
-import { DEFAULT_CHECKLIST, SOURCES, SOURCE_KEYS, customerStats } from '../lib/crm';
+import { DEFAULT_CHECKLIST, PAYMENT_KINDS, PAYMENT_LABEL, SOURCES, SOURCE_KEYS, customerStats } from '../lib/crm';
 import { addDays, todayIso } from '../lib/dates';
-import { depositShare } from '../lib/estimate';
 import { BAYS, PACKAGES, SERVICES, SERVICE_KEYS, moneyC } from '../lib/logic';
 import { paintHex } from '../lib/paint';
 import { resizeImage } from '../lib/photo';
 import { useStore } from '../lib/store';
-import type { Estimate, LeadSource, ServiceType } from '../lib/types';
+import type { Estimate, LeadSource, PaymentKind, ServiceType } from '../lib/types';
 
 const STEPS = ['Client', 'Car', 'Checklist', 'Job', 'Price', 'Agree'] as const;
 
@@ -48,15 +47,12 @@ export default function Intake() {
   const [price, setPrice] = useState(pre.price ? String(pre.price) : pre.service && (pre.service === 'detailing' || pre.service === 'ceramic') ? '' : '');
   // 6 agree
   const [agreed, setAgreed] = useState(false);
-  const [depositOn, setDepositOn] = useState(false);
-  const [deposit, setDeposit] = useState('');
+  const [payKind, setPayKind] = useState<PaymentKind | ''>('');
+  const [payAmt, setPayAmt] = useState('');
 
   const isPackage = SERVICES[svc].pricing === 'package';
   const customer = data.customers.find((c) => c.id === custId);
   const stats = customer ? customerStats(data, customer) : undefined;
-  const newClient = isNew || stats?.kind === 'new';
-  const share = depositShare(svc, newClient);
-  const suggested = Math.round((Number(price) * share) / 100) * 100;
   const missing = [...(orcr ? [] : ['OR/CR copy']), ...items.filter((i) => !i.present).map((i) => i.label)];
   const clientName = isNew ? nc.name : customer?.name;
 
@@ -87,7 +83,7 @@ export default function Intake() {
     if (isNew) dispatch({ type: 'addCustomer', customer: { id: customerId, name: nc.name.trim(), phone: nc.phone.trim(), email: nc.email.trim(), birthday: nc.birthday || undefined, source: nc.source || undefined } });
     const id = `p${Date.now().toString(36)}`;
     const pkg = isPackage ? packages[pkgIdx] : undefined;
-    const dep = depositOn ? Math.round(Number(deposit) || 0) : 0;
+    const dep = payKind ? Math.round(Number(payAmt) || 0) : 0;
     dispatch({
       type: 'addProject',
       project: {
@@ -95,7 +91,7 @@ export default function Intake() {
         year: Number(car.year), make: car.make.trim(), model: car.model.trim(), color: car.color.trim(), vin: car.vin.trim(), scope,
         priority: 'normal', bay, startDate: start, targetDate: target, budget: Math.round(Number(price)), photo, receivedOn: start,
         intake: { orcr, items, notes: notes.trim() || undefined }, estimate: pre.estimate, status: agreed ? 'active' : 'quote',
-        payments: dep > 0 ? [{ id: `${id}-dep`, date: today, amount: dep, note: 'Deposit' }] : [],
+        payments: dep > 0 && payKind ? [{ id: `${id}-pay`, date: today, amount: dep, kind: payKind }] : [],
       },
     });
     nav(`/projects/${id}`);
@@ -202,9 +198,14 @@ export default function Intake() {
             <div className="stack">
               <h2 className="serif" style={{ fontSize: 26 }}>Agree and start</h2>
               <Seg value={agreed ? 'yes' : 'no'} onChange={(v) => setAgreed(v === 'yes')} options={[{ value: 'yes', label: 'Client agreed: start the job' }, { value: 'no', label: 'Not yet: keep as a quote' }]} />
-              <div className="small muted">Ask for about <b style={{ color: 'var(--ink)' }}>{moneyC(suggested)}</b> up front ({Math.round(share * 100)}%{newClient ? ', new client' : ''}).</div>
-              <label className="chk"><input type="checkbox" checked={depositOn} onChange={(e) => { setDepositOn(e.target.checked); if (e.target.checked && !deposit) setDeposit(String(suggested)); }} />Deposit received now</label>
-              {depositOn && <label className="form" style={{ display: 'block', maxWidth: 240 }}><span className="small muted">Amount (₱)</span><input type="number" min="0" value={deposit} onChange={(e) => setDeposit(e.target.value)} style={{ width: '100%' }} /></label>}
+              <div>
+                <div className="small muted" style={{ marginBottom: 6 }}>Payment received now</div>
+                <div className="seg" role="group" aria-label="Payment">
+                  <button type="button" className={payKind === '' ? 'on' : ''} onClick={() => { setPayKind(''); setPayAmt(''); }}>None yet</button>
+                  {PAYMENT_KINDS.map((k) => <button type="button" key={k} className={payKind === k ? 'on' : ''} onClick={() => { setPayKind(k); if (k === 'full') setPayAmt(price); }}>{PAYMENT_LABEL[k]}</button>)}
+                </div>
+              </div>
+              {payKind && <label className="form" style={{ display: 'block', maxWidth: 240 }}><span className="small muted">Amount (₱)</span><input type="number" min="0" value={payAmt} onChange={(e) => setPayAmt(e.target.value)} style={{ width: '100%' }} /></label>}
               {missing.length > 0 && <div className="small warn">Still missing from the car: {missing.join(', ')}. You can sort that out on the job.</div>}
             </div>
           )}

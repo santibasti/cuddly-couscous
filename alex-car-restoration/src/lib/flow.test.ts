@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { defaultQc, QC_ITEMS, releaseGates, smsText } from './crm';
-import { defaultEstimate, depositShare, estimateTotals } from './estimate';
+import { defaultQc, PAYMENT_KINDS, PAYMENT_LABEL, QC_ITEMS, releaseGates, smsText } from './crm';
+import { defaultEstimate, estimateTotals } from './estimate';
 import { buildSeed } from './seed';
 import { reducer } from './store';
 
@@ -22,12 +22,9 @@ describe('estimate', () => {
     expect(estimateTotals({ ...est, discount: 1e9 }).total).toBe(0);
     expect(estimateTotals({ ...est, labor: [{ label: '', qty: NaN, unit: 5 }], parts: [], materials: [] }).cost).toBe(0);
   });
-  it('starts a service from the team rate and asks more up front from new clients', () => {
+  it('starts a service from the shop\'s usual labour charge', () => {
     const e = defaultEstimate('paint', d, TODAY);
     expect(e.labor[0].unit).toBeGreaterThan(0);
-    expect(depositShare('paint', false)).toBe(0.3);
-    expect(depositShare('paint', true)).toBe(0.5);
-    expect(depositShare('detailing', false)).toBe(0.5);
   });
 });
 
@@ -56,13 +53,25 @@ describe('quality check and release', () => {
   });
 });
 
+describe('payments', () => {
+  it('records how the money came in', () => {
+    let s = d;
+    for (const kind of ['cash', 'deposit', 'full', 'cheque'] as const) s = reducer(s, { type: 'addPayment', projectId: 'p7', date: TODAY, amount: 100, kind });
+    expect(s.projects.find((x) => x.id === 'p7')!.payments.slice(-4).map((x) => x.kind)).toEqual(['cash', 'deposit', 'full', 'cheque']);
+  });
+  it('labels the four kinds', () => {
+    expect(PAYMENT_KINDS.map((k) => PAYMENT_LABEL[k])).toEqual(['Cash', 'Deposit', 'Full pay', 'Cheque']);
+  });
+});
+
 describe('intake and texts', () => {
   it('creates a job with its own id, checklist, photo, estimate and deposit', () => {
     let s = reducer(d, { type: 'addCustomer', customer: { id: 'cx', name: 'Dana Lee', phone: '1', email: '' } });
-    s = reducer(s, { type: 'addProject', project: { id: 'px', service: 'paint', customerId: 'cx', title: 'Respray', year: 2020, make: 'Honda', model: 'City', color: 'Red', vin: '', scope: '', priority: 'normal', bay: 'Unassigned', startDate: TODAY, targetDate: '2026-11-05', budget: 50000, intake: { orcr: true, items: [] }, status: 'active', payments: [{ id: 'x', date: TODAY, amount: 15000, note: 'Deposit' }] } });
+    s = reducer(s, { type: 'addProject', project: { id: 'px', service: 'paint', customerId: 'cx', title: 'Respray', year: 2020, make: 'Honda', model: 'City', color: 'Red', vin: '', scope: '', priority: 'normal', bay: 'Unassigned', startDate: TODAY, targetDate: '2026-11-05', budget: 50000, intake: { orcr: true, items: [] }, status: 'active', payments: [{ id: 'x', date: TODAY, amount: 15000, kind: 'cheque' }] } });
     const p = s.projects.find((x) => x.id === 'px')!;
     expect(p.status).toBe('active');
     expect(p.payments[0].amount).toBe(15000);
+    expect(p.payments[0].kind).toBe('cheque');
     expect(p.intake!.orcr).toBe(true);
     expect(p.code).toMatch(/^ACR-/);
   });

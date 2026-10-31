@@ -1,6 +1,6 @@
 import { addDays, addMonths, diffDays, fmtDate } from './dates';
 import { PHASE_DEFS, SERVICE_KEYS, isOut } from './logic';
-import type { ChecklistItem, Customer, Data, LeadSource, Mechanic, PhaseKey, Project, ServiceType, SmsKind } from './types';
+import type { ChecklistItem, Customer, PaymentKind, Data, LeadSource, Mechanic, PhaseKey, Project, ServiceType, SmsKind } from './types';
 
 export const SOURCES: Record<LeadSource, string> = { organic: 'Organic', ads: 'Ads', sms: 'SMS', social: 'Social media', referral: 'Referral' };
 export const SOURCE_KEYS = Object.keys(SOURCES) as LeadSource[];
@@ -241,3 +241,6 @@ export function releaseGates(p: Project): { ok: boolean; gates: Gate[] } {
 }
 
 export const STARS = ['Poor', 'Not good', 'Okay', 'Good', 'Great'];
+
+export const PAYMENT_KINDS: PaymentKind[] = ['cash', 'deposit', 'full', 'cheque'];
+export const PAYMENT_LABEL: Record<PaymentKind, string> = { cash: 'Cash', deposit: 'Deposit', full: 'Full pay', cheque: 'Cheque' };
