@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import ProjectCard from '../components/ProjectCard';
 import { Bar, Card, Empty, HealthPill, Icon, Seg, ServicePill, carName } from '../components/ui';
 import { fmtDate, todayIso } from '../lib/dates';
-import { SERVICES, SERVICE_KEYS, currentPhase, daysOverdue, moneyC, phaseShort, projectHealth, projectProgress, type Health } from '../lib/logic';
+import { SERVICES, SERVICE_KEYS, currentPhase, daysOverdue, phaseShort, projectHealth, projectProgress, type Health } from '../lib/logic';
 import { useStore } from '../lib/store';
 import type { ServiceType } from '../lib/types';
 
@@ -53,7 +53,7 @@ export default function Projects() {
       ) : (
       <Card flush>
         <table>
-          <thead><tr><th>Project</th><th>Service</th><th>Health</th><th>Phase</th><th style={{ width: 160 }}>Progress</th><th>Blocking / risk</th><th>Target</th><th style={{ width: 110 }}>Price</th></tr></thead>
+          <thead><tr><th>Project</th><th>Service</th><th>Health</th><th>Phase</th><th style={{ width: 160 }}>Progress</th><th>Blocking / risk</th><th>Target</th></tr></thead>
           <tbody>
             {rows.map(({ p, health, reasons }) => {
               const pct = projectProgress(p, data.tasks);
@@ -68,11 +68,10 @@ export default function Projects() {
                   <td><div className="row" style={{ flexWrap: 'nowrap' }}><div className="grow"><Bar value={pct} tone={over ? 'red' : undefined} /></div><span className="small num">{pct}%</span></div></td>
                   <td className="small" style={{ maxWidth: 260 }}>{reasons[0] ?? <span className="muted">—</span>}{reasons.length > 1 && <span className="muted"> +{reasons.length - 1}</span>}</td>
                   <td className={`num ${over ? 'over' : ''}`}>{fmtDate(p.targetDate)}</td>
-                  <td className="num">{moneyC(p.budget)}</td>
                 </tr>
               );
             })}
-            {!rows.length && <tr><td colSpan={8}><Empty>No projects match.</Empty></td></tr>}
+            {!rows.length && <tr><td colSpan={7}><Empty>No projects match.</Empty></td></tr>}
           </tbody>
         </table>
       </Card>

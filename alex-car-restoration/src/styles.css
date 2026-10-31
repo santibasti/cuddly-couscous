@@ -156,7 +156,7 @@ table select:hover,table input:hover{background-color:var(--panel2);border-color
 .phero{position:relative;overflow:hidden;border-radius:20px;border:1px solid var(--line);padding:24px 30px 22px;margin-bottom:16px;background:radial-gradient(90% 120% at 85% 110%,color-mix(in srgb,var(--paint) 38%,transparent),transparent 70%),linear-gradient(135deg,var(--card-a),var(--card-b)),var(--carbon);background-size:auto,auto,28px 28px,28px 28px;background-position:0 0,0 0,0 0,0 0;box-shadow:var(--shadow)}
 .phero .art{position:absolute;right:-20px;bottom:-12px;width:min(48%,560px);opacity:.96;pointer-events:none}
 .phero .txt{position:relative;z-index:1;max-width:52%}.phero h1{font-size:46px}.phero h1 em{font-style:italic;color:var(--accent2)}
-.phero .stats{position:relative;z-index:1;display:grid;grid-template-columns:repeat(4,auto);justify-content:start;margin-top:18px;max-width:56%}
+.phero .stats{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,auto);justify-content:start;margin-top:18px;max-width:56%}
 .phero .stats>div{padding:0 18px;white-space:nowrap;border-left:1px solid var(--line2)}.phero .stats>div:first-child{padding-left:0;border-left:0}
 .phero .sv{font-size:26px;margin:4px 0 2px}
 .stepper{display:grid;grid-template-columns:repeat(9,minmax(86px,1fr));gap:0;overflow-x:auto;padding:6px 0 2px}

@@ -112,7 +112,6 @@ export default function ProjectDetail() {
         </div>
         <div className="stats">
           <div><div className="eyebrow">Progress</div><div className="sv"><span>{pct}%</span></div><div className={`small ${over ? 'over' : 'muted'}`}>{over ? `${over}d past target` : `Target ${fmtDate(p.targetDate)}`}</div></div>
-          {role !== 'leader' && <div><div className="eyebrow">Price</div><div className="sv"><span>{moneyC(p.budget)}</span></div><div className="small muted">{moneyC(collected)} paid</div></div>}
           <div><div className="eyebrow">Hours</div><div className="sv"><span>{tasks.reduce((s, t) => s + t.actualHours, 0)}h</span></div><div className="small muted">of {tasks.reduce((s, t) => s + t.estHours, 0)}h planned</div></div>
           <div><div className="eyebrow">Blocked</div><div className="sv"><span>{blocked.length}</span></div><div className="small muted">task{blocked.length === 1 ? '' : 's'} waiting</div></div>
         </div>

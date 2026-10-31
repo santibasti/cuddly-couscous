@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { fmtDate } from '../lib/dates';
-import { currentPhase, daysOverdue, jobCrew, moneyC, phaseShort, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
+import { currentPhase, daysOverdue, jobCrew, phaseShort, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { paintHex } from '../lib/paint';
 import type { Data, Project } from '../lib/types';
 import Journey from './Journey';
@@ -41,10 +41,6 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
           <div className="row" style={{ gap: 12, flexWrap: 'nowrap' }}>
             <Ring value={pct} tone={over ? 'red' : undefined} />
             <div><div className={`small ${over ? 'over' : ''}`} style={{ fontWeight: 500 }}>{over ? `${over}d overdue` : fmtDate(p.targetDate)}</div><div className="small muted">{cur && p.status === 'active' ? phaseShort(cur.key) : 'Target date'}</div></div>
-          </div>
-          <div style={{ textAlign: 'right', minWidth: 96 }}>
-            <div className="eyebrow">Price</div>
-            <div className="small num" style={{ fontWeight: 600 }}>{moneyC(p.budget)}</div>
           </div>
         </div>
         {crew.length > 0 && (
