@@ -5,7 +5,8 @@ import { useInstall } from './lib/pwa';
 import { Icon } from './components/ui';
 import { todayIso } from './lib/dates';
 import { allBlockers, coverageGaps, partRisk } from './lib/logic';
-import { ROLES, canOpen, useRole, type Role } from './lib/role';
+import { ROLES, canOpen, useRole } from './lib/role';
+import Login from './pages/Login';
 import { checkupsDue, upcomingBirthdays } from './lib/crm';
 import { useStore } from './lib/store';
 import Attendance from './pages/Attendance';
@@ -44,7 +45,7 @@ export default function App() {
     window.addEventListener('acr-update', on);
     return () => window.removeEventListener('acr-update', on);
   }, []);
-  const { role, setRole } = useRole();
+  const { role, account, logout } = useRole();
   const { pathname } = useLocation();
   const today = todayIso();
   const blocked = allBlockers(data).length;
@@ -62,6 +63,7 @@ export default function App() {
     ['/attendance', 'Attendance', 'clock', coverageGaps(data, today).length || undefined],
     ['/parts', 'Parts & sublets', 'box', partsAlert || undefined],
   ];
+  if (!account) return <Login />;
   const allowed = links.filter(([to]) => canOpen(role, to));
   const open = canOpen(role, pathname);
   return (
@@ -72,11 +74,11 @@ export default function App() {
           <NavLink key={to} to={to} end={to === '/'} className="nav"><Icon name={icon} />{label}{n ? <em>{n}</em> : null}</NavLink>
         ))}
         <div className="foot">
-          <label className="small muted" style={{ display: 'block', marginBottom: 8 }}>Viewing as
-            <select value={role} onChange={(e) => setRole(e.target.value as Role)} style={{ width: '100%', marginTop: 4 }}>
-              {(Object.keys(ROLES) as Role[]).map((r) => <option key={r} value={r}>{ROLES[r].label}</option>)}
-            </select>
-          </label>
+          <div className="small" style={{ marginBottom: 8 }}>
+            <div className="muted">Signed in as</div>
+            <b>{account?.name}</b> <span className="muted">· {ROLES[role].label}</span>
+            <div><button className="sm" style={{ marginTop: 6 }} onClick={logout}>Sign out</button></div>
+          </div>
           {(pwa.canPrompt || pwa.iosHint) && (
             <button className="sm primary install" onClick={() => (pwa.canPrompt ? pwa.install() : setShowIosHint(!showIosHint))}><Icon name="plus" size={13} />Install app</button>
           )}
