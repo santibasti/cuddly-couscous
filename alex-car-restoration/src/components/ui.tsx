@@ -246,3 +246,26 @@ export const StripStat = ({ label, value, sub, tone, spark }: { label: string; v
     <div className="small">{sub}</div>
   </div>
 );
+
+/** A big tappable number with an icon, for the first look at a page. */
+export const PulseTile = ({ to, icon, value, label, tone }: { to: string; icon: string; value: ReactNode; label: string; tone?: 'green' | 'amber' | 'red' | 'blue' }) => (
+  <Link to={to} className={`pulse-tile ${tone ?? ''}`}>
+    <span className="pi"><Icon name={icon} size={18} /></span>
+    <span className="pv">{value}</span>
+    <span className="pl">{label}</span>
+  </Link>
+);
+
+/** One bar split by how many jobs are on track, at risk, blocked and late. */
+export function HealthBar({ onTrack, atRisk, blocked, late }: { onTrack: number; atRisk: number; blocked: number; late: number }) {
+  const total = onTrack + atRisk + blocked + late;
+  const seg: [string, number, string][] = [['On track', onTrack, 'var(--green)'], ['At risk', atRisk, 'var(--amber)'], ['Blocked', blocked, 'var(--orange)'], ['Late', late, 'var(--red)']];
+  return (
+    <div className="hbar">
+      <div className="hbar-track" role="img" aria-label={seg.map(([l, n]) => `${n} ${l}`).join(', ')}>
+        {total === 0 ? <i style={{ flex: 1, background: 'var(--line)' }} /> : seg.filter(([, n]) => n > 0).map(([l, n, c]) => <i key={l} style={{ flex: n, background: c }} title={`${l}: ${n}`} />)}
+      </div>
+      <div className="hbar-key">{seg.map(([l, n, c]) => <span key={l} className={n ? '' : 'zero'}><i style={{ background: c }} />{n} {l.toLowerCase()}</span>)}</div>
+    </div>
+  );
+}

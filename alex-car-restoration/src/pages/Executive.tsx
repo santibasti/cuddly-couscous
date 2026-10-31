@@ -3,7 +3,7 @@ import { Columns, Donut } from '../components/charts';
 import { Bar, Card, Empty, HealthPill, Icon, ServicePill, StripStat } from '../components/ui';
 import { fmtDate, todayIso } from '../lib/dates';
 import { byService, costMix, monthlyDeliveries, portfolio, riskRegister, supplierExposure, weeklyHours } from '../lib/exec';
-import { SERVICES, money, moneyC } from '../lib/logic';
+import { money, moneyC } from '../lib/logic';
 import { useStore } from '../lib/store';
 
 export default function Executive() {
@@ -52,13 +52,13 @@ export default function Executive() {
       </Card>
 
       <div className="grid exec-grid mt">
-        <Card title="Profitability by job" flush action={<span className="muted small">Margin is forecast at completion</span>}>
+        <Card title="Profitability by job" flush action={<span className="muted small">Forecast margin</span>}>
           <table className="exec-table" style={{ minWidth: 560 }}>
             <thead><tr><th>Job</th><th>Contract</th><th>Done</th><th>Collected</th><th>Forecast cost</th><th>Margin</th></tr></thead>
             <tbody>
               {pf.jobs.map((j) => (
                 <tr key={j.project.id}>
-                  <td><Link to={`/projects/${j.project.id}`} className="plink"><strong>{j.project.code} · {j.project.make} {j.project.model}</strong><span>{j.project.year} · {j.reasons[0] ?? 'Nothing flagged'}</span></Link><div style={{ marginTop: 4 }}><HealthPill h={j.health} /></div></td>
+                  <td><Link to={`/projects/${j.project.id}`} className="plink"><strong>{j.project.code} · {j.project.make} {j.project.model}</strong><span>{j.reasons[0] ?? j.project.year}</span></Link><div style={{ marginTop: 4 }}><HealthPill h={j.health} /></div></td>
                   <td className="num">{moneyC(j.contract)}</td>
                   <td><div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}><div style={{ width: 54 }}><Bar thin value={j.progress} /></div><span className="small num">{j.progress}%</span></div></td>
                   <td>
@@ -108,13 +108,13 @@ export default function Executive() {
         </Card>
       </div>
 
-      <Card className="mt" title="Earnings by service" flush action={<span className="muted small">Active jobs, forecast at completion</span>}>
+      <Card className="mt" title="Earnings by service" flush action={<span className="muted small">Active jobs</span>}>
         <table className="exec-table" style={{ minWidth: 560 }}>
           <thead><tr><th>Service</th><th>Jobs</th><th style={{ width: '34%' }}>Contract value</th><th>Average job</th><th>Margin</th></tr></thead>
           <tbody>
             {services.map((x) => (
               <tr key={x.service}>
-                <td><ServicePill s={x.service} /><div className="small muted" style={{ marginTop: 4 }}>{SERVICES[x.service].hint}</div></td>
+                <td><ServicePill s={x.service} /></td>
                 <td className="num">{x.jobs}</td>
                 <td><div className="row" style={{ gap: 10, flexWrap: 'nowrap' }}><div className="grow"><Bar thin value={(x.contract / svcMax) * 100} /></div><span className="num small">{moneyC(x.contract)}</span></div></td>
                 <td className="num">{x.jobs ? moneyC(x.avgJob) : '—'}</td>
@@ -126,11 +126,11 @@ export default function Executive() {
       </Card>
 
       <div className="grid g2 mt">
-        <Card title="Deliveries ahead" action={<span className="muted small">Contract value due each month</span>}>
+        <Card title="Deliveries ahead" action={<span className="muted small">Due each month</span>}>
           <Columns data={months.map((m) => ({ label: m.label, value: m.value, tip: `${m.label}: ${m.jobs.length ? m.jobs.join(', ') : 'no deliveries'} · ${money(m.value)}` }))} format={(n) => moneyC(n).replace('₱', '')} unit="" />
           <div className="small muted" style={{ marginTop: 6 }}>Values in ₱. Late jobs are counted in this month. {months.filter((m) => m.jobs.length).map((m) => `${m.label}: ${m.jobs.join(', ')}`).join(' · ')}</div>
         </Card>
-        <Card title="Shop hours" action={<span className="muted small">Clocked vs. available, by week</span>}>
+        <Card title="Shop hours" action={<span className="muted small">Clocked vs available</span>}>
           <Columns data={weeks.map((w) => ({ label: w.label, value: w.worked, muted: w.current, tip: `Week of ${w.label}: ${w.worked}h clocked of ${w.capacity}h available${w.current ? ' (so far)' : ''}` }))} marks={weeks.map((w) => w.capacity)} unit="h" />
           <div className="small muted" style={{ marginTop: 6 }}><i className="swatch" style={{ background: 'var(--accent2)', height: 3, width: 14 }} /> Hours available · this week so far is shown dimmed</div>
         </Card>

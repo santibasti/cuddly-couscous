@@ -47,21 +47,27 @@ export default function Today() {
         <div>
           <div className="eyebrow">Daily snapshot</div>
           <h1>{longDate}</h1>
-          <p>
-            <b>{s.team.clockedIn.length} of {s.team.total}</b> mechanics are in. <b>{s.floor.done} of {s.floor.tasks.length}</b> tasks are done
-            {s.floor.blocked ? <>, and <b>{s.floor.blocked}</b> {s.floor.blocked === 1 ? 'is' : 'are'} blocked</> : ''}.
-            {s.money.payments.length > 0 && <> {moneyC(s.money.total)} was received today.</>}
-            {s.parts.arriving.length + s.parts.arrived.length > 0 && <> {s.parts.arriving.length + s.parts.arrived.length} delivery{s.parts.arriving.length + s.parts.arrived.length > 1 ? 'ies are' : ' is'} due.</>}
-          </p>
+          <div className="crew-today" aria-label="Who is in">
+            {data.mechanics.filter((m) => m.active).map((m) => {
+              const r = attFor(data.attendance, m.id, today);
+              const st = !r ? 'none' : r.status === 'late' ? 'late' : r.timeIn || r.status === 'present' ? 'in' : 'out';
+              return (
+                <span key={m.id} className={`ct ${st}`} title={`${m.name}: ${r ? ATT_LABEL[r.status] : 'not in yet'}`}>
+                  <Avatar m={m} size={38} /><i />
+                  <em>{m.name.split(' ')[0]}</em>
+                </span>
+              );
+            })}
+          </div>
         </div>
         <button className="primary" onClick={copy}><Icon name="check" size={14} />{copied === 'ok' ? 'Copied' : copied === 'fail' ? 'Select the text below' : 'Copy summary'}</button>
       </div>
 
       <Card>
         <div className="strip" style={{ marginTop: 0 }}>
-          <StripStat label="In the shop" value={`${s.team.clockedIn.length}/${s.team.total}`} sub={s.team.notIn.length ? `${s.team.notIn.map((m) => m.name.split(' ')[0]).join(', ')} not in yet` : 'Everyone is in'} />
-          <StripStat label="Tasks today" value={`${s.floor.done}/${s.floor.tasks.length}`} sub={`${s.floor.plannedHours}h planned · ${s.floor.running} running`} />
-          <StripStat label="Blocked" value={s.floor.blocked} tone={s.floor.blocked ? 'orange' : ''} sub="Waiting on parts, vendors or customers" />
+          <StripStat label="In the shop" value={`${s.team.clockedIn.length}/${s.team.total}`} sub={s.team.notIn.length ? `${s.team.notIn.length} not in yet` : 'Everyone is in'} />
+          <StripStat label="Tasks today" value={`${s.floor.done}/${s.floor.tasks.length}`} sub={`${s.floor.running} running`} />
+          <StripStat label="Blocked" value={s.floor.blocked} tone={s.floor.blocked ? 'orange' : ''} sub="Waiting" />
           <StripStat label="Deliveries due" value={s.parts.arriving.length + s.parts.arrived.length} sub={s.parts.overdue.length ? `${s.parts.overdue.length} more overdue` : 'None overdue'} tone={s.parts.overdue.length ? 'amber' : ''} />
           <StripStat label="Received today" value={moneyC(s.money.total)} sub={s.money.payments.length ? `${s.money.payments.length} payment${s.money.payments.length > 1 ? 's' : ''}` : 'No payments'} />
         </div>
@@ -198,9 +204,10 @@ export default function Today() {
         {s.tomorrow.gaps.map((g) => <div key={g.task.id} className="small warn" style={{ marginTop: 8 }}>{g.task.title}: {g.mechanic.name} is {ATT_LABEL[g.record.status].toLowerCase()}. <Link to="/attendance" style={{ color: 'var(--accent2)' }}>Reassign →</Link></div>)}
       </Card>
 
-      <Card className="mt" title="Message-ready summary" action={<span className="muted small">{attention ? `${attention} things need attention` : 'Nothing needs attention'}</span>}>
+      <details className="mt fold">
+        <summary>Message-ready summary <span className="muted small">{attention ? `${attention} need attention` : 'all clear'}</span></summary>
         <pre className="snap-text">{text}</pre>
-      </Card>
+      </details>
     </>
   );
 }
