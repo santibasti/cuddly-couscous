@@ -4,6 +4,7 @@ import { Bar, Card, Empty, HealthPill, Icon, ServicePill, StripStat } from '../c
 import { fmtDate, todayIso } from '../lib/dates';
 import { byService, costMix, monthlyDeliveries, portfolio, riskRegister, supplierExposure, weeklyHours } from '../lib/exec';
 import { money, moneyC } from '../lib/logic';
+import { LABOR_COST_PER_HOUR } from '../lib/rates';
 import { useStore } from '../lib/store';
 
 export default function Executive() {
@@ -52,7 +53,7 @@ export default function Executive() {
       </Card>
 
       <div className="grid exec-grid mt">
-        <Card title="Profitability by job" flush action={<span className="muted small">Forecast margin</span>}>
+        <Card title="Profitability by job" flush action={<span className="muted small">Forecast margin · labour costed at {moneyC(LABOR_COST_PER_HOUR)}/h for everyone</span>}>
           <table className="exec-table" style={{ minWidth: 560 }}>
             <thead><tr><th>Job</th><th>Contract</th><th>Done</th><th>Collected</th><th>Forecast cost</th><th>Margin</th></tr></thead>
             <tbody>

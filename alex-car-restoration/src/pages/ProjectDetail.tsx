@@ -89,7 +89,7 @@ export default function ProjectDetail() {
       <section className="phero rise" style={{ '--paint': paintHex(p) } as React.CSSProperties}>
         {p.photo ? <img className="phero-photo" src={p.photo} alt={carName(p)} /> : <div className="art"><CarArt color={paintHex(p)} car={p} /></div>}
         <div className="txt">
-          <div className="row" style={{ marginBottom: 14 }}><span className="eyebrow">{p.code} · {p.year} · {p.bay}</span><ServicePill s={p.service} /><HealthPill h={health} /></div>
+          <div className="row" style={{ marginBottom: 14 }}><span className="eyebrow">{p.code} · {p.year} · {p.bay}</span><ServicePill s={p.service} /><span className={health === 'at_risk' || health === 'blocked' || health === 'late' ? `blink-pill ${health}` : ''}><HealthPill h={health} /></span></div>
           <h1>{p.make} <em>{p.model}</em></h1>
           <p className="muted" style={{ margin: '12px 0 0' }}>{[p.packageName ?? p.title, p.color, customer ? `${customer.name} (${customer.phone})` : ''].filter(Boolean).join(' · ')}</p>
           {jobCrew(p.id, data).length > 0 && <div className="row" style={{ marginTop: 12, gap: 10 }}><Crew crew={jobCrew(p.id, data)} size={32} max={6} /><span className="small muted">{jobCrew(p.id, data).map((m) => m.name.split(' ')[0]).join(', ')}</span></div>}

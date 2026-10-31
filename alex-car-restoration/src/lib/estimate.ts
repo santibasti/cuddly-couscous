@@ -1,4 +1,5 @@
 import { SERVICES } from './logic';
+import { LABOR_CHARGE_PER_HOUR } from './rates';
 import type { Data, Estimate, EstimateLine, ServiceType } from './types';
 
 export const VAT_RATE = 0.12;
@@ -36,10 +37,8 @@ export function estimateTotals(e: Estimate): EstimateTotals {
 /** Share of the price to ask for up front. */
 export const depositShare = (service: ServiceType, newClient: boolean) => Math.max(SERVICES[service].pricing === 'package' ? 0.5 : 0.3, newClient ? 0.5 : 0);
 
-/** A starting point for a service: one labour line at the team's average rate for the usual hours, and a markup. */
-export function defaultEstimate(service: ServiceType, d: Data, today: string): Estimate {
-  const team = d.mechanics.filter((m) => m.active);
-  const rate = team.length ? Math.round(team.reduce((s, m) => s + m.hourlyRate, 0) / team.length) : 500;
+/** A starting point for a service: one labour line at the shop's usual charge for the usual hours, and a markup. */
+export function defaultEstimate(service: ServiceType, _d: Data, today: string): Estimate {
   const hours = Math.max(2, SERVICES[service].typicalDays * (service === 'restoration' ? 3 : 4));
-  return { labor: [{ label: 'Labour', qty: hours, unit: rate }], parts: [], materials: [], outside: [], markupPct: 30, discount: 0, vat: false, createdOn: today };
+  return { labor: [{ label: 'Labour', qty: hours, unit: LABOR_CHARGE_PER_HOUR }], parts: [], materials: [], outside: [], markupPct: 30, discount: 0, vat: false, createdOn: today };
 }

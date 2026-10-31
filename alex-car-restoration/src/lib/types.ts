@@ -19,7 +19,6 @@ export interface Mechanic {
   name: string;
   specialty: string;
   color: string;
-  hourlyRate: number;
   dailyHours: number;
   active: boolean;
   /** Optional face photo, a small square data URL. */

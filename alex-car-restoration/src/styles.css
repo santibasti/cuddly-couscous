@@ -449,3 +449,17 @@ button.jt-node{cursor:pointer}button.jt-node:hover{background:var(--panel);borde
 .ba-empty{display:grid;place-items:center;height:170px;margin:6px 0;border:2px dashed var(--line2);border-radius:12px;text-align:center;padding:10px}
 .star-btn{background:none;border:0;font-size:26px;line-height:1;color:var(--line2);padding:0 2px;cursor:pointer;transition:transform .12s,color .12s}.star-btn:hover{transform:scale(1.15);background:none}.star-btn.on{color:var(--amber)}
 .stars i{font-style:normal;font-size:18px;color:var(--line2)}.stars i.on{color:var(--amber)}
+
+/* jobs that need attention blink until they are sorted out */
+@keyframes risk-amber{0%,100%{border-color:var(--line)}50%{border-color:var(--amber);box-shadow:0 0 0 3px color-mix(in srgb,var(--amber) 28%,transparent),0 0 28px -4px var(--amber)}}
+@keyframes risk-orange{0%,100%{border-color:var(--line)}50%{border-color:var(--orange);box-shadow:0 0 0 3px color-mix(in srgb,var(--orange) 30%,transparent),0 0 28px -4px var(--orange)}}
+@keyframes risk-red{0%,100%{border-color:var(--line)}50%{border-color:var(--red);box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 32%,transparent),0 0 30px -3px var(--red)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.pcard.urgent.at_risk{animation:risk-amber 2s ease-in-out infinite}
+.pcard.urgent.blocked{animation:risk-orange 1.8s ease-in-out infinite}
+.pcard.urgent.late{animation:risk-red 1.2s ease-in-out infinite}
+.pcard.urgent .tr .pill{animation:blink 1.2s ease-in-out infinite}.pcard.urgent.late .tr .pill{animation-duration:.9s}
+.urgent-tag{display:inline-block;margin-right:8px;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#1a1200;background:var(--amber);animation:blink 1.2s ease-in-out infinite}
+.pcard.blocked .urgent-tag{background:var(--orange);color:#1c0b00}.pcard.late .urgent-tag{background:var(--red);color:#fff}
+.blink-pill{display:inline-flex;animation:blink 1.2s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.pcard.urgent,.pcard.urgent .tr .pill,.urgent-tag,.blink-pill{animation:none!important}.pcard.urgent.at_risk{border-color:var(--amber)}.pcard.urgent.blocked{border-color:var(--orange)}.pcard.urgent.late{border-color:var(--red)}}

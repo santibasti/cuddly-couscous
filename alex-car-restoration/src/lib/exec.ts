@@ -1,6 +1,7 @@
 import { addDays, diffDays, fmtDate, isWeekend, startOfWeek } from './dates';
 import { coverageGaps, daysOverdue, projectCosts, projectHealth, projectProgress, partRisk, isPartIn, taskBlocker, workedHours, type Health } from './logic';
 import { SERVICES, SERVICE_KEYS } from './logic';
+import { LABOR_COST_PER_HOUR } from './rates';
 import type { Data, Project, ServiceType } from './types';
 
 export interface JobFinance {
@@ -36,10 +37,7 @@ export function planIsComplete(p: Project, d: Data): boolean {
 
 /** Labor at actual hours for finished tasks and estimated hours for the rest, plus every part and sublet on the job. */
 export function plannedCost(p: Project, d: Data): number {
-  const team = d.mechanics.filter((m) => m.active);
-  const avg = team.length ? team.reduce((s, m) => s + m.hourlyRate, 0) / team.length : 0;
-  const rate = new Map(d.mechanics.map((m) => [m.id, m.hourlyRate]));
-  const labor = d.tasks.filter((t) => t.projectId === p.id).reduce((s, t) => s + (t.status === 'done' ? t.actualHours : t.estHours) * (t.mechanicId ? (rate.get(t.mechanicId) ?? avg) : avg), 0);
+  const labor = d.tasks.filter((t) => t.projectId === p.id).reduce((s, t) => s + (t.status === 'done' ? t.actualHours : t.estHours) * LABOR_COST_PER_HOUR, 0);
   const parts = d.parts.filter((x) => x.projectId === p.id).reduce((s, x) => s + x.cost, 0);
   return Math.round(labor + parts);
 }

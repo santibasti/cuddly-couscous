@@ -193,7 +193,8 @@ function load(): Data {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const saved = JSON.parse(raw) as Data;
-      return { ...saved, messages: saved.messages ?? [] };
+      // Older saved data kept a pay rate for each mechanic. Drop it.
+      return { ...saved, mechanics: saved.mechanics.map(({ hourlyRate: _gone, ...m }: Mechanic & { hourlyRate?: number }) => m), messages: saved.messages ?? [] };
     }
   } catch {
     /* storage unavailable or corrupt – fall through to seed */
