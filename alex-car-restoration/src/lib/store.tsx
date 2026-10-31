@@ -4,7 +4,7 @@ import { buildPhases, isLateIn, nextProjectCode, OUT_STATUSES, PACKAGES } from '
 import { canEdit } from './role';
 import { buildSeed } from './seed';
 import { DEFAULT_CHECKLIST, defaultQc } from './crm';
-import type { AttendanceStatus, CoatingRecord, Customer, Data, Gatepass, Intake, Mechanic, PhaseKey, PhaseStatus, Project, ProjectStatus, QcRecord, SmsKind, Task, TaskStatus } from './types';
+import type { AttendanceStatus, CoatingRecord, Customer, Data, Gatepass, Intake, Mechanic, PhaseKey, PaymentKind, PhaseStatus, Project, ProjectStatus, QcRecord, SmsKind, Task, TaskStatus } from './types';
 
 const KEY = 'alex-car-restoration:v7';
 
@@ -25,7 +25,7 @@ export type Action =
   | { type: 'clockOut'; mechanicId: string; date: string; time: string }
   | { type: 'setAttendance'; mechanicId: string; date: string; status: AttendanceStatus; timeIn?: string; timeOut?: string; note?: string }
   | { type: 'clearAttendance'; mechanicId: string; date: string }
-  | { type: 'addPayment'; projectId: string; date: string; amount: number; note?: string }
+  | { type: 'addPayment'; projectId: string; date: string; amount: number; kind?: PaymentKind; note?: string }
   | { type: 'removePayment'; projectId: string; id: string }
   | { type: 'addCustomer'; customer: Omit<Customer, 'id'> & { id?: string } }
   | { type: 'updateCustomer'; id: string; patch: Partial<Customer> }
@@ -136,7 +136,7 @@ export function reducer(d: Data, a: Action): Data {
     case 'clearAttendance':
       return { ...d, attendance: d.attendance.filter((r) => !(r.mechanicId === a.mechanicId && r.date === a.date)) };
     case 'addPayment':
-      return { ...d, projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, payments: [...p.payments, { id: uid('pay'), date: a.date, amount: a.amount, note: a.note }] } : p)) };
+      return { ...d, projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, payments: [...p.payments, { id: uid('pay'), date: a.date, amount: a.amount, kind: a.kind, note: a.note }] } : p)) };
     case 'removePayment':
       return { ...d, projects: d.projects.map((p) => (p.id === a.projectId ? { ...p, payments: p.payments.filter((x) => x.id !== a.id) } : p)) };
     case 'addCustomer':

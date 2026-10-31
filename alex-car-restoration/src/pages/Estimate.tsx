@@ -2,9 +2,8 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SmsAction } from '../components/Sms';
 import { Card, Icon, Ring, Seg } from '../components/ui';
-import { customerStats } from '../lib/crm';
 import { fmtDate, todayIso } from '../lib/dates';
-import { defaultEstimate, depositShare, estimateTotals, lineTotal } from '../lib/estimate';
+import { defaultEstimate, estimateTotals, lineTotal } from '../lib/estimate';
 import { PACKAGES, SERVICES, SERVICE_KEYS, moneyC } from '../lib/logic';
 import { useStore } from '../lib/store';
 import type { Estimate, EstimateLine, ServiceType } from '../lib/types';
@@ -30,8 +29,6 @@ export default function EstimatePage() {
   const packages = service === 'detailing' || service === 'ceramic' ? PACKAGES[service] : [];
   const t = useMemo(() => estimateTotals(est), [est]);
   const customer = data.customers.find((c) => c.id === customerId);
-  const newClient = !customer || customerStats(data, customer).kind === 'new';
-  const deposit = Math.round((t.total * depositShare(service, newClient)) / 100) * 100;
 
   function chooseService(next: ServiceType) {
     setService(next);
@@ -103,7 +100,6 @@ export default function EstimatePage() {
               <div className="grow">
                 <div className="eyebrow">Total</div>
                 <div className="serif" style={{ fontSize: 40, lineHeight: 1 }}>{moneyC(t.total)}</div>
-                <div className="small muted">Ask for {moneyC(deposit)} up front ({Math.round(depositShare(service, newClient) * 100)}%)</div>
               </div>
               {!isPackage && t.cost > 0 && <Ring value={Math.max(0, Math.min(100, t.marginPct))} size={78} stroke={7} tone={t.marginPct >= 25 ? 'green' : t.marginPct >= 15 ? 'amber' : 'red'} label={`${t.marginPct}%`} />}
             </div>
@@ -146,7 +142,7 @@ export default function EstimatePage() {
         {t.discount > 0 && <p>Discount: − {moneyC(t.discount)}</p>}
         {t.vat > 0 && <p>VAT 12%: {moneyC(t.vat)}</p>}
         <h2>Total {moneyC(t.total)}</h2>
-        <p>Deposit to start: {moneyC(deposit)}. This estimate is valid for 14 days.</p>
+        <p>This estimate is valid for 14 days.</p>
       </section>
     </>
   );

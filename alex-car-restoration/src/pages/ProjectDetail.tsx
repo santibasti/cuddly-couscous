@@ -6,12 +6,12 @@ import { Avatar, Crew, CarArt, Card, carName, HealthPill, ServicePill, Icon, Pil
 import { paintHex } from '../lib/paint';
 import { resizeImage } from '../lib/photo';
 import { addDays, diffDays, fmtDate, todayIso } from '../lib/dates';
-import { BAYS, PACKAGES, coatingDates, currentPhase, daysOverdue, money, moneyC, phaseLabel, phasePercent, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker, jobCrew } from '../lib/logic';
+import { BAYS, PACKAGES, coatingDates, currentPhase, daysOverdue, money, moneyC, phaseLabel, phasePercent, phaseShort, projectHealth, projectProgress, taskBlocker, jobCrew } from '../lib/logic';
 import { estimateTotals } from '../lib/estimate';
-import { CHECKUP_DAYS, STARS, defaultQc, missingItems, releaseGates } from '../lib/crm';
+import { CHECKUP_DAYS, PAYMENT_KINDS, PAYMENT_LABEL, STARS, defaultQc, missingItems, releaseGates } from '../lib/crm';
 import { ROLES, useRole } from '../lib/role';
 import { useStore } from '../lib/store';
-import type { BlockReason, CoatingRecord, PhaseKey, PhaseStatus, ProjectStatus, SmsKind, TaskStatus } from '../lib/types';
+import type { BlockReason, CoatingRecord, PhaseKey, PaymentKind, PhaseStatus, ProjectStatus, SmsKind, TaskStatus } from '../lib/types';
 
 type Tab = 'work' | 'billing' | 'log';
 const ROLE_NAME = { executive: 'Executive', advisor: 'Service Advisor', leader: 'Team Leader' } as const;
@@ -25,6 +25,8 @@ export default function ProjectDetail() {
   const [score, setScore] = useState(0);
   const [fbNote, setFbNote] = useState('');
   const [why, setWhy] = useState('');
+  const [payKind, setPayKind] = useState<PaymentKind>('cash');
+  const [payAmt, setPayAmt] = useState('');
   const [tab, setTab] = useState<Tab>('work');
   const [note, setNote] = useState('');
   const [photoErr, setPhotoErr] = useState('');
@@ -38,7 +40,6 @@ export default function ProjectDetail() {
   const tasks = data.tasks.filter((t) => t.projectId === p.id).sort((a, b) => a.date.localeCompare(b.date));
   const updates = data.updates.filter((u) => u.projectId === p.id).sort((a, b) => b.date.localeCompare(a.date));
   const pct = projectProgress(p, data.tasks);
-  const costs = projectCosts(p, data.tasks);
   const over = daysOverdue(p, today);
   const collected = p.payments.reduce((x, y) => x + y.amount, 0);
   const earned = Math.round((p.budget * pct) / 100);
@@ -70,10 +71,16 @@ export default function ProjectDetail() {
   function addPayment(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    const amount = Number(f.get('amount'));
+    const amount = Number(payAmt);
     if (!amount) return;
-    dispatch({ type: 'addPayment', projectId: p!.id, date: String(f.get('date')), amount, note: String(f.get('note')).trim() || undefined });
+    dispatch({ type: 'addPayment', projectId: p!.id, date: String(f.get('date')), amount, kind: payKind, note: String(f.get('note')).trim() || undefined });
+    setPayAmt('');
     e.currentTarget.reset();
+  }
+  function chooseKind(k: PaymentKind) {
+    setPayKind(k);
+    // Full pay is the whole balance.
+    if (k === 'full') setPayAmt(String(Math.max(0, p!.budget - collected)));
   }
   return (
     <>
@@ -105,7 +112,7 @@ export default function ProjectDetail() {
         </div>
         <div className="stats">
           <div><div className="eyebrow">Progress</div><div className="sv"><span>{pct}%</span></div><div className={`small ${over ? 'over' : 'muted'}`}>{over ? `${over}d past target` : `Target ${fmtDate(p.targetDate)}`}</div></div>
-          {role !== 'leader' && <div><div className="eyebrow">Spent</div><div className={`sv ${costs.total > p.budget ? 'red' : ''}`}><span>{moneyC(costs.total)}</span></div><div className="small muted">of {moneyC(p.budget)} budget</div></div>}
+          {role !== 'leader' && <div><div className="eyebrow">Price</div><div className="sv"><span>{moneyC(p.budget)}</span></div><div className="small muted">{moneyC(collected)} paid</div></div>}
           <div><div className="eyebrow">Hours</div><div className="sv"><span>{tasks.reduce((s, t) => s + t.actualHours, 0)}h</span></div><div className="small muted">of {tasks.reduce((s, t) => s + t.estHours, 0)}h planned</div></div>
           <div><div className="eyebrow">Blocked</div><div className="sv"><span>{blocked.length}</span></div><div className="small muted">task{blocked.length === 1 ? '' : 's'} waiting</div></div>
         </div>
@@ -385,18 +392,19 @@ export default function ProjectDetail() {
             <div><div className="eyebrow">Earned by progress</div><div className="sv"><span>{money(earned)}</span></div><div className={`small ${earned > collected ? 'warn' : 'muted'}`}>{earned > collected ? `${money(earned - collected)} ready to bill` : 'Paid ahead of the work'}</div></div>
           </div>
           <table>
-            <thead><tr><th>Date</th><th>Note</th><th style={{ textAlign: 'right' }}>Amount</th><th /></tr></thead>
+            <thead><tr><th>Date</th><th>Type</th><th>Note</th><th style={{ textAlign: 'right' }}>Amount</th><th /></tr></thead>
             <tbody>
               {[...p.payments].sort((a, b) => b.date.localeCompare(a.date)).map((x) => (
-                <tr key={x.id}><td className="num">{fmtDate(x.date)}</td><td>{x.note ?? '—'}</td><td className="num" style={{ textAlign: 'right' }}>{money(x.amount)}</td><td><button className="sm ghost" title="Remove payment" onClick={() => dispatch({ type: 'removePayment', projectId: p.id, id: x.id })}>✕</button></td></tr>
+                <tr key={x.id}><td className="num">{fmtDate(x.date)}</td><td>{x.kind ? <Pill tone={x.kind === 'full' ? 'green' : x.kind === 'deposit' ? 'amber' : 'blue'} dot={false}>{PAYMENT_LABEL[x.kind]}</Pill> : <span className="muted">—</span>}</td><td>{x.note ?? '—'}</td><td className="num" style={{ textAlign: 'right' }}>{money(x.amount)}</td><td><button className="sm ghost" title="Remove payment" onClick={() => dispatch({ type: 'removePayment', projectId: p.id, id: x.id })}>✕</button></td></tr>
               ))}
-              {!p.payments.length && <tr><td colSpan={4} className="empty">No payments recorded yet.</td></tr>}
+              {!p.payments.length && <tr><td colSpan={5} className="empty">No payments recorded yet.</td></tr>}
             </tbody>
           </table>
           <form className="row addbar" onSubmit={addPayment}>
-            <input name="amount" type="number" min="1" step="1" placeholder="Amount (₱)" required style={{ width: 150 }} />
+            <div className="seg" role="group" aria-label="Payment type">{PAYMENT_KINDS.map((k) => <button type="button" key={k} className={payKind === k ? 'on' : ''} onClick={() => chooseKind(k)}>{PAYMENT_LABEL[k]}</button>)}</div>
+            <input type="number" min="1" step="1" placeholder="Amount (₱)" required value={payAmt} onChange={(e) => setPayAmt(e.target.value)} style={{ width: 150 }} />
             <input name="date" type="date" defaultValue={today} required />
-            <input name="note" placeholder="Deposit, progress payment…" style={{ flex: 1, minWidth: 180 }} />
+            <input name="note" placeholder={payKind === 'cheque' ? 'Cheque number' : 'Note (optional)'} style={{ flex: 1, minWidth: 160 }} />
             <button className="primary" type="submit">Record payment</button>
           </form>
         </Card>

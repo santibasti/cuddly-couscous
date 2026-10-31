@@ -1,15 +1,14 @@
 import { Link } from 'react-router-dom';
 import { fmtDate } from '../lib/dates';
-import { currentPhase, daysOverdue, jobCrew, moneyC, phaseShort, projectCosts, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
+import { currentPhase, daysOverdue, jobCrew, moneyC, phaseShort, projectHealth, projectProgress, taskBlocker } from '../lib/logic';
 import { paintHex } from '../lib/paint';
 import type { Data, Project } from '../lib/types';
 import Journey from './Journey';
-import { Avatar, Bar, CarArt, HealthPill, Icon, Ring, ServicePill } from './ui';
+import { Avatar, CarArt, HealthPill, Icon, Ring, ServicePill } from './ui';
 
 export default function ProjectCard({ p, data, today }: { p: Project; data: Data; today: string }) {
   const { health, reasons } = projectHealth(p, data, today);
   const pct = projectProgress(p, data.tasks);
-  const cost = projectCosts(p, data.tasks).total;
   const cur = currentPhase(p);
   const customer = data.customers.find((c) => c.id === p.customerId);
   const doing = data.tasks.find((t) => t.projectId === p.id && t.status === 'in_progress');
@@ -44,8 +43,8 @@ export default function ProjectCard({ p, data, today }: { p: Project; data: Data
             <div><div className={`small ${over ? 'over' : ''}`} style={{ fontWeight: 500 }}>{over ? `${over}d overdue` : fmtDate(p.targetDate)}</div><div className="small muted">{cur && p.status === 'active' ? phaseShort(cur.key) : 'Target date'}</div></div>
           </div>
           <div style={{ textAlign: 'right', minWidth: 96 }}>
-            <div className="small num">{moneyC(cost)} <span className="muted">/ {moneyC(p.budget)}</span></div>
-            <Bar thin value={p.budget ? (cost / p.budget) * 100 : 0} tone={cost > p.budget ? 'red' : undefined} />
+            <div className="eyebrow">Price</div>
+            <div className="small num" style={{ fontWeight: 600 }}>{moneyC(p.budget)}</div>
           </div>
         </div>
         {crew.length > 0 && (

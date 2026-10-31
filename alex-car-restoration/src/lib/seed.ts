@@ -269,7 +269,7 @@ export function buildSeed(today = todayIso()): Data {
       color: s.color, vin: s.vin, scope: s.scope, status: s.status ?? 'active', priority: s.priority, bay: s.bay,
       startDate: start, targetDate: target, budget: contract, phases,
       coating: s.coat ? { product: s.coat.product, batch: s.coat.batch, glossBefore: s.coat.glossBefore, glossAfter: s.coat.glossAfter, thicknessMicrons: s.coat.thickness, cureStarted: s.coat.cure === undefined ? undefined : addDays(today, s.coat.cure), handoverDate: s.coat.handover === undefined ? undefined : addDays(today, s.coat.handover), warrantyYears: s.coat.years } : undefined,
-      payments: (PAYMENTS[s.id] ?? []).map(([ago, share, note], i) => ({ id: `${s.id}-pay${i + 1}`, date: addDays(today, -ago), amount: Math.round((contract * share) / 1000) * 1000, note })),
+      payments: (PAYMENTS[s.id] ?? []).map(([ago, share, note], i) => ({ id: `${s.id}-pay${i + 1}`, date: addDays(today, -ago), amount: Math.round((contract * share) / 1000) * 1000, kind: /deposit/i.test(note) ? ('deposit' as const) : /balance/i.test(note) ? ('full' as const) : i % 2 ? ('cheque' as const) : ('cash' as const), note })),
       leadMechanicId: s.tasks.find((t) => t[4] === 'doing')?.[2],
     });
 
@@ -304,7 +304,7 @@ export function buildSeed(today = todayIso()): Data {
       receivedOn: received, releasedOn: released, backjobOf: backOf,
       coating: service === 'ceramic' ? { product: `9H ceramic coating, ${pkg?.warrantyYears ?? 1}-year`, batch: `B${received.slice(2, 4)}-${received.slice(5, 7)}${received.slice(8, 10)}`, glossBefore: 80 + (days % 5), glossAfter: 94 + (late % 3), thicknessMicrons: 120 + ((ago * 7) % 15), cureStarted: addDays(released, -1), handoverDate: released, warrantyYears: pkg?.warrantyYears, maintenanceDone: addMonths(released, 12) <= today } : undefined,
       gatepass: { issuedOn: released, outOn: released, checkupDone: addDays(released, 7) <= today ? addDays(released, 7) : undefined },
-      payments: pesos ? [{ id: `${id}-pay1`, date: received, amount: Math.round(pesos * 0.3), note: 'Deposit' }, { id: `${id}-pay2`, date: released, amount: pesos - Math.round(pesos * 0.3), note: 'Balance on handover' }] : [],
+      payments: pesos ? [{ id: `${id}-pay1`, date: received, amount: Math.round(pesos * 0.3), kind: 'deposit', note: 'Deposit' }, { id: `${id}-pay2`, date: released, amount: pesos - Math.round(pesos * 0.3), kind: 'full', note: 'Balance on handover' }] : [],
     });
   }
   for (const p of projects) {
