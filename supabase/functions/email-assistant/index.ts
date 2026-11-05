@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { syncInbox } from './sync.ts';
 import { suggestReply } from './ai.ts';
+import { sendApprovedReply } from './send.ts';
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 Deno.serve(async req => {
  if (req.method !== 'POST') return Response.json({error:'POST required'},{status:405});
@@ -21,6 +22,11 @@ Deno.serve(async req => {
    if(!updated) return Response.json({error:'Draft status changed'},{status:409});
    await db.from('email_audit').insert({thread_id:thread.id,action:'ai_draft',actor:session.user.id});
    return Response.json({draft});
+  }
+  if(body.action==='send') {
+   if(typeof body.id!=='string') return Response.json({error:'Missing id'},{status:400});
+   if(body.confirm!==true) return Response.json({error:'Explicit approval required'},{status:400});
+   return Response.json(await sendApprovedReply(body.id,session.user.id));
   }
   if(body.action==='save') {
    if(typeof body.id!=='string'||typeof body.content!=='string'||!body.content.trim()||body.content.length>20000) return Response.json({error:'Invalid draft'},{status:400});
