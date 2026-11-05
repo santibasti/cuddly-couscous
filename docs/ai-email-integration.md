@@ -28,6 +28,7 @@
    - OPENAI_EMAIL_MODEL (optional)
    - TOPMOP_EMAIL_POLICY (approved text; include current city-specific rates, safe access rules, commercial assessment rules and Sophia signoff)
    - EMAIL_SEND_ENABLED=false
+   - EMAIL_SYNC_SECRET (long random secret for trusted scheduled sync calls)
 4. Verify roles: owner/ops may access the AI Inbox; other roles must not see email content.
 5. Confirm that Microsoft Graph APIs work and that the app is authorized only for the intended mailbox.
 
@@ -44,7 +45,7 @@
 ## Unattended email monitoring
 The current interface synchronizes messages when an authorized user selects Sync Outlook.
 For continuous operation with the PC off, configure a scheduled secure server-side sync job (or Microsoft Graph change notifications with subscriptions and renewal). Do not reuse an end-user browser session or expose the service-role key.
-The unattended sync job is **not yet implemented or scheduled**.
+The server supports a secret-authenticated sync request, but **the recurring scheduler has not been configured or tested**. Set the request header x-email-sync-secret and body {"action":"sync"} from a trusted scheduler. Do not expose this secret to the browser.
 
 ## Release gate
 - Confirm that the deployed UI and GitHub branch match (uncommitted dashboard features must be reconciled).
