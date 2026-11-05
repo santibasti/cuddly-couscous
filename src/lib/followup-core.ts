@@ -59,12 +59,15 @@ export function clientValue(db: DB, c: Client): ClientValue {
   const jobs = completedJobs(db, c.id);
   const last = jobs[0];
   const site = last ? db.sites.find((s) => s.id === last.site_id) : undefined;
+  // bills from before the system (entered on the client) count as earlier services, already settled
+  const past = c.past_bills ?? []; const pastTotal = round2(sum(past, (b) => b.total)); const pastLast = past.reduce((m, b) => (b.date > m ? b.date : m), '');
+  const jobDate = last ? serviceDate(last) : undefined; const pastIsLatest = !!pastLast && (!jobDate || pastLast > jobDate);
   return {
-    billed: round2(sum(invs.filter((i) => i.status === 'Approved'), (i) => invoiceTotals(i).total)),
-    collected: round2(sum(pays, (p) => p.amount)), whtCredited: round2(sum(pays, (p) => p.wht_amount)),
+    billed: round2(sum(invs.filter((i) => i.status === 'Approved'), (i) => invoiceTotals(i).total) + pastTotal),
+    collected: round2(sum(pays, (p) => p.amount) + pastTotal), whtCredited: round2(sum(pays, (p) => p.wht_amount)),
     outstanding: round2(sum(invs, (i) => invoiceBalance(db, i))),
-    completed: jobs.length, lastJob: last, lastDate: last ? serviceDate(last) : undefined,
-    lastTypeCodes: last?.service_codes ?? [], lastType: last ? serviceNames(db, last.service_codes) : '—',
+    completed: jobs.length + past.length, lastJob: pastIsLatest ? undefined : last, lastDate: pastIsLatest ? pastLast : jobDate,
+    lastTypeCodes: pastIsLatest ? [] : last?.service_codes ?? [], lastType: pastIsLatest ? 'Before this system' : last ? serviceNames(db, last.service_codes) : '—',
     location: (site ? `${site.name} — ${site.address}` : c.address) || '—',
   };
 }

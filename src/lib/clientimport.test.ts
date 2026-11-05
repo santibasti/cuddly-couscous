@@ -37,3 +37,16 @@ describe('client import', () => {
     expect(p.bad).toHaveLength(3); expect(p.clients).toHaveLength(0);
   });
 });
+
+describe('previous bills count towards the client list figures', () => {
+  it('adds them to lifetime billed, collected, completed services and last service', async () => {
+    const { clientValue } = await import('./followup-core');
+    const { seedDB } = await import('./seed');
+    const db = seedDB(); const c = db.clients.find((x) => !db.invoices.some((i) => i.client_id === x.id) && !db.jobs.some((j) => j.client_id === x.id)) ?? db.clients[0];
+    const base = clientValue(db, c);
+    const v = clientValue(db, { ...c, past_bills: [{ id: 'a', date: '2024-09-24', ref: '', total: 7599, items: [], notes: '' }, { id: 'b', date: '2024-10-12', ref: '', total: 4799, items: [], notes: '' }] });
+    expect(v.billed).toBeCloseTo(base.billed + 12398, 2); expect(v.collected).toBeCloseTo(base.collected + 12398, 2); expect(v.completed).toBe(base.completed + 2);
+    expect(v.outstanding).toBe(base.outstanding);
+    if (!base.lastDate || base.lastDate < '2024-10-12') { expect(v.lastDate).toBe('2024-10-12'); expect(v.lastType).toBe('Before this system'); }
+  });
+});
