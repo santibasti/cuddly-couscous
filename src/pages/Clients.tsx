@@ -4,6 +4,7 @@ import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, attempt, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { FollowBadge, IntervalModal } from '@/components/FollowUps';
+import { ClientImport } from '@/components/ClientImport';
 import { exportXlsx } from '@/lib/export';
 import { FINAL_STATES, clientFollow, clientValue, intervalFor, intervalWords, type ClientFollow, type ClientValue } from '@/lib/followup-core';
 import { fmtDate, money, today } from '@/lib/util';
@@ -87,7 +88,7 @@ const inRangeN = (n: number, lo: string, hi: string) => (lo === '' || n >= Numbe
 export default function Clients() {
   const { db, can } = useAuth();
   const nav = useNavigate();
-  const [show, setShow] = useState(false);
+  const [show, setShow] = useState(false); const [imp, setImp] = useState(false);
   const [more, setMore] = useState(false);
   const [iv, setIv] = useState(false);
   const [q, setQ] = useState(EMPTY);
@@ -133,6 +134,7 @@ export default function Clients() {
         { icon: '🔁', label: 'Shown below', value: rows.length, sub: 'match your filters', tone: 'green' },
       ]} title="Clients" sub="Client accounts, service sites, lifetime value and maintenance follow-ups.">
         {admin && <button className="btn" onClick={() => setIv(true)}>Follow-up intervals</button>}
+        {can('clients.edit') && <button className="btn" onClick={() => setImp(true)}>⬆ Import customers</button>}
         {can('clients.edit') && <button className="btn primary" onClick={() => setShow(true)}><Icon name="plus" />New client</button>}
       </PageHead>
       <Card flush>
@@ -178,6 +180,7 @@ export default function Clients() {
         )}
       </Card>
       {show && <ClientForm onClose={() => setShow(false)} />}
+      {imp && <ClientImport onClose={() => setImp(false)} />}
       {iv && <IntervalModal onClose={() => setIv(false)} />}
     </>
   );
