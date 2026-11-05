@@ -6,6 +6,12 @@ export async function sendApprovedReply(threadId:string,actor:string) {
   .eq('id',threadId).eq('status','draft').not('ai_draft','is',null).select('*').maybeSingle();
  if(lockError)throw lockError;
  if(!locked)throw Error('No unsent approved draft available.');
+ // Website forms may come from TopMop itself. Never reply to the form notifier instead of the customer.
+ const mailbox=(Deno.env.get('EMAIL_MAILBOX')||'').toLowerCase();
+ if(!locked.sender_email || locked.sender_email.toLowerCase()===mailbox){
+  await db.from('email_threads').update({status:'needs_review',error_message:'Sender is the company mailbox; customer recipient must be verified'}).eq('id',threadId);
+  throw Error('Recipient needs manual verification before sending');
+ }
  await db.from('email_audit').insert({thread_id:threadId,action:'send_started',actor});
  try{
   // Stop if anyone already replied after this incoming message.
