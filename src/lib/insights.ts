@@ -212,8 +212,9 @@ export interface Kpis {
   gross?: { value: number; margin: number } | 'pending'; pendingJobs: number;
   scheduledMonth: number; confirmedWeek: number; inProgress: number; completedMonth: number; newClients: number; repeatRate: number; repeatOf: number; followUpsWeek: number;
 }
-export function kpis(db: DB, s: Scope): Kpis {
-  const T = s.T; const mS = monthStart(T), mE = monthEnd(T), wS = weekStart(T), wE = addDays(wS, 6);
+/** `period` is the range the dashboard is set to (this month, last month, quarter …); the month / revenue / collections / profit figures follow it, the week and "right now" figures do not. */
+export function kpis(db: DB, s: Scope, period?: [string, string]): Kpis {
+  const T = s.T; const mS = period?.[0] ?? monthStart(T), mE = period?.[1] ?? monthEnd(T), wS = weekStart(T), wE = addDays(wS, 6);
   const jobs = live(db.jobs).filter((j) => s.jobOk(j));
   const k: Kpis = {
     pendingJobs: 0,

@@ -35,6 +35,7 @@ export function revenueByService(invs: Invoice[]): Record<string, number> {
 const PRESETS = [
   ['month', 'This month'], ['last30', 'Last 30 days'], ['lastmonth', 'Last month'], ['quarter', 'This quarter'], ['ytd', 'Year to date'],
 ] as const;
+const PERIOD_WORD: Record<string, string> = { month: 'this month', last30: 'last 30 days', lastmonth: 'last month', quarter: 'this quarter', ytd: 'this year' };
 function presetRange(p: string): [string, string] {
   const t = today();
   if (p === 'last30') return [addDays(t, -29), t];
@@ -67,7 +68,7 @@ export default function Dashboard() {
   const opts = useMemo(() => areaOptions(db), [db]);
   const filters = useMemo<InsightFilters>(() => ({ from, to, branch, service, client, segment, stage, repeat, province, city }), [from, to, branch, service, client, segment, stage, repeat, province, city]);
   const scope = useMemo(() => scopeOf(db, filters, exec, T), [db, filters, exec, T]);
-  const k = useMemo(() => kpis(db, scope), [db, scope]);
+  const k = useMemo(() => kpis(db, scope, range), [db, scope, range]);
   const tr = useMemo(() => trend(db, scope, trendRange), [db, scope, trendRange]);
   const ops = useMemo(() => operationsToday(db, scope), [db, scope]);
   const att = useMemo(() => attention(db, scope, money), [db, scope]);
@@ -263,12 +264,14 @@ export default function Dashboard() {
     </>
   );
 
+  const word = PERIOD_WORD[preset] ?? 'this month';
+  const lbl = (t: string) => t.replace('this month', word);
   const cards: { k: string; v: ReactNode; s?: ReactNode; to?: string; cls?: string; pending?: boolean }[] = [
     ...(exec ? [
       { k: 'Revenue this month', v: moneyShort(k.revenue ?? 0), s: 'Approved invoices, ex-VAT', to: '/finance', cls: 'g-teal' },
       { k: 'Verified collections this month', v: moneyShort(k.collections ?? 0), s: 'Finance-verified payments only', to: '/finance?tab=payments', cls: 'g-green' },
       { k: 'Outstanding receivables', v: moneyShort(k.receivables ?? 0), s: `${moneyShort(k.overdue ?? 0)} overdue`, to: '/finance?tab=receivables', cls: (k.overdue ?? 0) > 0 ? 'g-red' : 'g-blue' },
-      k.gross === 'pending' || !k.gross ? { k: 'Gross profit / margin', v: 'Pending Cost Data', s: k.pendingJobs ? `${k.pendingJobs} completed job(s) still on estimated costs` : 'No completed jobs this month yet', to: '/finance?tab=profit', pending: true, cls: 'g-navy' }
+      k.gross === 'pending' || !k.gross ? { k: 'Gross profit / margin', v: 'Pending Cost Data', s: k.pendingJobs ? `${k.pendingJobs} completed job(s) still on estimated costs` : `No completed jobs ${word} yet`, to: '/finance?tab=profit', pending: true, cls: 'g-navy' }
         : { k: 'Gross profit / margin', v: moneyShort(k.gross.value), s: `Margin ${pct(k.gross.margin)}`, to: '/finance?tab=profit', cls: k.gross.value >= 0 ? 'g-navy' : 'g-red' },
     ] : []),
     { k: 'Confirmed jobs this week', v: k.confirmedWeek, s: 'Scheduled Mon–Sun', to: '/jobs' },
@@ -293,14 +296,14 @@ export default function Dashboard() {
       {showFilters && filterBar}
       {exec && (
         <div className="hero-row">
-          {cards.filter((c) => c.cls?.startsWith('g-')).map((c, i) => <Link key={c.k} to={c.to ?? '/dashboard'} className={`kpi ${c.cls}`} style={{ ['--i' as string]: i }}><span className="kic">{ICON[c.k] ?? '📊'}</span><div className="k">{c.k}</div><div className={`v ${c.pending ? 'pending' : ''}`}>{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
-          <div className="kpi glass ring-tile"><Ring pct={k.gross && k.gross !== 'pending' ? k.gross.margin : 0} color={C.cyan} /><div><div className="k">Gross margin</div><div className="s">{k.gross && k.gross !== 'pending' ? 'Actual costs, this month' : 'Pending Cost Data'}</div></div></div>
+          {cards.filter((c) => c.cls?.startsWith('g-')).map((c, i) => <Link key={c.k} to={c.to ?? '/dashboard'} className={`kpi ${c.cls}`} style={{ ['--i' as string]: i }}><span className="kic">{ICON[c.k] ?? '📊'}</span><div className="k">{lbl(c.k)}</div><div className={`v ${c.pending ? 'pending' : ''}`}>{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
+          <div className="kpi glass ring-tile"><Ring pct={k.gross && k.gross !== 'pending' ? k.gross.margin : 0} color={C.cyan} /><div><div className="k">Gross margin</div><div className="s">{k.gross && k.gross !== 'pending' ? `Actual costs, ${word}` : 'Pending Cost Data'}</div></div></div>
         </div>
       )}
       <div className="exec-grid">
-        {cards.filter((c) => !c.cls?.startsWith('g-')).map((c, i) => <Link key={c.k} to={c.to ?? '/dashboard'} className="kpi glass" style={{ ['--i' as string]: i + 4 }}><span className="kic">{ICON[c.k] ?? '📊'}</span><div className="k">{c.k}</div><div className="v">{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
+        {cards.filter((c) => !c.cls?.startsWith('g-')).map((c, i) => <Link key={c.k} to={c.to ?? '/dashboard'} className="kpi glass" style={{ ['--i' as string]: i + 4 }}><span className="kic">{ICON[c.k] ?? '📊'}</span><div className="k">{lbl(c.k)}</div><div className="v">{c.v}</div>{c.s && <div className="s">{c.s}</div>}</Link>)}
       </div>
-      <p className="small muted" style={{ marginTop: -6 }}>Cards show the current month / week. Client type, status, New/Repeat, service, branch and area filters apply to every number below; the period drives the map and area tables.</p>
+      <p className="small muted" style={{ marginTop: -6 }}>The revenue, collections, profit, jobs completed and new client figures follow the period you pick above; the week, today and receivables figures are always current. Client type, status, New/Repeat, service, branch and area filters apply to every number below; the period drives the map and area tables.</p>
 
       <div className="grid g2" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', marginBottom: 14 }}>
         <Card title="Revenue & collection trend" actions={<select value={trendRange} onChange={(e) => setTrendRange(e.target.value as TrendRange)} aria-label="Trend range"><option value="days">Last 14 days</option><option value="weeks">Last 12 weeks</option><option value="months6">Last 6 months</option><option value="months12">Last 12 months</option></select>}>
@@ -333,7 +336,7 @@ export default function Dashboard() {
             {svcRev.length ? <div className="hbars">{svcRev.slice(0, 5).map((r, i) => <div key={r.name}><div className="row between small"><span>{r.name}</span><b className="mono">{moneyShort(r.value)}</b></div><div className="hbar"><i style={{ width: `${(r.value / svcRev[0].value) * 100}%`, background: i === 0 ? 'linear-gradient(90deg,#0e9aa7,#4ade80)' : 'linear-gradient(90deg,#1d4373,#4cc0ff)' }} /></div></div>)}</div> : <Empty>No billed revenue in this period.</Empty>}
           </Card>
         )}
-        <Card title="Jobs completed this month">
+        <Card title={lbl('Jobs completed this month')}>
           <div className="ring-tile"><Ring pct={k.scheduledMonth ? Math.round((k.completedMonth / k.scheduledMonth) * 100) : 0} color="#4ade80" /><div><div className="v" style={{ fontSize: 22, fontWeight: 750 }}>{k.completedMonth} <span className="muted" style={{ fontSize: 14 }}>of {k.scheduledMonth}</span></div><div className="small muted">scheduled jobs done</div></div></div>
         </Card>
         <Card title="Inventory status" actions={<Link to="/inventory" className="btn sm">Open</Link>}>
