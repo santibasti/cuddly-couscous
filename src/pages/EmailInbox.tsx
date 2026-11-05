@@ -24,13 +24,15 @@ export default function EmailInbox(){
  }
  useEffect(()=>{if(!CLOUD)return;void refresh().catch(e=>setError(String(e)));},[]);
  useEffect(()=>{setBody(current?.ai_draft||'')},[selected,items]);
- async function act(action:'sync'|'suggest'|'save'){
+ async function act(action:'sync'|'suggest'|'save'|'send'){
+  if(action==='send'&&!window.confirm('Send saved reply from info@topmop.ph to '+(current?.sender_email||'')+'?'))return;
   setBusy(true);setNotice('');setError('');
   try{
-   const result=await invoke(action,action==='sync'?{}:action==='save'?{id:selected,content:body}:{id:selected});
+   const result=await invoke(action,action==='sync'?{}:action==='save'?{id:selected,content:body}:action==='send'?{id:selected,confirm:true}:{id:selected});
    if(action==='sync')setNotice('Inbox checked: '+result.checked+'; messages processed: '+result.processed);
    if(action==='suggest')setNotice('AI reply prepared. Review all details before saving.');
    if(action==='save')setNotice('Reply draft saved. Nothing has been sent.');
+   if(action==='send')setNotice('Microsoft accepted the approved reply for sending.');
    await refresh();
   }catch(e){setError(String(e));}finally{setBusy(false);}
  }
@@ -58,7 +60,7 @@ export default function EmailInbox(){
      <button className="btn" disabled={busy||current.status==='sent'} onClick={()=>void act('suggest')}>Generate AI reply</button>
      <label htmlFor="ai-mail-editor"><b>Reply draft</b></label>
      <textarea id="ai-mail-editor" rows={12} value={body} onChange={e=>setBody(e.target.value)} />
-     <div className="row"><button className="btn primary" disabled={busy||!body.trim()||current.status==='sent'} onClick={()=>void act('save')}>Save draft</button><span className="small muted">Email sending not enabled yet</span></div>
+     <div className="row"><button className="btn primary" disabled={busy||!body.trim()||current.status==='sent'} onClick={()=>void act('save')}>Save draft</button><button className="btn" disabled={busy||current.status!=='draft'||body!==current.ai_draft} onClick={()=>void act('send')}>Approve &amp; send</button><span className="small muted">Requires server activation</span></div>
     </div>}
    </Card>
   </div>
