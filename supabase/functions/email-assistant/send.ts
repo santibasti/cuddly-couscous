@@ -8,6 +8,11 @@ export async function sendApprovedReply(threadId:string,actor:string) {
  if(!locked)throw Error('No unsent approved draft available.');
  await db.from('email_audit').insert({thread_id:threadId,action:'send_started',actor});
  try{
+  // Stop if anyone already replied after this incoming message.
+  const sent=await graph('/mailFolders/sentitems/messages?$top=100&$select=conversationId,sentDateTime');
+  if((sent.value||[]).some((x:{conversationId?:string;sentDateTime?:string})=>x.conversationId===locked.conversation_id && x.sentDateTime && x.sentDateTime>locked.received_at)){
+   throw Error('Conversation already has a newer outgoing reply');
+  }
   const draft=await graph('/messages/'+encodeURIComponent(locked.graph_message_id)+'/createReply','POST',{});
   if(!draft?.id)throw Error('Microsoft did not return reply draft ID');
   await db.from('email_threads').update({graph_sent_draft_id:draft.id}).eq('id',threadId);
