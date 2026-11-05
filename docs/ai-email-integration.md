@@ -4,7 +4,7 @@
 
 ## Source
 - UI: src/pages/EmailInbox.tsx, integrated at /email under Sales
-- Database: supabase/migrations/0021_ai_email.sql
+- Database: supabase/migrations/0086_ai_email.sql
 - Edge Function: supabase/functions/email-assistant/
 - Messages are stored in isolated tables, not in OpsPilot's offline synchronization tables.
 
@@ -16,7 +16,7 @@
 5. Test Graph access from a non-production environment before enabling any send capability.
 
 ## Supabase prerequisites
-1. Apply migration 0021 in staging first. Make sure earlier migrations are applied.
+1. Apply migration 0086 in staging first. Make sure earlier migrations are applied.
 2. Deploy the email-assistant Edge Function with JWT verification enabled.
 3. Configure these Supabase Edge Function secrets (never VITE_ or client-side):
    - MS_TENANT_ID
@@ -54,3 +54,6 @@ The server supports a secret-authenticated sync request, but **the recurring sch
 - Merge only after approval, then deploy and monitor.
 
 Do not expose credentials or API keys in GitHub issues, chat, browser code or Vercel client variables.
+
+## Deployment source discrepancy
+The live Supabase project currently has schema migrations through 0085, while this GitHub repository starts from an older application snapshot. The email migration has been moved to 0086 to avoid collision. Do not automatically apply older repository migrations to the live database. Verify alignment before any release.
