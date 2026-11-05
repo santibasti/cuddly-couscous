@@ -28,9 +28,9 @@ Deno.serve(async req => {
   if(body.action==='sync') return jsonReply(await syncInbox());
   if(body.action==='suggest') {
    const {data:thread}=await db.from('email_threads').select('*').eq('id',body.id).single();
-   if(!thread || ['sent','sending'].includes(thread.status)) return jsonReply({error:'Not eligible for draft'},{status:409});
+   if(!thread || !['new','draft'].includes(thread.status)) return jsonReply({error:'Not eligible for draft'},{status:409});
    const draft=await suggestReply(thread.graph_message_id);
-   const {data:updated,error}=await db.from('email_threads').update({ai_draft:draft,status:'draft'}).eq('id',thread.id).in('status',['new','draft','needs_review']).select('id').maybeSingle();
+   const {data:updated,error}=await db.from('email_threads').update({ai_draft:draft,status:'draft'}).eq('id',thread.id).in('status',['new','draft']).select('id').maybeSingle();
    if(error) throw error;
    if(!updated) return jsonReply({error:'Draft status changed'},{status:409});
    await db.from('email_audit').insert({thread_id:thread.id,action:'ai_draft',actor:session.user.id});
