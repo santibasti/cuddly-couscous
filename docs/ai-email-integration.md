@@ -16,7 +16,7 @@
 5. Test Graph access from a non-production environment before enabling any send capability.
 
 ## Supabase prerequisites
-1. Apply migration 0086 in staging first. Make sure earlier migrations are applied.
+1. Apply migrations 0086, 0087, and 0088 in staging first. Make sure earlier migrations are applied.
 2. Deploy the email-assistant Edge Function with JWT verification enabled.
 3. Configure these Supabase Edge Function secrets (never VITE_ or client-side):
    - MS_TENANT_ID
@@ -57,3 +57,11 @@ Do not expose credentials or API keys in GitHub issues, chat, browser code or Ve
 
 ## Deployment source discrepancy
 The live Supabase project currently has schema migrations through 0085, while this GitHub repository starts from an older application snapshot. The email migration has been moved to 0086 to avoid collision. Do not automatically apply older repository migrations to the live database. Verify alignment before any release.
+
+## Staging verification (2026-11-05)
+- Project: ai-email-staging (fvsblabffwhofunmabwp); parent production: ghbumxivporzsalivgyg.
+- Migrations applied in staging: ai_email, ai_email_permissions, ai_email_role_policy (files 0086–0088 in GitHub).
+- email-assistant Edge Function deployed to staging with JWT verification enabled; no Graph credentials configured and EMAIL_SEND_ENABLED not enabled.
+- Synthetic message database insert and rollback passed.
+- Anonymous SQL table access denied; authenticated session without an approved profile returns zero rows.
+- Frontend deployment status and Microsoft integration should still be tested end-to-end; nothing is merged to production.
