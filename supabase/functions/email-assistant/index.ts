@@ -12,6 +12,13 @@ Deno.serve(async req => {
  if(origin&&(!allowed||origin!==allowed))return jsonReply({error:'Origin not allowed'},{status:403});
  if (req.method !== 'POST') return jsonReply({error:'POST required'},{status:405});
  try {
+  const scheduleKey=Deno.env.get('EMAIL_SYNC_SECRET');
+  const receivedKey=req.headers.get('x-email-sync-secret');
+  if(scheduleKey && receivedKey && receivedKey===scheduleKey){
+   const task=await req.json();
+   if(task.action!=='sync')return jsonReply({error:'Scheduled access limited to sync'},{status:403});
+   return jsonReply(await syncInbox());
+  }
   const jwt = (req.headers.get('Authorization') || '').replace('Bearer ','');
   const {data:session,error:authError} = await db.auth.getUser(jwt);
   if (authError || !session.user) return jsonReply({error:'Unauthorized'},{status:401});
