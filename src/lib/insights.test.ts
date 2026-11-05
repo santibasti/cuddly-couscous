@@ -67,3 +67,16 @@ describe('permissions saved before a feature existed', () => {
     expect(permsFor('ops', o).has('jobs.edit')).toBe(false);
   });
 });
+
+describe('migrated bills in the dashboard figures', () => {
+  it('count as revenue and collections in the period they are dated, and drop out under a service filter', () => {
+    const d = seedDB(); const c = d.clients[0];
+    const before = kpis(d, scopeOf(d, wide(), true, T), ['2024-10-01', '2024-10-31']);
+    c.past_bills = [{ id: 'p1', date: '2024-10-12', ref: '', total: 4799, items: [], notes: '' }, { id: 'p2', date: '2024-09-24', ref: '', total: 7599, items: [], notes: '' }];
+    const after = kpis(d, scopeOf(d, wide(), true, T), ['2024-10-01', '2024-10-31']);
+    expect((after.revenue ?? 0) - (before.revenue ?? 0)).toBeCloseTo(4799, 2); expect((after.collections ?? 0) - (before.collections ?? 0)).toBeCloseTo(4799, 2); expect(after.earlier).toBeCloseTo(4799, 2);
+    const t = trend(d, scopeOf(d, wide(), true, T), 'months12'); expect(t.every((p) => p.revenue >= 0)).toBe(true);
+    const f = { ...wide(), service: 'GLASS_EXT' as never };
+    expect(kpis(d, scopeOf(d, f, true, T), ['2024-10-01', '2024-10-31']).earlier).toBe(0);
+  });
+});

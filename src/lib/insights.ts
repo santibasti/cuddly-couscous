@@ -208,7 +208,7 @@ export function areaHighlights(rows: AreaRow[], exec: boolean) {
 
 /* ---------- KPI cards ---------- */
 export interface Kpis {
-  revenue?: number; collections?: number; receivables?: number; overdue?: number;
+  revenue?: number; collections?: number; earlier?: number; receivables?: number; overdue?: number;
   gross?: { value: number; margin: number } | 'pending'; pendingJobs: number;
   scheduledMonth: number; confirmedWeek: number; inProgress: number; completedMonth: number; newClients: number; repeatRate: number; repeatOf: number; followUpsWeek: number;
 }
@@ -230,8 +230,9 @@ export function kpis(db: DB, s: Scope, period?: [string, string]): Kpis {
   k.repeatOf = done.length; k.repeatRate = done.length ? Math.round((done.filter((r) => r.repeat === 'Repeat').length / done.length) * 100) : 0;
   if (s.exec) {
     const invs = live(db.invoices).filter((i) => invOk(db, s, i));
-    k.revenue = round2(sum(invs.filter((i) => inRange(i.issue_date, mS, mE)), (i) => invoiceTotals(i).net));
-    k.collections = round2(sum(live(db.payments).filter((p) => paymentCounts(p) && inRange(p.date, mS, mE) && s.clientIds.has(p.client_id) && (!p.invoice_id || invs.some((i) => i.id === p.invoice_id))), (p) => p.amount));
+    k.earlier = earlierBills(db, s, mS, mE);
+    k.revenue = round2(sum(invs.filter((i) => inRange(i.issue_date, mS, mE)), (i) => invoiceTotals(i).net) + (k.earlier ?? 0));
+    k.collections = round2(sum(live(db.payments).filter((p) => paymentCounts(p) && inRange(p.date, mS, mE) && s.clientIds.has(p.client_id) && (!p.invoice_id || invs.some((i) => i.id === p.invoice_id))), (p) => p.amount) + (k.earlier ?? 0));
     k.receivables = round2(sum(invs, (i) => invoiceBalance(db, i)));
     k.overdue = round2(sum(invs.filter((i) => i.due_date < T), (i) => invoiceBalance(db, i)));
     // gross profit only when every completed job of the month has actual (not estimated) costs
@@ -254,7 +255,7 @@ export function trend(db: DB, s: Scope, range: TrendRange): TrendPoint[] {
   if (!s.exec) return buckets.map((b) => ({ label: b.label, revenue: 0, collections: 0 }));
   const invs = live(db.invoices).filter((i) => invOk(db, s, i)); const ids = new Set(invs.map((i) => i.id));
   const pays = live(db.payments).filter((p) => paymentCounts(p) && s.clientIds.has(p.client_id) && (!p.invoice_id || ids.has(p.invoice_id)));
-  return buckets.map((b) => ({ label: b.label, revenue: round2(sum(invs.filter((i) => inRange(i.issue_date, b.a, b.b)), (i) => invoiceTotals(i).net)), collections: round2(sum(pays.filter((p) => inRange(p.date, b.a, b.b)), (p) => p.amount)) }));
+  return buckets.map((b) => { const old = earlierBills(db, s, b.a, b.b); return { label: b.label, revenue: round2(sum(invs.filter((i) => inRange(i.issue_date, b.a, b.b)), (i) => invoiceTotals(i).net) + old), collections: round2(sum(pays.filter((p) => inRange(p.date, b.a, b.b)), (p) => p.amount) + old) }; });
 }
 
 /* ---------- operations today, attention, growth ---------- */
@@ -269,6 +270,15 @@ export function operationsToday(db: DB, s: Scope) {
     awaitingHandover: live(db.jobs).filter((j) => s.jobOk(j) && j.status === 'In Progress' && !live(db.workflows).some((w) => w.job_id === j.id && w.rep_client_sig)),
     backJobs: live(db.back_jobs).filter((b) => isOpenBackJob(b) && s.clientIds.has(b.client_id)),
   };
+}
+
+/** Bills entered on clients from before the system (migrated history). They count as billed and collected revenue in the period they are dated, for the clients the filters let through.
+ *  They have no service or branch of their own, so a service filter leaves them out. */
+export function earlierBills(db: DB, s: Scope, from: string, to: string): number {
+  if (s.f.service) return 0;
+  let n = 0;
+  for (const c of live(db.clients)) { if (!s.clientIds.has(c.id) || (s.f.branch && c.branch_id !== s.f.branch)) continue; for (const b of c.past_bills ?? []) if (inRange(b.date, from, to)) n += b.total; }
+  return round2(n);
 }
 
 export interface Attention { key: string; label: string; count: number; detail: string; to: string; tone: 'bad' | 'warn' | 'info' }

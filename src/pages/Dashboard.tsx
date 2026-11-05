@@ -33,15 +33,16 @@ export function revenueByService(invs: Invoice[]): Record<string, number> {
 }
 
 const PRESETS = [
-  ['month', 'This month'], ['last30', 'Last 30 days'], ['lastmonth', 'Last month'], ['quarter', 'This quarter'], ['ytd', 'Year to date'],
+  ['month', 'This month'], ['last30', 'Last 30 days'], ['lastmonth', 'Last month'], ['quarter', 'This quarter'], ['ytd', 'Year to date'], ['lastyear', 'Last year'], ['custom', 'Custom dates'],
 ] as const;
-const PERIOD_WORD: Record<string, string> = { month: 'this month', last30: 'last 30 days', lastmonth: 'last month', quarter: 'this quarter', ytd: 'this year' };
+const PERIOD_WORD: Record<string, string> = { month: 'this month', last30: 'last 30 days', lastmonth: 'last month', quarter: 'this quarter', ytd: 'this year', lastyear: 'last year', custom: 'in this range' };
 function presetRange(p: string): [string, string] {
   const t = today();
   if (p === 'last30') return [addDays(t, -29), t];
   if (p === 'lastmonth') { const l = addDays(monthStart(t), -1); return [monthStart(l), monthEnd(l)]; }
   if (p === 'quarter') { const m = Math.floor((+t.slice(5, 7) - 1) / 3) * 3 + 1; const s = `${t.slice(0, 4)}-${String(m).padStart(2, '0')}-01`; return [s, t]; }
   if (p === 'ytd') return [`${t.slice(0, 4)}-01-01`, t];
+  if (p === 'lastyear') return [`${+t.slice(0, 4) - 1}-01-01`, `${+t.slice(0, 4) - 1}-12-31`];
   return [monthStart(t), monthEnd(t)];
 }
 
@@ -254,7 +255,8 @@ export default function Dashboard() {
       <div className="dash-dark">
         {inbox}
         <div className="dash-toolbar no-print">
-          <div className="dash-pills">{PRESETS.map(([k2, l]) => <button key={k2} type="button" className={preset === k2 ? 'on' : ''} onClick={() => { setPreset(k2); setRange(presetRange(k2)); }}>{l}</button>)}</div>
+          <div className="dash-pills">{PRESETS.map(([k2, l]) => <button key={k2} type="button" className={preset === k2 ? 'on' : ''} onClick={() => { setPreset(k2); if (k2 !== 'custom') setRange(presetRange(k2)); }}>{l}</button>)}</div>
+        {preset === 'custom' && <div className="row" style={{ gap: 6, alignItems: 'center' }}><input type="date" aria-label="From" value={from} max={to} onChange={(e) => e.target.value && setRange([e.target.value, to])} /><span className="small muted">to</span><input type="date" aria-label="To" value={to} min={from} onChange={(e) => e.target.value && setRange([from, e.target.value])} /></div>}
           <button type="button" className={`btn sm${showFilters || activeFilters ? ' primary' : ''}`} onClick={() => setShowFilters(!showFilters)}>⚙ Filters{activeFilters ? ` · ${activeFilters}` : ''}</button>
           {anyFilter && <button type="button" className="btn sm" onClick={clear}>Clear</button>}
         </div>
@@ -268,8 +270,8 @@ export default function Dashboard() {
   const lbl = (t: string) => t.replace('this month', word);
   const cards: { k: string; v: ReactNode; s?: ReactNode; to?: string; cls?: string; pending?: boolean }[] = [
     ...(exec ? [
-      { k: 'Revenue this month', v: moneyShort(k.revenue ?? 0), s: 'Approved invoices, ex-VAT', to: '/finance', cls: 'g-teal' },
-      { k: 'Verified collections this month', v: moneyShort(k.collections ?? 0), s: 'Finance-verified payments only', to: '/finance?tab=payments', cls: 'g-green' },
+      { k: 'Revenue this month', v: moneyShort(k.revenue ?? 0), s: k.earlier ? `Invoices ex-VAT + ${moneyShort(k.earlier)} earlier bills` : 'Approved invoices, ex-VAT', to: '/finance', cls: 'g-teal' },
+      { k: 'Verified collections this month', v: moneyShort(k.collections ?? 0), s: k.earlier ? `Verified payments + ${moneyShort(k.earlier)} earlier bills` : 'Finance-verified payments only', to: '/finance?tab=payments', cls: 'g-green' },
       { k: 'Outstanding receivables', v: moneyShort(k.receivables ?? 0), s: `${moneyShort(k.overdue ?? 0)} overdue`, to: '/finance?tab=receivables', cls: (k.overdue ?? 0) > 0 ? 'g-red' : 'g-blue' },
       k.gross === 'pending' || !k.gross ? { k: 'Gross profit / margin', v: 'Pending Cost Data', s: k.pendingJobs ? `${k.pendingJobs} completed job(s) still on estimated costs` : `No completed jobs ${word} yet`, to: '/finance?tab=profit', pending: true, cls: 'g-navy' }
         : { k: 'Gross profit / margin', v: moneyShort(k.gross.value), s: `Margin ${pct(k.gross.margin)}`, to: '/finance?tab=profit', cls: k.gross.value >= 0 ? 'g-navy' : 'g-red' },
@@ -289,7 +291,8 @@ export default function Dashboard() {
       <DashHero name={(user?.name ?? '').replace(/^(mr|ms|mrs)\.?\s+/i, '').split(' ')[0]} exec={exec} k={k} jobsToday={ops.jobs.length} jobsDone={ops.jobs.filter((j) => isDone(j.status)).length} inField={ops.jobs.filter((j) => FIELD_JOB.includes(j.status)).length} can={can} range={`${fmtDate(from)} – ${fmtDate(to)}`} />
       <div className="dash-dark">
       <div className="dash-toolbar no-print">
-        <div className="dash-pills">{PRESETS.map(([k2, l]) => <button key={k2} type="button" className={preset === k2 ? 'on' : ''} onClick={() => { setPreset(k2); setRange(presetRange(k2)); }}>{l}</button>)}</div>
+        <div className="dash-pills">{PRESETS.map(([k2, l]) => <button key={k2} type="button" className={preset === k2 ? 'on' : ''} onClick={() => { setPreset(k2); if (k2 !== 'custom') setRange(presetRange(k2)); }}>{l}</button>)}</div>
+        {preset === 'custom' && <div className="row" style={{ gap: 6, alignItems: 'center' }}><input type="date" aria-label="From" value={from} max={to} onChange={(e) => e.target.value && setRange([e.target.value, to])} /><span className="small muted">to</span><input type="date" aria-label="To" value={to} min={from} onChange={(e) => e.target.value && setRange([from, e.target.value])} /></div>}
         <button type="button" className={`btn sm${showFilters || activeFilters ? ' primary' : ''}`} onClick={() => setShowFilters(!showFilters)}>⚙ Filters{activeFilters ? ` · ${activeFilters}` : ''}</button>
         {anyFilter && <button type="button" className="btn sm" onClick={clear}>Clear</button>}
       </div>

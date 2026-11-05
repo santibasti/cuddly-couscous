@@ -32,7 +32,7 @@ export function EarlierYears() {
         {y.year !== now && <Bar dataKey={`${now} (in the system)`} fill="#4cc0ff" radius={[3, 3, 0, 0]} />}
       </BarChart></ResponsiveContainer></div>
       {y.top.length > 0 && <div className="tbl-wrap" style={{ marginTop: 10 }}><table className="tbl compact"><thead><tr><th>Biggest customers in {y.year}</th><th className="num">Bills</th><th className="num">Billed</th></tr></thead><tbody>{y.top.map((t) => <tr key={t.name}><td>{t.name}</td><td className="num">{t.bills}</td><td className="num">{money(t.total)}</td></tr>)}</tbody></table></div>}
-      <div className="small muted" style={{ marginTop: 8 }}>For comparison only. These are the bills entered on each client from before the system (amounts as billed, which may include VAT). They are not invoices, so they are not in the revenue, collections, Finance, BIR or bookkeeping figures. {y.year !== now ? `"${now} (in the system)" is billed revenue excluding VAT.` : ''}</div>
+      <div className="small muted" style={{ marginTop: 8 }}>These are the bills entered on each client from before the system (amounts as billed, which may include VAT). They count in the dashboard revenue and collections for the period they fall in (pick Last year or Custom dates above), but they are not invoices, so they are not in Finance, the BIR lists or the bookkeeping figures. {y.year !== now ? `"${now} (in the system)" is billed revenue excluding VAT.` : ''}</div>
     </Card>
   );
 }
