@@ -50,3 +50,15 @@ describe('previous bills count towards the client list figures', () => {
     if (!base.lastDate || base.lastDate < '2024-10-12') { expect(v.lastDate).toBe('2024-10-12'); expect(v.lastType).toBe('Before this system'); }
   });
 });
+
+describe('previous years view', () => {
+  it('adds previous bills up by year and month, and keeps them out of system revenue', async () => {
+    const { earlierYears, systemMonths } = await import('./earlier');
+    const mk = (id: string, name: string, bills: [string, number][]) => ({ id, name, past_bills: bills.map(([date, total], i) => ({ id: `${id}${i}`, date, ref: '', total, items: [], notes: '' })) });
+    const clients = [mk('a', 'Tantan Reyes', [['2024-09-24', 7599], ['2024-10-12', 4799]]), mk('b', 'Erik Bal', [['2024-10-05', 10000]]), mk('c', 'Old', [['2023-12-01', 500]]), { ...mk('d', 'Gone', [['2024-10-30', 99999]]), deleted_at: '2025-01-01' }] as never;
+    const ys = earlierYears({ clients });
+    expect(ys.map((y) => y.year)).toEqual([2024, 2023]);
+    const y = ys[0]; expect(y.total).toBe(22398); expect(y.bills).toBe(3); expect(y.clients).toBe(2); expect(y.months[9]).toBe(14799); expect(y.bestMonth).toBe(9); expect(y.top[0].name).toBe('Erik Bal'.length ? 'Tantan Reyes' : '');
+    expect(systemMonths({ invoices: [] }, 2024).every((n) => n === 0)).toBe(true);
+  });
+});

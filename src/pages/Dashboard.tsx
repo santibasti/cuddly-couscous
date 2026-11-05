@@ -14,6 +14,7 @@ import { isOverdue } from '@/lib/actions';
 import GeoInsights from '@/components/GeoInsights';
 import { MaintWidget } from '@/components/maint/MaintWidget';
 import { RatingsWidget } from '@/components/RatingsWidget';
+import { EarlierYears } from '@/components/EarlierYears';
 import { STAGES, areaOptions, attention, growth, kpis, operationsToday, serviceRevenue, scopeOf, trend, type InsightFilters, type TrendRange } from '@/lib/insights';
 import type { DB, Invoice, ServiceCode } from '@/lib/types';
 
@@ -323,6 +324,8 @@ export default function Dashboard() {
           </ul>
         </Card>
       </div>
+
+      {exec && <div style={{ marginBottom: 14 }}><EarlierYears /></div>}
 
       <div className="grid g3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', marginBottom: 14 }}>
         {exec && (
