@@ -5,6 +5,7 @@ import { CLOUD, fetchAuditDetail } from '@/lib/cloud';
 import { useState } from 'react';
 import { live, store, useAuth } from '@/lib/store';
 import { bankDetails } from '@/lib/business';
+import { sendTestSms } from '@/lib/alerts';
 import { Badge, Card, Field, Icon, Modal, PageHead, Tabs, attempt, ask, useObj, toast } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { DEFAULT_ACCESS, PERMISSIONS, ROLE_LABEL } from '@/lib/rbac';
@@ -101,6 +102,7 @@ function Rates({ s }: { s: Settings }) {
         <Field label="Default service disclaimer on quotations" className="full" hint="Leave empty to use the standard wording. Each quotation can still be edited."><textarea rows={6} value={draft.default_disclaimer ?? ''} onChange={(e) => setDraft({ ...draft, default_disclaimer: e.target.value })} placeholder={DEFAULT_DISCLAIMER} /></Field>
         <Field label="Default quotation terms & conditions" className="full"><textarea rows={5} value={draft.default_terms} onChange={(e) => setDraft({ ...draft, default_terms: e.target.value })} /></Field>
       </div></Card>
+      <Card title="Owner alert texts (SMS)"><SmsTest /></Card>
       <Card title="Notifications & reminders"><div className="form-grid">
         <div className="full row">{(['email', 'sms', 'whatsapp'] as const).map((c) => <label key={c} className="check"><input type="checkbox" checked={draft.channels[c]} onChange={(e) => setDraft({ ...draft, channels: { ...draft.channels, [c]: e.target.checked } })} />Queue {c === 'sms' ? 'SMS' : c === 'whatsapp' ? 'WhatsApp' : 'email'} for critical alerts</label>)}</div>
         <div className="full small muted">In-app alerts are always on. Owner alerts (client signed, scope approved, discount requested) go to your phone by SMS (Semaphore) through the send-alerts Edge Function — see supabase/README.md for the 4-step setup.</div>
@@ -306,5 +308,21 @@ export default function Admin() {
       {um && <UserModal initial={um === 'new' ? undefined : um} onClose={() => setUm(null)} />}
       {pwUser && <SetPasswordModal user={pwUser} onClose={() => setPwUser(null)} />}
     </>
+  );
+}
+
+/** Sends a test text through the real alert path: once plain, once with the app link (phone companies sometimes drop texts that contain a link). */
+function SmsTest() {
+  const [busy, setBusy] = useState(false); const [res, setRes] = useState<{ state: string; detail: string } | null>(null);
+  const go = async (link: boolean) => { setBusy(true); setRes({ state: 'waiting', detail: 'Sending…' }); try { setRes(await sendTestSms(link)); } catch (e) { setRes({ state: 'failed', detail: e instanceof Error ? e.message : 'Could not send' }); } finally { setBusy(false); } };
+  return (
+    <div className="stack">
+      <div className="small muted">Alerts such as “Quotation approved” and “Client signed on site” are texted to the alert number. Send a test to see whether it reaches your phone. If the plain one arrives and the one with a link does not, your phone company is blocking links.</div>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn primary" disabled={busy} onClick={() => void go(false)}>Send a plain test text</button>
+        <button className="btn" disabled={busy} onClick={() => void go(true)}>Send a test text with the app link</button>
+      </div>
+      {res && <div className={`alert ${res.state === 'sent' ? 'info' : res.state === 'failed' ? 'warn' : 'info'}`}>{res.state === 'sent' ? '✅ ' : res.state === 'failed' ? '⚠ ' : '⏳ '}{res.detail}</div>}
+    </div>
   );
 }
