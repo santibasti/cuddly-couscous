@@ -53,8 +53,8 @@ export function clientMessage(j: SmsJob): string {
     const who = callName(j.to, j.salutation); const eta = window(j.time, j.etaTo);
     const team = teamText(j.leader, j.crew, crewMax); const veh = j.vehicle ? ` Vehicle: ${j.vehicle}.` : '';
     const body = j.kind === 'day_before'
-      ? `Good day${who ? `, ${who}` : ''}! TopMop Window Cleaning: your service is tomorrow, ${day(j.date)}. ETA ${eta}.`
-      : `Good morning${who ? `, ${who}` : ''}! TopMop Window Cleaning will arrive today. ETA ${eta}.`;
+      ? `Good day${who ? `, ${who}` : ''}! TopMop: your service is tomorrow, ${day(j.date)}. ETA ${eta}.`
+      : `Good morning${who ? `, ${who}` : ''}! TopMop will arrive today. ETA ${eta}.`;
     const tail = `${j.kind === 'day_before' ? ' Please ensure access to the area.' : ''} Automated message, please do not reply here. Questions? Message us on Facebook Messenger. Thank you!`;
     return gsm(`${body}${team ? ` Team: ${team}.` : ''}${veh}${tail}`);
   };
