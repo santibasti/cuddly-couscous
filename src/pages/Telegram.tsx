@@ -71,6 +71,7 @@ export default function Telegram() {
         <div style={{ height: 14 }} />
         <Card title="3 · How the crew uses it" actions={unsorted ? <Link className="btn sm" to="/photos">{unsorted} Unsorted to file →</Link> : undefined}>
           <ul className="small" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+            <li><b>For photos you will use in posts and creatives, send them as a File</b> (paperclip → File), not as a Photo. Telegram shrinks normal photos to about 1280 px; a File arrives at full original quality. Note a File keeps the phone's location data, so remove it before posting publicly.</li>
             <li>Send photos or videos in the group as usual. They go to <b>the job the sender is on today</b> and the bot replies “✅ Saved to JOB-… (Client)”.</li>
             <li>On two or more jobs the same day, the bot asks with buttons which job. One tap files every photo sent just before.</li>
             <li>To choose yourself, put the job number in the caption (<b>JOB-2026-0012 before</b>), or send <b>/job JOB-2026-0012</b> first (good for 30 minutes).</li>

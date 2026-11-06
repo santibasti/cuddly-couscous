@@ -24,16 +24,16 @@ const say = (chat: number, text: string, extra: Record<string, unknown> = {}) =>
 
 interface Msg { message_id: number; date: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string; is_bot?: boolean }; text?: string; caption?: string;
   photo?: { file_id: string; file_unique_id: string; file_size?: number; width: number; height: number }[];
-  video?: { file_id: string; file_unique_id: string; file_size?: number; mime_type?: string; width: number; height: number };
+  video?: { file_id: string; file_unique_id: string; file_size?: number; mime_type?: string; width: number; height: number; thumbnail?: { file_id: string } };
   video_note?: { file_id: string; file_unique_id: string; file_size?: number };
-  document?: { file_id: string; file_unique_id: string; file_size?: number; mime_type?: string }; media_group_id?: string }
-interface Media { fileId: string; uniqueId: string; size?: number; mime: string; media: 'photo' | 'video'; w?: number; h?: number }
+  document?: { file_id: string; file_unique_id: string; file_size?: number; mime_type?: string; thumbnail?: { file_id: string } }; media_group_id?: string }
+interface Media { fileId: string; uniqueId: string; size?: number; mime: string; media: 'photo' | 'video'; w?: number; h?: number; thumbId?: string; original?: boolean }
 
 function mediaOf(m: Msg): Media | null {
-  if (m.photo?.length) { const p = [...m.photo].sort((a, b) => (b.file_size ?? b.width * b.height) - (a.file_size ?? a.width * a.height))[0]; return { fileId: p.file_id, uniqueId: p.file_unique_id, size: p.file_size, mime: 'image/jpeg', media: 'photo', w: p.width, h: p.height }; }
-  if (m.video) return { fileId: m.video.file_id, uniqueId: m.video.file_unique_id, size: m.video.file_size, mime: m.video.mime_type ?? 'video/mp4', media: 'video', w: m.video.width, h: m.video.height };
+  if (m.photo?.length) { const p = [...m.photo].sort((a, b) => (b.file_size ?? b.width * b.height) - (a.file_size ?? a.width * a.height))[0]; const small = m.photo.filter((x) => x.width >= 280).sort((a, b) => a.width - b.width)[0] ?? m.photo[0]; return { fileId: p.file_id, uniqueId: p.file_unique_id, size: p.file_size, mime: 'image/jpeg', media: 'photo', w: p.width, h: p.height, thumbId: small.file_id !== p.file_id ? small.file_id : undefined }; }
+  if (m.video) return { fileId: m.video.file_id, uniqueId: m.video.file_unique_id, size: m.video.file_size, mime: m.video.mime_type ?? 'video/mp4', media: 'video', w: m.video.width, h: m.video.height, thumbId: m.video.thumbnail?.file_id };
   if (m.video_note) return { fileId: m.video_note.file_id, uniqueId: m.video_note.file_unique_id, size: m.video_note.file_size, mime: 'video/mp4', media: 'video' };
-  if (m.document && /^(image|video)\//.test(m.document.mime_type ?? '')) return { fileId: m.document.file_id, uniqueId: m.document.file_unique_id, size: m.document.file_size, mime: m.document.mime_type!, media: m.document.mime_type!.startsWith('video') ? 'video' : 'photo' };
+  if (m.document && /^(image|video)\//.test(m.document.mime_type ?? '')) return { fileId: m.document.file_id, uniqueId: m.document.file_unique_id, size: m.document.file_size, mime: m.document.mime_type!, media: m.document.mime_type!.startsWith('video') ? 'video' : 'photo', thumbId: m.document.thumbnail?.file_id, original: true };
   return null;
 }
 
@@ -57,9 +57,17 @@ async function saveMedia(db: Db, m: Msg, media: Media, emp: string, job: TgJob |
   const path = `${job?.id ?? 'unsorted'}/${id}.${ext}`;
   const up = await db.storage.from('job-photos').upload(path, bytes, { contentType: media.mime, upsert: false });
   if (up.error) throw new Error(up.error.message);
-  const ins = await db.from('job_photos').insert({ id, job_id: job?.id ?? null, client_id: job?.client_id ?? null, path, kind: parsed.kind, caption: parsed.caption, tags: ['telegram'], width: media.w ?? null, height: media.h ?? null,
+  // a small copy for the Photo Library grid (the original stays untouched for creatives)
+  let thumb: string | null = null;
+  if (media.thumbId) {
+    try {
+      const tf = await tg('getFile', { file_id: media.thumbId }); const tr = await fetch(`https://api.telegram.org/file/bot${env('TELEGRAM_BOT_TOKEN')}/${tf.file_path}`);
+      if (tr.ok) { const tp = `${job?.id ?? 'unsorted'}/${id}_t.jpg`; const tu = await db.storage.from('job-photos').upload(tp, new Uint8Array(await tr.arrayBuffer()), { contentType: 'image/jpeg' }); if (!tu.error) thumb = tp; }
+    } catch (e) { console.error(String(e)); }
+  }
+  const ins = await db.from('job_photos').insert({ id, job_id: job?.id ?? null, client_id: job?.client_id ?? null, path, thumb_path: thumb, kind: parsed.kind, caption: parsed.caption, tags: ['telegram'], width: media.w ?? null, height: media.h ?? null,
     taken_at: new Date(m.date * 1000).toISOString(), source: 'telegram', sent_by_employee_id: emp, media: media.media, tg_unique_id: media.uniqueId, size_bytes: bytes.length, uploaded_by: null });
-  if (ins.error) { await db.storage.from('job-photos').remove([path]); if (ins.error.code === '23505') return 'duplicate'; throw new Error(ins.error.message); }
+  if (ins.error) { await db.storage.from('job-photos').remove(thumb ? [path, thumb] : [path]); if (ins.error.code === '23505') return 'duplicate'; throw new Error(ins.error.message); }
   return 'saved';
 }
 
@@ -79,7 +87,7 @@ async function onMessage(db: Db, m: Msg) {
     await db.from('telegram_link_codes').update({ used_at: new Date().toISOString() }).eq('code', c.code);
     return void await say(chat, `✅ Linked, ${firstName(e?.full_name ?? '')}! Photos and videos you send here now go to your job automatically.`, reply);
   }
-  if (/^\/(start|help)\b/i.test(text)) return void await say(chat, 'TopMop photo bot.\n• /link 123456 — join with the code the office gives you (once).\n• Send photos or videos: they go to your job today. Add the job number (e.g. JOB-2026-0012) and Before / After in the caption to choose.\n• /job JOB-2026-0012 — send the next photos to that job.', reply);
+  if (/^\/(start|help)\b/i.test(text)) return void await say(chat, 'TopMop photo bot.\n• For the best quality (for our posts), send photos as a File: tap the paperclip → File, instead of Photo.\n• /link 123456 — join with the code the office gives you (once).\n• Send photos or videos: they go to your job today. Add the job number (e.g. JOB-2026-0012) and Before / After in the caption to choose.\n• /job JOB-2026-0012 — send the next photos to that job.', reply);
 
   const { data: lk } = await db.from('telegram_links').select('employee_id').eq('telegram_user_id', from.id).maybeSingle();
   const media = mediaOf(m);
