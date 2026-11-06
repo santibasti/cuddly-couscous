@@ -42,6 +42,7 @@ export function ClientForm({ initial, onClose }: { initial?: Client; onClose: ()
         <Field label="Company / client name" required className="full"><input {...f.bind('name')} /></Field>
         <Field label="Contact person" required><input {...f.bind('contact_person')} /></Field>
         <Field label="Mobile number"><input {...f.bind('mobile')} placeholder="+63 9XX XXX XXXX" /></Field>
+        <Field label="Call them in texts" hint="Used in the SMS reminders: “Good day, Sir Juan!”. Auto uses a Mr. / Ms. in the name, else just the first name."><select value={f.v.salutation ?? ''} onChange={(e) => f.set('salutation', (e.target.value || undefined) as Client['salutation'])}><option value="">Auto</option><option value="Sir">Sir</option><option value="Mam">Mam</option></select></Field>
         <Field label="Email"><input type="email" {...f.bind('email')} /></Field>
         <Field label="Branch"><select {...f.bind('branch_id')}>{db.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
         <Field label="Client type"><select {...f.bind('type')}>{CLIENT_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>

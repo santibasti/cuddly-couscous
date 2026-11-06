@@ -51,6 +51,7 @@ export interface Client extends Base, GeoFields {
   withholding_notes: string;
   branch_id: string;
   past_bills?: PastBill[]; // bills from before the system started (entered by hand)
+  salutation?: 'Sir' | 'Mam'; // how to address the client in text messages (empty: the title in their name, or just their first name)
   vip?: boolean; vip_note?: string; // VIP client: shown on the Job Order; the note is for the crew ("greet at the lobby" …)
 }
 

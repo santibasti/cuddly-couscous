@@ -36,7 +36,6 @@ Deno.serve(async (req) => {
   const cfg = st?.data?.client_sms as { enabled?: boolean; day_before_time?: string; morning_time?: string } | undefined;
   if (!cfg?.enabled) return Response.json({ sent: 0, note: 'client SMS reminders are off' });
   const dayBeforeAt = cfg.day_before_time || '17:00', morningAt = cfg.morning_time || '07:00';
-  const company = st?.data?.company ?? {};
 
   const manila = new Date(Date.now() + 8 * 3600_000).toISOString(); // Manila wall clock as an ISO string
   const today = manila.slice(0, 10), hhmm = manila.slice(11, 16);
@@ -56,10 +55,13 @@ Deno.serve(async (req) => {
     const { data: done } = await db.from('client_sms_log').select('id').eq('job_id', j.id).eq('kind', kind).eq('service_date', date).maybeSingle();
     if (done) continue;
     const [{ data: site }, { data: client }, { data: jo }] = await Promise.all([
-      db.from('sites').select('name, contact_mobile').eq('id', j.site_id).maybeSingle(), db.from('clients').select('name, mobile').eq('id', j.client_id).maybeSingle(),
+      db.from('sites').select('name, contact_person, contact_mobile').eq('id', j.site_id).maybeSingle(), db.from('clients').select('name, mobile, contact_person, salutation').eq('id', j.client_id).maybeSingle(),
       db.from('job_orders').select('content').eq('job_id', j.id).is('deleted_at', null).order('version', { ascending: false }).limit(1).maybeSingle(),   // the Job Order is the source of the arrival window, team and vehicle
     ]);
-    const to = mobile(site?.contact_mobile) ?? mobile(client?.mobile);
+    const siteMobile = mobile(site?.contact_mobile); const to = siteMobile ?? mobile(client?.mobile);
+    // who the text is addressed to: the site contact when their number is used, otherwise the client's contact. A saved Sir / Mam belongs to the client's own contact.
+    const toName = siteMobile ? (site?.contact_person || client?.contact_person || client?.name) : (client?.contact_person || client?.name);
+    const saved = !siteMobile || !site?.contact_person || site.contact_person === client?.contact_person ? client?.salutation : null;
     const c = (jo?.content ?? {}) as { arrival_from?: string; arrival_to?: string; team?: { leader?: string; crew?: string[] }; vehicle?: { name?: string } };
     let leader = c.team?.leader, crew = c.team?.crew; let vehicle = c.vehicle?.name;
     if (!leader && !crew?.length) {   // no Job Order yet: use the booking itself
@@ -69,7 +71,7 @@ Deno.serve(async (req) => {
       leader = nm(j.leader_id); crew = (j.crew_ids ?? []).map((id: string) => nm(id)).filter(Boolean) as string[];
     }
     if (!vehicle && j.vehicle_id) { const { data: v } = await db.from('assets').select('name').eq('id', j.vehicle_id).maybeSingle(); vehicle = v?.name; }
-    const message = clientMessage({ kind, date, time: c.arrival_from || time, etaTo: c.arrival_to, site: site?.name, leader, crew, vehicle, phone: company.phone });
+    const message = clientMessage({ kind, date, time: c.arrival_from || time, etaTo: c.arrival_to, to: toName, salutation: saved, leader, crew, vehicle });
     const row = { job_id: j.id, kind, service_date: date, to_number: to, message };
     if (!to) { await db.from('client_sms_log').insert({ ...row, error: 'No valid mobile number on the site contact or the client', attempts: 5 }); skipped++; continue; }
     try {
