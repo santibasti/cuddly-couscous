@@ -34,7 +34,11 @@ Deno.serve(async (req) => {
   const to = env('ALERT_SMS_TO').replace(/\s/g, '');
   let sent = 0;
   for (const r of rows ?? []) {
-    const text = gsm(`TopMop: ${r.title}\n${r.body}${r.link ? `\n${APP}/#${r.link}` : ''}`);
+    // Philippine phone companies drop texts that contain a link, so by default the text carries none and stays inside one SMS (160 characters).
+    // Set ALERT_SMS_LINKS=on to add the link again (the test with a link in Admin shows whether your network lets it through).
+    const withLink = (env('ALERT_SMS_LINKS').toLowerCase() === 'on' || r.kind === 'test') && r.link;   // the Admin "test with the app link" always carries it, so you can see whether links get through
+    const full = gsm(`TopMop: ${r.title}\n${r.body}${withLink ? `\n${APP}/#${r.link}` : ''}`);
+    const text = !withLink && full.length > 160 ? `${full.slice(0, 157).trimEnd()}...` : full;
     try {
       if (!env('SEMAPHORE_API_KEY') || !to) throw new Error('SEMAPHORE_API_KEY / ALERT_SMS_TO is not set');
       await semaphore(to, text);
