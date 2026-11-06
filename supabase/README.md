@@ -134,7 +134,7 @@ Needs the same Semaphore account/secrets as the owner alerts (`SEMAPHORE_API_KEY
 2. `supabase functions deploy send-client-reminders --no-verify-jwt`
 3. In the app: Admin → Settings → Notifications & reminders → tick **SMS reminders to clients** and set the two send times, then **Save**.
 
-Each reminder is sent once per job and service date. `client_sms_log` shows what was sent, to which number, and any error (for example a client with no valid mobile number).
+The text gives the day, the arrival time (ETA = the Job Order's arrival window), the team's first names and the vehicle, ends with "Automated message, please do not reply here" and the company phone, and carries no link (phone companies drop texts with links). It is about 235 to 245 characters, so 2 SMS credits each; the team list shortens itself so it never runs past 2 SMS. Each reminder is sent once per job and service date. `client_sms_log` shows what was sent, to which number, and any error (for example a client with no valid mobile number).
 
 ## Facebook Page AI assistant (replies to customers, saves leads)
 

@@ -3,11 +3,11 @@
 // Secrets: SEMAPHORE_API_KEY (required), SEMAPHORE_SENDER (optional approved sender name), WEBHOOK_SECRET (optional, header x-webhook-secret).
 // Each reminder is sent once per job and service date (client_sms_log), so running often is safe. Times are Asia/Manila.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { clientMessage } from './message.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const LIVE = ['Confirmed', 'Dispatch Checklist Pending', 'Dispatched'];
 
-const gsm = (s: string) => s.replace(/₱\s?/g, 'PHP ').replace(/[—–]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[^\x20-\x7E\n]/g, '');
 /** 09171234567 / +639171234567 / 9171234567 → 09171234567; anything else is not a Philippine mobile number. */
 function mobile(raw?: string | null): string | null {
   const d = (raw ?? '').replace(/\D/g, '');
@@ -16,9 +16,6 @@ function mobile(raw?: string | null): string | null {
   if (/^9\d{9}$/.test(d)) return '0' + d;
   return null;
 }
-const nice = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
-const dayName = (ymd: string) => new Date(ymd + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-
 async function semaphore(to: string, message: string) {
   const body = new URLSearchParams({ apikey: env('SEMAPHORE_API_KEY'), number: to, message });
   if (env('SEMAPHORE_SENDER')) body.set('sendername', env('SEMAPHORE_SENDER'));
@@ -46,7 +43,7 @@ Deno.serve(async (req) => {
   const tomorrow = new Date(Date.parse(today + 'T00:00:00Z') + 86400_000).toISOString().slice(0, 10);
 
   const dayAfter = new Date(Date.parse(tomorrow + 'T00:00:00Z') + 86400_000).toISOString().slice(0, 10);
-  const { data: jobs, error } = await db.from('jobs').select('id, number, start_at, status, client_id, site_id').is('deleted_at', null).in('status', LIVE)
+  const { data: jobs, error } = await db.from('jobs').select('id, number, start_at, status, client_id, site_id, leader_id, crew_ids, vehicle_id').is('deleted_at', null).in('status', LIVE)
     .gte('start_at', today + 'T00:00').lt('start_at', dayAfter + 'T00:00');
   if (error) return new Response(error.message, { status: 500 });
   let sent = 0, skipped = 0;
@@ -58,11 +55,21 @@ Deno.serve(async (req) => {
     if (!kind) continue;
     const { data: done } = await db.from('client_sms_log').select('id').eq('job_id', j.id).eq('kind', kind).eq('service_date', date).maybeSingle();
     if (done) continue;
-    const [{ data: site }, { data: client }] = await Promise.all([db.from('sites').select('name, contact_mobile').eq('id', j.site_id).maybeSingle(), db.from('clients').select('name, mobile').eq('id', j.client_id).maybeSingle()]);
+    const [{ data: site }, { data: client }, { data: jo }] = await Promise.all([
+      db.from('sites').select('name, contact_mobile').eq('id', j.site_id).maybeSingle(), db.from('clients').select('name, mobile').eq('id', j.client_id).maybeSingle(),
+      db.from('job_orders').select('content').eq('job_id', j.id).is('deleted_at', null).order('version', { ascending: false }).limit(1).maybeSingle(),   // the Job Order is the source of the arrival window, team and vehicle
+    ]);
     const to = mobile(site?.contact_mobile) ?? mobile(client?.mobile);
-    const message = gsm(kind === 'day_before'
-      ? `TopMop Window Cleaning: reminder - your service${site?.name ? ` at ${site.name}` : ''} is scheduled tomorrow, ${dayName(date)}, around ${nice(time)}. Please make sure we can access the area. Questions? ${company.phone ?? ''}`.trim()
-      : `TopMop Window Cleaning: good morning! Our team is scheduled today${site?.name ? ` at ${site.name}` : ''} around ${nice(time)}. Questions? ${company.phone ?? ''}`.trim());
+    const c = (jo?.content ?? {}) as { arrival_from?: string; arrival_to?: string; team?: { leader?: string; crew?: string[] }; vehicle?: { name?: string } };
+    let leader = c.team?.leader, crew = c.team?.crew; let vehicle = c.vehicle?.name;
+    if (!leader && !crew?.length) {   // no Job Order yet: use the booking itself
+      const ids = [j.leader_id, ...(j.crew_ids ?? [])].filter(Boolean) as string[];
+      const { data: emps } = ids.length ? await db.from('employees').select('id, full_name').in('id', ids) : { data: [] };
+      const nm = (id?: string | null) => (emps ?? []).find((e: { id: string }) => e.id === id)?.full_name as string | undefined;
+      leader = nm(j.leader_id); crew = (j.crew_ids ?? []).map((id: string) => nm(id)).filter(Boolean) as string[];
+    }
+    if (!vehicle && j.vehicle_id) { const { data: v } = await db.from('assets').select('name').eq('id', j.vehicle_id).maybeSingle(); vehicle = v?.name; }
+    const message = clientMessage({ kind, date, time: c.arrival_from || time, etaTo: c.arrival_to, site: site?.name, leader, crew, vehicle, phone: company.phone });
     const row = { job_id: j.id, kind, service_date: date, to_number: to, message };
     if (!to) { await db.from('client_sms_log').insert({ ...row, error: 'No valid mobile number on the site contact or the client', attempts: 5 }); skipped++; continue; }
     try {
