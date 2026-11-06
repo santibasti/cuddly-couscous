@@ -311,16 +311,15 @@ export default function Admin() {
   );
 }
 
-/** Sends a test text through the real alert path: once plain, once with the app link (phone companies sometimes drop texts that contain a link). */
+/** Sends a test text through the real alert path. */
 function SmsTest() {
   const [busy, setBusy] = useState(false); const [res, setRes] = useState<{ state: string; detail: string } | null>(null);
   const go = async (link: boolean) => { setBusy(true); setRes({ state: 'waiting', detail: 'Sending…' }); try { setRes(await sendTestSms(link)); } catch (e) { setRes({ state: 'failed', detail: e instanceof Error ? e.message : 'Could not send' }); } finally { setBusy(false); } };
   return (
     <div className="stack">
-      <div className="small muted">Alerts such as “Quotation approved” and “Client signed on site” are texted to the alert number. Send a test to see whether it reaches your phone. If the plain one arrives and the one with a link does not, your phone company is blocking links.</div>
+      <div className="small muted">Alerts such as “Quotation approved” and “Client signed on site” are texted to the alert number. Send a test to see whether it reaches your phone. The texts never contain a link, because phone companies drop them.</div>
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
         <button className="btn primary" disabled={busy} onClick={() => void go(false)}>Send a plain test text</button>
-        <button className="btn" disabled={busy} onClick={() => void go(true)}>Send a test text with the app link</button>
       </div>
       {res && <div className={`alert ${res.state === 'sent' ? 'info' : res.state === 'failed' ? 'warn' : 'info'}`}>{res.state === 'sent' ? '✅ ' : res.state === 'failed' ? '⚠ ' : '⏳ '}{res.detail}</div>}
     </div>

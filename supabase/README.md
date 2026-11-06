@@ -113,7 +113,7 @@ The database records these events itself (migrations `0044`/`0045`, table `alert
 3. `supabase functions deploy send-alerts --no-verify-jwt`
 4. The database calls `send-alerts` itself (migration `0046`) and, from migration `0088`, sends the secret in the `x-webhook-secret` header. See **Protecting the SMS functions** below: do not skip it.
 
-Messages use plain letters ("PHP 12,117.28") and carry no link (Philippine phone companies often drop texts with links), so each stays within 160 characters = 1 SMS credit. To add the link again set `ALERT_SMS_LINKS=on`. Failed sends are kept in `alert_outbox` (`error`, `attempts`) and retried the next time the function runs.
+Messages use plain letters ("PHP 12,117.28") and carry no link (Philippine phone companies often drop texts with links), so each stays within 160 characters = 1 SMS credit.  There is no setting to add a link. Failed sends are kept in `alert_outbox` (`error`, `attempts`) and retried the next time the function runs.
 
 ### Protecting the SMS functions (do this once, after `supabase.cmd db push` has applied `0088`)
 

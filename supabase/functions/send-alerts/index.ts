@@ -8,7 +8,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
-const APP = env('APP_URL') || 'https://cuddly-couscous-one.vercel.app';
 
 /** Plain SMS letters only: the peso sign and long dashes would turn the message into Unicode (70 characters per SMS instead of 160). */
 const gsm = (s: string) => s.replace(/₱\s?/g, 'PHP ').replace(/[—–]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[^\x20-\x7E\n]/g, '');
@@ -34,11 +33,9 @@ Deno.serve(async (req) => {
   const to = env('ALERT_SMS_TO').replace(/\s/g, '');
   let sent = 0;
   for (const r of rows ?? []) {
-    // Philippine phone companies drop texts that contain a link, so by default the text carries none and stays inside one SMS (160 characters).
-    // Set ALERT_SMS_LINKS=on to add the link again (the test with a link in Admin shows whether your network lets it through).
-    const withLink = (env('ALERT_SMS_LINKS').toLowerCase() === 'on' || r.kind === 'test') && r.link;   // the Admin "test with the app link" always carries it, so you can see whether links get through
-    const full = gsm(`TopMop: ${r.title}\n${r.body}${withLink ? `\n${APP}/#${r.link}` : ''}`);
-    const text = !withLink && full.length > 160 ? `${full.slice(0, 157).trimEnd()}...` : full;
+    // No link in any alert text: Philippine phone companies drop texts that contain one. The text is kept inside one SMS (160 characters).
+    const full = gsm(`TopMop: ${r.title}\n${r.body}`);
+    const text = full.length > 160 ? `${full.slice(0, 157).trimEnd()}...` : full;
     try {
       if (!env('SEMAPHORE_API_KEY') || !to) throw new Error('SEMAPHORE_API_KEY / ALERT_SMS_TO is not set');
       await semaphore(to, text);
