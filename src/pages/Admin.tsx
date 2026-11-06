@@ -5,7 +5,6 @@ import { CLOUD, fetchAuditDetail } from '@/lib/cloud';
 import { useState } from 'react';
 import { live, store, useAuth } from '@/lib/store';
 import { bankDetails } from '@/lib/business';
-import { sendSampleReminder, sendTestSms } from '@/lib/alerts';
 import { Badge, Card, Field, Icon, Modal, PageHead, Tabs, attempt, ask, useObj, toast } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { DEFAULT_ACCESS, PERMISSIONS, ROLE_LABEL } from '@/lib/rbac';
@@ -78,7 +77,7 @@ function Rates({ s }: { s: Settings }) {
   const [readingSite, setReadingSite] = useState(false);
   const setM = (k: keyof Settings['multipliers'], v: number) => setDraft({ ...draft, multipliers: { ...draft.multipliers, [k]: v } });
   const setStat = (i: number, patch: Partial<StatutoryRate>) => setDraft({ ...draft, statutory: draft.statutory.map((r, k) => (k === i ? { ...r, ...patch } : r)) });
-  const save = () => attempt(() => { store.require('admin.settings'); store.patchSettings({ pay_by_day: draft.pay_by_day, auto_approve_attendance: draft.auto_approve_attendance, vat_rate: draft.vat_rate, multipliers: draft.multipliers, statutory: draft.statutory, std_hours_per_day: draft.std_hours_per_day, monthly_divisor_days: draft.monthly_divisor_days, grace_minutes: draft.grace_minutes, payment_terms_days: draft.payment_terms_days, quote_validity_days: draft.quote_validity_days, glass_group_size: draft.glass_group_size, channels: draft.channels, client_sms: draft.client_sms, fb_ai: draft.fb_ai, marketing: draft.marketing, reminder_days: draft.reminder_days, default_terms: draft.default_terms, default_crew_size: draft.default_crew_size, default_disclaimer: draft.default_disclaimer, default_intro: draft.default_intro, default_methodology: draft.default_methodology, company: draft.company, ...(draft.bir?.rdo !== store.getDB().settings.bir?.rdo ? { bir: { ...(store.getDB().settings.bir ?? {}), rdo: draft.bir?.rdo } } : {}) }, 'Updated payroll, tax and system settings'); }, 'Settings saved');
+  const save = () => attempt(() => { store.require('admin.settings'); store.patchSettings({ pay_by_day: draft.pay_by_day, auto_approve_attendance: draft.auto_approve_attendance, vat_rate: draft.vat_rate, multipliers: draft.multipliers, statutory: draft.statutory, std_hours_per_day: draft.std_hours_per_day, monthly_divisor_days: draft.monthly_divisor_days, grace_minutes: draft.grace_minutes, payment_terms_days: draft.payment_terms_days, quote_validity_days: draft.quote_validity_days, glass_group_size: draft.glass_group_size, channels: draft.channels, fb_ai: draft.fb_ai, marketing: draft.marketing, reminder_days: draft.reminder_days, default_terms: draft.default_terms, default_crew_size: draft.default_crew_size, default_disclaimer: draft.default_disclaimer, default_intro: draft.default_intro, default_methodology: draft.default_methodology, company: draft.company, ...(draft.bir?.rdo !== store.getDB().settings.bir?.rdo ? { bir: { ...(store.getDB().settings.bir ?? {}), rdo: draft.bir?.rdo } } : {}) }, 'Updated payroll, tax and system settings'); }, 'Settings saved');
   const n = (v: number, fn: (x: number) => void, label: string, step = 'any') => <Field label={label}><input type="number" step={step} value={v} onChange={(e) => fn(+e.target.value)} /></Field>;
   return (
     <div className="stack">
@@ -102,7 +101,6 @@ function Rates({ s }: { s: Settings }) {
         <Field label="Default service disclaimer on quotations" className="full" hint="Leave empty to use the standard wording. Each quotation can still be edited."><textarea rows={6} value={draft.default_disclaimer ?? ''} onChange={(e) => setDraft({ ...draft, default_disclaimer: e.target.value })} placeholder={DEFAULT_DISCLAIMER} /></Field>
         <Field label="Default quotation terms & conditions" className="full"><textarea rows={5} value={draft.default_terms} onChange={(e) => setDraft({ ...draft, default_terms: e.target.value })} /></Field>
       </div></Card>
-      <Card title="Owner alert texts (SMS)"><SmsTest /></Card>
       <Card title="Notifications & reminders"><div className="form-grid">
         <div className="full row">{(['email', 'sms', 'whatsapp'] as const).map((c) => <label key={c} className="check"><input type="checkbox" checked={draft.channels[c]} onChange={(e) => setDraft({ ...draft, channels: { ...draft.channels, [c]: e.target.checked } })} />Queue {c === 'sms' ? 'SMS' : c === 'whatsapp' ? 'WhatsApp' : 'email'} for critical alerts</label>)}</div>
         <div className="full small muted">In-app alerts are always on. Owner alerts (client signed, scope approved, discount requested) go to your phone by SMS (Semaphore) through the send-alerts Edge Function — see supabase/README.md for the 4-step setup.</div>
@@ -143,14 +141,7 @@ function Rates({ s }: { s: Settings }) {
             <Field label="Voice and rules (optional)" className="full"><textarea rows={3} value={draft.marketing?.voice ?? ''} onChange={(e) => setDraft({ ...draft, marketing: { ...MKT_DEFAULT, ...draft.marketing, voice: e.target.value } })} placeholder="e.g. Friendly Taglish, always mention free ocular visits, never post about competitors." /></Field>
           </div>
         </div>
-        <div className="full card" style={{ padding: 12 }}>
-          <label className="check"><input type="checkbox" checked={!!draft.client_sms?.enabled} onChange={(e) => setDraft({ ...draft, client_sms: { day_before_time: '17:00', morning_time: '07:00', ...draft.client_sms, enabled: e.target.checked } })} /><b>SMS reminders to clients</b> — before every confirmed service</label>
-          <div className="small muted" style={{ margin: '4px 0 8px' }}>The client receives a text the day before and again on the morning of the service. It greets the client by name (Sir / Mam, from a Mr. / Ms. in their name or the "Call them in texts" choice on the client), gives the arrival time (ETA) from the Job Order, the team's first names and the vehicle, says not to reply to that number, and points to Facebook Messenger for questions. It goes to the site contact's mobile number (or the client's mobile if the site has none). Each text is about 2 SMS, so it uses about 2 Semaphore credits (4 per job for both). The Job Order must exist for the team and vehicle shown on it; without one the booking's own team and vehicle are used.</div>
-          <div className="form-grid">
-            <Field label="Day before — send at"><input type="time" value={draft.client_sms?.day_before_time ?? '17:00'} onChange={(e) => setDraft({ ...draft, client_sms: { enabled: !!draft.client_sms?.enabled, morning_time: '07:00', ...draft.client_sms, day_before_time: e.target.value } })} /></Field>
-            <Field label="Service day — send at"><input type="time" value={draft.client_sms?.morning_time ?? '07:00'} onChange={(e) => setDraft({ ...draft, client_sms: { enabled: !!draft.client_sms?.enabled, day_before_time: '17:00', ...draft.client_sms, morning_time: e.target.value } })} /></Field>
-          </div>
-        </div>
+        <div className="full small muted">Text messages (client reminders and owner alerts) now have their own page: <a href="#/sms"><b>SMS</b></a> in the menu.</div>
         {(['quote_expiry', 'doc_expiry', 'chemical_expiry', 'invoice_due', 'maintenance'] as const).map((k) => n(draft.reminder_days[k], (v) => setDraft({ ...draft, reminder_days: { ...draft.reminder_days, [k]: v } }), `${{ quote_expiry: 'Quotation expiry', doc_expiry: 'Document / certification expiry', chemical_expiry: 'Chemical / PPE expiry', invoice_due: 'Invoice due', maintenance: 'Maintenance due' }[k]} — days before`))}
       </div></Card>
       <Card title="Company profile (printed on PDFs)"><div className="form-grid">
@@ -308,28 +299,5 @@ export default function Admin() {
       {um && <UserModal initial={um === 'new' ? undefined : um} onClose={() => setUm(null)} />}
       {pwUser && <SetPasswordModal user={pwUser} onClose={() => setPwUser(null)} />}
     </>
-  );
-}
-
-/** Sends a test text through the real alert path. */
-function SmsTest() {
-  const [busy, setBusy] = useState(false); const [res, setRes] = useState<{ state: string; detail: string } | null>(null);
-  const [smp, setSmp] = useState<{ ok: boolean; text: string; message?: string } | null>(null);
-  const sample = async (k: 'day_before' | 'morning') => { setBusy(true); setSmp({ ok: true, text: 'Sending the sample…' }); try { const r = await sendSampleReminder(k); setSmp({ ok: true, text: `Sent to ${r.to}${r.job ? ` (using booking ${r.job})` : ' (no upcoming booking, so a made-up one)'}. It should reach your phone within a minute. It reads:`, message: r.message }); } catch (e) { setSmp({ ok: false, text: e instanceof Error ? e.message : 'Could not send the sample' }); } finally { setBusy(false); } };
-  const go = async (link: boolean) => { setBusy(true); setRes({ state: 'waiting', detail: 'Sending…' }); try { setRes(await sendTestSms(link)); } catch (e) { setRes({ state: 'failed', detail: e instanceof Error ? e.message : 'Could not send' }); } finally { setBusy(false); } };
-  return (
-    <div className="stack">
-      <div className="small muted">Alerts such as “Quotation approved” and “Client signed on site” are texted to the alert number. Send a test to see whether it reaches your phone. The texts never contain a link, because phone companies drop them.</div>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <button className="btn primary" disabled={busy} onClick={() => void go(false)}>Send a plain test text</button>
-      </div>
-      {res && <div className={`alert ${res.state === 'sent' ? 'info' : res.state === 'failed' ? 'warn' : 'info'}`}>{res.state === 'sent' ? '✅ ' : res.state === 'failed' ? '⚠ ' : '⏳ '}{res.detail}</div>}
-      <div className="small muted" style={{ marginTop: 6 }}>See exactly what a client receives: this texts the real reminder for the next upcoming booking, marked SAMPLE, to <b>your alert number only</b> (never to the client). Each is about 2 credits.</div>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <button className="btn" disabled={busy} onClick={() => void sample('day_before')}>Send me a sample: day-before reminder</button>
-        <button className="btn" disabled={busy} onClick={() => void sample('morning')}>Send me a sample: service-day reminder</button>
-      </div>
-      {smp && <div className={`alert ${smp.ok ? 'info' : 'warn'}`}>{smp.ok ? '✅ ' : '⚠ '}{smp.text}{smp.message && <div className="small" style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>“{smp.message}”</div>}</div>}
-    </div>
   );
 }

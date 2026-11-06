@@ -28,3 +28,16 @@ export async function sendSampleReminder(kind: 'day_before' | 'morning'): Promis
   if (!CLOUD) throw new Error('This is the demo, which has no SMS service. On the live site the sample is texted to your alert number.');
   return callFn<SampleResult>('send-client-reminders', { kind }, { 'x-sample': '1' });
 }
+
+export interface ClientSmsRow { id: number; job_id: string; kind: 'day_before' | 'morning'; service_date: string; to_number: string | null; message: string | null; sent_at: string | null; error: string | null; created_at: string }
+export interface AlertRow { id: number; kind: string; title: string; body: string; created_at: string; sent_at: string | null; attempts: number; error: string | null }
+/** The latest client reminders and owner alerts, for the SMS page. */
+export async function loadSmsLogs(): Promise<{ clients: ClientSmsRow[]; alerts: AlertRow[]; missing: boolean }> {
+  if (!CLOUD) return { clients: [], alerts: [], missing: false };
+  const [c, a] = await Promise.all([
+    supabase().from('client_sms_log').select('id, job_id, kind, service_date, to_number, message, sent_at, error, created_at').order('id', { ascending: false }).limit(40),
+    supabase().from('alert_outbox').select('id, kind, title, body, created_at, sent_at, attempts, error').neq('kind', 'test').order('id', { ascending: false }).limit(40),
+  ]);
+  const missing = [c.error, a.error].some((e) => e && /does not exist|schema cache/i.test(e.message));
+  return { clients: (c.data ?? []) as ClientSmsRow[], alerts: (a.data ?? []) as AlertRow[], missing };
+}

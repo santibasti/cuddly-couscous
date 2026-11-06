@@ -141,6 +141,7 @@ export const ROUTE_ACCESS: Record<string, string[]> = {
   today: ['dashboard.view', 'dashboard.finance'],
   executive: ['executive.view'],
   announcements: ['announce.view', 'announce.manage'],
+  sms: ['admin.settings'],
   clients: ['clients.view'],
   sales: ['sales.view'],
   inbox: ['inbox.manage'],
