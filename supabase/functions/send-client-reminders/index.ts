@@ -7,7 +7,7 @@ import { clientMessage } from './message.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const LIVE = ['Confirmed', 'Dispatch Checklist Pending', 'Dispatched'];
-const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret', 'Content-Type': 'application/json' };
+const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret, x-sample', 'Content-Type': 'application/json' };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: cors });
 
 /** 09171234567 / +639171234567 / 9171234567 → 09171234567; anything else is not a Philippine mobile number. */
