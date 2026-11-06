@@ -48,7 +48,7 @@ export function teamText(leader: string | undefined, crew: string[] | undefined,
 
 const MAX = 306;   // two SMS of 153 characters
 /** The reminder: a greeting by name, the day and arrival window (from the Job Order), who is coming and in what vehicle, that this number takes no replies, and where to ask questions. */
-export function clientMessage(j: SmsJob): string {
+export function clientMessage(j: SmsJob, max = MAX): string {
   const build = (crewMax: number) => {
     const who = callName(j.to, j.salutation); const eta = window(j.time, j.etaTo);
     const team = teamText(j.leader, j.crew, crewMax); const veh = j.vehicle ? ` Vehicle: ${j.vehicle}.` : '';
@@ -58,6 +58,6 @@ export function clientMessage(j: SmsJob): string {
     const tail = `${j.kind === 'day_before' ? ' Please ensure access to the area.' : ''} Automated message, please do not reply here. Questions? Message us on Facebook Messenger. Thank you!`;
     return gsm(`${body}${team ? ` Team: ${team}.` : ''}${veh}${tail}`);
   };
-  for (const crewMax of [6, 4, 3, 2]) { const m = build(crewMax); if (m.length <= MAX) return m; }
-  return build(2).slice(0, MAX - 3).trimEnd() + '...';
+  for (const crewMax of [6, 4, 3, 2]) { const m = build(crewMax); if (m.length <= max) return m; }
+  return build(2).slice(0, max - 3).trimEnd() + '...';
 }

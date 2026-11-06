@@ -1,6 +1,7 @@
 // Admin: send one test text through the real alert path and report what happened.
 import { CLOUD, supabase } from './cloud';
 import { store } from './store';
+import { callFn } from './fnclient';
 
 export interface TestResult { state: 'sent' | 'failed' | 'waiting'; detail: string }
 /** Queues a test alert (the database calls the send-alerts function) and waits up to ~25 seconds for the outcome. */
@@ -18,4 +19,12 @@ export async function sendTestSms(withLink: boolean, onTick?: (r: TestResult) =>
     last = { state: 'waiting', detail: 'Waiting for the text to be sent…' }; onTick?.(last);
   }
   return { state: 'waiting', detail: 'Still queued after 25 seconds: the send-alerts function may not be reachable, or the function secret does not match. Check the function logs in Supabase.' };
+}
+
+export interface SampleResult { to: string; message: string; job: string | null }
+/** Sends the real client reminder text (for the next upcoming booking) to the alert number only, so you can see exactly what clients receive. Owner / Admin. */
+export async function sendSampleReminder(kind: 'day_before' | 'morning'): Promise<SampleResult> {
+  store.require('admin.settings');
+  if (!CLOUD) throw new Error('This is the demo, which has no SMS service. On the live site the sample is texted to your alert number.');
+  return callFn<SampleResult>('send-client-reminders', { kind }, { 'x-sample': '1' });
 }

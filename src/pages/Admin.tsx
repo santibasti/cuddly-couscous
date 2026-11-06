@@ -5,7 +5,7 @@ import { CLOUD, fetchAuditDetail } from '@/lib/cloud';
 import { useState } from 'react';
 import { live, store, useAuth } from '@/lib/store';
 import { bankDetails } from '@/lib/business';
-import { sendTestSms } from '@/lib/alerts';
+import { sendSampleReminder, sendTestSms } from '@/lib/alerts';
 import { Badge, Card, Field, Icon, Modal, PageHead, Tabs, attempt, ask, useObj, toast } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { DEFAULT_ACCESS, PERMISSIONS, ROLE_LABEL } from '@/lib/rbac';
@@ -314,6 +314,8 @@ export default function Admin() {
 /** Sends a test text through the real alert path. */
 function SmsTest() {
   const [busy, setBusy] = useState(false); const [res, setRes] = useState<{ state: string; detail: string } | null>(null);
+  const [smp, setSmp] = useState<{ ok: boolean; text: string; message?: string } | null>(null);
+  const sample = async (k: 'day_before' | 'morning') => { setBusy(true); setSmp({ ok: true, text: 'Sending the sample…' }); try { const r = await sendSampleReminder(k); setSmp({ ok: true, text: `Sent to ${r.to}${r.job ? ` (using booking ${r.job})` : ' (no upcoming booking, so a made-up one)'}. It should reach your phone within a minute. It reads:`, message: r.message }); } catch (e) { setSmp({ ok: false, text: e instanceof Error ? e.message : 'Could not send the sample' }); } finally { setBusy(false); } };
   const go = async (link: boolean) => { setBusy(true); setRes({ state: 'waiting', detail: 'Sending…' }); try { setRes(await sendTestSms(link)); } catch (e) { setRes({ state: 'failed', detail: e instanceof Error ? e.message : 'Could not send' }); } finally { setBusy(false); } };
   return (
     <div className="stack">
@@ -322,6 +324,12 @@ function SmsTest() {
         <button className="btn primary" disabled={busy} onClick={() => void go(false)}>Send a plain test text</button>
       </div>
       {res && <div className={`alert ${res.state === 'sent' ? 'info' : res.state === 'failed' ? 'warn' : 'info'}`}>{res.state === 'sent' ? '✅ ' : res.state === 'failed' ? '⚠ ' : '⏳ '}{res.detail}</div>}
+      <div className="small muted" style={{ marginTop: 6 }}>See exactly what a client receives: this texts the real reminder for the next upcoming booking, marked SAMPLE, to <b>your alert number only</b> (never to the client). Each is about 2 credits.</div>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn" disabled={busy} onClick={() => void sample('day_before')}>Send me a sample: day-before reminder</button>
+        <button className="btn" disabled={busy} onClick={() => void sample('morning')}>Send me a sample: service-day reminder</button>
+      </div>
+      {smp && <div className={`alert ${smp.ok ? 'info' : 'warn'}`}>{smp.ok ? '✅ ' : '⚠ '}{smp.text}{smp.message && <div className="small" style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>“{smp.message}”</div>}</div>}
     </div>
   );
 }
