@@ -6,6 +6,7 @@ import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj,
 import { DataTable } from '@/components/DataTable';
 import { ClientForm } from './Clients';
 import { PastBillsCard } from '@/components/PastBills';
+import { ClientPhotos } from '@/components/ClientPhotos';
 import { ClientLifetimeCard } from '@/components/FollowUps';
 import { paymentStatusLabel, docTotals, invoiceBalance, invoiceState, invoiceTotals, isDone, isOpen } from '@/lib/business';
 import { fmtDate, fmtDateTime, fmtStamp, money, sum, today } from '@/lib/util';
@@ -13,7 +14,7 @@ import { receiptPdf, serviceReportPdf, statementPdf } from '@/lib/export';
 import { RecordPaymentModal, canRecordPayment, payableInvoices } from '@/components/RecordPayment';
 import type { Communication, Complaint, Site } from '@/lib/types';
 
-type Tab = 'overview' | 'sites' | 'quotes' | 'jobs' | 'billing' | 'reports' | 'complaints' | 'comms';
+type Tab = 'overview' | 'sites' | 'quotes' | 'jobs' | 'billing' | 'reports' | 'complaints' | 'comms' | 'photos';
 
 export function SiteForm({ clientId, initial, onClose, onSaved }: { clientId: string; initial?: Site; onClose: () => void; onSaved?: (s: Site) => void }) {
   const f = useObj(() => initial ?? { client_id: clientId, name: '', address: '', contact_person: '', contact_mobile: '', access_instructions: '' } as Omit<Site, 'id' | 'created_at' | 'updated_at' | 'created_by'>);
@@ -62,7 +63,7 @@ export default function ClientDetail() {
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Overview' }, { id: 'sites', label: 'Sites', count: sites.length }, { id: 'quotes', label: 'Quotations', count: quotes.length },
     { id: 'jobs', label: 'Jobs', count: jobs.length }, ...(canFin ? [{ id: 'billing' as Tab, label: 'Invoices & payments', count: invs.length }] : []),
-    { id: 'reports', label: 'Service reports', count: done.length }, { id: 'complaints', label: 'Complaints', count: cmps.length }, { id: 'comms', label: 'Communication', count: comms.length },
+    { id: 'reports', label: 'Service reports', count: done.length }, { id: 'complaints', label: 'Complaints', count: cmps.length }, { id: 'comms', label: 'Communication', count: comms.length }, ...((can('photos.manage') || can('jobs.all')) ? [{ id: 'photos' as Tab, label: 'Photos' }] : []),
   ];
 
   return (
@@ -162,6 +163,8 @@ export default function ClientDetail() {
           { key: 'actions', header: '', sortable: false, noExport: true, render: (j) => <button className="btn sm" onClick={(e) => { e.stopPropagation(); attempt(() => serviceReportPdf(db, j)); }}>PDF</button> },
         ]} /></Card>
       )}
+
+      {tab === 'photos' && <ClientPhotos clientId={c.id} />}
 
       {tab === 'complaints' && (
         <Card title="Complaints" actions={can('clients.edit') && <button className="btn sm primary" onClick={() => setCmp(true)}><Icon name="plus" />Log complaint</button>} flush>
