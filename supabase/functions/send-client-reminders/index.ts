@@ -28,9 +28,12 @@ async function semaphore(to: string, message: string) {
   const j = JSON.parse(text); if (!Array.isArray(j) || !j.length) throw new Error(text.slice(0, 200));
 }
 
+/** Compares two secrets without stopping at the first different character. */
+const safeEq = (a: string, b: string) => { const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b); let d = x.length ^ y.length; for (let i = 0; i < Math.max(x.length, y.length); i++) d |= (x[i] ?? 0) ^ (y[i] ?? 0); return d === 0; };
+
 Deno.serve(async (req) => {
   const secret = env('WEBHOOK_SECRET');
-  if (secret && req.headers.get('x-webhook-secret') !== secret) return new Response('forbidden', { status: 403 });
+  if (secret && !safeEq(req.headers.get('x-webhook-secret') ?? '', secret)) return new Response('forbidden', { status: 403 });
   const db = createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'));
   const { data: st } = await db.from('settings').select('data').eq('id', 'main').maybeSingle();
   const cfg = st?.data?.client_sms as { enabled?: boolean; day_before_time?: string; morning_time?: string } | undefined;

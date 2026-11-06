@@ -18,7 +18,8 @@ async function validSignature(req: Request, raw: string) {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(raw)));
   const hex = [...mac].map((b) => b.toString(16).padStart(2, '0')).join('');
-  return hex.length === sig.length - 7 && hex === sig.slice(7);
+  const given = sig.slice(7); let d = hex.length ^ given.length; for (let i = 0; i < Math.max(hex.length, given.length); i++) d |= (hex.charCodeAt(i) || 0) ^ (given.charCodeAt(i) || 0);
+  return d === 0;
 }
 
 async function sendToFacebook(psid: string, text: string) {

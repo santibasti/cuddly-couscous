@@ -31,12 +31,15 @@ function serviceCodes(input: unknown): string[] {
   return [...out];
 }
 
+/** Compares two secrets without stopping at the first different character. */
+const safeEq = (a: string, b: string) => { const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b); let d = x.length ^ y.length; for (let i = 0; i < Math.max(x.length, y.length); i++) d |= (x[i] ?? 0) ^ (y[i] ?? 0); return d === 0; };
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'Use POST' }, 405);
   const key = env('LEAD_INTAKE_KEY'); const url = new URL(req.url);
   const given = req.headers.get('x-api-key') ?? url.searchParams.get('key') ?? '';
-  if (!key || given !== key) return json({ error: 'Invalid or missing key' }, 401);
+  if (!key || !safeEq(given, key)) return json({ error: 'Invalid or missing key' }, 401);
   const b = await req.json().catch(() => null) as Record<string, unknown> | null;
   if (!b) return json({ error: 'Send a JSON body' }, 400);
 

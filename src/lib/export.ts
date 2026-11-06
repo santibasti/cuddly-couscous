@@ -25,8 +25,18 @@ function save(blob: Blob, filename: string) {
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const stampName = (t: string, ext: string) => `topmop-${slug(t)}-${nowLocal().slice(0, 10)}.${ext}`;
 
+/** Spreadsheets run text that starts with = + - @ as a formula. Names and notes can come from outside (lead forms, Facebook), so such text gets a leading apostrophe and is shown as plain text.
+ *  Phone numbers and plain figures such as +63 917 123 4567 or -5.5 are left alone. */
+export function csvSafe(v: string): string {
+  if (!v) return v;
+  const c = v[0];
+  if (c === '=' || c === '@' || c === '\t' || c === '\r') return `'${v}`;
+  if ((c === '+' || c === '-') && !/^[+-]\s?\d[\d\s().,-]*$/.test(v)) return `'${v}`;
+  return v;
+}
+
 export function exportCsv(t: ExportTable) {
-  const esc = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const esc = (v: string | number) => `"${(typeof v === 'string' ? csvSafe(v) : String(v ?? '')).replace(/"/g, '""')}"`;
   const lines = [t.headers.map(esc).join(','), ...t.rows.map((r) => r.map(esc).join(',')), ...(t.totals ? [t.totals.map(esc).join(',')] : [])];
   save(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' }), stampName(t.title, 'csv'));
   store.audit('export', 'reports', t.title, `Exported CSV: ${t.title}`);

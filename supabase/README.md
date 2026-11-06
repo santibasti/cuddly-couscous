@@ -111,13 +111,24 @@ The database records these events itself (migrations `0044`/`0045`, table `alert
    `supabase secrets set SEMAPHORE_API_KEY=... ALERT_SMS_TO=09171234567 WEBHOOK_SECRET=<random text>`
    Optional: `SEMAPHORE_SENDER=<approved sender name>` (without it Semaphore's shared sender is used).
 3. `supabase functions deploy send-alerts --no-verify-jwt`
-4. Dashboard → Database → Webhooks → create: table `alert_outbox`, event `Insert`, type *Supabase Edge Function* → `send-alerts`, add HTTP header `x-webhook-secret: <the same text>`.
+4. The database calls `send-alerts` itself (migration `0046`) and, from migration `0088`, sends the secret in the `x-webhook-secret` header. See **Protecting the SMS functions** below: do not skip it.
 
 Messages use plain letters ("PHP 12,117.28") so each stays within 160 characters per SMS credit. Failed sends are kept in `alert_outbox` (`error`, `attempts`) and retried the next time the function runs.
 
+### Protecting the SMS functions (do this once, after `supabase.cmd db push` has applied `0088`)
+
+The two SMS functions are public addresses. Without a secret, anyone who finds the address can call them. Migration `0088` makes the database send a secret with every call, taken from Supabase Vault. Do the steps **in this order**; nothing stops working at any step.
+
+1. Make up a long random text (about 40 letters and digits) on your own computer and keep it private. In PowerShell: `-join ((48..57)+(97..122) | Get-Random -Count 40 | ForEach-Object {[char]$_})`
+2. In the Supabase **SQL editor** run (put your text in place of the angle brackets, nowhere else): `select vault.create_secret('<your text>', 'webhook_secret');`
+3. In a terminal: `supabase secrets set WEBHOOK_SECRET=<your text>`
+4. Redeploy both: `supabase functions deploy send-alerts --no-verify-jwt` and `supabase functions deploy send-client-reminders --no-verify-jwt`
+
+Check: in the SQL editor `select app.webhook_headers();` must show an `x-webhook-secret` entry. Then a call without the header is refused (HTTP 403) while the alerts and reminders keep arriving. To change the secret later, update both places (the Vault secret and the function secret) in the same few minutes.
+
 ## SMS reminders to clients (day before and 7:00 AM on the service day)
 
-Needs the same Semaphore account/secrets as the owner alerts (`SEMAPHORE_API_KEY`, optional `SEMAPHORE_SENDER`) and no `WEBHOOK_SECRET` (the scheduler does not send one).
+Needs the same Semaphore account/secrets as the owner alerts (`SEMAPHORE_API_KEY`, optional `SEMAPHORE_SENDER`). The scheduler sends the `WEBHOOK_SECRET` (see **Protecting the SMS functions**).
 
 1. `supabase.cmd db push` (migration `0048`: log table + a pg_cron job that runs every 10 minutes; if it prints a notice that scheduling failed, enable the **pg_cron** and **pg_net** extensions under Database → Extensions and run the `do $$ ... $$` block from the migration again).
 2. `supabase functions deploy send-client-reminders --no-verify-jwt`

@@ -20,6 +20,11 @@ Deno.serve(async (req) => {
   const asUser = createClient(env('SUPABASE_URL'), env('SUPABASE_ANON_KEY'), { global: { headers: { Authorization: auth } } });
   const { data: u } = await asUser.auth.getUser();
   if (!u?.user) return json({ error: 'Please sign in again.' }, 401);
+  // staff only (a client's portal login must not spend the AI budget), and a limit per person per hour
+  const { data: prof } = await asUser.from('profiles').select('active, client_id').eq('id', u.user.id).maybeSingle();
+  if (!prof?.active || prof.client_id) return json({ error: 'The AI helper is for TopMop staff.' }, 403);
+  const { data: allowed, error: rateErr } = await asUser.rpc('ai_allow', { p_fn: 'ai-rewrite', p_max: 60, p_window_minutes: 60 });
+  if (!rateErr && allowed === false) return json({ error: 'You have used the AI helper a lot in the last hour. Please try again a little later.' }, 429);
   if (!env('ANTHROPIC_API_KEY')) return json({ error: 'The AI key is not set up yet (ANTHROPIC_API_KEY).' }, 503);
   const { text, mode, instruction, selection } = await req.json().catch(() => ({}));
   const src = String(text ?? '').trim();

@@ -62,3 +62,12 @@ describe('previous years view', () => {
     expect(systemMonths({ invoices: [] }, 2024).every((n) => n === 0)).toBe(true);
   });
 });
+
+describe('CSV export safety', () => {
+  it('neutralises text a spreadsheet would run as a formula, and leaves phone numbers and figures alone', async () => {
+    const { csvSafe } = await import('./export');
+    expect(csvSafe('=HYPERLINK("http://x","click")')).toBe(`'=HYPERLINK("http://x","click")`);
+    expect(csvSafe('@SUM(A1:A9)')).toBe("'@SUM(A1:A9)"); expect(csvSafe('+cmd|"/c calc"!A0')).toBe(`'+cmd|"/c calc"!A0`); expect(csvSafe('-2+3')).toBe("'-2+3");
+    expect(csvSafe('+63 917 123 4567')).toBe('+63 917 123 4567'); expect(csvSafe('-5.5')).toBe('-5.5'); expect(csvSafe('Tantan Reyes')).toBe('Tantan Reyes'); expect(csvSafe('')).toBe('');
+  });
+});

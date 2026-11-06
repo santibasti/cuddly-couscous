@@ -22,9 +22,12 @@ async function semaphore(to: string, message: string) {
   try { const j = JSON.parse(text); if (!Array.isArray(j) || !j.length) throw new Error(text.slice(0, 200)); } catch (e) { throw new Error(`Semaphore: ${(e as Error).message}`); }
 }
 
+/** Compares two secrets without stopping at the first different character. */
+const safeEq = (a: string, b: string) => { const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b); let d = x.length ^ y.length; for (let i = 0; i < Math.max(x.length, y.length); i++) d |= (x[i] ?? 0) ^ (y[i] ?? 0); return d === 0; };
+
 Deno.serve(async (req) => {
   const secret = env('WEBHOOK_SECRET');
-  if (secret && req.headers.get('x-webhook-secret') !== secret) return new Response('forbidden', { status: 403 });
+  if (secret && !safeEq(req.headers.get('x-webhook-secret') ?? '', secret)) return new Response('forbidden', { status: 403 });
   const db = createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'));
   const { data: rows, error } = await db.from('alert_outbox').select('*').is('sent_at', null).lt('attempts', 5).order('id').limit(25);
   if (error) return new Response(error.message, { status: 500 });
