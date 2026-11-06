@@ -11,7 +11,7 @@ import { prepare } from '@/lib/photos';
 
 type Kind = 'Before' | 'After' | 'During' | 'Site' | 'Other';
 const KINDS: Kind[] = ['Before', 'After', 'During', 'Site', 'Other'];
-interface Photo { id: string; job_id: string | null; client_id: string | null; path: string; thumb_path: string | null; kind: Kind; caption: string; tags: string[]; taken_at: string; client_ok: boolean; uploaded_by: string | null; created_at: string }
+interface Photo { id: string; job_id: string | null; client_id: string | null; path: string; thumb_path: string | null; kind: Kind; caption: string; tags: string[]; taken_at: string; client_ok: boolean; uploaded_by: string | null; created_at: string; source?: 'app' | 'telegram'; sent_by_employee_id?: string | null; media?: 'photo' | 'video' }
 const PAGE = 48;
 
 export default function PhotoLibrary() {
@@ -19,7 +19,7 @@ export default function PhotoLibrary() {
   const [sp, setSp] = useSearchParams();
   const [rows, setRows] = useState<Photo[]>([]); const [urls, setUrls] = useState<Record<string, string>>({});
   const [more, setMore] = useState(false); const [loading, setLoading] = useState(false);
-  const [job, setJob] = useState(sp.get('job') ?? ''); const [kind, setKind] = useState(''); const [okOnly, setOkOnly] = useState(false); const [q, setQ] = useState('');
+  const [job, setJob] = useState(sp.get('job') ?? ''); const [kind, setKind] = useState(''); const [okOnly, setOkOnly] = useState(false); const [unsorted, setUnsorted] = useState(false); const [src, setSrc] = useState(''); const [q, setQ] = useState('');
   const [up, setUp] = useState<{ job: string; kind: Kind; ok: boolean; caption: string; tags: string }>({ job: sp.get('job') ?? '', kind: 'After', ok: false, caption: '', tags: '' });
   const [busy, setBusy] = useState<string>(); const [open, setOpen] = useState<Photo>();
   const cam = useRef<HTMLInputElement>(null); const gal = useRef<HTMLInputElement>(null);
@@ -29,7 +29,7 @@ export default function PhotoLibrary() {
   const jobLabel = useCallback((id: string | null) => { const j = db.jobs.find((x) => x.id === id); return j ? `${j.number} · ${db.clients.find((c) => c.id === j.client_id)?.name ?? ''}` : 'No job'; }, [db]);
 
   const sign = useCallback(async (list: Photo[]) => {
-    const paths = list.flatMap((p) => [p.thumb_path ?? p.path]).filter(Boolean) as string[];
+    const paths = list.filter((p) => p.media !== 'video').flatMap((p) => [p.thumb_path ?? p.path]).filter(Boolean) as string[];
     if (!paths.length) return;
     const { data } = await supabase().storage.from('job-photos').createSignedUrls(paths, 3600);
     setUrls((u) => { const n = { ...u }; for (const d of data ?? []) if (d.path && d.signedUrl) n[d.path] = d.signedUrl; return n; });
@@ -37,11 +37,11 @@ export default function PhotoLibrary() {
   const load = useCallback(async (from: number, reset: boolean) => {
     setLoading(true);
     let qy = supabase().from('job_photos').select('*').is('deleted_at', null).order('created_at', { ascending: false }).range(from, from + PAGE - 1);
-    if (job) qy = qy.eq('job_id', job); if (kind) qy = qy.eq('kind', kind); if (okOnly) qy = qy.eq('client_ok', true);
+    if (unsorted) qy = qy.is('job_id', null); else if (job) qy = qy.eq('job_id', job); if (src) qy = qy.eq('source', src); if (kind) qy = qy.eq('kind', kind); if (okOnly) qy = qy.eq('client_ok', true);
     if (q.trim()) { const t = q.trim().replace(/[%,()]/g, ' '); qy = qy.or(`caption.ilike.%${t}%,tags.cs.{${t.toLowerCase()}}`); }
     const { data } = await qy; const list = (data ?? []) as Photo[];
     setRows((r) => (reset ? list : [...r, ...list])); setMore(list.length === PAGE); setLoading(false); sign(list);
-  }, [job, kind, okOnly, q, sign]);
+  }, [job, kind, okOnly, unsorted, src, q, sign]);
   useEffect(() => { if (!CLOUD) return; const t = setTimeout(() => load(0, true), 250); return () => clearTimeout(t); }, [load]);
   useEffect(() => { const n = new URLSearchParams(sp); if (job) n.set('job', job); else n.delete('job'); setSp(n, { replace: true }); }, [job]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -95,13 +95,15 @@ export default function PhotoLibrary() {
               <Field label="Job"><select value={job} onChange={(e) => setJob(e.target.value)}><option value="">All jobs</option>{jobs.map((j) => <option key={j.id} value={j.id}>{jobLabel(j.id)}</option>)}</select></Field>
               <Field label="Type"><select value={kind} onChange={(e) => setKind(e.target.value)}><option value="">All</option>{KINDS.map((k) => <option key={k}>{k}</option>)}</select></Field>
               <Field label="Search caption or tag"><input type="search" value={q} onChange={(e) => setQ(e.target.value)} /></Field>
+              <Field label="Came from"><select value={src} onChange={(e) => setSrc(e.target.value)}><option value="">Anywhere</option><option value="telegram">Telegram</option><option value="app">The app</option></select></Field>
+              <label className="check"><input type="checkbox" checked={unsorted} onChange={(e) => setUnsorted(e.target.checked)} />Unsorted (no job yet)</label>
               <label className="check"><input type="checkbox" checked={okOnly} onChange={(e) => setOkOnly(e.target.checked)} />Client agreed (marketing)</label>
             </div>
             <div className="photogrid">
               {rows.map((p) => (
                 <button key={p.id} type="button" className="photocell" onClick={() => setOpen(p)} title={p.caption || jobLabel(p.job_id)}>
-                  {urls[p.thumb_path ?? p.path] ? <img src={urls[p.thumb_path ?? p.path]} alt={p.caption || p.kind} loading="lazy" /> : <span className="muted small">Loading…</span>}
-                  <span className="pk">{p.kind}</span>{p.client_ok && <span className="pok" title="Client agreed to marketing use">✓</span>}
+                  {p.media === 'video' ? <span style={{ fontSize: 34 }} aria-label="Video">🎬</span> : urls[p.thumb_path ?? p.path] ? <img src={urls[p.thumb_path ?? p.path]} alt={p.caption || p.kind} loading="lazy" /> : <span className="muted small">Loading…</span>}
+                  <span className="pk">{p.kind}{p.source === 'telegram' ? ' · TG' : ''}</span>{p.client_ok && <span className="pok" title="Client agreed to marketing use">✓</span>}
                 </button>
               ))}
             </div>
@@ -110,12 +112,12 @@ export default function PhotoLibrary() {
           </Card>
         </>
       )}
-      {open && <PhotoModal p={open} label={jobLabel(open.job_id)} canEdit={manage || open.uploaded_by === user?.id} onClose={() => setOpen(undefined)} onChanged={(np) => { setRows((r) => (np ? r.map((x) => (x.id === np.id ? np : x)) : r.filter((x) => x.id !== open.id))); if (!np) setOpen(undefined); else setOpen(np); }} />}
+      {open && <PhotoModal p={open} jobs={jobs} jobLabel={jobLabel} sender={db.employees.find((e) => e.id === open.sent_by_employee_id)?.full_name} label={jobLabel(open.job_id)} canEdit={manage || open.uploaded_by === user?.id} onClose={() => setOpen(undefined)} onChanged={(np) => { setRows((r) => (np ? r.map((x) => (x.id === np.id ? np : x)) : r.filter((x) => x.id !== open.id))); if (!np) setOpen(undefined); else setOpen(np); }} />}
     </>
   );
 }
 
-function PhotoModal({ p, label, canEdit, onClose, onChanged }: { p: Photo; label: string; canEdit: boolean; onClose: () => void; onChanged: (p: Photo | null) => void }) {
+function PhotoModal({ p, label, jobs, jobLabel, sender, canEdit, onClose, onChanged }: { p: Photo; label: string; jobs: { id: string; start_at: string }[]; jobLabel: (id: string | null) => string; sender?: string; canEdit: boolean; onClose: () => void; onChanged: (p: Photo | null) => void }) {
   const [url, setUrl] = useState<string>();
   const [f, setF] = useState({ kind: p.kind, caption: p.caption, tags: p.tags.join(', '), ok: p.client_ok });
   useEffect(() => { supabase().storage.from('job-photos').createSignedUrl(p.path, 3600).then(({ data }) => setUrl(data?.signedUrl)); }, [p.path]);
@@ -124,12 +126,16 @@ function PhotoModal({ p, label, canEdit, onClose, onChanged }: { p: Photo; label
     const { error } = await supabase().from('job_photos').update(patch).eq('id', p.id); if (error) throw new Error(error.message);
     onChanged({ ...p, ...patch });
   }, 'Saved');
+  const [target, setTarget] = useState('');
+  const { can } = useAuth();
+  const move = () => { if (!target) return; attempt(async () => { const { error } = await supabase().rpc('assign_photos', { p_ids: [p.id], p_job: target }); if (error) throw new Error(error.message); onChanged({ ...p, job_id: target }); }, 'Filed to the job'); };
   const del = () => { if (!confirm('Delete this photo?')) return; attempt(async () => { const { error } = await supabase().from('job_photos').update({ deleted_at: new Date().toISOString() }).eq('id', p.id); if (error) throw new Error(error.message); onChanged(null); }, 'Photo deleted'); };
   return (
     <Modal title={<>{p.kind} <Badge tone="gray">{label}</Badge></>} size="wide" onClose={onClose} footer={<button className="btn" onClick={onClose}>Close</button>}>
       <div className="stack">
-        {url ? <img src={url} alt={p.caption || p.kind} style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: 8, justifySelf: 'center' }} /> : <div className="muted">Loading…</div>}
-        <div className="small muted">Added {fmtDate(p.created_at.slice(0, 10))}</div>
+        {url && p.media === 'video' ? <video src={url} controls playsInline style={{ maxWidth: '100%', maxHeight: '60vh', borderRadius: 8, justifySelf: 'center' }} /> : url ? <img src={url} alt={p.caption || p.kind} style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: 8, justifySelf: 'center' }} /> : <div className="muted">Loading…</div>}
+        <div className="small muted">Added {fmtDate(p.created_at.slice(0, 10))}{p.source === 'telegram' ? ` · sent on Telegram${sender ? ` by ${sender}` : ''}` : ''}</div>
+        {can('photos.manage') && <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><select value={target} onChange={(e) => setTarget(e.target.value)} aria-label="File to job"><option value="">{p.job_id ? 'Move to another job…' : 'File to a job…'}</option>{jobs.map((j) => <option key={j.id} value={j.id}>{jobLabel(j.id)} · {fmtDate(j.start_at.slice(0, 10))}</option>)}</select><button className="btn" disabled={!target} onClick={move}>File</button></div>}
         <div className="form-grid">
           <Field label="Type"><select disabled={!canEdit} value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as Kind })}>{KINDS.map((k) => <option key={k}>{k}</option>)}</select></Field>
           <Field label="Tags"><input disabled={!canEdit} value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} /></Field>

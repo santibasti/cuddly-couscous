@@ -142,6 +142,7 @@ export const ROUTE_ACCESS: Record<string, string[]> = {
   executive: ['executive.view'],
   announcements: ['announce.view', 'announce.manage'],
   sms: ['admin.settings'],
+  telegram: ['admin.settings'],
   clients: ['clients.view'],
   sales: ['sales.view'],
   inbox: ['inbox.manage'],

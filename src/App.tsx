@@ -38,6 +38,7 @@ const Reports = lazy(() => import('@/pages/Reports'));
 const Executive = lazy(() => import('@/pages/Executive'));
 const Announcements = lazy(() => import('@/pages/Announcements'));
 const Sms = lazy(() => import('@/pages/Sms'));
+const Telegram = lazy(() => import('@/pages/Telegram'));
 const Admin = lazy(() => import('@/pages/Admin'));
 const Notifications = lazy(() => import('@/pages/Notifications'));
 const Portal = lazy(() => import('@/pages/Portal'));
@@ -72,6 +73,7 @@ const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: st
   { to: '/inbox', key: 'inbox', label: 'Facebook Inbox', icon: 'clients' },
   { to: '/marketing', key: 'marketing', label: 'Marketing AI', icon: 'reports' },
   { to: '/sms', key: 'sms', label: 'SMS', icon: 'bell' },
+  { to: '/telegram', key: 'telegram', label: 'Telegram', icon: 'camera' },
   { to: '/receipts', key: 'receipts', label: 'Receipts', icon: 'camera', group: 'Finance & People' },
   { to: '/finance', key: 'finance', label: 'Finance', icon: 'finance', group: 'Finance & People' },
   { to: '/payroll', key: 'payroll', label: 'Payroll', icon: 'payroll' },
@@ -216,6 +218,7 @@ function Shell() {
             <Route path="/executive" element={<Guard area="executive"><Executive /></Guard>} />
             <Route path="/announcements" element={<Guard area="announcements"><Announcements /></Guard>} />
             <Route path="/sms" element={<Guard area="sms"><Sms /></Guard>} />
+            <Route path="/telegram" element={<Guard area="telegram"><Telegram /></Guard>} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/admin" element={<Guard area="admin"><Admin /></Guard>} />
             <Route path="*" element={<Navigate to={homeFor(any)} replace />} />
