@@ -1004,6 +1004,7 @@ body:not(.dark) .tdy-motiv { border-color: var(--line); }
 body:not(.dark) .rt-truck { background: #fff; } .rt-truck svg { width: 18px; height: 18px; } .rt-truck.back svg { transform: scaleX(-1); }
 .tdy-route.moving .rt-truck { animation: tdyDrive 1s ease-in-out infinite; }
 @keyframes tdyDrive { 50% { transform: translateY(-3px); } }
+.tdy-route.onsite .rt-truck { animation: tdySite 2s ease-in-out infinite; } @keyframes tdySite { 0%, 100% { box-shadow: 0 3px 10px rgba(0,0,0,.35), 0 0 0 0 rgba(46,229,157,.45); } 50% { box-shadow: 0 3px 10px rgba(0,0,0,.35), 0 0 0 9px rgba(46,229,157,0); } }
 .tdy-route.home .rt-truck { animation: tdyHome 1.6s ease-in-out infinite; } @keyframes tdyHome { 50% { transform: scale(1.15); box-shadow: 0 0 0 8px rgba(46,229,157,.2); } }
 .tdy-steps { grid-template-columns: repeat(6, 1fr); } .tdy-steps li::before { display: none; } .tdy-steps li i.hq { width: auto; height: auto; border: 0; font-size: 13px; font-style: normal; background: none; filter: grayscale(1); } .tdy-steps li.done i.hq { filter: none; }
 .tdy-steps li { font-size: 10px; }

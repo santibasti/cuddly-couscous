@@ -113,9 +113,10 @@ function Route({ w }: { w: JobWorkflow | undefined }) {
   const travelling = last === 0 || last === 4;                       // between HQ and the site, or back
   const pos = last < 0 ? 0 : travelling ? last + 0.5 : last;
   const back = last >= 4;
+  const onSite = last >= 1 && last <= 3;                             // arrived, working or finished, and not yet left: the truck is parked and pulses softly
   const pct = (pos / (steps.length - 1)) * 100;
   return (
-    <div className={`tdy-route${travelling ? ' moving' : ''}${last === 5 ? ' home' : ''}`}>
+    <div className={`tdy-route${travelling ? ' moving' : ''}${last === 5 ? ' home' : ''}${onSite ? ' onsite' : ''}`}>
       <div className="rt-line"><div className="rt-fill" style={{ width: `${pct}%` }} />
         <span className={`rt-truck${back ? ' back' : ''}`} style={{ left: `${pct}%` }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={TRUCK} /></svg></span>
       </div>
