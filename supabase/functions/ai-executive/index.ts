@@ -3,6 +3,7 @@
 // The figures are calculated by the app; the AI is told to use only those numbers and to label every claim as data, assumption or research.
 // Two modes are called separately so each stays well inside the function time limit.
 // Secrets: ANTHROPIC_API_KEY; optional AI_EXECUTIVE_MODEL (default claude-opus-5-5), AI_EXECUTIVE_RESEARCH_MODEL (default claude-sonnet-5-5)
+import { readJson } from './readjson.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
@@ -86,13 +87,15 @@ Deno.serve(async (req) => {
   if (data.length < 20 || data.length > 60_000) return json({ error: 'The business summary is missing or too large.' }, 400);
   try {
     const model = mode === 'analysis' ? (env('AI_EXECUTIVE_MODEL') || 'claude-opus-5-5') : mode === 'team' ? (env('AI_EXECUTIVE_TEAM_MODEL') || env('AI_EXECUTIVE_RESEARCH_MODEL') || 'claude-sonnet-5-5') : (env('AI_EXECUTIVE_RESEARCH_MODEL') || 'claude-sonnet-5-5');
-    const raw = mode === 'analysis'
-      ? await call(model, ANALYSIS_SYSTEM, `Company data (calculated by the software, totals and trends only):\n${data}`, 5000, false)
+    const ask = (extra: string) => mode === 'analysis'
+      ? call(model, ANALYSIS_SYSTEM + extra, `Company data (calculated by the software, totals and trends only):\n${data}`, 6000, false)
       : mode === 'team'
-        ? await call(model, TEAM_SYSTEM, `Language: ${language === 'taglish' ? 'taglish' : 'english'}\nThis period's numbers for the crew meeting (calculated by the software):\n${data}`, 2500, false)
-        : await call(model, RESEARCH_SYSTEM, `What the company's own numbers show (for focus only):\n${data}`, 4000, true);
-    const result = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? 'null');
-    if (!result || typeof result !== 'object') return json({ error: 'The AI answer could not be read. Try again.' }, 502);
+        ? call(model, TEAM_SYSTEM + extra, `Language: ${language === 'taglish' ? 'taglish' : 'english'}\nThis period's numbers for the crew meeting (calculated by the software):\n${data}`, 3000, false)
+        : call(model, RESEARCH_SYSTEM + extra, `What the company's own numbers show (for focus only):\n${data}`, 5000, true);
+    // the answer is read tolerantly; if it still cannot be read, ask once more, strictly
+    let result = readJson(await ask(''));
+    if (!result) result = readJson(await ask('\n\nIMPORTANT: reply with ONE valid JSON object only, with no text before or after it. Inside text values use single quotes or escape double quotes, and never put a line break inside a value.'));
+    if (!result) return json({ error: 'The AI answer could not be read. Try again.' }, 502);
     return json({ result, model });
   } catch (e) { return json({ error: (e as Error).message || 'The AI could not answer.' }, 502); }
 });
