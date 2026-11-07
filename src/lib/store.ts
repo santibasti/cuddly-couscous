@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { AuditLog, Base, DB, Invoice, Payment, PayrollPeriod, Role, TableName, UserAccount } from './types';
 import { permsFor } from './rbac';
 import { isoNow, sha256, uid } from './util';
-import { seedDB } from './seed';
+import { seedDB } from './demoseed';
 import { geoHooks, geoPatch } from './geo-ph';
 import { syncHub } from './sync';
 import { kvDel, kvGet, kvSet } from './outbox';

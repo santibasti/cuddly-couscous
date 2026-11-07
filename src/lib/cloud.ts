@@ -177,11 +177,30 @@ export async function fetchAll(): Promise<DB> {
   auditAt = maxOf(au.rows, 'at');
   return db as unknown as DB;
 }
+/** True only when the table is certainly not newer than what we already hold; any doubt (odd format, missing value) means "fetch it". */
+export function isUnchanged(remote: string | null | undefined, local: string | undefined): boolean {
+  if (remote === undefined) return false;                 // the database did not report this table
+  if (remote === null) return true;                       // empty table: nothing to fetch
+  if (!local) return false;
+  const r = Date.parse(remote), l = Date.parse(local);
+  return remote <= local && !Number.isNaN(r) && !Number.isNaN(l) && r <= l;
+}
+let marksRpc = true;   // turns off for this visit when the database does not have sync_marks yet (migration 0095)
+async function tableMarks(): Promise<Record<string, string | null> | null> {
+  if (!marksRpc) return null;
+  try {
+    const { data, error } = await supabase().rpc('sync_marks', { p_tables: [...SYNC_TABLES] });
+    if (error) { if (error.code === 'PGRST202' || error.code === '42883' || isMissingTable(error)) marksRpc = false; return null; }
+    return data && typeof data === 'object' ? (data as Record<string, string | null>) : null;
+  } catch { return null; }
+}
 /** Only what changed since the last load, merged into `cur`; a full load when there is no baseline yet or it is a while old. */
 export async function fetchLatest(cur: DB, full = false): Promise<DB> {
   if (full || !fullAt || Date.now() - fullAt > FULL_EVERY) return fetchAll();
   const db = { ...cur } as unknown as Record<string, unknown>;
-  const changes = await inBatches(SYNC_TABLES, async (t) => {
+  const remote = await tableMarks();   // one request that says which tables moved (null = ask every table, as before)
+  const todo = remote ? SYNC_TABLES.filter((t) => !isUnchanged(remote[t], marks[t])) : SYNC_TABLES;
+  const changes = await inBatches(todo, async (t) => {
     const rows: Record<string, unknown>[] = [];
     for (let from = 0; ; from += 1000) {
       const { data, error } = await patient(() => supabase().from(t).select('*').gte('updated_at', marks[t] ?? '1970-01-01T00:00:00Z').order('updated_at').order('id').range(from, from + 999));

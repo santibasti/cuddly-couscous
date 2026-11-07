@@ -92,3 +92,18 @@ describe('empty date-time values', () => {
     expect(toDb({ id: 'x', leave_at: '', hq_at: '2026-10-22T08:00', note: '', start_at: undefined })).toEqual({ id: 'x', leave_at: null, hq_at: '2026-10-22T08:00', note: '' });
   });
 });
+
+describe('isUnchanged (skip a table only when it is certainly not newer)', () => {
+  it('skips equal or older, fetches newer or doubtful', async () => {
+    const { isUnchanged } = await import('./cloud');
+    const L = '2026-11-07T01:37:36.123456+00:00';
+    expect(isUnchanged(L, L)).toBe(true);
+    expect(isUnchanged('2026-11-07T01:37:36.1+00:00', L)).toBe(true);
+    expect(isUnchanged('2026-11-07T01:37:36.123457+00:00', L)).toBe(false);
+    expect(isUnchanged('2026-11-07T01:37:37+00:00', L)).toBe(false);
+    expect(isUnchanged(null, L)).toBe(true);
+    expect(isUnchanged(undefined, L)).toBe(false);
+    expect(isUnchanged(L, undefined)).toBe(false);
+    expect(isUnchanged('garbage', L)).toBe(false);
+  });
+});
