@@ -40,7 +40,10 @@ export default function QuotePublic() {
     const d = { ...emptyDB(), settings: { company: b.company, default_intro: b.defaults?.intro, default_methodology: b.defaults?.methodology, default_disclaimer: b.defaults?.disclaimer, default_crew_size: b.defaults?.crew, counters: {} } as unknown as Settings, clients: [{ name: b.client.name, contact_person: b.client.contact_person ?? '', address: b.client.address ?? '', billing_address: b.client.address ?? '' } as never], sites: b.site ? [{ name: b.site.name, address: b.site.address } as never] : [] };
     const full = { ...q, id: 'public', client_id: undefined, site_id: undefined } as unknown as Quotation;
     d.clients[0] = { ...(d.clients[0] as object), id: 'c' } as never; full.client_id = 'c'; if (b.site) { d.sites[0] = { ...(d.sites[0] as object), id: 's' } as never; full.site_id = 's'; }
-    const blob = await quotationPdf(d, full, { blob: true });
+    // the pictures the client sees on the page are in their copy too
+    const sizes = await Promise.all((b.images ?? []).map((i) => new Promise<[number, number]>((ok) => { const el = new Image(); el.onload = () => ok([el.naturalWidth || 4, el.naturalHeight || 3]); el.onerror = () => ok([4, 3]); el.src = i.file; })));
+    d.quote_images = (b.images ?? []).map((i, n) => ({ ...i, quotation_id: 'public', share_with_client: true, deleted_at: undefined, name: i.id, width: sizes[n][0], height: sizes[n][1], created_at: '', updated_at: '', created_by: '' })) as never;
+    const blob = await quotationPdf(d, full, { blob: true, includeImages: true });
     if (blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${q.number}.pdf`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); }
   };
   const accept = async () => {

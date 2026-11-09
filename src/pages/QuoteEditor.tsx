@@ -52,7 +52,7 @@ export default function QuoteEditor() {
   const locked = !!existing && existing.status !== 'Draft';
   const readOnly = locked || !can('sales.edit');
   const [calc, setCalc] = useState(false); const [repeatSrc, setRepeatSrc] = useState<RepeatSource | null>(null);
-  const [pdfImg, setPdfImg] = useState(false);
+  const [pdfImg, setPdfImg] = useState(true);   // pictures marked "show to client" go in the PDF unless this is unticked
   const [svc, setSvc] = useState<ServiceCode>('GLASS_EXT');
   const [newSite, setNewSite] = useState(false);
   const [qty, setQty] = useState(31);

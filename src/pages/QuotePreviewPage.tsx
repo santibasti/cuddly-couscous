@@ -26,7 +26,7 @@ export default function QuotePreviewPage() {
         <button className="btn" onClick={() => nav(`/sales/quote/${q.id}`)}>← Back to quotation</button>
         <div className="grow"><b>{q.number}</b> <Badge>{q.status}</Badge><div className="small muted">{q.client_sig_at ? `Signed by ${q.client_sig_name} · ${fmtStamp(q.client_sig_at)}` : `Issued ${q.issue_date} · valid until ${q.valid_until}`}</div></div>
         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-          <button className="btn primary" onClick={() => attempt(() => quotationPdf(db, q))}>Download PDF</button>
+          <button className="btn primary" onClick={() => attempt(() => quotationPdf(db, q, { includeImages: true }))}>Download PDF</button>
           {shared && <button className="btn" onClick={() => void copy()}>Copy client link</button>}
         </div>
       </div>
