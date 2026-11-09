@@ -166,7 +166,7 @@ export interface Quotation extends Base {
   /** an ocular visit was done before this quotation (yes = the Job Order shows no prices; no = it shows the approved rates). Unset: follows ocular_visit_id */
   ocular_done?: boolean;
   /** manpower, duration and disclaimer shown on the quotation (absent on quotations made before they existed) */
-  crew_size?: string; safety_officer?: boolean; work_days?: number; disclaimer?: string; intro?: string; methodology?: string;
+  crew_size?: string; safety_officer?: boolean; work_days?: number; /** upper end of a range such as 2-3 days */ work_days_max?: number; disclaimer?: string; intro?: string; methodology?: string;
   /** materials and methodology per service on the quotation (when present they replace the single methodology text) */
   method_sections?: { code: string; name: string; materials?: string; methodology: string }[];
   status: QuoteStatus;

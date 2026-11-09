@@ -39,7 +39,7 @@ export function parseMethodology(text: string): MethodBlocks {
   return out;
 }
 
-type Q = Pick<Quotation, 'crew_size' | 'safety_officer' | 'work_days'>;
+type Q = Pick<Quotation, 'crew_size' | 'safety_officer' | 'work_days'> & { work_days_max?: number };
 export const defaultCrew = (s?: Pick<Settings, 'default_crew_size'>) => s?.default_crew_size?.trim() || DEFAULT_CREW_SIZE;
 export const defaultDisclaimer = (s?: Pick<Settings, 'default_disclaimer'>) => s?.default_disclaimer?.trim() || DEFAULT_DISCLAIMER;
 
@@ -50,7 +50,9 @@ export function manpowerText(q: Q): string | null {
 }
 export function durationText(q: Q): string | null {
   if (!q.work_days || q.work_days <= 0) return null;
-  return `The cleaning activity is projected to be completed within ${q.work_days} working day${q.work_days === 1 ? '' : 's'}, subject to weather conditions and site accessibility.`;
+  const hi = q.work_days_max && q.work_days_max > q.work_days ? q.work_days_max : undefined;   // a range such as 2-3 days
+  const days = hi ? `${q.work_days}-${hi} working days` : `${q.work_days} working day${q.work_days === 1 ? '' : 's'}`;
+  return `The cleaning activity is projected to be completed within ${days}, subject to weather conditions and site accessibility.`;
 }
 
 /** How the client pays: on completion of the job, or net N days after the invoice date. Chosen on each quotation. */
