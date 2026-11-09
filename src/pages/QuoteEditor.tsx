@@ -10,7 +10,8 @@ import { deleteQuotation, planQuotationDelete } from '@/lib/deletion';
 import { countPanels, docTotals, priceService, type GlassRow } from '@/lib/business';
 import { directInvoiceOf, duplicateQuotation, invoiceFromQuotation, quoteLink, saveQuotation, setQuoteStatus } from '@/lib/actions';
 import { quotationPdf, shareTextQuote } from '@/lib/export';
-import { IncludeImagesToggle, QuoteImageGallery } from '@/components/QuoteImages';
+import { IncludeImagesToggle, PendingQuoteImages, QuoteImageGallery, type Picked } from '@/components/QuoteImages';
+import { addQuoteImage } from '@/lib/quoteimages';
 import { SiteForm } from './ClientDetail';
 import { addDays, fmtDate, fmtStamp, money, today } from '@/lib/util';
 import type { Quotation, QuoteItem, ServiceCode } from '@/lib/types';
@@ -85,11 +86,18 @@ export default function QuoteEditor() {
     setItems([...v.items, ...r.lines]); setNote(r.note);
     if (!v.scope) f.set('scope', `${d.name} at ${(db.sites.find((s) => s.id === v.site_id)?.name ?? client?.name ?? 'site').replace(/\.+$/, '')}.`);
   };
+  const [pending, setPending] = useState<Picked[]>([]);
   const save = () => {
     if (!v.client_id) return attempt(() => { throw new Error('Choose a client.'); });
     if (v.valid_until < v.issue_date) return attempt(() => { throw new Error('Validity date is before the issue date.'); });
     const r = attempt(() => saveQuotation({ ...v, discount: discountPesos, id: existing?.id, number: existing?.number, branch_id: client?.branch_id ?? v.branch_id }), 'Quotation saved') as Quotation | undefined;
-    if (r && !existing) nav(`/sales/quote/${r.id}`, { replace: true });
+    if (r && !existing) {
+      // pictures added before the first save are attached now that the quotation exists
+      let failed = '';
+      for (const p of pending) { try { addQuoteImage({ quotation_id: r.id }, { file: p.file, name: p.name, width: p.width, height: p.height, category: p.category, caption: p.caption, item_index: p.item, share_with_client: p.share }); } catch (e) { failed = e instanceof Error ? e.message : 'Could not add a picture'; break; } }
+      if (failed) toast(`Quotation saved, but the pictures were not added: ${failed}`, 'err');
+      setPending([]); nav(`/sales/quote/${r.id}`, { replace: true });
+    }
     return r;
   };
   const doStatus = async (s: Quotation['status']) => {
@@ -204,7 +212,7 @@ export default function QuoteEditor() {
         <Card title="Images / attachments (optional)" actions={<span className="small muted">Kept apart from job photos</span>}>
           {existing
             ? <QuoteImageGallery target={{ quotation_id: existing.id }} items={existing.items} title="Pictures that explain this quotation" />
-            : <div className="small muted">Save the quotation first, then add pictures if they help explain the scope (site areas, panel-counting areas, access limits, exclusions). They are optional.</div>}
+            : <PendingQuoteImages value={pending} onChange={setPending} items={v.items} />}
         </Card>
         <Card title="Introduction & cleaning methodology" actions={<span className="small muted">Printed on the quotation — edit for this client if needed</span>}>
           <Field label="Introduction (after “Dear Sir/Ma'am,”)" className="full"><textarea rows={4} style={{ width: '100%' }} disabled={readOnly} value={v.intro ?? ''} onChange={(e) => f.set('intro', e.target.value)} /></Field>

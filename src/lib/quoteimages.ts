@@ -52,10 +52,11 @@ export function addQuoteImage(t: ImageTarget, f: QuoteImageInput): QuoteImage {
   return store.insert('quote_images', { ...t, ...(v ? { job_id: v.job_id } : {}), category: f.category, caption: (f.caption ?? '').trim(), item_index: f.item_index, item_label: label, file: f.file, name: f.name, width: f.width, height: f.height, share_with_client: !!f.share_with_client } as never,
     `Quotation image added to ${label2}: ${f.category}${f.caption ? ` — ${f.caption.trim()}` : ''}`) as QuoteImage;
 }
-export function updateQuoteImage(id: string, patch: Partial<Pick<QuoteImage, 'category' | 'caption' | 'item_index' | 'share_with_client'>>) {
+export function updateQuoteImage(id: string, patch: Partial<Pick<QuoteImage, 'category' | 'caption' | 'item_index' | 'share_with_client' | 'file'>>) {
   const d = db(); const img = d.quote_images.find((i) => i.id === id) ?? fail('Image not found.');
   const t: ImageTarget = img.quotation_id ? { quotation_id: img.quotation_id } : { variation_id: img.variation_id! };
   const block = imageBlock(d, t); if (block) fail(block);
+  if (patch.file !== undefined) { if (!patch.file.startsWith('data:image/')) fail('Choose an image file.'); if (patch.file.length > 2_200_000) fail('That image is too large. Use a smaller picture.'); }
   const next = { category: patch.category ?? img.category, caption: patch.caption ?? img.caption, item_index: 'item_index' in patch ? patch.item_index : img.item_index };
   const label = checkMeta(d, t, next);
   return store.update('quote_images', id, { ...patch, caption: next.caption.trim(), item_label: next.item_index === undefined ? undefined : label } as never, 'update', `Quotation image updated: ${next.category}${next.caption ? ` — ${next.caption}` : ''}`);

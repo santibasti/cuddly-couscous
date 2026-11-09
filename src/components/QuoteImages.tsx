@@ -3,11 +3,80 @@ import { useAuth } from '@/lib/store';
 import { Badge, Field, Modal, attempt, fileToDataUrl, toast } from '@/components/ui';
 import { IMAGE_CATEGORIES, MAX_IMAGES_PER_RECORD, addQuoteImage, deleteQuoteImage, imageBlock, quoteImagesOf, updateQuoteImage, type ImageTarget } from '@/lib/quoteimages';
 import type { QuoteImage, QuoteImageCategory, QuoteItem } from '@/lib/types';
+import { ImageMarkup } from '@/components/ImageMarkup';
 
-interface Picked { key: string; file: string; name: string; width: number; height: number; category: QuoteImageCategory; caption: string; item?: number; share: boolean }
+export interface Picked { key: string; file: string; name: string; width: number; height: number; category: QuoteImageCategory; caption: string; item?: number; share: boolean }
 
 const dims = (src: string) => new Promise<{ width: number; height: number }>((res, rej) => { const i = new Image(); i.onload = () => res({ width: i.naturalWidth, height: i.naturalHeight }); i.onerror = rej; i.src = src; });
 const lineLabel = (it: QuoteItem, n: number) => `${n + 1}. ${it.description.slice(0, 60)}`;
+
+/** Reads picture files into the "adding" list (resized to 1280 px). */
+export async function readPicked(files: FileList | null, room: number): Promise<Picked[]> {
+  const list = Array.from(files ?? []).filter((f) => f.type.startsWith('image/')).slice(0, Math.max(0, room));
+  if ((files?.length ?? 0) > list.length) toast(`Only image files, up to ${MAX_IMAGES_PER_RECORD} per record.`, 'err');
+  const out: Picked[] = [];
+  for (const f of list) { try { const file = await fileToDataUrl(f, 1280); out.push({ key: `${f.name}-${out.length}-${Date.now()}`, file, name: f.name, ...(await dims(file)), category: 'Scope Area', caption: '', share: true }); } catch { toast('Could not read that image', 'err'); } }
+  return out;
+}
+
+/** The "describe these pictures" window: category, caption, related line, show-to-client, and mark-up. Used for saved and for not-yet-saved quotations. */
+export function AddImagesModal({ adding, setAdding, items, onSave, saveLabel }: { adding: Picked[]; setAdding: (a: Picked[] | null) => void; items: QuoteItem[]; onSave: () => void; saveLabel?: string }) {
+  const [mark, setMark] = useState<string | null>(null);
+  const upd = (key: string, p: Partial<Picked>) => setAdding(adding.map((x) => (x.key === key ? { ...x, ...p } : x)));
+  const markFor = adding.find((x) => x.key === mark);
+  return (
+    <>
+      <Modal title={`Add ${adding.length === 1 ? 'image' : `${adding.length} images`}`} size="wide" onClose={() => setAdding(null)} footer={<><button className="btn" onClick={() => setAdding(null)}>Cancel</button><button className="btn primary lg" onClick={onSave}>{saveLabel ?? `Save ${adding.length === 1 ? 'image' : 'images'}`}</button></>}>
+        <div className="stack">
+          <div className="alert info">These pictures belong to the quotation only — they are kept apart from job and service photos. Use <b>✏ Mark up</b> to circle or point at what the client should notice. Tick “Show to client” for the ones the client should see (on the quotation, the client link and the PDF).</div>
+          {adding.map((p) => (
+            <div key={p.key} className="qadd">
+              <img src={p.file} alt={p.name} />
+              <div className="stack" style={{ flex: 1, minWidth: 0 }}>
+                <div className="chips" role="group" aria-label="Category" style={{ marginTop: 0 }}>{IMAGE_CATEGORIES.map((c) => <button key={c} type="button" className={p.category === c ? 'on' : ''} onClick={() => upd(p.key, { category: c })}>{c}</button>)}</div>
+                <input placeholder="Short caption (optional)" maxLength={140} value={p.caption} onChange={(e) => upd(p.key, { caption: e.target.value })} aria-label="Caption" />
+                <div className="row" style={{ flexWrap: 'wrap' }}>
+                  {items.length > 0 && <select aria-label="Related line item" value={p.item ?? ''} onChange={(e) => upd(p.key, { item: e.target.value === '' ? undefined : +e.target.value })}><option value="">Related line item — none</option>{items.map((it, n) => <option key={n} value={n}>{lineLabel(it, n)}</option>)}</select>}
+                  <label className="check"><input type="checkbox" checked={p.share} onChange={(e) => upd(p.key, { share: e.target.checked })} />Show to client</label>
+                  <button type="button" className="btn sm" onClick={() => setMark(p.key)}>✏ Mark up</button>
+                  <button type="button" className="btn sm danger" onClick={() => setAdding(adding.length > 1 ? adding.filter((x) => x.key !== p.key) : null)}>Remove</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
+      {markFor && <ImageMarkup src={markFor.file} onClose={() => setMark(null)} onDone={(file) => { upd(markFor.key, { file }); setMark(null); }} />}
+    </>
+  );
+}
+
+/** Pictures for a quotation that has not been saved yet: they are kept here and attached automatically when it is saved. */
+export function PendingQuoteImages({ value, onChange, items }: { value: Picked[]; onChange: (v: Picked[]) => void; items: QuoteItem[] }) {
+  const pick = useRef<HTMLInputElement>(null); const [adding, setAdding] = useState<Picked[] | null>(null);
+  const onFiles = async (files: FileList | null) => { const out = await readPicked(files, MAX_IMAGES_PER_RECORD - value.length); if (pick.current) pick.current.value = ''; if (out.length) setAdding(out); };
+  return (
+    <div className="qimgs">
+      <div className="row between" style={{ marginBottom: 6 }}>
+        <b className="small">Pictures for this quotation{value.length ? ` · ${value.length}` : ''}</b>
+        {value.length < MAX_IMAGES_PER_RECORD && <><input ref={pick} type="file" accept="image/*" multiple className="hide" onChange={(e) => void onFiles(e.target.files)} /><button type="button" className="btn sm" onClick={() => pick.current?.click()}>+ Add images</button></>}
+      </div>
+      {!value.length && <div className="small muted">You can add pictures now and mark them up. They are saved with the quotation when you press Save.</div>}
+      {value.length > 0 && (
+        <div className="qgrid">
+          {value.map((p) => (
+            <div key={p.key} className="qthumb" style={{ cursor: 'default' }}>
+              <img src={p.file} alt={p.caption || p.category} />
+              <span className="qcap"><i>{p.category}</i>{p.caption && <em>{p.caption}</em>}</span>
+              <button type="button" className="btn sm danger" style={{ position: 'absolute', top: 4, right: 4 }} onClick={() => onChange(value.filter((x) => x.key !== p.key))} aria-label="Remove picture">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {adding && <AddImagesModal adding={adding} setAdding={setAdding} items={items} saveLabel="Add to this quotation" onSave={() => { onChange([...value, ...adding]); setAdding(null); }} />}
+    </div>
+  );
+}
 
 /** Optional quotation images for a quotation or a variation: thumbnail gallery, caption / category / line-item link, and "share with client". */
 export function QuoteImageGallery({ target, items = [], title = 'Images / attachments (optional)', client = false, compact = false }: { target: ImageTarget; items?: QuoteItem[]; title?: string; client?: boolean; compact?: boolean }) {
@@ -19,15 +88,10 @@ export function QuoteImageGallery({ target, items = [], title = 'Images / attach
   const [view, setView] = useState<QuoteImage | null>(null);
   const pick = useRef<HTMLInputElement>(null);
   const onFiles = async (files: FileList | null) => {
-    const room = MAX_IMAGES_PER_RECORD - imgs.length;
-    const list = Array.from(files ?? []).filter((f) => f.type.startsWith('image/')).slice(0, Math.max(0, room));
-    if ((files?.length ?? 0) > list.length) toast(`Only image files, up to ${MAX_IMAGES_PER_RECORD} per record.`, 'err');
-    const out: Picked[] = [];
-    for (const f of list) { try { const file = await fileToDataUrl(f, 1280); out.push({ key: `${f.name}-${out.length}-${Date.now()}`, file, name: f.name, ...(await dims(file)), category: 'Scope Area', caption: '', share: false }); } catch { toast('Could not read that image', 'err'); } }
+    const out = await readPicked(files, MAX_IMAGES_PER_RECORD - imgs.length);
     if (pick.current) pick.current.value = '';
     if (out.length) setAdding(out);
   };
-  const upd = (key: string, p: Partial<Picked>) => setAdding((a) => a && a.map((x) => (x.key === key ? { ...x, ...p } : x)));
   const saveAll = () => {
     if (!adding) return;
     const ok = attempt(() => { for (const p of adding) addQuoteImage(target, { file: p.file, name: p.name, width: p.width, height: p.height, category: p.category, caption: p.caption, item_index: p.item, share_with_client: p.share }); return true; }, adding.length === 1 ? 'Image added' : `${adding.length} images added`);
@@ -53,27 +117,7 @@ export function QuoteImageGallery({ target, items = [], title = 'Images / attach
           ))}
         </div>
       )}
-      {adding && (
-        <Modal title={`Add ${adding.length === 1 ? 'image' : `${adding.length} images`}`} size="wide" onClose={() => setAdding(null)} footer={<><button className="btn" onClick={() => setAdding(null)}>Cancel</button><button className="btn primary lg" onClick={saveAll}>Save {adding.length === 1 ? 'image' : 'images'}</button></>}>
-          <div className="stack">
-            <div className="alert info">These pictures belong to the quotation only — they are kept apart from job and service photos. Tick “Show to client” for the ones the client should see (and that can go in the PDF).</div>
-            {adding.map((p) => (
-              <div key={p.key} className="qadd">
-                <img src={p.file} alt={p.name} />
-                <div className="stack" style={{ flex: 1, minWidth: 0 }}>
-                  <div className="chips" role="group" aria-label="Category" style={{ marginTop: 0 }}>{IMAGE_CATEGORIES.map((c) => <button key={c} type="button" className={p.category === c ? 'on' : ''} onClick={() => upd(p.key, { category: c })}>{c}</button>)}</div>
-                  <input placeholder="Short caption (optional)" maxLength={140} value={p.caption} onChange={(e) => upd(p.key, { caption: e.target.value })} aria-label="Caption" />
-                  <div className="row" style={{ flexWrap: 'wrap' }}>
-                    {items.length > 0 && <select aria-label="Related line item" value={p.item ?? ''} onChange={(e) => upd(p.key, { item: e.target.value === '' ? undefined : +e.target.value })}><option value="">Related line item — none</option>{items.map((it, n) => <option key={n} value={n}>{lineLabel(it, n)}</option>)}</select>}
-                    <label className="check"><input type="checkbox" checked={p.share} onChange={(e) => upd(p.key, { share: e.target.checked })} />Show to client</label>
-                    <button type="button" className="btn sm danger" onClick={() => setAdding(adding.length > 1 ? adding.filter((x) => x.key !== p.key) : null)}>Remove</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Modal>
-      )}
+      {adding && <AddImagesModal adding={adding} setAdding={setAdding} items={items} onSave={saveAll} />}
       {view && <ImageViewer img={view} items={items} client={client} can={can} onClose={() => setView(null)} />}
     </div>
   );
@@ -82,13 +126,15 @@ export function QuoteImageGallery({ target, items = [], title = 'Images / attach
 function ImageViewer({ img, items, client, can, onClose }: { img: QuoteImage; items: QuoteItem[]; client: boolean; can: boolean; onClose: () => void }) {
   const { db } = useAuth();
   const cur = db.quote_images.find((i) => i.id === img.id && !i.deleted_at);
-  const [edit, setEdit] = useState(false);
+  const [edit, setEdit] = useState(false); const [marking, setMarking] = useState(false);
   const [cat, setCat] = useState<QuoteImageCategory>(img.category); const [cap, setCap] = useState(img.caption); const [item, setItem] = useState<number | undefined>(img.item_index); const [share, setShare] = useState(img.share_with_client);
   if (!cur) { onClose(); return null; }
   const save = () => { if (attempt(() => updateQuoteImage(img.id, { category: cat, caption: cap, item_index: item, share_with_client: share }), 'Image updated')) setEdit(false); };
   return (
+    <>
+    {marking && <ImageMarkup src={cur.file} onClose={() => setMarking(false)} onDone={(file) => { if (file !== cur.file) attempt(() => updateQuoteImage(img.id, { file }), 'Marked picture saved'); setMarking(false); }} />}
     <Modal title={<>{cur.category} {!client && <Badge tone={cur.share_with_client ? 'teal' : 'gray'}>{cur.share_with_client ? 'Shown to client' : 'Internal only'}</Badge>}</>} size="wide" onClose={onClose} footer={<>
-      {can && !client && !edit && <><button className="btn danger" onClick={() => { if (attempt(() => deleteQuoteImage(cur.id), 'Image deleted')) onClose(); }}>Delete</button><button className="btn" onClick={() => setEdit(true)}>Edit caption / category</button></>}
+      {can && !client && !edit && <><button className="btn danger" onClick={() => { if (attempt(() => deleteQuoteImage(cur.id), 'Image deleted')) onClose(); }}>Delete</button><button className="btn" onClick={() => setMarking(true)}>✏ Mark up</button><button className="btn" onClick={() => setEdit(true)}>Edit caption / category</button></>}
       <button className="btn" onClick={onClose}>Close</button></>}>
       <div className="stack">
         <img src={cur.file} alt={cur.caption || cur.category} style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: 8, alignSelf: 'center', background: '#f1f5f9' }} />
@@ -103,6 +149,7 @@ function ImageViewer({ img, items, client, can, onClose }: { img: QuoteImage; it
         )}
       </div>
     </Modal>
+    </>
   );
 }
 

@@ -9,6 +9,7 @@ import { docTotals } from '@/lib/business';
 import { paymentLabel, paymentSentence } from '@/lib/quote-text';
 import { QuotationDocument, type QuoteBundle } from '@/components/QuotationDocument';
 import { acceptQuoteByLink } from '@/lib/actions';
+import { quoteImagesOf } from '@/lib/quoteimages';
 import { quotationPdf } from '@/lib/export';
 import { fmtDate, fmtDateTime, money } from '@/lib/util';
 import type { Quotation, Settings } from '@/lib/types';
@@ -27,7 +28,7 @@ export default function QuotePublic() {
     if (CLOUD) return supabase().rpc('get_quotation_public', { p_token: token }).then(({ data, error }) => { if (error) setSetup(error.message); setB((data as Bundle | null) ?? null); });
     const q = db.quotations.find((x) => x.share_token === token && ['Sent', 'Approved'].includes(x.status) && !x.deleted_at); const c = q && db.clients.find((x) => x.id === q.client_id);
     const site = q?.site_id ? db.sites.find((x) => x.id === q.site_id) : undefined;
-    setB(q && c ? { quotation: q, client: { name: c.name, contact_person: c.contact_person, address: c.address || c.billing_address }, site: site ? { name: site.name, address: site.address } : null, company: db.settings.company } : null);
+    setB(q && c ? { quotation: q, client: { name: c.name, contact_person: c.contact_person, address: c.address || c.billing_address }, site: site ? { name: site.name, address: site.address } : null, company: db.settings.company, images: quoteImagesOf(db, { quotation_id: q.id }, true).map((i) => ({ id: i.id, category: i.category, caption: i.caption, file: i.file, item_label: i.item_label })) } : null);
     return Promise.resolve();
   };
   useEffect(() => { void load(); }, [token, db.quotations]); // eslint-disable-line react-hooks/exhaustive-deps

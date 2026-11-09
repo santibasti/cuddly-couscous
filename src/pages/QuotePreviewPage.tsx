@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/store';
 import { Badge, attempt } from '@/components/ui';
 import { QuotationDocument, type QuoteBundle } from '@/components/QuotationDocument';
 import { quoteLink } from '@/lib/actions';
+import { quoteImagesOf } from '@/lib/quoteimages';
 import { quotationPdf } from '@/lib/export';
 import { fmtStamp } from '@/lib/util';
 
@@ -15,7 +16,8 @@ export default function QuotePreviewPage() {
   if (!q) return <div className="alert warn">Quotation not found. <Link to="/sales">Back to quotations</Link></div>;
   const c = db.clients.find((x) => x.id === q.client_id); const site = q.site_id ? db.sites.find((x) => x.id === q.site_id) : undefined;
   const s = db.settings;
-  const bundle: QuoteBundle = { quotation: q, client: { name: c?.name ?? '', contact_person: c?.contact_person, address: c?.address || c?.billing_address }, site: site ? { name: site.name, address: site.address } : null, company: s.company, defaults: { intro: s.default_intro, methodology: s.default_methodology, disclaimer: s.default_disclaimer, crew: s.default_crew_size } };
+  const bundle: QuoteBundle = { quotation: q, client: { name: c?.name ?? '', contact_person: c?.contact_person, address: c?.address || c?.billing_address }, site: site ? { name: site.name, address: site.address } : null, company: s.company, defaults: { intro: s.default_intro, methodology: s.default_methodology, disclaimer: s.default_disclaimer, crew: s.default_crew_size },
+    images: quoteImagesOf(db, { quotation_id: q.id }, true).map((i) => ({ id: i.id, category: i.category, caption: i.caption, file: i.file, item_label: i.item_label })) };
   const shared = ['Sent', 'Approved'].includes(q.status);
   const copy = async () => { const url = quoteLink(q.id); try { await navigator.clipboard.writeText(url); attempt(() => true, 'Client link copied'); } catch { window.prompt('Copy this link for the client', url); } };
   return (

@@ -9,6 +9,8 @@ import type { Quotation, Settings } from '@/lib/types';
 
 export interface QuoteBundle {
   quotation: Quotation; client: { name: string; contact_person?: string; address?: string }; site?: { name: string; address: string } | null;
+  /** Pictures marked "show to client" (with any markup drawn on them). */
+  images?: { id: string; category: string; caption: string; file: string; item_label?: string | null }[];
   company: Settings['company']; defaults?: { intro?: string; methodology?: string; disclaimer?: string; crew?: string };
 }
 
@@ -59,6 +61,13 @@ export function QuotationDocument({ b }: { b: QuoteBundle }) {
         {q.vat_mode !== 'none' && <div className="row"><span>VAT {q.vat_rate}%{q.vat_mode === 'inclusive' ? ' (included)' : ''}</span><span>{money(t.vat)}</span></div>}
         <div className="fin"><span>TOTAL</span><span>{money(t.total)}</span></div>
       </div>}
+
+      {!!b.images?.length && <>
+        <div className="pd-h">Site images</div>
+        <div className="pd-imgs">{b.images.map((im) => (
+          <figure key={im.id} className="pd-fig"><img src={im.file} alt={im.caption || im.category} loading="lazy" /><figcaption><b>{im.category}</b>{im.caption ? ` — ${im.caption}` : ''}{im.item_label ? <span className="pd-small"> · {im.item_label}</span> : null}</figcaption></figure>
+        ))}</div>
+      </>}
 
       <div className="pd-h">{sections.length ? 'Materials & methodology' : 'Our cleaning system methodology'}</div>
       {sections.length === 0 && <div className="pd-tech"><b>{DEFAULT_TECHNOLOGY}</b><span>Water-Fed Pole · Deionized Water Technology · No harsh chemicals</span></div>}

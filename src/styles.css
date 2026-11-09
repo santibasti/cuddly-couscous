@@ -1191,3 +1191,7 @@ body:not(.dark) .wk-team { background: #fff; border-color: var(--line); } .wk-te
 .confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 2; }
 .confetti i { position: absolute; top: -30px; font-style: normal; font-size: 22px; animation: confetti-fall 3s linear infinite; }
 @keyframes confetti-fall { to { transform: translateY(520px) rotate(360deg); opacity: .2; } }
+
+/* Quotation: pictures shown to the client (with any markup drawn on them) */
+.pd-imgs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 6px; } .pd-fig { margin: 0; break-inside: avoid; border: 1px solid #dbe3ec; border-radius: 8px; overflow: hidden; background: #fff; } .pd-fig img { width: 100%; display: block; background: #eef2f6; } .pd-fig figcaption { padding: 6px 9px 8px; font-size: 12px; color: #334155; }
+@media (max-width: 560px) { .pd-imgs { grid-template-columns: 1fr; } }
