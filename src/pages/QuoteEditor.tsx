@@ -244,7 +244,7 @@ export default function QuoteEditor() {
         <Card title="Manpower, duration & disclaimer" actions={<span className="small muted">Shown on the quotation sent to the client</span>}>
           <div className="form-grid">
             <Field label="Crew deployed" hint="e.g. 6-7 — edit for each job"><input disabled={readOnly} value={v.crew_size ?? ''} onChange={(e) => f.set('crew_size', e.target.value)} placeholder="6-7" /></Field>
-            <Field label="Working days"><input type="number" min={1} step={1} disabled={readOnly} value={v.work_days ?? ''} onChange={(e) => f.set('work_days', e.target.value === '' ? undefined : Math.max(1, Math.round(Number(e.target.value))))} /></Field>
+            <Field label="Working days" hint={v.work_days ? 'Printed as “Estimated duration” on the quotation and PDF.' : '⚠ Empty: the Estimated duration is left out of the quotation and PDF.'}><input type="number" min={1} step={1} disabled={readOnly} value={v.work_days ?? ''} onChange={(e) => f.set('work_days', e.target.value === '' ? undefined : Math.max(1, Math.round(Number(e.target.value))))} /></Field>
             <label className="check full"><input type="checkbox" disabled={readOnly} checked={!!v.safety_officer} onChange={(e) => f.set('safety_officer', e.target.checked)} /> Include a Designated Safety Officer</label>
           </div>
           {(manpowerText(v) || durationText(v)) && <div className="alert info" style={{ margin: '10px 0' }}>{manpowerText(v) && <div><b>Manpower Deployment:</b> {manpowerText(v)}</div>}{durationText(v) && <div style={{ marginTop: 4 }}><b>Estimated Duration:</b> {durationText(v)}</div>}</div>}

@@ -50,7 +50,7 @@ export function manpowerText(q: Q): string | null {
 }
 export function durationText(q: Q): string | null {
   if (!q.work_days || q.work_days <= 0) return null;
-  return `The cleaning activity is projected to be completed within ${q.work_days} day/s, subject to weather conditions and site accessibility.`;
+  return `The cleaning activity is projected to be completed within ${q.work_days} working day${q.work_days === 1 ? '' : 's'}, subject to weather conditions and site accessibility.`;
 }
 
 /** How the client pays: on completion of the job, or net N days after the invoice date. Chosen on each quotation. */

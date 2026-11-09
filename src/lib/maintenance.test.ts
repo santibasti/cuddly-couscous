@@ -114,7 +114,8 @@ describe('quotation manpower, duration and disclaimer', () => {
     expect(Q.manpowerText({ crew_size: '6-7', safety_officer: true, work_days: 1 })).toMatch(/^6-7 trained Crew with Certified Work at Height, Designated Safety Officer, will be deployed/);
     expect(Q.manpowerText({ crew_size: '4', safety_officer: false, work_days: 1 })).not.toMatch(/Safety Officer/);
     expect(Q.manpowerText({ safety_officer: true })).toBeNull();
-    expect(Q.durationText({ work_days: 3 })).toMatch(/within 3 day\/s, subject to weather/);
+    expect(Q.durationText({ work_days: 3 })).toMatch(/within 3 working days, subject to weather/);
+    expect(Q.durationText({ work_days: 1 })).toMatch(/within 1 working day, subject to weather/);
     await store.login('ops@topmop.ph', 'topmop123');
     const q0 = db().quotations[0];
     const saved = A.saveQuotation({ ...q0, id: undefined, number: undefined, status: 'Draft', crew_size: '5', safety_officer: false, work_days: 2, disclaimer: 'Custom disclaimer' } as never) as { id: string };
