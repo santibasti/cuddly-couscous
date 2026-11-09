@@ -158,6 +158,8 @@ export interface Quotation extends Base {
   discount: number; // overall peso discount (worked out from the percentage when discount_type is 'percent')
   /** how the overall discount was entered: a peso amount (default) or a percentage of the subtotal after line discounts */
   discount_type?: 'amount' | 'percent'; discount_percent?: number;
+  /** a name for the overall discount, printed instead of "Discount" (e.g. Promo, Loyalty discount) */
+  discount_label?: string;
   terms: string;
   /** 'completion' (payable when the job is done) or 'net_30' etc. (days after the invoice date); absent on older quotations */
   payment_option?: string;

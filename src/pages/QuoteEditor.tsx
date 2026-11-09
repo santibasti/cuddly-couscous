@@ -199,10 +199,11 @@ export default function QuoteEditor() {
                   {pct ? <input type="number" min="0" max="100" step="0.01" disabled={readOnly || !can('discount.approve')} value={v.discount_percent ?? 0} onChange={(e) => f.set('discount_percent', +e.target.value)} aria-label="Discount percent" /> : <input type="number" min="0" disabled={readOnly || !can('discount.approve')} {...f.bind('discount')} />}
                 </div>
               </Field>
+              <Field label="Discount name (optional)" hint="Printed on the quotation instead of “Discount”, e.g. Promo, Loyalty discount, Early-bird."><input maxLength={40} disabled={readOnly || !can('discount.approve')} placeholder="e.g. Promo" aria-label="Discount name" value={v.discount_label ?? ''} onChange={(e) => f.set('discount_label', e.target.value.trim() ? e.target.value : undefined)} /></Field>
             </div>
             <table className="tbl"><tbody>
               <tr><td>Subtotal</td><td className="num">{money(t.gross)}</td></tr>
-              {t.discount > 0 && <tr><td>Discounts</td><td className="num">− {money(t.discount)}</td></tr>}
+              {t.discount > 0 && <tr><td>{v.discount_label?.trim() || 'Discounts'}</td><td className="num">− {money(t.discount)}</td></tr>}
               {v.vat_mode !== 'none' && <tr><td>VAT {v.vat_rate}%{v.vat_mode === 'inclusive' ? ' (included)' : ''}</td><td className="num">{money(t.vat)}</td></tr>}
               <tr><td><b>Total</b></td><td className="num"><b style={{ fontSize: 18 }}>{money(t.total)}</b></td></tr>
               {client && client.withholding_rate > 0 && <tr><td className="muted small">Client withholds {client.withholding_rate}% → expected net collection</td><td className="num muted small">{money(t.total - t.net * (client.withholding_rate / 100))}</td></tr>}

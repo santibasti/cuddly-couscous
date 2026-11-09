@@ -58,7 +58,7 @@ export function QuotationDocument({ b }: { b: QuoteBundle }) {
       {!amounts && <div className="pd-pay" style={{ marginTop: 10 }}>{RATES_NOTE}{t.discount > 0 ? ' The agreed discount applies to the final amount.' : ''}</div>}
       {amounts && <div className="pd-tot">
         <div className="row"><span>Subtotal</span><span>{money(t.gross)}</span></div>
-        {t.discount > 0 && <div className="row"><span>Discount</span><span>− {money(t.discount)}</span></div>}
+        {t.discount > 0 && <div className="row"><span>{q.discount_label?.trim() || 'Discount'}</span><span>− {money(t.discount)}</span></div>}
         {q.vat_mode !== 'none' && <div className="row"><span>VAT {q.vat_rate}%{q.vat_mode === 'inclusive' ? ' (included)' : ''}</span><span>{money(t.vat)}</span></div>}
         <div className="fin"><span>TOTAL</span><span>{money(t.total)}</span></div>
       </div>}

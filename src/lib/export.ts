@@ -276,7 +276,7 @@ export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?:
   if (!amounts) { need(14); para(RATES_NOTE + (q.discount > 0 ? ' The agreed discount applies to the final amount.' : ''), M, CW, 9.2, 4.5, MUTED); y += 4; } else {
   const t = docTotals(q.items, q.discount, q.vat_mode, q.vat_rate);
   const rows: [string, string][] = [['Subtotal', pm(t.gross)]];
-  if (t.discount > 0.005) rows.push(['Discount', '- ' + pm(t.discount)]);
+  if (t.discount > 0.005) rows.push([clean(q.discount_label?.trim() || 'Discount'), '- ' + pm(t.discount)]);
   if (q.vat_mode !== 'none') rows.push([q.vat_mode === 'inclusive' ? `VAT ${q.vat_rate}% (included)` : `VAT ${q.vat_rate}%`, pm(t.vat)]);
   need(rows.length * 5.5 + 14);
   const bx = W - M - 82; const bh = rows.length * 5.5 + 11;
