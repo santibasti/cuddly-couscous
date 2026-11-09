@@ -12,6 +12,7 @@ import { directInvoiceOf, duplicateQuotation, invoiceFromQuotation, quoteLink, s
 import { quotationPdf, shareTextQuote } from '@/lib/export';
 import { IncludeImagesToggle, PendingQuoteImages, QuoteImageGallery, type Picked } from '@/components/QuoteImages';
 import { addQuoteImage } from '@/lib/quoteimages';
+import { QuotePanels } from '@/components/QuotePanels';
 import { SiteForm } from './ClientDetail';
 import { addDays, fmtDate, fmtStamp, money, today } from '@/lib/util';
 import type { Quotation, QuoteItem, ServiceCode } from '@/lib/types';
@@ -209,6 +210,11 @@ export default function QuoteEditor() {
           </div>
         </Card>
 
+        <Card title="Glass panel count — floors & sides (optional)" actions={<span className="small muted">Printed on the quotation</span>}>
+          <QuotePanels rows={v.ocular_panels ?? []} onChange={(r) => f.set('ocular_panels', r)} readOnly={readOnly}
+            fromVisit={ov ? { label: `ocular visit ${ov.number}`, rows: ov.panels } : undefined}
+            onUseTotal={(n) => { setQty(n); toast(`Quantity set to ${n} panels — pick a service or package above to price it`); }} />
+        </Card>
         <Card title="Images / attachments (optional)" actions={<span className="small muted">Kept apart from job photos</span>}>
           {existing
             ? <QuoteImageGallery target={{ quotation_id: existing.id }} items={existing.items} title="Pictures that explain this quotation" />

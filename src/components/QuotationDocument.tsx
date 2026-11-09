@@ -5,6 +5,7 @@ import { docTotals } from '@/lib/business';
 import { DEFAULT_DISCLAIMER, DEFAULT_INTRO, DEFAULT_METHODOLOGY, DEFAULT_TECHNOLOGY, durationText, manpowerText, quoteShowsAmounts, RATES_NOTE, paymentLabel, paymentSentence, parseMethodology } from '@/lib/quote-text';
 import { fmtDate, money } from '@/lib/util';
 import { LineItems, TermsList } from './LineItems';
+import { panelSummary } from '@/components/QuotePanels';
 import type { Quotation, Settings } from '@/lib/types';
 
 export interface QuoteBundle {
@@ -61,6 +62,13 @@ export function QuotationDocument({ b }: { b: QuoteBundle }) {
         {q.vat_mode !== 'none' && <div className="row"><span>VAT {q.vat_rate}%{q.vat_mode === 'inclusive' ? ' (included)' : ''}</span><span>{money(t.vat)}</span></div>}
         <div className="fin"><span>TOTAL</span><span>{money(t.total)}</span></div>
       </div>}
+
+      {!!q.ocular_panels?.length && (() => { const s = panelSummary(q.ocular_panels); return s.total > 0 ? <>
+        <div className="pd-h">Glass panel count</div>
+        <table className="pd-panels"><thead><tr><th>Floor / area</th><th>Side</th><th>External</th><th>Internal</th><th>Total</th></tr></thead>
+          <tbody>{q.ocular_panels.filter((r) => (r.external || 0) + (r.internal || 0) > 0).map((r) => <tr key={r.id}><td>{r.area}</td><td>{r.side}{r.notes ? <span className="pd-small"> · {r.notes}</span> : null}</td><td>{r.external || '–'}</td><td>{r.internal || '–'}</td><td><b>{(r.external || 0) + (r.internal || 0)}</b></td></tr>)}</tbody>
+          <tfoot><tr><td colSpan={2}>{s.floors} floor{s.floors === 1 ? '' : 's'} / area{s.floors === 1 ? '' : 's'} · {s.sides} side{s.sides === 1 ? '' : 's'}</td><td>{s.external}</td><td>{s.internal}</td><td><b>{s.total}</b></td></tr></tfoot></table>
+      </> : null; })()}
 
       {!!b.images?.length && <>
         <div className="pd-h">Site images</div>

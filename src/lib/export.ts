@@ -287,6 +287,24 @@ export async function quotationPdf(db: DB, q: Quotation, opts: { includeImages?:
   if (q.vat_mode === 'none') { setText(8, false, MUTED); doc.text('Prices are not subject to VAT.', M, y - 5); }
   }
 
+  // ---- glass panel count by floor and side ----
+  const pRows = (q.ocular_panels ?? []).filter((r) => (r.external || 0) + (r.internal || 0) > 0);
+  if (pRows.length) {
+    const pt = panelTotals(pRows); const fl = new Set(pRows.map((r) => r.area)).size; const sd = new Set(pRows.map((r) => r.side)).size;
+    section('Glass panel count'); need(30);
+    autoTable(doc, {
+      startY: y, head: [['Floor / area', 'Side', 'External', 'Internal', 'Total']],
+      body: pRows.map((r) => [clean(r.area), clean(r.side + (r.notes ? ` - ${r.notes}` : '')), r.external ? String(r.external) : '-', r.internal ? String(r.internal) : '-', String((r.external || 0) + (r.internal || 0))]),
+      foot: [[`${fl} floor${fl === 1 ? '' : 's'} / area${fl === 1 ? '' : 's'}, ${sd} side${sd === 1 ? '' : 's'}`, '', String(pt.external), String(pt.internal), String(pt.total)]],
+      theme: 'plain', margin: { left: M, right: M },
+      styles: { fontSize: 9, cellPadding: { top: 2.2, bottom: 2.2, left: 2.5, right: 2.5 }, textColor: INK, lineColor: [221, 228, 236], lineWidth: { bottom: 0.2 } },
+      headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 8.5, lineWidth: 0 }, footStyles: { fillColor: [241, 245, 249], textColor: INK, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248, 250, 252] }, columnStyles: { 2: { halign: 'right', cellWidth: 22 }, 3: { halign: 'right', cellWidth: 22 }, 4: { halign: 'right', cellWidth: 22 } },
+      didParseCell: (d) => { if ((d.section === 'head' || d.section === 'foot') && d.column.index >= 2) d.cell.styles.halign = 'right'; if (d.section === 'foot' && d.column.index === 0) d.cell.colSpan = 2; },
+    });
+    y = ymax(doc) + 6;
+  }
+
   // ---- methodology (one block per service when the quotation has sections, otherwise the single general text) ----
   const sections = (q.method_sections ?? []).filter((m) => m.methodology.trim() || m.materials?.trim());
   const drawMethod = (mth: ReturnType<typeof parseMethodology>) => {
