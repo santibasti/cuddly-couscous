@@ -2,7 +2,7 @@ import { logoDataUrl } from './logo';
 import { DEFAULT_TECHNOLOGY, defaultIntro, defaultMethodology, durationText, quoteShowsAmounts, RATES_NOTE, paymentLabel, paymentSentence, manpowerText, parseMethodology } from './quote-text';
 import type { DB, Invoice, OcularVisit, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
 import { quoteImagesOf } from './quoteimages';
-import { bankDetails, billRows, paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, packagePanels, panelTotals, rowPanels, variationTotals } from './business';
+import { bankDetails, billRows, hideAgreedAmounts, paymentCounts, paymentStatusLabel, categoryLabel, docTotals, finalContract, finalQuoteSummary, lineTotals, panelBreakdown, invoiceBalance, invoiceSettled, invoiceTotals, jobCost, packagePanels, panelTotals, rowPanels, variationTotals } from './business';
 import { fmtDate, fmtDateTime, nowLocal, round2, sum } from './util';
 import { store } from './store';
 
@@ -593,8 +593,8 @@ export async function conformePdf(db: DB, j: Job, opts: { includeImages?: boolea
 
   h('1. Original Scope of Work');
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); y = wrapText(doc, q?.scope ?? j.scope, 12, y, 186) + 3;
-  if (q && quoteShowsAmounts(q)) {
-    // ocular-visit quotation: the price was agreed earlier, so the services are listed without amounts
+  if (q && hideAgreedAmounts(q, j)) {
+    // ocular-visit quotation: the price was agreed earlier, so the services are listed without amounts (unless the booking is set to show the amounts)
     autoTable(doc, { startY: y, head: [['#', 'Description', 'Quantity']], body: q.items.map((i, n) => [n + 1, clean(i.description), i.measure ? `per ${i.unit}` : `${i.qty.toLocaleString('en-PH')} ${i.unit}`]), columnStyles: { 0: { cellWidth: 8 }, 2: { halign: 'right', cellWidth: 40 } }, ...tableStyle, margin: { left: 12, right: 12 } });
     y = ymax(doc) + 3;
   } else if (q) y = itemsTable(doc, autoTable, y, q.items, q.vat_mode, q.vat_rate, q.discount) + 3;

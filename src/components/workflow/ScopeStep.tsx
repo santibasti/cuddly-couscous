@@ -10,7 +10,7 @@ import { DraftBar, Stepper } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { PANEL_AREAS, PANEL_SIDES, addCountedPanelsToBill, confirmScopeNoChanges, savePanels, setQuoteLineMeasured, setScopeChanged } from '@/lib/workflow';
 import { quoteShowsAmounts } from '@/lib/quote-text';
-import { countPanels, docTotals, scopeRoute, panelTotals, quotedPanels, rowPanels } from '@/lib/business';
+import { countPanels, hideAgreedAmounts, docTotals, scopeRoute, panelTotals, quotedPanels, rowPanels } from '@/lib/business';
 import { fmtDateTime, money, uid } from '@/lib/util';
 import { conformePdf } from '@/lib/export';
 import type { Job, JobWorkflow, PanelRow } from '@/lib/types';
@@ -122,7 +122,7 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
   const { db, can } = useAuth();
   const q = db.quotations.find((x) => x.id === (wf.conf_quotation_id ?? job.quotation_id));
   const t = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
-  const hide = !!q && quoteShowsAmounts(q); // ocular-visit quotation: the original amounts are not repeated here
+  const hide = hideAgreedAmounts(q, job); // ocular-visit quotation: the original amounts are not repeated here (unless the Job Order is set to show them)
   const client = db.clients.find((c) => c.id === job.client_id); const site = db.sites.find((s) => s.id === job.site_id);
   const signed = !!wf.conf_at;
   const canMeasure = !signed && !wf.start_at && can('admin.settings') || can('dispatch.approve') || run;

@@ -695,6 +695,8 @@ export interface FinalQuoteSummary {
   hideOriginal: boolean;
 }
 /** Original quote + additional work → final bill. `pending` previews additions that the client has not approved yet. */
+/** After an ocular visit the price was agreed earlier, so the on-site screens and the signed Final Quote do not repeat the original amounts, unless the booking's Job Order is set to show the quotation amounts. */
+export const hideAgreedAmounts = (q: Parameters<typeof quoteShowsAmounts>[0] | undefined, job: Pick<Job, 'jo_prices'>) => !!q && quoteShowsAmounts(q) && job.jo_prices !== 'show';
 export function finalQuoteSummary(d: Pick<DB, 'quotations' | 'variations'> & Partial<Pick<DB, 'discount_requests'>>, job: Job, o: { pending?: { items: QuoteItem[]; vat_mode: Variation['vat_mode']; vat_rate: number }; deposit?: number } = {}): FinalQuoteSummary {
   const q = d.quotations.find((x) => x.id === job.quotation_id);
   const orig = q ? docTotals(q.items, q.discount, q.vat_mode, q.vat_rate) : undefined;
@@ -713,7 +715,7 @@ export function finalQuoteSummary(d: Pick<DB, 'quotations' | 'variations'> & Par
     originalTotal, originalNet: orig?.net ?? fc.originalNet, originalDiscount: orig?.discount ?? 0, originalVat: orig?.vat ?? 0,
     additionalTotal, additionalNet, additionalDiscount, additionalVat,
     discount: round2((orig?.discount ?? 0) + additionalDiscount), vat: round2((orig?.vat ?? 0) + additionalVat - (granted ? vatPortion(granted, q?.vat_mode ?? 'none', q?.vat_rate ?? 0) : 0)),
-    hideOriginal: !!q && quoteShowsAmounts(q),
+    hideOriginal: hideAgreedAmounts(q, job),
     subtotal, granted, request, finalTotal, deposit, balance: round2(Math.max(0, finalTotal - deposit)),
   };
 }

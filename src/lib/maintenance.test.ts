@@ -147,3 +147,16 @@ describe('Job Order content key and price choice', () => {
     expect(new Set([none, shown, hidden]).size).toBe(3);
   });
 });
+
+describe('Final Quote on site follows the Job Order price choice', () => {
+  it('repeats the original amounts after an ocular visit only when the Job Order is set to show them', async () => {
+    const B = await import('./business');
+    const q = { id: 'q1', ocular_done: true, items: [{ description: 'Glass', qty: 1, unit: 'lot', rate: 10000, discount: 0 }], discount: 0, vat_mode: 'exclusive', vat_rate: 12 } as never;
+    const d = { quotations: [q], variations: [] } as never;
+    const job = (jo_prices?: 'show' | 'hide') => ({ id: 'j1', quotation_id: 'q1', jo_prices }) as never;
+    const hidden = B.finalQuoteSummary(d, job(), {}); const shown = B.finalQuoteSummary(d, job('show'), {}); const hid = B.finalQuoteSummary(d, job('hide'), {});
+    expect(hidden.hideOriginal).toBe(true); expect(hid.hideOriginal).toBe(true); expect(shown.hideOriginal).toBe(false);
+    expect(B.billRows(hidden)).toEqual([]);                                   // nothing repeated, no additional work
+    expect(B.billRows(shown).some((r) => r.v === 11200)).toBe(true);          // the original total (10,000 + 12% VAT) is now on the final quote
+  });
+});
