@@ -158,5 +158,9 @@ describe('Final Quote on site follows the Job Order price choice', () => {
     expect(hidden.hideOriginal).toBe(true); expect(hid.hideOriginal).toBe(true); expect(shown.hideOriginal).toBe(false);
     expect(B.billRows(hidden)).toEqual([]);                                   // nothing repeated, no additional work
     expect(B.billRows(shown).some((r) => r.v === 11200)).toBe(true);          // the original total (10,000 + 12% VAT) is now on the final quote
+    expect(B.billRows(shown).some((r) => r.k === 'VAT')).toBe(true);
+    const noVat = B.finalQuoteSummary({ quotations: [{ ...(q as object), vat_mode: 'none', vat_rate: 0 }], variations: [] } as never, job('show'), {});
+    expect(B.billRows(noVat).some((r) => r.k === 'VAT')).toBe(false);          // no VAT row when the quotation carries no VAT
+    expect(B.billRows(noVat).find((r) => r.k === 'Final Amount Payable')?.v).toBe(10000);
   });
 });

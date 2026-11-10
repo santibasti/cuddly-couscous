@@ -629,12 +629,12 @@ export async function conformePdf(db: DB, j: Job, opts: { includeImages?: boolea
   h('3. Final Billing Summary');
   const sm = finalQuoteSummary(db, j, { deposit: wf?.conf_deposit });
   const sumRows: [string, string, boolean?][] = sm.hideOriginal
-    ? (billRows(sm).length ? billRows(sm).map((r) => [r.k === 'Additional Work Total' ? 'Additional Work Total (incl. VAT)' : r.k, (r.v < 0 ? '- ' : '') + pm(Math.abs(r.v)), r.cls === 'big'] as [string, string, boolean]) : [['No additional work - the original quotation applies as agreed', '']])
+    ? (billRows(sm).length ? billRows(sm).map((r) => [r.k === 'Additional Work Total' && sm.additionalVat > 0 ? 'Additional Work Total (incl. VAT)' : r.k, (r.v < 0 ? '- ' : '') + pm(Math.abs(r.v)), r.cls === 'big'] as [string, string, boolean]) : [['No additional work - the original quotation applies as agreed', '']])
     : [
-    ['Original Quote Total (incl. VAT)', pm(sm.originalTotal)], ['Additional Work Total (incl. VAT)', pm(sm.additionalTotal)],
+    [sm.vat > 0 ? 'Original Quote Total (incl. VAT)' : 'Original Quote Total', pm(sm.originalTotal)], [sm.vat > 0 ? 'Additional Work Total (incl. VAT)' : 'Additional Work Total', pm(sm.additionalTotal)],
     ...(sm.discount > 0 ? [['Discounts already in the quoted prices', pm(sm.discount)] as [string, string]] : []),
     ...(sm.granted > 0 ? [[`Discount (approved)${sm.request ? ` ${sm.request.number}` : ''}`, '- ' + pm(sm.granted)] as [string, string]] : []),
-    ['VAT', pm(sm.vat)], ['FINAL AMOUNT PAYABLE', pm(sm.finalTotal), true],
+    ...(sm.vat > 0 ? [['VAT', pm(sm.vat)] as [string, string]] : []), ['FINAL AMOUNT PAYABLE', pm(sm.finalTotal), true],
     ...(sm.deposit > 0 ? [['Less: deposit / prior payment' + (wf?.conf_deposit_note ? ` (${wf.conf_deposit_note})` : ''), '- ' + pm(sm.deposit)] as [string, string], ['BALANCE DUE', pm(sm.balance), true] as [string, string, boolean]] : []),
   ];
   autoTable(doc, { startY: y, body: sumRows.map((r) => [r[0], r[1]]), theme: 'plain', styles: { fontSize: 10, cellPadding: 1.8 }, columnStyles: { 1: { halign: 'right' } }, margin: { left: 80, right: 12 },

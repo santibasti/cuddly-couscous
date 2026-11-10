@@ -1005,7 +1005,7 @@ export function billRows(sm: FinalQuoteSummary, o: { pendingLabel?: string; depo
     { k: add, v: sm.additionalTotal },
     ...(sm.discount > 0 ? [{ k: 'Discounts already in the quoted prices', v: sm.discount, cls: 'sub' as const }] : []),
     ...(sm.granted > 0 ? [{ k: `Discount (approved)${sm.request ? ` · ${sm.request.number}` : ''}`, v: -sm.granted, cls: 'disc' as const }] : []),
-    { k: 'VAT', v: sm.vat, cls: 'sub' as const },
+    ...(sm.vat > 0 ? [{ k: 'VAT', v: sm.vat, cls: 'sub' as const }] : []),   // no VAT row when the quotation carries no VAT
     { k: 'Final Amount Payable', v: sm.finalTotal, cls: 'big' as const },
     ...(sm.deposit > 0 ? [{ k: 'Less: deposit / prior payment' + (o.depositNote ? ` (${o.depositNote})` : ''), v: -sm.deposit, cls: 'neg' as const }, { k: 'Balance due', v: sm.balance, cls: 'big' as const }] : []),
   ];

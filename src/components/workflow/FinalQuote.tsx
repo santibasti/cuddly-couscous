@@ -192,7 +192,7 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
         {minApplied && <div className="alert info">Minimum of {effMin} {unit || def.unit} applies — counted {res.entered_qty}, billed {res.qty}.</div>}
         <div className="finalsum card" style={{ padding: 12 }}>
           <div className="row between"><span>Line amount ({res.qty} × {money(rate)}{disc ? ` − ${money(disc)}` : ''})</span><b>{money(t.amount)}</b></div>
-          <div className="row between"><span>VAT {vat.vat_mode === 'none' ? '(none)' : `${vat.vat_rate}%${vat.vat_mode === 'inclusive' ? ' included' : ''}`}</span><b>{money(t.vat)}</b></div>
+          {vat.vat_mode !== 'none' && <div className="row between"><span>VAT {vat.vat_rate}%{vat.vat_mode === 'inclusive' ? ' included' : ''}</span><b>{money(t.vat)}</b></div>}
           <div className="row between big"><span>Line total</span><b>{money(t.total)}</b></div>
         </div>
         <Field label="Notes / reason for additional work"><textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why this work is needed" /><PresetChips replace options={['Client requested at site', 'Found on site – not in original scope', 'Quantity higher than quoted', 'Safety / access requirement']} value={note} onChange={setNote} /></Field>
