@@ -6,7 +6,7 @@ import { Badge, Card, Field, Modal, attempt, useObj } from '@/components/ui';
 import { Fold } from '@/components/Fold';
 import { useCrewJobOrder } from '@/pages/CrewJobOrderPage';
 import { JobOrderDocument } from '@/components/JobOrderDocument';
-import { SEND_VIA, logJobOrderEvent, markJobOrderSent, resendJobOrder, syncJobOrders } from '@/lib/joborders';
+import { SEND_VIA, logJobOrderEvent, markJobOrderSent, resendJobOrder, setJobOrderPrices, syncJobOrders } from '@/lib/joborders';
 import { ORDER_JOB_STATUSES, headOrder, ordersOf, orderLabel } from '@/lib/joborder-core';
 import { buildJobOrderPdf, jobOrderFilename } from '@/lib/joborderpdf';
 import { fmtDate, fmtStamp } from '@/lib/util';
@@ -58,7 +58,7 @@ export function JobOrderPanel({ job, fold = false }: { job: Job; fold?: boolean 
   const nav = useNavigate(); const setPreview = (o: JobOrder) => nav(`/job-order/${o.id}`);
   const [send, setSend] = useState<{ order: JobOrder; resend: boolean } | null>(null);
   const manage = can('joborders.manage');
-  useEffect(() => { if (manage && ORDER_JOB_STATUSES.includes(job.status)) syncJobOrders(job.id); }, [manage, job.id, job.status, job.start_at, job.end_at, job.leader_id, job.crew_ids.join(), job.quotation_id, db.variations, db.discount_requests]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (manage && ORDER_JOB_STATUSES.includes(job.status)) syncJobOrders(job.id); }, [manage, job.id, job.status, job.start_at, job.end_at, job.leader_id, job.crew_ids.join(), job.quotation_id, job.jo_prices, db.variations, db.discount_requests]); // eslint-disable-line react-hooks/exhaustive-deps
   const head = headOrder(db, job.id); const all = ordersOf(db, job.id);
   const client = db.clients.find((c) => c.id === job.client_id);
   if (!can('joborders.manage') && !can('jobs.all')) {
@@ -111,6 +111,17 @@ export function JobOrderPanel({ job, fold = false }: { job: Job; fold?: boolean 
         </div>
       </div>
       {head.content.blocker && !sentOk && <div className="alert warn" style={{ marginTop: 10 }}>{head.content.blocker}</div>}
+      {manage && (
+        <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <label className="small" htmlFor={`jop-${job.id}`}><b>Prices on the client's Job Order</b></label>
+          <select id={`jop-${job.id}`} style={{ width: 'auto' }} value={job.jo_prices ?? 'auto'} onChange={(e) => attempt(() => setJobOrderPrices(job.id, e.target.value as 'auto' | 'show' | 'hide'), 'Job Order prices updated')}>
+            <option value="auto">Automatic — hidden after an ocular visit, rates only otherwise</option>
+            <option value="show">Show the quotation amounts</option>
+            <option value="hide">Hide prices</option>
+          </select>
+          <span className="small muted">The crew copy never shows prices. Now showing: {head.content.price_mode === 'amounts' ? 'amounts and total' : head.content.price_mode === 'none' ? 'no prices' : 'approved rates only'}.</span>
+        </div>
+      )}
       <div className="small muted" style={{ marginTop: 8 }}>Prices, scope, discount and terms come from the approved quotation and approved additions; they cannot be changed here. If the schedule, scope, price or team changes after sending, a revised version is created and this one is marked Superseded — a sent Job Order is never overwritten.</div>
       <div className="joc-k" style={{ marginTop: 12 }}>Version history</div>
       <table className="tbl"><thead><tr><th>Version</th><th>Status</th><th>Issued</th><th>Sent</th><th>What changed</th><th></th></tr></thead>

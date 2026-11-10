@@ -126,3 +126,24 @@ describe('quotation manpower, duration and disclaimer', () => {
     expect(db().quotations.some((x) => x.disclaimer?.startsWith('Our cleaning process'))).toBe(true);
   });
 });
+
+describe('Job Order prices choice', () => {
+  it('automatic hides after an ocular visit and shows rates otherwise; the choice overrides', async () => {
+    const { jobOrderPriceMode: m } = await import('./joborder-core');
+    expect(m(undefined, true)).toBe('none'); expect(m(undefined, false)).toBe('rates');
+    expect(m('show', true)).toBe('amounts'); expect(m('show', false)).toBe('rates');   // no exact price yet: rates only
+    expect(m('hide', true)).toBe('none'); expect(m('hide', false)).toBe('none');
+  });
+});
+
+describe('Job Order content key and price choice', () => {
+  it('keeps the old key when there is no choice, and changes it when the choice or what it shows changes', async () => {
+    const { contentKey } = await import('./joborder-core');
+    const base = { service_date: '2026-11-10', arrival_from: '08:00', arrival_to: '08:30', duration_hours: 6, location: { name: 'A', address: 'B', contact_person: '', contact_mobile: '' }, client: 'C', service_types: ['x'], scope: 's', items: [], additions: [], discounts: [], subtotal: 0, vat: 0, total: 0, payment_terms: '', team: { crew: [] }, access_notes: [] } as never;
+    const none = contentKey({ ...(base as object), price_mode: 'none' } as never); const rates = contentKey({ ...(base as object), price_mode: 'rates' } as never);
+    expect(none).toBe(rates);                                                   // legacy orders: the price display alone never changed the key
+    const shown = contentKey({ ...(base as object), price_mode: 'amounts', price_choice: 'show' } as never);
+    const hidden = contentKey({ ...(base as object), price_mode: 'none', price_choice: 'hide' } as never);
+    expect(new Set([none, shown, hidden]).size).toBe(3);
+  });
+});

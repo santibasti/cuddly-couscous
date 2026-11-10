@@ -82,3 +82,13 @@ export function logJobOrderEvent(id: string, action: string) {
   const o = db().job_orders.find((x) => x.id === id); if (!o) return;
   store.update('job_orders', id, { history: event(o, action) } as never, 'update', `Job Order ${o.number} v${o.version}: ${action}`);
 }
+
+/** Choose what prices the client's Job Order shows: automatic, the approved quotation's amounts, or none. A change creates / revises the order like any other change to it. */
+export function setJobOrderPrices(jobId: string, choice: 'auto' | 'show' | 'hide') {
+  store.require('joborders.manage');
+  const job = db().jobs.find((j) => j.id === jobId) ?? (() => { throw new RuleError('Booking not found.'); })();
+  const next = choice === 'auto' ? undefined : choice;
+  if ((job.jo_prices ?? undefined) === next) return;
+  store.update('jobs', jobId, { jo_prices: next } as never, 'update', `Job Order prices for ${job.number}: ${choice === 'auto' ? 'automatic' : choice === 'show' ? 'show the quotation amounts' : 'hide prices'}`);
+  syncJobOrders(jobId);
+}

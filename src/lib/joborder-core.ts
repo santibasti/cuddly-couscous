@@ -61,7 +61,8 @@ export function buildContent(db: DB, job: Job): JobOrderContent {
     payment_terms: terms, payment_status,
     team: { leader, crew },
     access_notes: [site?.access_instructions, c?.access_instructions].map((x) => (x ?? '').trim()).filter((x, i, a) => x && a.indexOf(x) === i),
-    price_mode: (approvedQ?.ocular_done ?? !!approvedQ?.ocular_visit_id) ? 'none' : 'rates',
+    price_mode: jobOrderPriceMode(job.jo_prices, !!(approvedQ?.ocular_done ?? !!approvedQ?.ocular_visit_id)),
+    ...(job.jo_prices ? { price_choice: job.jo_prices } : {}),
     blocker: approvedQ ? undefined : 'No approved quotation is linked to this booking. Link the approved quotation before sending.',
   };
 }
@@ -74,9 +75,16 @@ export function vehicleOf(db: DB, job: Job): JobOrderContent['vehicle'] {
 
 /** What a client would notice changing: when, where, what, how much, who. (Payment status moves on its own and is not part of this.) */
 export function contentKey(c: JobOrderContent): string {
-  const core = JSON.stringify([c.service_date, c.arrival_from, c.arrival_to, c.duration_hours, c.location, c.client, c.service_types, c.scope, c.items, c.additions, c.discounts, c.subtotal, c.vat, c.total, c.payment_terms, c.team, c.access_notes, !!c.blocker]);
+  // a price choice made on the booking is part of the key; with no choice the key is exactly what it always was, so existing orders (sent ones included) are not revised
+  const core = JSON.stringify([c.service_date, c.arrival_from, c.arrival_to, c.duration_hours, c.location, c.client, c.service_types, c.scope, c.items, c.additions, c.discounts, c.subtotal, c.vat, c.total, c.payment_terms, c.team, c.access_notes, !!c.blocker]) + (c.price_choice ? `|${c.price_choice}:${c.price_mode ?? 'rates'}` : '');
   let h = 5381; for (let i = 0; i < core.length; i++) h = ((h << 5) + h + core.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36) + ':' + core.length;
+}
+/** What the client's Job Order shows for prices. Automatic: nothing after an ocular visit (the exact price is already agreed), the approved rates otherwise. 'show': the quotation's amounts when the price is exact (ocular done), else the rates (the final amount depends on the count on site). 'hide': no prices. */
+export function jobOrderPriceMode(choice: 'show' | 'hide' | undefined, ocularDone: boolean): 'rates' | 'none' | 'amounts' {
+  if (choice === 'hide') return 'none';
+  if (choice === 'show') return ocularDone ? 'amounts' : 'rates';
+  return ocularDone ? 'none' : 'rates';
 }
 /** Short plain-language list of what changed between two versions of the content. */
 export function changeSummary(a: JobOrderContent, b: JobOrderContent): string {
@@ -87,6 +95,7 @@ export function changeSummary(a: JobOrderContent, b: JobOrderContent): string {
   if (a.service_date !== b.service_date || a.arrival_from !== b.arrival_from || a.duration_hours !== b.duration_hours) out.push('schedule');
   if (a.scope !== b.scope || diff(a.items, b.items) || diff(a.additions, b.additions)) out.push('approved scope');
   if (a.total !== b.total || diff(a.discounts, b.discounts)) out.push('final price');
+  if ((a.price_mode ?? 'rates') !== (b.price_mode ?? 'rates')) out.push('prices shown');
   if (diff(a.team, b.team)) out.push('assigned team');
   if (diff(a.location, b.location) || diff(a.access_notes, b.access_notes)) out.push('site details');
   return out.length ? `Changed: ${out.join(', ')}.` : 'Updated booking details.';

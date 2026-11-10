@@ -86,7 +86,27 @@ export async function buildJobOrderPdf(o: JobOrder, opts: { generatedBy?: string
     });
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
   };
-  if (!c.crew_copy && c.price_mode !== 'none') {
+  const amountTable = (title: string, rows: { description: string; qty: number; unit: string; rate: number; amount: number }[]) => {
+    if (!rows.length) return; need(30);
+    autoTable(doc, {
+      startY: y, margin: { left: M, right: M }, theme: 'plain',
+      head: [[title, 'Qty / unit', 'Rate', 'Amount']],
+      body: rows.map((r) => [clean(r.description), `${r.qty.toLocaleString('en-PH')} ${r.unit}`, pm(r.rate), pm(r.amount)]),
+      styles: { fontSize: 9.5, cellPadding: { top: 2.6, bottom: 2.6, left: 2.5, right: 2.5 }, textColor: INK, lineColor: [221, 228, 236], lineWidth: { bottom: 0.2 } },
+      headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 8.5, lineWidth: 0 }, alternateRowStyles: { fillColor: [248, 250, 252] },
+      columnStyles: { 1: { halign: 'right', cellWidth: 32 }, 2: { halign: 'right', cellWidth: 30 }, 3: { halign: 'right', cellWidth: 34, fontStyle: 'bold' } },
+      didParseCell: (d) => { if (d.section === 'head' && d.column.index > 0) d.cell.styles.halign = 'right'; },
+    });
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+  };
+  if (!c.crew_copy && c.price_mode === 'amounts') {
+    amountTable('Approved services', c.items);
+    for (const a of c.additions) amountTable(`Approved additional work ${a.number}${a.reason ? ` - ${a.reason}` : ''}`, a.items);
+    const tot: [string, string, boolean][] = [['Subtotal', pm(c.subtotal), false], ...c.discounts.map((d) => [clean(d.label), '- ' + pm(d.amount), false] as [string, string, boolean]), ...(c.vat_label !== 'VAT' ? [[clean(c.vat_label), pm(c.vat), false] as [string, string, boolean]] : []), ['TOTAL', pm(c.total), true]];
+    need(tot.length * 6 + 10);
+    for (const [k, v, bold] of tot) { txt(k, W - M - 78, y, { size: bold ? 10.5 : 9.5, bold, color: bold ? NAVY : MUTED }); txt(v, W - M, y, { size: bold ? 10.5 : 9.5, bold, align: 'right' }); y += 6; }
+    need(10); para('Amounts as agreed in your approved quotation. Any additional work needs your approval on site.', M, CW, 9.2, 4.5, MUTED); y += 3;
+  } else if (!c.crew_copy && c.price_mode !== 'none') {
     itemTable('Approved services', c.items);
     for (const a of c.additions) itemTable(`Approved additional work ${a.number}${a.reason ? ` - ${a.reason}` : ''}`, a.items);
     for (const d of c.discounts) { need(7); para(`${d.label} applies to the final amount.`, M, CW, 9, 4.4, MUTED); }

@@ -191,6 +191,8 @@ export interface JobMaterial { item_id: string; planned_qty: number; used_qty?: 
 
 export interface Job extends Base {
   number: string;
+  /** prices on the client's Job Order: unset = automatic (hidden after an ocular visit, rates only otherwise); 'show' = the approved quotation's amounts; 'hide' = no prices */
+  jo_prices?: 'show' | 'hide';
   /** each assigned person's answer to "can you make it?" (asked from 7 PM the evening before): employee id → answer for this schedule */
   /** Stage 8: after the service Admin enters every job expense (gas, toll, meals, purchases) and closes the job internally */
   /** planned spend on gas, toll, meals and other job expenses (compared with the actual in Stage 8) */
@@ -869,8 +871,10 @@ export interface JobOrderContent {
   blocker?: string;
   /** the copy handed to the crew: prices, totals and payment terms are removed (they are empty here) */
   crew_copy?: boolean;
-  /** 'rates' = approved rates only, quantities are counted on site (default); 'none' = no prices (ocular-based quotation: the exact quote is already agreed) */
-  price_mode?: 'rates' | 'none';
+  /** 'rates' = approved rates only, quantities are counted on site (default); 'none' = no prices (ocular-based quotation: the exact quote is already agreed); 'amounts' = the approved quotation's full amounts and totals (chosen on the booking) */
+  price_mode?: 'rates' | 'none' | 'amounts';
+  /** the choice made on the booking, when there is one (so a change of it revises the order) */
+  price_choice?: 'show' | 'hide';
 }
 /** A section of a service report: paragraphs separated by a blank line; a line starting with "- " is a bullet. */
 export interface ReportSection { key: string; title: string; body: string }
