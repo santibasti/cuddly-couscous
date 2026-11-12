@@ -48,12 +48,13 @@ const JobOrderPage = lazy(() => import('@/pages/JobOrderPage'));
 const CrewJobOrderPage = lazy(() => import('@/pages/CrewJobOrderPage'));
 const QuotePreviewPage = lazy(() => import('@/pages/QuotePreviewPage'));
 const Inbox = lazy(() => import('@/pages/Inbox'));
+const EmailInbox = lazy(() => import('@/pages/EmailInbox'));
 const Marketing = lazy(() => import('@/pages/Marketing'));
 const PhotoLibrary = lazy(() => import('@/pages/PhotoLibrary'));
 const ServiceReports = lazy(() => import('@/pages/ServiceReports'));
 
 /** After the first screen is up, quietly fetch the other pages' code in the background so the first tap on each menu item is instant. */
-const PRELOAD = [() => import('@/pages/Clients'), () => import('@/pages/Sales'), () => import('@/pages/QuoteEditor'), () => import('@/pages/JobDetail'), () => import('@/pages/Employees'), () => import('@/pages/ServiceReports'), () => import('@/pages/PhotoLibrary'), () => import('@/pages/Inventory'), () => import('@/pages/Finance'), () => import('@/pages/Payroll'), () => import('@/pages/Reports'), () => import('@/pages/Admin'), () => import('@/pages/Marketing'), () => import('@/pages/Inbox'), () => import('@/pages/Maintenance'), () => import('@/pages/Assets')];
+const PRELOAD = [() => import('@/pages/Clients'), () => import('@/pages/Sales'), () => import('@/pages/QuoteEditor'), () => import('@/pages/JobDetail'), () => import('@/pages/Employees'), () => import('@/pages/ServiceReports'), () => import('@/pages/PhotoLibrary'), () => import('@/pages/Inventory'), () => import('@/pages/Finance'), () => import('@/pages/Payroll'), () => import('@/pages/Reports'), () => import('@/pages/Admin'), () => import('@/pages/Marketing'), () => import('@/pages/Inbox'), () => import('@/pages/EmailInbox'), () => import('@/pages/Maintenance'), () => import('@/pages/Assets')];
 function preloadPages() { const ric = (window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback ?? ((f: () => void) => setTimeout(f, 300)); PRELOAD.forEach((load, i) => setTimeout(() => ric(() => { load().catch(() => undefined); }), 2500 + i * 250)); }
 
 const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: string; group?: string }[] = [
@@ -71,6 +72,7 @@ const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: st
   { to: '/clients', key: 'clients', label: 'Clients', icon: 'clients', group: 'Sales' },
   { to: '/sales', key: 'sales', label: 'Quotations', icon: 'sales' },
   { to: '/inbox', key: 'inbox', label: 'Facebook Inbox', icon: 'clients' },
+  { to: '/email', key: 'sales', label: 'AI Email Inbox', icon: 'mail' },
   { to: '/marketing', key: 'marketing', label: 'Marketing AI', icon: 'reports' },
   { to: '/sms', key: 'sms', label: 'SMS', icon: 'bell' },
   { to: '/telegram', key: 'telegram', label: 'Telegram', icon: 'camera' },
@@ -197,6 +199,7 @@ function Shell() {
             <Route path="/service-reports/:id" element={<Guard area="servicereports"><ServiceReports /></Guard>} />
             <Route path="/photos" element={<Guard area="photos"><PhotoLibrary /></Guard>} />
             <Route path="/inbox" element={<Guard area="inbox"><Inbox /></Guard>} />
+            <Route path="/email" element={<Guard area="sales"><EmailInbox /></Guard>} />
             <Route path="/marketing" element={<Guard area="marketing"><Marketing /></Guard>} />
             <Route path="/sales" element={<Guard area="sales"><Sales /></Guard>} />
             <Route path="/sales/quote/:id" element={<Guard area="sales"><QuoteEditor /></Guard>} />
