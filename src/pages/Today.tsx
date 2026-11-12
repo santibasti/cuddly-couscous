@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { useAuth, live } from '@/lib/store';
 import { Avatar } from '@/components/EmployeeCard';
 import { WeekBoard } from '@/components/WeekBoard';
+import { DiscountInbox } from '@/components/workflow/DiscountPanel';
 import { finalContract, invoiceBalance } from '@/lib/business';
 import { departAt, fmtDate, fmtTime, money, nowLocal, today } from '@/lib/util';
 import type { DB, Employee, Job, JobWorkflow } from '@/lib/types';
@@ -165,6 +166,7 @@ export default function Today() {
   return (
     <>
       <Hero name={(user?.name ?? '').replace(/^(mr|ms|mrs)\.?\s+/i, '').split(' ')[0]} owner={user?.role === 'owner'} money={showMoney ? money(billing) : 'today’s work'} done={doneCount} total={cards.length} onSite={onSite} absent={absent} now={now} day={day} />
+      <DiscountInbox />
       <div className="wk-tabs" role="tablist">
         <button role="tab" aria-selected={view === 'day'} className={view === 'day' ? 'on' : ''} onClick={() => { setView('day'); }}>{day === real ? '⚡ Today' : `📅 ${fmtDate(day)}`}</button>
         <button role="tab" aria-selected={view === 'week'} className={view === 'week' ? 'on' : ''} onClick={() => { setView('week'); setAnchor(day); }}>📊 This week &amp; team performance</button>

@@ -72,8 +72,8 @@ export function DiscountInbox() {
   if (!pend.length) return null;
   const job = review ? db.jobs.find((j) => j.id === review.job_id) : undefined;
   return (
-    <div className="card" style={{ padding: 12, marginBottom: 14, borderLeft: '4px solid var(--amber)' }}>
-      <div className="row between"><b>Discount requests waiting for your approval ({pend.length})</b></div>
+    <div id="discount-inbox" className="card" style={{ padding: 12, marginBottom: 14, borderLeft: '4px solid var(--amber)', boxShadow: '0 0 0 1px var(--amber), 0 6px 22px rgba(245,158,11,.18)' }}>
+      <div className="row between"><b>🏷 Discount requests waiting for your approval ({pend.length})</b></div>
       <ul className="list" style={{ marginTop: 6 }}>
         {pend.map((r) => { const j = db.jobs.find((x) => x.id === r.job_id); return (
           <li key={r.id}><div><b>{j?.number}</b> · {db.clients.find((c) => c.id === r.client_id)?.name}<div className="small muted">{kindLabel(r.kind, r.value)} = {money(r.requested_amount)} off {money(r.base_total)} · {r.reason} · by {userName(db, r.submitted_by)}</div></div>
@@ -186,4 +186,10 @@ export function ReviewModal({ job, req, onClose }: { job: Job; req: DiscountRequ
       </div>
     </Modal>
   );
+}
+
+/** How many discount requests wait for this person's approval (0 when they cannot approve). */
+export function usePendingDiscounts(): number {
+  const { db, can } = useAuth();
+  return can('discount.approve') ? db.discount_requests.filter((r) => r.status === 'Pending Admin Approval' && !r.deleted_at).length : 0;
 }

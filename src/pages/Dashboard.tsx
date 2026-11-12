@@ -7,7 +7,7 @@ import { BackJobDashboard } from '@/components/BackJobs';
 import { SatisfactionDashboard } from '@/components/workflow/Satisfaction';
 import { OcularWidget } from '@/components/Ocular';
 import { FollowUpWidget } from '@/components/FollowUps';
-import { DiscountInbox } from '@/components/workflow/DiscountPanel';
+import { DiscountInbox, usePendingDiscounts } from '@/components/workflow/DiscountPanel';
 import { addDays, eachDay, fmtDate, fmtTime, inRange, monthEnd, monthStart, money, moneyShort, nowLocal, pct, round2, sum, today, weekStart } from '@/lib/util';
 import { paymentCounts, AWAY_JOB, FIELD_JOB, variationTotals, docTotals, invoiceBalance, invoiceTotals, isDone, isOpen, profitAndLoss, stockSummary, jobCost } from '@/lib/business';
 import { isOverdue } from '@/lib/actions';
@@ -79,7 +79,7 @@ export default function Dashboard() {
 
   const d = useMemo(() => compute(db, from, to, { branch, service, client }, mine ? myEmp : undefined), [db, from, to, branch, service, client, mine, myEmp]);
 
-  const inbox = <><DiscountInbox /><OcularWidget /><FollowUpWidget />{mine && <MaintWidget />}</>;
+  const inbox = <><OcularWidget /><FollowUpWidget />{mine && <MaintWidget />}</>;
   const [showFilters, setShowFilters] = useState(false);
   const activeFilters = [branch, service, client, segment, stage, repeat, province, city].filter(Boolean).length;
   const filterBar = (
@@ -253,6 +253,7 @@ export default function Dashboard() {
     <>
       <DashHero name={(user?.name ?? '').replace(/^(mr|ms|mrs)\.?\s+/i, '').split(' ')[0]} exec={false} k={k} jobsToday={d.todayJobs.length} jobsDone={d.todayJobs.filter((j) => isDone(j.status)).length} inField={d.todayJobs.filter((j) => FIELD_JOB.includes(j.status)).length} can={can} range={`${fmtDate(from)} – ${fmtDate(to)}`} />
       <div className="dash-dark">
+        <DiscountInbox />
         {inbox}
         <div className="dash-toolbar no-print">
           <div className="dash-pills">{PRESETS.map(([k2, l]) => <button key={k2} type="button" className={preset === k2 ? 'on' : ''} onClick={() => { setPreset(k2); if (k2 !== 'custom') setRange(presetRange(k2)); }}>{l}</button>)}</div>
@@ -290,6 +291,7 @@ export default function Dashboard() {
     <>
       <DashHero name={(user?.name ?? '').replace(/^(mr|ms|mrs)\.?\s+/i, '').split(' ')[0]} exec={exec} k={k} jobsToday={ops.jobs.length} jobsDone={ops.jobs.filter((j) => isDone(j.status)).length} inField={ops.jobs.filter((j) => FIELD_JOB.includes(j.status)).length} can={can} range={`${fmtDate(from)} – ${fmtDate(to)}`} />
       <div className="dash-dark">
+      <DiscountInbox />
       <div className="dash-toolbar no-print">
         <div className="dash-pills">{PRESETS.map(([k2, l]) => <button key={k2} type="button" className={preset === k2 ? 'on' : ''} onClick={() => { setPreset(k2); if (k2 !== 'custom') setRange(presetRange(k2)); }}>{l}</button>)}</div>
         {preset === 'custom' && <div className="row" style={{ gap: 6, alignItems: 'center' }}><input type="date" aria-label="From" value={from} max={to} onChange={(e) => e.target.value && setRange([e.target.value, to])} /><span className="small muted">to</span><input type="date" aria-label="To" value={to} min={from} onChange={(e) => e.target.value && setRange([from, e.target.value])} /></div>}
@@ -394,7 +396,7 @@ function useCount(target: number, ms = 900) {
 function DashHero({ name, exec, k, jobsToday, jobsDone, inField, can, range }: { name: string; exec: boolean; k: ReturnType<typeof kpis>; jobsToday: number; jobsDone: number; inField: number; can: (p: string) => boolean; range: string }) {
   const h = +nowLocal().slice(11, 13); const hello = h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   const pctDone = jobsToday ? jobsDone / jobsToday : 0; const r = 46, c = 2 * Math.PI * r; const n = useCount(jobsDone);
-  const rev = k.revenue ?? 0, col = k.collections ?? 0, over = k.overdue ?? 0;
+  const rev = k.revenue ?? 0, col = k.collections ?? 0, over = k.overdue ?? 0; const waiting = usePendingDiscounts();
   const actions: [string, string, boolean][] = [['+ New quotation', '/sales/quote/new', can('sales.edit')], ['📅 Book a job', '/jobs', can('jobs.edit')], ['📷 Scan receipt', '/receipts', can('receipts.capture') || can('receipts.manage')], ['⚡ Happening today', '/today', true]];
   return (
     <section className="tdy-hero dash-hero">
@@ -406,6 +408,7 @@ function DashHero({ name, exec, k, jobsToday, jobsDone, inField, can, range }: {
       <div className="dash-mid">
         {exec && <div className="dm-line">💰 <span>Billed <b>{moneyShort(rev)}</b></span><span>Collected <b>{moneyShort(col)}</b></span>{over > 0 && <span className="warn">⚠ <b>{moneyShort(over)}</b> overdue</span>}</div>}
         <div className="dm-line">🗓️ <span><b>{jobsToday}</b> job{jobsToday === 1 ? '' : 's'} today</span><span><b>{inField}</b> in the field</span><span><b>{jobsDone}</b> done</span></div>
+        {waiting > 0 && <div className="dm-line"><button type="button" className="dm-btn" style={{ background: 'var(--amber, #f59e0b)', color: '#1b1200', fontWeight: 700 }} onClick={() => document.getElementById('discount-inbox')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>🏷 {waiting} discount request{waiting === 1 ? '' : 's'} waiting for approval</button></div>}
         <div className="dm-actions">{actions.filter((a) => a[2]).map(([l, to]) => <Link key={to} to={to} className="dm-btn">{l}</Link>)}</div>
       </div>
       <div className="tdy-ring" title={`${jobsDone} of ${jobsToday} jobs done today`}>
