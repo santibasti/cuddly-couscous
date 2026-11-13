@@ -792,6 +792,7 @@ export function approvePayroll(periodId: string) {
   if (per.status !== 'For Approval') fail('Payroll must be submitted for approval first.');
   const run = db().runs.find((r) => r.period_id === periodId)!;
   const gross = round2(sum(run.lines, (l) => l.gross));
+  if (!run.lines.length) fail(`This ${per.type} payroll has no employees: only employees whose Payroll type is ${per.type} are included. Press Return, then create a period of the right type (or change the employees' Payroll type) and generate it again.`);
   if (!(gross > 0)) fail('This payroll has no earnings to approve. Check that attendance has been approved for the period.');
   const exp = store.insert('expenses', { date: per.end, payee: `Payroll – ${per.label}`, category: 'Payroll', branch_id: db().branches[0].id, amount: gross, vat: 0, wht: 0, method: 'Bank Transfer', approval: 'Approved', approved_by: me()!.id, paid: false, petty_cash: false, source: 'payroll', source_id: periodId, notes: `Gross payroll for ${run.lines.length} employees` } as never) as Expense;
   store.update('periods', periodId, { status: 'Approved', approved_by: me()!.id, approved_at: isoNow(), expense_id: exp.id }, 'approve', `Approved payroll ${per.label}`);
