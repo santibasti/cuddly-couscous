@@ -259,7 +259,8 @@ export function computePayrollLine(inp: PayrollInput): { line: PayrollLine; pend
   const holidayOn = (d: string) => holidays.find((h) => h.date === d && !h.deleted_at);
   const atts = inp.attendance.filter((a) => a.employee_id === emp.id && a.date >= period.start && a.date <= period.end && !a.deleted_at);
   const pending = atts.filter((a) => a.approval === 'Pending').length;
-  const ok = atts.filter((a) => a.approval === 'Approved');
+  // today's attendance counts once it is completed (clocked out): a day still in progress is not paid yet
+  const ok = atts.filter((a) => a.approval === 'Approved' && !(a.date === asOf && a.clock_in && !a.clock_out));
   const byDate = new Map(ok.map((a) => [a.date, a]));
 
   let regular = 0, lateDed = 0, ot = 0, holPay = 0, restPay = 0, leavePay = 0, days = 0;
@@ -522,18 +523,18 @@ export type { Payment };
  * Who a payroll period includes. Employees paid per job order are the crew who were present on job orders in the period (whatever their Payroll type):
  * the job orders are the reference. Everyone else is included when their Payroll type (set on the employee) is the period's type. Hired by the period's end.
  */
-export function payrollEligible(db: DB, period: Pick<PayrollPeriod, 'type' | 'start' | 'end'>): Employee[] {
-  return db.employees.filter((e) => !e.deleted_at && e.status !== 'inactive' && e.hire_date <= period.end && (e.pay_basis === 'per_job' ? jobsAttended(db, e.id, period.start, period.end, true).length > 0 : e.payroll_type === period.type));
+export function payrollEligible(db: DB, period: Pick<PayrollPeriod, 'type' | 'start' | 'end'>, asOf?: string): Employee[] {
+  return db.employees.filter((e) => !e.deleted_at && e.status !== 'inactive' && e.hire_date <= period.end && (e.pay_basis === 'per_job' ? jobsAttended(db, e.id, period.start, period.end, true, asOf).length > 0 : e.payroll_type === period.type));
 }
 /** How many active employees there are of each Payroll type (to explain an empty payroll). */
 export const payrollTypeCounts = (db: Pick<DB, 'employees'>) => db.employees.filter((e) => !e.deleted_at && e.status !== 'inactive').reduce<Record<string, number>>((m, e) => { m[e.payroll_type] = (m[e.payroll_type] ?? 0) + 1; return m; }, {});
 
 /** Build payroll lines for every eligible employee for a period (pure). */
 export function buildPayrollLines(db: DB, period: PayrollPeriod, asOf?: string): { lines: PayrollLine[]; pending: number } {
-  const emps = payrollEligible(db, period);
+  const emps = payrollEligible(db, period, asOf);
   let pending = 0;
   const lines = emps.map((emp) => {
-    const r = computePayrollLine({ emp, period, attendance: db.attendance, holidays: db.holidays, adjustments: db.adjustments, settings: db.settings, asOf, jobPay: employeeJobPay(db, emp, period.start, period.end) });
+    const r = computePayrollLine({ emp, period, attendance: db.attendance, holidays: db.holidays, adjustments: db.adjustments, settings: db.settings, asOf, jobPay: employeeJobPay(db, emp, period.start, period.end, asOf) });
     pending += r.pendingAttendance;
     return r.line;
   });

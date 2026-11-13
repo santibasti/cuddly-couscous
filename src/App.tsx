@@ -13,6 +13,7 @@ import { getTheme, setTheme } from '@/lib/theme';
 import { Logo } from '@/components/Logo';
 import { AvailabilityPrompt } from '@/components/AvailabilityPrompt';
 import { AnnouncementPopup } from '@/components/AnnouncementPopup';
+import { PayrollAutoFill } from '@/components/PayrollAutoFill';
 import { useAnnouncements } from '@/lib/announcements';
 import { fmtStamp } from '@/lib/util';
 import Login from '@/pages/Login';
@@ -154,6 +155,7 @@ function Shell() {
       </aside>
       {pw && <PasswordModal onClose={() => setPw(false)} />}
       <AnnouncementPopup />
+      <PayrollAutoFill />
       <div className={open ? 'scrim open' : 'scrim'} onClick={() => setOpen(false)} />
       <div className="main">
         <header className="topbar">

@@ -141,3 +141,38 @@ describe('delete a payroll period', () => {
     expect(() => A.deletePeriod(approved.id)).toThrow(/approved/);
   });
 });
+
+describe("today's attendance and the automatic payroll", () => {
+  it("counts today's attendance only once it is completed (clocked out)", async () => {
+    const { db, a, period, att } = world(); const emp = { ...a, pay_basis: 'daily' as const, daily_rate: 700, rest_day: 0 };
+    const T = '2026-03-03';
+    const run = (clockOut?: string) => computePayrollLine({ emp, period, attendance: [att(a.id, T, { clock_out: clockOut, job_id: undefined }) ] as never, holidays: [], adjustments: [], settings: db.settings, asOf: T }).line;
+    expect(run(undefined).days_worked).toBe(0);                          // still working: not paid yet
+    expect(run(`${T}T17:00`).days_worked).toBe(1);                       // completed
+    const w = world(); const d2 = { ...w.db, attendance: w.db.attendance.map((x) => (x.employee_id === w.a.id ? { ...x, clock_out: undefined } : x)) } as never;
+    expect(jobsAttended(d2, w.a.id, '2026-03-01', '2026-03-07', false, T)).toEqual([]);
+    expect(jobsAttended(d2, w.a.id, '2026-03-01', '2026-03-07', false, '2026-03-04').map((j) => j.id)).toEqual(['jx']);   // the next day it counts
+  });
+  it('fills a draft payroll in by itself, and only changes it when attendance changes', async () => {
+    const A = await import('./actions'); const { store } = await import('./store');
+    await store.login('owner@topmop.ph', 'topmop123');
+    const emps = store.getDB().employees.filter((e) => !e.deleted_at && e.status !== 'inactive' && e.pay_basis === 'daily');
+    const [e1, e2] = [emps[0], emps.find((e) => e.id !== emps[0].id && e.payroll_type === emps[0].payroll_type)!];
+    for (const e of [e1, e2]) store.update('employees', e.id, { hire_date: '2020-01-01', rest_day: 1 } as never);
+    const day = '2032-03-03';   // a Wednesday
+    const clock = (emp: string) => store.insert('attendance', { employee_id: emp, date: day, kind: 'Present', clock_in: `${day}T08:00`, clock_out: `${day}T17:00`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 8, approval: 'Approved' } as never);
+    clock(e1.id);
+    const per = A.createPeriod({ label: 'auto-fill test', start: day, end: day, type: e1.payroll_type }) as { id: string };
+    expect(A.autoFillPayroll()).toBeGreaterThanOrEqual(1);
+    const lines = () => store.getDB().runs.find((r) => r.period_id === per.id)!.lines;
+    expect(lines().find((l) => l.employee_id === e1.id)?.days_worked).toBe(1);
+    expect(lines().some((l) => l.employee_id === e2.id && l.days_worked > 0)).toBe(false);
+    expect(A.autoFillPayroll()).toBe(0);                                  // nothing changed: nothing written
+    clock(e2.id);
+    expect(A.autoFillPayroll()).toBe(1);
+    expect(lines().find((l) => l.employee_id === e2.id)?.days_worked).toBe(1);
+    store.update('periods', per.id, { status: 'For Approval' } as never);
+    clock(emps.find((e) => e.id !== e1.id && e.id !== e2.id)!.id);
+    expect(A.autoFillPayroll()).toBe(0);                                  // a period sent for approval is not touched
+  });
+});

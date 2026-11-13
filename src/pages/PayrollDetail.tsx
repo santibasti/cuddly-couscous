@@ -52,6 +52,7 @@ export default function PayrollDetail() {
       </Card>
       <div style={{ height: 12 }} />
       {pendingNow > 0 && <div className="alert warn" style={{ marginBottom: 12 }}>{pendingNow} attendance record(s) in this period are pending approval and are excluded from the calculation. <Link to="/attendance">Review attendance</Link></div>}
+      {per.status === 'Draft' && <div className="small muted" style={{ marginBottom: 8 }}>A draft payroll fills itself in from attendance: once a person's day is completed (clocked out and approved) it appears here by itself. You can still press the button below to refresh it.</div>}
       {(per.status === 'Draft' || (run && lines.length === 0 && per.status !== 'Finalized')) && <div style={{ marginBottom: 10 }}><PayrollWho type={per.type} start={per.start} end={per.end} run={!!run} /></div>}
       {!run && <div className="alert info" style={{ marginBottom: 12 }}>No payroll has been generated yet. Click “Generate from attendance” to pull approved attendance for {per.type} employees.</div>}
       {run && (

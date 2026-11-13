@@ -3,6 +3,7 @@
 // "Outside Metro Manila" and "Commercial Project" bonuses when switched on for the job. Pure functions over the data, so payroll, the Job Order
 // screen and the employee record all show the same numbers.
 import { packagePanels, panelBreakdown } from './business';
+import { today } from './util';
 import type { DB, Employee, Job, JobPayRow, Settings } from './types';
 
 export const DEFAULT_JOB_PAY = { panel_bonus: 140, panel_step: 10, outside_mm_bonus: 0, commercial_bonus: 0 };
@@ -58,8 +59,9 @@ export const isCommercialClient = (db: DB, job: Job) => db.clients.find((c) => c
  * with a clock-in on a day of the job whose attendance is for this job (or not tied to any job) or the Team Leader checked them in on arrival.
  * Late arrival does not matter.
  */
-export function jobsAttended(db: DB, empId: string, start: string, end: string, anyApproval = false): Job[] {
-  const att = db.attendance.filter((a) => a.employee_id === empId && !a.deleted_at && (anyApproval ? a.approval !== 'Rejected' : a.approval === 'Approved') && !!a.clock_in && a.date >= start && a.date <= end);
+export function jobsAttended(db: DB, empId: string, start: string, end: string, anyApproval = false, asOf: string = today()): Job[] {
+  // today's attendance counts once it is completed (clocked out)
+  const att = db.attendance.filter((a) => a.employee_id === empId && !a.deleted_at && (anyApproval ? a.approval !== 'Rejected' : a.approval === 'Approved') && !!a.clock_in && !(a.date === asOf && !a.clock_out) && a.date >= start && a.date <= end);
   if (!att.length) return [];
   return (db.jobs ?? []).filter((j) => {
     if (j.deleted_at || ['Cancelled', 'Rescheduled', 'Pending'].includes(j.status) || !jobCrewIds(j).includes(empId)) return false;
@@ -71,8 +73,8 @@ export function jobsAttended(db: DB, empId: string, start: string, end: string, 
 }
 
 /** Job pay and bonuses for one employee over a date range: one row per job order attended. */
-export function employeeJobPay(db: DB, emp: Employee, start: string, end: string): JobPayRow[] {
-  return jobsAttended(db, emp.id, start, end).map((j) => {
+export function employeeJobPay(db: DB, emp: Employee, start: string, end: string, asOf?: string): JobPayRow[] {
+  return jobsAttended(db, emp.id, start, end, false, asOf).map((j) => {
     const b = jobBonus(db, j);
     const rate = emp.pay_basis === 'per_job' ? emp.job_rate ?? 0 : 0;
     const payBonus = b.final;       // bonuses are paid once the job's panel count is final

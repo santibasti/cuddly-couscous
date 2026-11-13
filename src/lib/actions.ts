@@ -772,6 +772,24 @@ export function generateRun(periodId: string) {
   else store.insert('runs', { period_id: periodId, lines } as never, `Generated payroll ${per.label}`);
   return { pending, employees: lines.length };
 }
+/**
+ * Keeps every draft payroll up to date by itself: when completed, approved attendance (or the crew present on job orders) changes what a draft period
+ * would contain, its calculated lines are refreshed — nobody has to press Generate. Only drafts are touched; a period sent for approval stays as it was.
+ */
+export function autoFillPayroll(): number {
+  if (!store.can('payroll.edit')) return 0;
+  const canon = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as object).sort(([p], [q]) => p.localeCompare(q))) : x));
+  let changed = 0;
+  for (const per of db().periods.filter((p) => !p.deleted_at && !p.locked && p.status === 'Draft')) {
+    const { lines } = buildPayrollLines(db(), per);
+    const run = db().runs.find((r) => r.period_id === per.id && !r.deleted_at);
+    if (run ? canon(run.lines) === canon(lines) : !lines.length) continue;
+    if (run) store.update('runs', run.id, { lines }, 'update', `Payroll ${per.label} updated automatically from attendance`);
+    else store.insert('runs', { period_id: per.id, lines } as never, `Payroll ${per.label} filled in automatically from attendance`);
+    changed++;
+  }
+  return changed;
+}
 export function submitPayroll(periodId: string) {
   store.require('payroll.edit');
   const per = db().periods.find((x) => x.id === periodId)!;
