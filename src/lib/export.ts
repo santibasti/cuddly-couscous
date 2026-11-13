@@ -1,4 +1,5 @@
 import { logoDataUrl } from './logo';
+import { weeklyGrid } from './payrollweek';
 import { DEFAULT_TECHNOLOGY, defaultIntro, defaultMethodology, durationText, quoteShowsAmounts, RATES_NOTE, paymentLabel, paymentSentence, manpowerText, parseMethodology } from './quote-text';
 import type { DB, Invoice, OcularVisit, Job, Payment, QuoteImage, PayrollLine, PayrollPeriod, Quotation, Variation } from './types';
 import { quoteImagesOf } from './quoteimages';
@@ -487,11 +488,20 @@ export async function receiptPdf(db: DB, p: Payment) {
   footer(doc); doc.save(`${p.receipt_no}.pdf`);
 }
 
-export async function payslipPdf(db: DB, per: PayrollPeriod, l: PayrollLine) {
-  const { doc, autoTable } = await newPdf();
+type PdfKit = Awaited<ReturnType<typeof newPdf>>;
+/** One employee's payslip on the current page of the document: the week's days with their rate and bonuses, then earnings, deductions and net pay. */
+function drawPayslip({ doc, autoTable }: PdfKit, db: DB, per: PayrollPeriod, l: PayrollLine) {
   const e = db.employees.find((x) => x.id === l.employee_id)!;
   header(doc, 'Payslip', per.label);
-  const y = partyBlock(doc, 34, ['Employee', [e.full_name, `${e.code} • ${e.position}`, `${e.department} • ${e.status}`, `Payout: ${e.payout_method}`]], ['Pay period', [`${fmtDate(per.start)} – ${fmtDate(per.end)}`, `Type: ${per.type}`, `Days worked: ${l.days_worked}`, `Status: ${per.status}${per.locked ? ' (locked)' : ''}`]]);
+  let y = partyBlock(doc, 34, ['Employee', [e.full_name, `${e.code} • ${e.position}`, `${e.department} • ${e.status}`, `Payout: ${e.payout_method}`]], ['Pay period', [`${fmtDate(per.start)} – ${fmtDate(per.end)}`, `Type: ${per.type}`, `Days worked: ${l.days_worked}`, `Status: ${per.status}${per.locked ? ' (locked)' : ''}`]]);
+  // the days of the pay period: the rate earned each day and the bonuses that came with it
+  const wk = weeklyGrid(db, per, [l]); const wr = wk.rows[0];
+  if (wr) {
+    const body = wk.days.filter((d) => wk.days.length <= 7 || wr.days[d].base || wr.days[d].bonus).map((d) => { const c = wr.days[d]; return [`${new Date(`${d}T00:00:00Z`).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })}`, clean(c.jobs.join(', ') || (c.base ? 'Worked' : '-')), c.base ? pm(c.base) : '-', c.bonus ? pm(c.bonus) : '-', c.base || c.bonus ? pm(c.base + c.bonus) : '-']; });
+    autoTable(doc, { startY: y + 2, head: [['Day', 'Job order', `Rate (${wr.unit === 'job' ? 'per job order' : wr.unit === 'day' ? 'per day' : 'monthly'})`, 'Bonus', 'Total']], body, ...tableStyle, margin: { left: 12, right: 12 }, columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+      foot: [['Week total', '', pm(sum(Object.values(wr.days), (c) => c.base)), pm(wr.panel + wr.outside + wr.commercial), pm(sum(Object.values(wr.days), (c) => c.base) + wr.panel + wr.outside + wr.commercial)]], footStyles: { fillColor: [234, 239, 244], textColor: NAVY, fontStyle: 'bold' } });
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
+  }
   autoTable(doc, {
     startY: y + 2, head: [['Earnings', 'Amount']], ...tableStyle, margin: { left: 12, right: 105 }, columnStyles: { 1: { halign: 'right' } },
     body: [['Basic / regular pay', pm(l.regular_pay)], ['Less: late / undertime / absences', '- ' + pm(l.late_undertime_deduction)], ['Overtime', pm(l.overtime_pay)], ['Holiday pay', pm(l.holiday_pay)], ['Rest-day pay', pm(l.rest_day_pay)], ['Paid leave', pm(l.leave_pay)], ['Allowances', pm(l.allowances)], ['Incentives', pm(l.incentives)], ['Reimbursements', pm(l.reimbursements)]],
@@ -508,8 +518,16 @@ export async function payslipPdf(db: DB, per: PayrollPeriod, l: PayrollLine) {
   doc.setTextColor(20, 36, 58); doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
   doc.text('Statutory deductions are computed from rates configured by TopMop administration; verify against current government tables.', 12, endY + 20);
   doc.text('Employee signature: ____________________________', 12, endY + 34);
-  footer(doc); doc.save(`payslip-${e.code}-${per.start}.pdf`);
 }
+/** Payslip(s) of a payroll period: one page for each employee in one PDF. */
+export async function payslipsPdf(db: DB, per: PayrollPeriod, lines: PayrollLine[]) {
+  const kit = await newPdf();
+  lines.forEach((l, i) => { if (i) kit.doc.addPage(); drawPayslip(kit, db, per, l); });
+  footer(kit.doc);
+  const first = db.employees.find((x) => x.id === lines[0]?.employee_id);
+  kit.doc.save(lines.length === 1 ? `payslip-${first?.code ?? 'employee'}-${per.start}.pdf` : `payslips-${per.start}-to-${per.end}.pdf`);
+}
+export const payslipPdf = (db: DB, per: PayrollPeriod, l: PayrollLine) => payslipsPdf(db, per, [l]);
 
 export async function statementPdf(db: DB, clientId: string, asOf: string) {
   const { doc, autoTable } = await newPdf();

@@ -6,7 +6,8 @@ import { DataTable } from '@/components/DataTable';
 import { PayrollWho } from '@/components/PayrollWho';
 import { approvePayroll, deletePeriod, finalizePayroll, generateRun, returnPayroll, submitPayroll } from '@/lib/actions';
 import { buildPayrollLines } from '@/lib/business';
-import { payslipPdf } from '@/lib/export';
+import { payslipsPdf } from '@/lib/export';
+import { weeklyGrid, type WeekRow } from '@/lib/payrollweek';
 import { fmtDate, fmtStamp, money, sum } from '@/lib/util';
 import type { JobPayRow, PayrollLine } from '@/lib/types';
 
@@ -32,6 +33,9 @@ export default function PayrollDetail() {
   const jobBonusTotal = (l: PayrollLine) => bonusOf(l, 'panel_bonus') + bonusOf(l, 'outside_bonus') + bonusOf(l, 'commercial_bonus');
   const daily = (l: PayrollLine) => Math.round((l.gross - l.allowances - l.incentives - l.reimbursements) * 100) / 100;
   const other = (l: PayrollLine) => Math.round((l.allowances + (l.incentives - jobBonusTotal(l)) + l.reimbursements) * 100) / 100;
+  // weekly payroll: a day-by-day table (rate and bonus each day) and weekly payslips
+  const wk = per.type === 'weekly' && run ? weeklyGrid(db, per, lines) : null;
+  const wkOther = !!wk?.rows.some((r) => Math.abs(r.other) > 0.004);
   const hasOther = lines.some((l) => Math.abs(other(l)) > 0.004);
   const rateNote = (l: PayrollLine) => { const e = db.employees.find((x) => x.id === l.employee_id); if (!e) return ''; return e.pay_basis === 'per_job' ? `${l.job_pay?.length ?? 0} job order${(l.job_pay?.length ?? 0) === 1 ? '' : 's'} × ${money(e.job_rate ?? 0)}` : e.pay_basis === 'daily' ? `${l.days_worked} day${l.days_worked === 1 ? '' : 's'} × ${money(e.daily_rate)}` : 'monthly salary'; };
   const money2 = (k: keyof PayrollLine, h: string) => ({ key: k as string, header: h, num: true, type: 'money' as const, value: (l: PayrollLine) => l[k] as number, render: (l: PayrollLine) => ((l[k] as number) ? money(l[k] as number) : '—') });
@@ -61,6 +65,25 @@ export default function PayrollDetail() {
             <Stat k="Employees" v={lines.length} /><Stat k="Gross pay" v={money(t('gross'))} tone="navy" /><Stat k="Total deductions" v={money(t('total_deductions'))} tone="warn" /><Stat k="Net pay" v={money(t('net'))} tone="good" />
           </div>
           {exp && <div className="alert info" style={{ marginBottom: 12 }}>Payroll expense of <b>{money(exp.amount)}</b> posted to Expenses on {fmtDate(exp.date)} (category Payroll) — {exp.paid ? 'marked paid' : 'unpaid until finalized'}. It flows into the P&L automatically.</div>}
+          {wk ? (
+            <Card title={`Weekly payroll · ${fmtDate(per.start)} – ${fmtDate(per.end)}`} flush actions={<div className="row" style={{ gap: 6 }}><button type="button" className="btn sm primary" disabled={!lines.length} onClick={() => attempt(() => payslipsPdf(db, per, lines))}>Print all payslips</button><button type="button" className="btn sm" onClick={() => setFull(!full)}>{full ? 'Hide' : 'Show'} full register (deductions, net pay)</button></div>}>
+              <DataTable<WeekRow> rows={wk.rows} rowKey={(r) => r.emp.id} exportTitle={`Weekly payroll ${per.label}`} pageSize={25}
+                totals={['Total', '', ...wk.days.map((d) => money(sum(wk.rows, (r) => r.days[d].base + r.days[d].bonus))), money(sum(wk.rows, (r) => r.panel)), money(sum(wk.rows, (r) => r.outside)), money(sum(wk.rows, (r) => r.commercial)), ...(wkOther ? [money(sum(wk.rows, (r) => r.other))] : []), money(sum(wk.rows, (r) => r.total)), '']}
+                cols={[
+                  { key: 'emp', header: 'Name', value: (r) => r.emp.full_name, render: (r) => <b>{r.emp.full_name}</b> },
+                  { key: 'rate', header: 'Rate', num: true, type: 'money' as const, value: (r) => r.rate, render: (r) => <>{money(r.rate)}<div className="small muted">per {r.unit === 'job' ? 'job order' : r.unit}</div></> },
+                  ...wk.days.map((d) => ({ key: `d${d}`, header: new Date(`${d}T00:00:00Z`).toLocaleDateString('en-PH', { weekday: 'short', day: 'numeric', timeZone: 'UTC' }), num: true, type: 'money' as const, value: (r: WeekRow) => r.days[d].base + r.days[d].bonus,
+                    render: (r: WeekRow) => { const c = r.days[d]; return c.base || c.bonus ? <>{c.base ? money(c.base) : '—'}{c.bonus > 0 && <div className="small" style={{ color: 'var(--green)' }}>+{money(c.bonus)} bonus</div>}{c.jobs.length > 0 && <div className="small muted">{c.jobs.join(', ')}</div>}</> : '—'; } })),
+                  { key: 'panel', header: 'Bonus', num: true, type: 'money' as const, value: (r) => r.panel, render: (r) => (r.panel ? money(r.panel) : '—') },
+                  { key: 'oot', header: 'Out of town', num: true, type: 'money' as const, value: (r) => r.outside, render: (r) => (r.outside ? money(r.outside) : '—') },
+                  { key: 'com', header: 'Commercial', num: true, type: 'money' as const, value: (r) => r.commercial, render: (r) => (r.commercial ? money(r.commercial) : '—') },
+                  ...(wkOther ? [{ key: 'other', header: 'Other', num: true, type: 'money' as const, value: (r: WeekRow) => r.other, render: (r: WeekRow) => (Math.abs(r.other) > 0.004 ? money(r.other) : '—') }] : []),
+                  { key: 'total', header: 'Total', num: true, type: 'money' as const, value: (r) => r.total, render: (r) => <b>{money(r.total)}</b> },
+                  { key: 'actions', header: '', noExport: true, sortable: false, render: (r) => { const l = lines.find((x) => x.employee_id === r.emp.id)!; return <button className="btn sm" onClick={() => attempt(() => payslipsPdf(db, per, [l]))}>Payslip</button>; } },
+                ]} />
+              <div className="small muted" style={{ padding: '8px 14px' }}>Each day shows the rate earned that day (job-order rate or daily rate) and the bonuses of that day's job orders. Total is the gross pay for the week before deductions{wkOther ? '; Other = holiday / overtime pay, allowances and similar' : ''}. Payslips are printed weekly, one page for each person.</div>
+            </Card>
+          ) : (
           <Card title="Payroll" flush actions={<button type="button" className="btn sm" onClick={() => setFull(!full)}>{full ? 'Hide' : 'Show'} full register (deductions, net pay)</button>}>
             <DataTable<PayrollLine> rows={lines} rowKey={(l) => l.employee_id} exportTitle={`Payroll ${per.label}`} pageSize={25}
               totals={['Total', money(sum(lines, daily)), money(sum(lines, (l) => bonusOf(l, 'panel_bonus'))), money(sum(lines, (l) => bonusOf(l, 'outside_bonus'))), money(sum(lines, (l) => bonusOf(l, 'commercial_bonus'))), ...(hasOther ? [money(sum(lines, other))] : []), money(t('gross'))]}
@@ -72,10 +95,11 @@ export default function PayrollDetail() {
                 { key: 'com', header: 'Commercial', num: true, type: 'money' as const, value: (l) => bonusOf(l, 'commercial_bonus'), render: (l) => (bonusOf(l, 'commercial_bonus') ? money(bonusOf(l, 'commercial_bonus')) : '—') },
                 ...(hasOther ? [{ key: 'other', header: 'Other', num: true, type: 'money' as const, value: other, render: (l: PayrollLine) => (other(l) ? money(other(l)) : '—') }] : []),
                 { key: 'total', header: 'Total', num: true, type: 'money' as const, value: (l) => l.gross, render: (l) => <b>{money(l.gross)}</b> },
-                { key: 'actions', header: '', noExport: true, sortable: false, render: (l) => <button className="btn sm" onClick={() => attempt(() => payslipPdf(db, per, l))}>Payslip</button> },
+                { key: 'actions', header: '', noExport: true, sortable: false, render: () => null },
               ]} />
-            <div className="small muted" style={{ padding: '8px 14px' }}>Total is the gross pay before deductions. {hasOther ? 'Other = allowances, other incentives and reimbursements. ' : ''}Late arrival does not reduce job-order pay. SSS, PhilHealth, Pag-IBIG, tax, cash advances and net pay are in the full register.</div>
+            <div className="small muted" style={{ padding: '8px 14px' }}>Payslips are printed weekly: use a weekly payroll period. Total is the gross pay before deductions. {hasOther ? 'Other = allowances, other incentives and reimbursements. ' : ''}Late arrival does not reduce job-order pay. SSS, PhilHealth, Pag-IBIG, tax, cash advances and net pay are in the full register.</div>
           </Card>
+          )}
           {full && <div style={{ height: 12 }} />}
           {full && <Card title="Full payroll register" flush>
             <div style={{ overflowX: 'auto' }}>
@@ -86,7 +110,7 @@ export default function PayrollDetail() {
                   money2('regular_pay', 'Regular pay'), money2('late_undertime_deduction', 'Late/UT/absent'), money2('overtime_pay', 'Overtime'), money2('holiday_pay', 'Holiday'), money2('rest_day_pay', 'Rest day'), money2('leave_pay', 'Paid leave'),
                   money2('allowances', 'Allowances'), money2('incentives', 'Incentives'), money2('reimbursements', 'Reimb.'), money2('gross', 'Gross'),
                   money2('sss', 'SSS'), money2('philhealth', 'PhilHealth'), money2('pagibig', 'Pag-IBIG'), money2('wtax', 'W/tax'), money2('cash_advance', 'Cash adv.'), money2('loan', 'Loan'), money2('other_deductions', 'Other ded.'), money2('total_deductions', 'Total ded.'), money2('net', 'NET PAY'),
-                  { key: 'actions', header: '', noExport: true, sortable: false, render: (l) => <button className="btn sm" onClick={() => attempt(() => payslipPdf(db, per, l))}>Payslip</button> },
+                  { key: 'actions', header: '', noExport: true, sortable: false, render: (l) => (per.type === 'weekly' ? <button className="btn sm" onClick={() => attempt(() => payslipsPdf(db, per, [l]))}>Payslip</button> : null) },
                 ]} />
             </div>
           </Card>}

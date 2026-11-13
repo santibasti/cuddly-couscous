@@ -132,6 +132,7 @@ export default function Payroll() {
         <Stat k="Finalized (last 90d)" v={money(sum(periods.filter((p) => p.status === 'Finalized' && p.end >= addDays(today(), -90)), (p) => totals(p).net))} tone="good" />
         <Stat k="Active employees" v={live(db.employees).filter((e) => e.status !== 'inactive').length} />
       </div>
+      <div className="small muted" style={{ marginBottom: 8 }}>The weekly payroll (Monday to Sunday) is created by itself when the week starts and fills in from attendance: open it to see each person's rate and bonus every day. Payslips are printed weekly.</div>
       <Tabs tabs={[{ id: 'periods', label: 'Payroll periods', count: periods.length }, { id: 'adjust', label: 'Allowances, advances & loans' }, { id: 'jobpay', label: 'Job bonuses & settings' }]} value={tab} onChange={setTab} />
       {tab === 'periods' && (
         <Card flush><DataTable<PayrollPeriod> rows={periods} rowKey={(p) => p.id} onRow={(p) => nav(`/payroll/${p.id}`)} exportTitle="Payroll periods" initialSort={{ key: 'start', dir: -1 }} cols={[

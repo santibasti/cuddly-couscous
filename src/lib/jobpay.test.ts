@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildPayrollLines, computePayrollLine, payrollEligible } from './business';
 import { employeeJobPay, jobBonus, jobsAttended, panelBonusPerCrew } from './jobpay';
+import { weekOf, weeklyGrid } from './payrollweek';
 import { seedDB } from './seed';
 import { clone } from './util';
 
@@ -174,5 +175,35 @@ describe("today's attendance and the automatic payroll", () => {
     store.update('periods', per.id, { status: 'For Approval' } as never);
     clock(emps.find((e) => e.id !== e1.id && e.id !== e2.id)!.id);
     expect(A.autoFillPayroll()).toBe(0);                                  // a period sent for approval is not touched
+  });
+});
+
+describe('weekly payroll table', () => {
+  it('shows each day the rate earned and the bonuses of that day, and adds up to the gross pay', () => {
+    const { db, a, b, period } = world();          // a job order on Tue 2026-03-03, 90 additional panels, 3 crew
+    for (const id of [a.id, b.id]) Object.assign(db.employees.find((e) => e.id === id)!, { status: 'regular', hire_date: '2026-01-01', rest_day: 0 });
+    Object.assign(db.employees.find((e) => e.id === a.id)!, { pay_basis: 'per_job', job_rate: 800 });
+    Object.assign(db.employees.find((e) => e.id === b.id)!, { pay_basis: 'daily', daily_rate: 700, payroll_type: 'weekly' });
+    const per = { ...(period as object), start: '2026-03-02', end: '2026-03-08' } as never;
+    const { days, rows } = weeklyGrid(db, per, buildPayrollLines(db, { ...(per as object), type: 'weekly' } as never, '2026-03-08').lines.filter((l) => [a.id, b.id].includes(l.employee_id)), '2026-03-08');
+    expect(days).toHaveLength(7); expect(days[0]).toBe('2026-03-02'); expect(days[6]).toBe('2026-03-08');
+    const ra = rows.find((r) => r.emp.id === a.id)!, rb = rows.find((r) => r.emp.id === b.id)!;
+    expect(ra.days['2026-03-03']).toMatchObject({ base: 800, bonus: 420, jobs: ['JOB-X'] }); expect(ra.days['2026-03-02']).toMatchObject({ base: 0, bonus: 0 });
+    expect(ra).toMatchObject({ rate: 800, unit: 'job', panel: 420, total: 1220 });
+    expect(rb.days['2026-03-03']).toMatchObject({ base: 700, bonus: 420 }); expect(rb).toMatchObject({ rate: 700, unit: 'day', total: 1120 });
+    for (const r of rows) expect(r.total).toBeCloseTo(Object.values(r.days).reduce((t, c) => t + c.base + c.bonus, 0) + r.other, 2);
+  });
+  it('finds the Monday to Sunday of a date', () => { expect(weekOf('2026-11-13')).toEqual({ start: '2026-11-09', end: '2026-11-15' }); expect(weekOf('2026-11-15')).toEqual({ start: '2026-11-09', end: '2026-11-15' }); expect(weekOf('2026-11-09').start).toBe('2026-11-09'); });
+  it('creates this week by itself once, never brings back a deleted week, and last week only when there was work in it', async () => {
+    const A = await import('./actions'); const { store } = await import('./store'); const { today, addDays, weekStart } = await import('./util');
+    await store.login('owner@topmop.ph', 'topmop123');
+    for (const p of store.getDB().periods.filter((x) => !x.deleted_at && x.type === 'weekly')) store.update('periods', p.id, { status: 'Draft' } as never), store.remove('periods', p.id);
+    const ws = weekStart(today());
+    expect(A.ensureWeeklyPeriods()).toBeGreaterThanOrEqual(1);
+    const mine = () => store.getDB().periods.filter((p) => !p.deleted_at && p.type === 'weekly' && p.start === ws);
+    expect(mine()).toHaveLength(1); expect(mine()[0].end).toBe(addDays(ws, 6));
+    expect(A.ensureWeeklyPeriods()).toBe(0);                                 // already there
+    store.remove('periods', mine()[0].id);
+    expect(A.ensureWeeklyPeriods()).toBe(0); expect(mine()).toHaveLength(0);   // a deleted week stays deleted
   });
 });

@@ -17,7 +17,7 @@ import { syncMaintenance } from './maintenance';
 import { syncRatings } from './ratings';
 import { paymentDays } from './quote-text';
 import { answerOf, isAsking, summary as crewSummary, teamOf } from './crew-confirm-core';
-import { addDays, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
+import { addDays, fmtDate, isoNow, uid, money, nowLocal, round2, sum, today, weekStart } from './util';
 
 const db = () => store.getDB();
 const me = () => store.user;
@@ -772,6 +772,23 @@ export function generateRun(periodId: string) {
   else store.insert('runs', { period_id: periodId, lines } as never, `Generated payroll ${per.label}`);
   return { pending, employees: lines.length };
 }
+/**
+ * Weekly payroll (Monday to Sunday) appears by itself: the current week is created when it starts, and last week too if there was work in it.
+ * A week that was deleted is not brought back, and a week that clashes with an existing weekly period is skipped.
+ */
+export function ensureWeeklyPeriods(): number {
+  if (!store.can('payroll.edit')) return 0;
+  const ws = weekStart(today()); const prev = addDays(ws, -7); let made = 0;
+  const hadWork = (from: string, to: string) => db().attendance.some((a) => !a.deleted_at && a.clock_in && a.date >= from && a.date <= to);
+  for (const start of [ws, prev]) {
+    const end = addDays(start, 6);
+    if (db().periods.some((p) => p.type === 'weekly' && p.start === start)) continue;          // exists (a deleted one stays deleted)
+    if (start === prev && !hadWork(start, end)) continue;
+    try { createPeriod({ label: `${fmtDate(start)} – ${fmtDate(end)} (weekly)`, start, end, type: 'weekly' }); made++; } catch { /* a clash with another weekly period: leave it */ }
+  }
+  return made;
+}
+
 /**
  * Keeps every draft payroll up to date by itself: when completed, approved attendance (or the crew present on job orders) changes what a draft period
  * would contain, its calculated lines are refreshed — nobody has to press Generate. Only drafts are touched; a period sent for approval stays as it was.
