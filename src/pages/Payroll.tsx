@@ -112,7 +112,7 @@ function JobPaySettings() {
 export default function Payroll() {
   const { db, can } = useAuth();
   const nav = useNavigate();
-  const [tab, setTab] = useState<'periods' | 'adjust' | 'bonus' | 'jobpay'>('periods');
+  const [tab, setTab] = useState<'periods' | 'adjust' | 'jobpay'>('periods');
   const [show, setShow] = useState(false);
   const [adj, setAdj] = useState<PayrollAdjustment | 'new' | null>(null);
   const periods = live(db.periods).sort((a, b) => b.start.localeCompare(a.start));
@@ -130,7 +130,7 @@ export default function Payroll() {
         <Stat k="Finalized (last 90d)" v={money(sum(periods.filter((p) => p.status === 'Finalized' && p.end >= addDays(today(), -90)), (p) => totals(p).net))} tone="good" />
         <Stat k="Active employees" v={live(db.employees).filter((e) => e.status !== 'inactive').length} />
       </div>
-      <Tabs tabs={[{ id: 'periods', label: 'Payroll periods', count: periods.length }, { id: 'adjust', label: 'Allowances, advances & loans' }, { id: 'bonus', label: 'Job bonuses' }, { id: 'jobpay', label: 'Job pay settings' }]} value={tab} onChange={setTab} />
+      <Tabs tabs={[{ id: 'periods', label: 'Payroll periods', count: periods.length }, { id: 'adjust', label: 'Allowances, advances & loans' }, { id: 'jobpay', label: 'Job bonuses & settings' }]} value={tab} onChange={setTab} />
       {tab === 'periods' && (
         <Card flush><DataTable<PayrollPeriod> rows={periods} rowKey={(p) => p.id} onRow={(p) => nav(`/payroll/${p.id}`)} exportTitle="Payroll periods" initialSort={{ key: 'start', dir: -1 }} cols={[
           { key: 'label', header: 'Period', value: (p) => p.label, render: (p) => <b>{p.locked && <Icon name="lock" size={14} />} {p.label}</b> }, { key: 'type', header: 'Type', value: (p) => p.type },
@@ -148,8 +148,7 @@ export default function Payroll() {
           { key: 'actions', header: '', noExport: true, sortable: false, render: (a) => can('payroll.edit') ? <button className="btn sm" onClick={() => setAdj(a)}>Edit</button> : null },
         ]} /></Card>
       )}
-      {tab === 'bonus' && <JobBonuses />}
-      {tab === 'jobpay' && <JobPaySettings />}
+      {tab === 'jobpay' && <><JobBonuses /><div style={{ height: 14 }} /><JobPaySettings /></>}
       {show && <PeriodModal onClose={() => setShow(false)} />}
       {adj && <AdjModal initial={adj === 'new' ? undefined : adj} onClose={() => setAdj(null)} />}
     </>

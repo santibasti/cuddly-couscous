@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { store, useAuth } from '@/lib/store';
 import { Badge, Card, Icon, PageHead, Stat, attempt, ask } from '@/components/ui';
@@ -15,6 +16,7 @@ export default function PayrollDetail() {
   const { db, can } = useAuth();
   const per = db.periods.find((p) => p.id === id);
   if (!per) return <div className="alert warn">Payroll period not found. <Link to="/payroll">Back</Link></div>;
+  const [full, setFull] = useState(false);
   const run = db.runs.find((r) => r.period_id === per.id);
   const lines = run?.lines ?? [];
   const pendingNow = per.status === 'Draft' ? buildPayrollLines(db, per).pending : 0;
@@ -24,6 +26,13 @@ export default function PayrollDetail() {
   const exp = per.expense_id ? db.expenses.find((e) => e.id === per.expense_id) : undefined;
   const who = (id?: string) => db.users.find((u) => u.id === id)?.name ?? '—';
 
+  // the compact view: what each person earned for the work (daily / job-order pay), the three job bonuses, and the total
+  const bonusOf = (l: PayrollLine, k: 'panel_bonus' | 'outside_bonus' | 'commercial_bonus') => sum(l.job_pay ?? [], (r) => r[k]);
+  const jobBonusTotal = (l: PayrollLine) => bonusOf(l, 'panel_bonus') + bonusOf(l, 'outside_bonus') + bonusOf(l, 'commercial_bonus');
+  const daily = (l: PayrollLine) => Math.round((l.gross - l.allowances - l.incentives - l.reimbursements) * 100) / 100;
+  const other = (l: PayrollLine) => Math.round((l.allowances + (l.incentives - jobBonusTotal(l)) + l.reimbursements) * 100) / 100;
+  const hasOther = lines.some((l) => Math.abs(other(l)) > 0.004);
+  const rateNote = (l: PayrollLine) => { const e = db.employees.find((x) => x.id === l.employee_id); if (!e) return ''; return e.pay_basis === 'per_job' ? `${l.job_pay?.length ?? 0} job order${(l.job_pay?.length ?? 0) === 1 ? '' : 's'} × ${money(e.job_rate ?? 0)}` : e.pay_basis === 'daily' ? `${l.days_worked} day${l.days_worked === 1 ? '' : 's'} × ${money(e.daily_rate)}` : 'monthly salary'; };
   const money2 = (k: keyof PayrollLine, h: string) => ({ key: k as string, header: h, num: true, type: 'money' as const, value: (l: PayrollLine) => l[k] as number, render: (l: PayrollLine) => ((l[k] as number) ? money(l[k] as number) : '—') });
   return (
     <>
@@ -48,7 +57,23 @@ export default function PayrollDetail() {
             <Stat k="Employees" v={lines.length} /><Stat k="Gross pay" v={money(t('gross'))} tone="navy" /><Stat k="Total deductions" v={money(t('total_deductions'))} tone="warn" /><Stat k="Net pay" v={money(t('net'))} tone="good" />
           </div>
           {exp && <div className="alert info" style={{ marginBottom: 12 }}>Payroll expense of <b>{money(exp.amount)}</b> posted to Expenses on {fmtDate(exp.date)} (category Payroll) — {exp.paid ? 'marked paid' : 'unpaid until finalized'}. It flows into the P&L automatically.</div>}
-          <Card title="Payroll register" flush>
+          <Card title="Payroll" flush actions={<button type="button" className="btn sm" onClick={() => setFull(!full)}>{full ? 'Hide' : 'Show'} full register (deductions, net pay)</button>}>
+            <DataTable<PayrollLine> rows={lines} rowKey={(l) => l.employee_id} exportTitle={`Payroll ${per.label}`} pageSize={25}
+              totals={['Total', money(sum(lines, daily)), money(sum(lines, (l) => bonusOf(l, 'panel_bonus'))), money(sum(lines, (l) => bonusOf(l, 'outside_bonus'))), money(sum(lines, (l) => bonusOf(l, 'commercial_bonus'))), ...(hasOther ? [money(sum(lines, other))] : []), money(t('gross'))]}
+              cols={[
+                { key: 'emp', header: 'Name', value: name, render: (l) => <b>{name(l)}</b> },
+                { key: 'daily', header: 'Daily rate pay', num: true, type: 'money' as const, value: daily, render: (l) => <>{daily(l) ? money(daily(l)) : '—'}{rateNote(l) && <div className="small muted">{rateNote(l)}</div>}</> },
+                { key: 'bonus', header: 'Bonus', num: true, type: 'money' as const, value: (l) => bonusOf(l, 'panel_bonus'), render: (l) => (bonusOf(l, 'panel_bonus') ? money(bonusOf(l, 'panel_bonus')) : '—') },
+                { key: 'oot', header: 'Out of town', num: true, type: 'money' as const, value: (l) => bonusOf(l, 'outside_bonus'), render: (l) => (bonusOf(l, 'outside_bonus') ? money(bonusOf(l, 'outside_bonus')) : '—') },
+                { key: 'com', header: 'Commercial', num: true, type: 'money' as const, value: (l) => bonusOf(l, 'commercial_bonus'), render: (l) => (bonusOf(l, 'commercial_bonus') ? money(bonusOf(l, 'commercial_bonus')) : '—') },
+                ...(hasOther ? [{ key: 'other', header: 'Other', num: true, type: 'money' as const, value: other, render: (l: PayrollLine) => (other(l) ? money(other(l)) : '—') }] : []),
+                { key: 'total', header: 'Total', num: true, type: 'money' as const, value: (l) => l.gross, render: (l) => <b>{money(l.gross)}</b> },
+                { key: 'actions', header: '', noExport: true, sortable: false, render: (l) => <button className="btn sm" onClick={() => attempt(() => payslipPdf(db, per, l))}>Payslip</button> },
+              ]} />
+            <div className="small muted" style={{ padding: '8px 14px' }}>Total is the gross pay before deductions. {hasOther ? 'Other = allowances, other incentives and reimbursements. ' : ''}Late arrival does not reduce job-order pay. SSS, PhilHealth, Pag-IBIG, tax, cash advances and net pay are in the full register.</div>
+          </Card>
+          {full && <div style={{ height: 12 }} />}
+          {full && <Card title="Full payroll register" flush>
             <div style={{ overflowX: 'auto' }}>
               <DataTable<PayrollLine> rows={lines} rowKey={(l) => l.employee_id} exportTitle={`Payroll register ${per.label}`} pageSize={25}
                 totals={['Total', sum(lines, (l) => l.days_worked), t('regular_pay'), t('late_undertime_deduction'), t('overtime_pay'), t('holiday_pay'), t('rest_day_pay'), t('leave_pay'), t('allowances'), t('incentives'), t('reimbursements'), t('gross'), t('sss'), t('philhealth'), t('pagibig'), t('wtax'), t('cash_advance'), t('loan'), t('other_deductions'), t('total_deductions'), t('net'), ''] as never}
@@ -60,8 +85,8 @@ export default function PayrollDetail() {
                   { key: 'actions', header: '', noExport: true, sortable: false, render: (l) => <button className="btn sm" onClick={() => attempt(() => payslipPdf(db, per, l))}>Payslip</button> },
                 ]} />
             </div>
-          </Card>
-          {lines.some((l) => l.job_pay?.length) && (
+          </Card>}
+          {full && lines.some((l) => l.job_pay?.length) && (
             <>
               <div style={{ height: 12 }} />
               <Card title="Job orders & bonuses in this payroll" flush actions={<span className="small muted">Job pay is filled in from approved attendance, late or not. Bonuses are recorded under each assigned employee.</span>}>
