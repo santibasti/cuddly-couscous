@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
+import { QuickBooking } from '@/components/QuickBooking';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj, ask } from '@/components/ui';
 import { deleteQuotation, planQuotationDelete } from '@/lib/deletion';
 import { DataTable } from '@/components/DataTable';
@@ -36,7 +37,7 @@ function InquiryForm({ onClose }: { onClose: () => void }) {
 export default function Sales() {
   const { db, can } = useAuth();
   const nav = useNavigate();
-  const [tab, setTab] = useState<'pipeline' | 'quotes' | 'winloss'>('pipeline');
+  const [tab, setTab] = useState<'pipeline' | 'quotes' | 'winloss' | 'quick'>('pipeline');
   const [show, setShow] = useState(false);
   const [status, setStatus] = useState('');
   const quotes = live(db.quotations);
@@ -58,7 +59,7 @@ export default function Sales() {
         {canEdit && <button className="btn" onClick={() => setShow(true)}><Icon name="plus" />New inquiry</button>}
         {canEdit && <button className="btn primary" onClick={() => nav('/sales/quote/new')}><Icon name="plus" />New quotation</button>}
       </PageHead>
-      <Tabs tabs={[{ id: 'pipeline', label: 'Pipeline', count: inq.filter((i) => !['Booked', 'Lost'].includes(i.stage)).length }, { id: 'quotes', label: 'Quotations', count: quotes.length }, { id: 'winloss', label: 'Sent / won / lost' }]} value={tab} onChange={setTab} />
+      <Tabs tabs={[{ id: 'pipeline', label: 'Pipeline', count: inq.filter((i) => !['Booked', 'Lost'].includes(i.stage)).length }, { id: 'quotes', label: 'Quotations', count: quotes.length }, { id: 'winloss', label: 'Sent / won / lost' }, ...(can('jobs.edit') && can('clients.edit') && can('sales.approve') ? [{ id: 'quick' as const, label: 'Quick booking' }] : [])]} value={tab} onChange={setTab} />
 
       {tab === 'pipeline' && (
         <div style={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: 'minmax(230px, 1fr)', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
@@ -106,6 +107,7 @@ export default function Sales() {
         </Card>
       )}
 
+      {tab === 'quick' && <QuickBooking />}
       {tab === 'winloss' && (
         <div className="stack">
           <div className="grid g4 keep2">
