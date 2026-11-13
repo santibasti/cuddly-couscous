@@ -19,6 +19,12 @@ function Clock() {
   return <div className="time">{fmtTime(t)}</div>;
 }
 
+/** "9:00 AM – 3:00 PM", or for a double shift "9:00 AM – 3:00 PM · 11:00 PM – 3:00 AM (+1)". */
+const shiftsText = (a: { date: string; clock_in?: string; clock_out?: string; sessions?: { in: string; out?: string }[] }) => {
+  const one = (s: { in?: string; out?: string }) => `${fmtTime(s.in)} – ${s.out ? `${fmtTime(s.out)}${s.out.slice(0, 10) > a.date ? ' (+1)' : ''}` : '—'}`;
+  return a.sessions && a.sessions.length > 1 ? a.sessions.map(one).join(' · ') : one({ in: a.clock_in, out: a.clock_out });
+};
+
 function MyClock({ emp }: { emp: Employee }) {
   const { db } = useAuth();
   const T = today();
@@ -31,6 +37,8 @@ function MyClock({ emp }: { emp: Employee }) {
   useEffect(() => { if (!job && myJobs[0]) setJob(myJobs[0].id); }, [myJobs.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const recent = live(db.attendance).filter((a) => a.employee_id === emp.id).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
   const state = rec?.clock_out ? 'out' : rec?.clock_in ? 'in' : 'none';
+  const lastIn = rec?.sessions?.length ? rec.sessions[rec.sessions.length - 1].in : rec?.clock_in;     // a double shift: the shift now open
+  const canAgain = state === 'out' && rec?.kind === 'Present' && rec.date === T;
   const go = async (kind: 'in' | 'out') => {
     setBusy(true);
     attempt(() => (kind === 'in' ? clockIn(emp.id, {}, job || undefined) : clockOut(emp.id, {})), kind === 'in' ? 'Clocked in' : 'Clocked out');
@@ -49,7 +57,7 @@ function MyClock({ emp }: { emp: Employee }) {
         <Clock />
         <div style={{ margin: '4px 0 14px' }}>
           {state === 'none' && <Badge tone="amber">Not clocked in</Badge>}
-          {state === 'in' && <Badge tone="green">Clocked in {rec!.date !== T ? 'yesterday ' : ''}at {fmtTime(rec!.clock_in)}{rec!.late_min > db.settings.grace_minutes ? ` • ${rec!.late_min} min late` : ''}</Badge>}
+          {state === 'in' && <Badge tone="green">Clocked in {rec!.date !== T ? 'yesterday ' : ''}at {fmtTime(lastIn)}{(rec!.sessions?.length ?? 0) > 1 ? ' • shift 2' : ''}{rec!.late_min > db.settings.grace_minutes ? ` • ${rec!.late_min} min late` : ''}</Badge>}
           {state === 'out' && <Badge tone="navy">Shift complete • {rec!.worked_hours} h</Badge>}
         </div>
         {state !== 'out' && (
@@ -59,11 +67,12 @@ function MyClock({ emp }: { emp: Employee }) {
             <div className="small muted">The date and time are recorded automatically. On a double or overnight shift (for example 9 AM to 3 AM the next day), clock in once and clock out after your last shift — even after midnight. It stays one attendance for the day you started.</div>
           </div>
         )}
-        {state === 'out' && <div className="small muted">Attendance is pending approval by your team leader / manager.</div>}
+        {canAgain && <div className="stack" style={{ maxWidth: 360, margin: '10px auto 0' }}><button className="btn lg block" disabled={busy} onClick={() => go('in')}><Icon name="pin" />Clock in again (another shift today)</button><div className="small muted">For a double shift: clock in again when your next shift starts. Clock out after the last one, even after midnight — it stays one attendance for today.</div></div>}
+        {state === 'out' && rec!.approval === 'Pending' && <div className="small muted">Attendance is pending approval by your team leader / manager.</div>}
       </Card>
       <Card title="My recent attendance" actions={<button className="btn sm" onClick={() => setCorr(true)}>Request correction</button>} flush>
         <ul className="list">{recent.map((a) => (
-          <li key={a.id}><div><b>{fmtDate(a.date)}</b> <Flags a={a} emp={emp} /><div className="small muted">{a.kind === 'Present' ? `${fmtTime(a.clock_in)} – ${fmtTime(a.clock_out)} · ${a.worked_hours} h` : a.kind}</div></div><Badge>{a.approval}</Badge></li>
+          <li key={a.id}><div><b>{fmtDate(a.date)}</b> <Flags a={a} emp={emp} /><div className="small muted">{a.kind === 'Present' ? `${shiftsText(a)} · ${a.worked_hours} h` : a.kind}</div></div><Badge>{a.approval}</Badge></li>
         ))}</ul>
       </Card>
       {corr && <CorrectionModal emp={emp} onClose={() => setCorr(false)} />}
@@ -110,6 +119,7 @@ export default function Attendance() {
   const ownerClock = (e: Employee, a?: Att) => {
     if (user?.role !== 'owner' || (date !== T && !(a?.clock_in && !a.clock_out && openShift([a], e.id)))) return null;   // today, or a shift from yesterday that is still open
     if (!a?.clock_in) return <button className="btn sm primary" onClick={() => attempt(() => clockIn(e.id, {}), `${e.full_name} clocked in`)}>Clock in</button>;
+    if (a.clock_out && a.kind === 'Present' && date === T) return <button className="btn sm" onClick={() => attempt(() => clockIn(e.id, {}), `${e.full_name} clocked in for another shift`)}>Clock in again</button>;
     if (!a.clock_out) return <><button className="btn sm" onClick={() => attempt(() => clockOut(e.id, {}), `${e.full_name} clocked out`)}>Clock out</button><button className="btn sm" title="Remove this clock-in (made by mistake) so they can clock in again" onClick={() => { if (confirm(`Undo ${e.full_name}'s clock-in at ${fmtTime(a.clock_in!)}? They can then clock in again.`)) attempt(() => { undoClockIn(a.id); }, `${e.full_name}'s clock-in was undone`); }}>Undo</button></>;
     return null;
   };
@@ -179,7 +189,7 @@ export default function Attendance() {
                 return (
                   <EmployeeCard key={r.e.id} emp={r.e} status={status} tone={tone}
                     onUpload={can('employees.edit') ? (url) => attempt(() => store.update('employees', r.e.id, { avatar: url }), 'Photo saved') : r.e.id === employee?.id ? (url) => attempt(() => setMyAvatar(url), 'Your photo is saved') : undefined}
-                    lines={[{ k: 'In', v: r.a?.clock_in ? fmtTime(r.a.clock_in) : '—' }, { k: 'Out', v: r.a?.clock_out ? fmtTime(r.a.clock_out) : '—' }, { k: 'Hours', v: r.a ? String(r.a.worked_hours ?? 0) : '—' }, { k: 'Job site', v: r.site }]}
+                    lines={[{ k: 'In', v: r.a?.clock_in ? fmtTime(r.a.clock_in) : '—' }, { k: 'Out', v: r.a?.clock_out ? `${fmtTime(r.a.clock_out)}${r.a.clock_out.slice(0, 10) > r.a.date ? ' (+1)' : ''}` : '—' }, ...((r.a?.sessions?.length ?? 0) > 1 ? [{ k: 'Shifts', v: shiftsText(r.a!) }] : []), { k: 'Hours', v: r.a ? String(r.a.worked_hours ?? 0) : '—' }, { k: 'Job site', v: r.site }]}
                     actions={approve && r.a?.approval === 'Pending' && r.a.clock_out ? <>{ownerClock(r.e, r.a)}<button className="btn sm primary" onClick={() => attempt(() => decideAttendance(r.a!.id, true))}>Approve</button><button className="btn sm" onClick={async () => { const n = await ask('Reject attendance', 'Reason'); if (n) attempt(() => decideAttendance(r.a!.id, false, n)); }}>Reject</button></> : <>{ownerClock(r.e, r.a)}{r.a ? <Badge>{r.a.approval}</Badge> : null}</>} />
                 );
               })}

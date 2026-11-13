@@ -6,7 +6,7 @@ import type { DB, ExpenseCategory,
   Payment, Quotation, QuoteStatus, StockTx,
 } from './types';
 import {
-  appliedDiscount, backJobStatusFor, paymentPlanLabel, buildPayrollLines, openShift, computeTimes, currentRequest, docTotals, variationTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
+  appliedDiscount, backJobStatusFor, paymentPlanLabel, buildPayrollLines, openShift, shiftTimes, computeTimes, currentRequest, docTotals, variationTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
 import { copyQuoteImages } from './quoteimages';
 import { syncFollowUps } from './followups';
@@ -45,8 +45,14 @@ export function clockIn(employeeId: string, geo: Geo, jobId?: string) {
   const existing = d.attendance.find((a) => a.employee_id === employeeId && a.date === date && !a.deleted_at);
   const still = openShift(d.attendance, employeeId);
   if (still && still.date !== date) fail(`You are still clocked in since ${still.clock_in!.slice(11)} yesterday (a shift that runs past midnight). Clock out first.`);
-  if (existing?.clock_in) fail('Already clocked in today.');
   const at = nowLocal();
+  // a second shift the same day (a double shift): the day stays one attendance, with each shift's in and out kept in order
+  if (existing?.clock_in && existing.clock_out && existing.kind === 'Present') {
+    if (at < existing.clock_out) fail('Wait until after your last clock-out before clocking in again.');
+    const prior = existing.sessions?.length ? existing.sessions : [{ in: existing.clock_in, out: existing.clock_out }];
+    return store.update('attendance', existing.id, { clock_out: null, sessions: [...prior, { in: at }], in_lat: geo.lat ?? existing.in_lat, in_lng: geo.lng ?? existing.in_lng } as never, 'update', `${emp.full_name} clocked in for a second shift ${at.slice(11)}`);
+  }
+  if (existing?.clock_in) fail('Already clocked in today.');
   const t = computeTimes(emp, at, undefined, d.settings.grace_minutes);
   const patch = { kind: 'Present' as const, clock_in: at, job_id: jobId, field_work: !!jobId, in_lat: geo.lat, in_lng: geo.lng, late_min: t.late_min };
   if (existing) return store.update('attendance', existing.id, patch, 'update', `${emp.full_name} clocked in`);
@@ -69,10 +75,11 @@ export function clockOut(employeeId: string, geo: Geo) {
   const rec = openShift(d.attendance, employeeId);   // today's, or yesterday's when the shift runs past midnight
   if (!rec) fail('No open clock-in found for today.');
   const at = nowLocal();
-  const t = computeTimes(emp, rec!.clock_in, at, d.settings.grace_minutes);
+  const sessions = rec!.sessions?.length ? rec!.sessions.map((s, i, all) => (i === all.length - 1 ? { ...s, out: at } : s)) : undefined;
+  const t = sessions ? shiftTimes(emp, sessions, d.settings.grace_minutes, d.settings.std_hours_per_day) : computeTimes(emp, rec!.clock_in, at, d.settings.grace_minutes);
   // a clean day approves itself when Admin turned that on (on the live site the database does this; here it keeps the demo the same)
   const clean = !!d.settings.auto_approve_attendance && rec!.kind === 'Present' && t.late_min === 0 && t.undertime_min === 0 && t.ot_min === 0;
-  return store.update('attendance', rec!.id, { clock_out: at, out_lat: geo.lat, out_lng: geo.lng, ...t, ...(clean && !CLOUD ? { approval: 'Approved' as const, approved_by: 'auto', approved_at: isoNow() } : {}) }, 'update', `${emp.full_name} clocked out ${at.slice(11)}${clean ? ' — clean day, approved automatically' : ''}`);
+  return store.update('attendance', rec!.id, { clock_out: at, ...(sessions ? { sessions } : {}), out_lat: geo.lat, out_lng: geo.lng, ...t, ...(clean && !CLOUD ? { approval: 'Approved' as const, approved_by: 'auto', approved_at: isoNow() } : {}) }, 'update', `${emp.full_name} clocked out ${at.slice(11)}${clean ? ' — clean day, approved automatically' : ''}`);
 }
 export function decideAttendance(id: string, approve: boolean, note?: string) {
   store.require('attendance.approve');

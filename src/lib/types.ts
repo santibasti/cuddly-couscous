@@ -283,8 +283,10 @@ export interface Attendance extends Base {
   employee_id: string;
   date: string;
   kind: 'Present' | 'Absent' | 'Leave' | 'Holiday' | 'Rest Day';
-  clock_in?: string;  // YYYY-MM-DDTHH:mm
-  clock_out?: string;
+  clock_in?: string;  // YYYY-MM-DDTHH:mm — the first clock-in of the day
+  clock_out?: string; // the last clock-out (it can be the next day: an overnight shift)
+  /** only on a day with two or more shifts (a double shift): every shift in order, e.g. 9 AM–3 PM and 11 PM–3 AM next day. clock_in / clock_out are the first in and the last out. */
+  sessions?: { in: string; out?: string }[];
   job_id?: string;
   field_work: boolean;
   in_lat?: number; in_lng?: number; out_lat?: number; out_lng?: number;

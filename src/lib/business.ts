@@ -371,6 +371,20 @@ export function jobRevenue(db: DB, j: Job): { revenue: number; basis: 'billed' |
 
 /** No-charge back jobs raised against a finished job. */
 /**
+ * Times for a day with more than one shift (a double shift): the hours of each shift added together (the break between shifts is not worked),
+ * lateness from the first clock-in, overtime for what is worked beyond a standard day. One shift is worked out exactly as before.
+ */
+export function shiftTimes(e: Pick<Employee, 'shift_start' | 'shift_end'>, sessions: { in: string; out?: string }[], graceMin = 0, stdHours = 8) {
+  const first = sessions[0]; const last = sessions[sessions.length - 1];
+  if (sessions.length === 1) return computeTimes(e, first.in, last.out, graceMin);
+  const late = computeTimes(e, first.in, undefined, graceMin).late_min;
+  let worked = 0;
+  for (const s of sessions) if (s.out) { const span = minutesBetween(s.in, s.out); worked += Math.max(0, span - (span > 300 ? 60 : 0)); }
+  const ot = Math.max(0, worked - stdHours * 60);
+  return { late_min: late, undertime_min: 0, ot_min: ot >= 30 ? Math.floor(ot / 30) * 30 : 0, worked_hours: round2(worked / 60) };
+}
+
+/**
  * The shift a person is on right now: today's record without a clock-out, or the record they started yesterday and are still on (an overnight or
  * double shift, e.g. 9 AM to 3 AM the next day). The whole shift, first clock-in to last clock-out, is one attendance record on the day it started.
  */

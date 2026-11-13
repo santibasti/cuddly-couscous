@@ -275,3 +275,38 @@ describe('overnight and double shifts (9 AM to 3 AM the next day is one attendan
     expect(jobsAttended(db, c.id, '2026-03-01', '2026-03-07', false, '2026-03-20').map((j) => j.id)).toEqual(['jx']);                 // c finished the same evening: only the day job
   });
 });
+
+describe('double shift on one day: 9 AM–3 PM, then 11 PM–3 AM the next day', () => {
+  it('adds the hours of each shift (the gap between them is not worked)', async () => {
+    const { shiftTimes } = await import('./business'); const e = { shift_start: '08:00', shift_end: '17:00' };
+    const sessions = [{ in: '2026-11-09T09:00', out: '2026-11-09T15:00' }, { in: '2026-11-09T23:00', out: '2026-11-10T03:00' }];
+    expect(shiftTimes(e, sessions, 5, 8)).toMatchObject({ worked_hours: 9, late_min: 60, ot_min: 60 });      // 5 h + 4 h; an hour late; an hour over 8 h
+    expect(shiftTimes(e, [{ in: '2026-11-09T08:00', out: '2026-11-09T17:00' }], 5, 8)).toMatchObject({ worked_hours: 8, late_min: 0 });   // one shift: as before
+  });
+  it('lets the crew clock in again after clocking out, and clock out after midnight on the same attendance', async () => {
+    const A = await import('./actions'); const { store } = await import('./store'); const { today } = await import('./util');
+    await store.login('owner@topmop.ph', 'topmop123');
+    const emp = store.getDB().employees.find((e) => !e.deleted_at && e.status !== 'inactive' && e.department === 'Field Operations')!; const T = today();
+    for (const a of store.getDB().attendance.filter((x) => x.employee_id === emp.id && (x.date === T) && !x.deleted_at)) store.remove('attendance', a.id, { cascade: true });
+    store.insert('attendance', { employee_id: emp.id, date: T, kind: 'Present', clock_in: `${T}T00:01`, clock_out: `${T}T00:05`, field_work: true, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0.07, approval: 'Approved' } as never);
+    const rec = () => store.getDB().attendance.find((x) => x.employee_id === emp.id && x.date === T && !x.deleted_at)!;
+    A.clockIn(emp.id, {});                                                       // second shift the same day
+    expect(rec().clock_out ?? null).toBeNull(); expect(rec().sessions).toHaveLength(2); expect(rec().clock_in).toBe(`${T}T00:01`);   // first in kept
+    expect(rec().sessions![0]).toEqual({ in: `${T}T00:01`, out: `${T}T00:05` }); expect(rec().approval).toBe('Approved');
+    expect(store.getDB().attendance.filter((x) => x.employee_id === emp.id && x.date === T && !x.deleted_at)).toHaveLength(1);   // still one attendance
+    expect(() => A.clockIn(emp.id, {})).toThrow(/Already clocked in/);           // not twice while on duty
+    A.clockOut(emp.id, {});
+    expect(rec().clock_out).toBeTruthy(); expect(rec().sessions![1].out).toBe(rec().clock_out);
+    A.clockIn(emp.id, {});                                                       // and a third is possible too
+    expect(rec().sessions).toHaveLength(3);
+  });
+  it('pays both job orders of the day (the 9 AM job and the 11 PM job) for the crew on the double shift', () => {
+    const { db, a, c } = world();                                                // the day job is on 2026-03-03
+    const night = { ...clone(db.jobs.find((j) => j.id === 'jx')!), id: 'jn', number: 'JOB-NIGHT', start_at: '2026-03-03T23:00', end_at: '2026-03-04T03:00' };
+    db.jobs.push(night as never); db.workflows.push({ id: 'wn', job_id: 'jn', panels: [], arr_crew_present: [a.id, c.id], arr_crew_absent: [] } as never);
+    db.attendance = db.attendance.map((x) => (x.employee_id === a.id ? { ...x, job_id: undefined, clock_in: '2026-03-03T09:00', clock_out: '2026-03-04T03:00', sessions: [{ in: '2026-03-03T09:00', out: '2026-03-03T15:00' }, { in: '2026-03-03T23:00', out: '2026-03-04T03:00' }] } : x)) as never;
+    const emp = { ...a, pay_basis: 'per_job' as const, job_rate: 800 };
+    const rows = employeeJobPay(db, emp, '2026-03-01', '2026-03-07', '2026-03-20');
+    expect(rows.map((r) => r.number).sort()).toEqual(['JOB-NIGHT', 'JOB-X']); expect(rows.reduce((t, r) => t + r.rate, 0)).toBe(1600);   // two job orders at the rate each
+  });
+});
