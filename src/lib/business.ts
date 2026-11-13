@@ -370,6 +370,18 @@ export function jobRevenue(db: DB, j: Job): { revenue: number; basis: 'billed' |
 }
 
 /** No-charge back jobs raised against a finished job. */
+/**
+ * The shift a person is on right now: today's record without a clock-out, or the record they started yesterday and are still on (an overnight or
+ * double shift, e.g. 9 AM to 3 AM the next day). The whole shift, first clock-in to last clock-out, is one attendance record on the day it started.
+ */
+export function openShift<T extends Pick<Attendance, 'employee_id' | 'date' | 'clock_in' | 'clock_out' | 'deleted_at'>>(attendance: T[], employeeId: string, now: string = nowLocal()): T | undefined {
+  const day = now.slice(0, 10), yesterday = addDays(day, -1);
+  const mine = attendance.filter((a) => a.employee_id === employeeId && !a.deleted_at && a.clock_in && !a.clock_out);
+  const todays = mine.find((a) => a.date === day); if (todays) return todays;
+  // from the day before, if still within a long shift (no more than 30 hours since the clock-in)
+  return mine.find((a) => a.date === yesterday && minutesBetween(a.clock_in!, now) <= 30 * 60);
+}
+
 export const noChargeBackJobs = (db: Pick<DB, 'back_jobs'>, originJobId: string) => db.back_jobs.filter((b) => b.origin_job_id === originJobId && b.charge_type === 'No Charge' && !b.deleted_at && b.status !== 'Rejected');
 /** When `j` is a no-charge back job, the number of the job whose profitability carries its cost. */
 export const noChargeOrigin = (db: Pick<DB, 'back_jobs' | 'jobs'>, j: Job): string | undefined => {

@@ -11,7 +11,7 @@ import { isDone, ISSUE_CATEGORIES, RATING_STARS_FROM_QUESTIONS, needsFollowUp, o
 import { syncFollowUps } from './followups';
 import { jobSavedHooks, settleConfirmation, syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { isoNow, nowLocal, today } from './util';
-import { computeTimes } from './business';
+import { computeTimes, openShift } from './business';
 
 const db = (): DB => store.getDB();
 const fail = (m: string): never => { throw new RuleError(m); };
@@ -177,7 +177,8 @@ export function arriveAtSite(id: string, f: CheckInForm) {
   if (!f.present.length) fail('At least one crew member must be present on site.');
   // everyone who is marked present must already have clocked in (Attendance module) — the check-in does not clock anyone in for them
   const date = at.slice(0, 10);
-  const clocked = (e: string) => db().attendance.find((a) => a.employee_id === e && a.date === date && !a.deleted_at && a.clock_in);
+  // clocked in today, or still on a shift that started yesterday and runs past midnight (an overnight / double shift)
+  const clocked = (e: string) => db().attendance.find((a) => a.employee_id === e && a.date === date && !a.deleted_at && a.clock_in) ?? openShift(db().attendance, e, at);
   const notClocked = f.present.filter((e) => !clocked(e));
   if (notClocked.length && f.ownerClockIn) {
     if (store.role !== 'owner') fail('Only the Owner can clock the crew in at check-in.');

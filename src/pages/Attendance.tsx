@@ -9,7 +9,7 @@ import { DataTable } from '@/components/DataTable';
 import { computeRecog } from '@/lib/recognition-core';
 import { Badges } from '@/components/Badges';
 import { setMyAvatar, bulkApproveAttendance, clockIn, clockOut, undoClockIn, decideAttendance, decideCorrection, manualAttendance, requestCorrection } from '@/lib/actions';
-import { LIVE_JOB } from '@/lib/business';
+import { LIVE_JOB, openShift } from '@/lib/business';
 import { addDays, dow, fmtDate, fmtStamp, fmtTime, money, nowLocal, today } from '@/lib/util';
 import type { Attendance as Att, Employee } from '@/lib/types';
 
@@ -22,7 +22,8 @@ function Clock() {
 function MyClock({ emp }: { emp: Employee }) {
   const { db } = useAuth();
   const T = today();
-  const rec = db.attendance.find((a) => a.employee_id === emp.id && a.date === T && !a.deleted_at);
+  // the shift in progress: today's record, or the one started yesterday that runs past midnight
+  const rec = openShift(db.attendance, emp.id) ?? db.attendance.find((a) => a.employee_id === emp.id && a.date === T && !a.deleted_at);
   const [job, setJob] = useState('');
   const [busy, setBusy] = useState(false);
   const [corr, setCorr] = useState(false);
@@ -48,14 +49,14 @@ function MyClock({ emp }: { emp: Employee }) {
         <Clock />
         <div style={{ margin: '4px 0 14px' }}>
           {state === 'none' && <Badge tone="amber">Not clocked in</Badge>}
-          {state === 'in' && <Badge tone="green">Clocked in at {fmtTime(rec!.clock_in)}{rec!.late_min > db.settings.grace_minutes ? ` • ${rec!.late_min} min late` : ''}</Badge>}
+          {state === 'in' && <Badge tone="green">Clocked in {rec!.date !== T ? 'yesterday ' : ''}at {fmtTime(rec!.clock_in)}{rec!.late_min > db.settings.grace_minutes ? ` • ${rec!.late_min} min late` : ''}</Badge>}
           {state === 'out' && <Badge tone="navy">Shift complete • {rec!.worked_hours} h</Badge>}
         </div>
         {state !== 'out' && (
           <div className="stack" style={{ maxWidth: 360, margin: '0 auto' }}>
             {state === 'none' && myJobs.length > 0 && <Field label="Job / site today"><select value={job} onChange={(e) => setJob(e.target.value)}>{myJobs.map((j) => <option key={j.id} value={j.id}>{j.number} – {db.sites.find((s) => s.id === j.site_id)?.name}</option>)}<option value="">Yard / office / standby</option></select></Field>}
             {state === 'none' ? <button className="btn primary lg block" disabled={busy} onClick={() => go('in')}><Icon name="pin" />{busy ? 'Clocking in…' : 'Clock in'}</button> : <button className="btn navy lg block" disabled={busy} onClick={() => go('out')}><Icon name="pin" />{busy ? 'Clocking out…' : 'Clock out'}</button>}
-            <div className="small muted">The date and time are recorded automatically.</div>
+            <div className="small muted">The date and time are recorded automatically. On a double or overnight shift (for example 9 AM to 3 AM the next day), clock in once and clock out after your last shift — even after midnight. It stays one attendance for the day you started.</div>
           </div>
         )}
         {state === 'out' && <div className="small muted">Attendance is pending approval by your team leader / manager.</div>}
@@ -107,7 +108,7 @@ export default function Attendance() {
   const approve = can('attendance.approve');
   /** Owner only: clock any employee in or out for today. */
   const ownerClock = (e: Employee, a?: Att) => {
-    if (user?.role !== 'owner' || date !== T) return null;
+    if (user?.role !== 'owner' || (date !== T && !(a?.clock_in && !a.clock_out && openShift([a], e.id)))) return null;   // today, or a shift from yesterday that is still open
     if (!a?.clock_in) return <button className="btn sm primary" onClick={() => attempt(() => clockIn(e.id, {}), `${e.full_name} clocked in`)}>Clock in</button>;
     if (!a.clock_out) return <><button className="btn sm" onClick={() => attempt(() => clockOut(e.id, {}), `${e.full_name} clocked out`)}>Clock out</button><button className="btn sm" title="Remove this clock-in (made by mistake) so they can clock in again" onClick={() => { if (confirm(`Undo ${e.full_name}'s clock-in at ${fmtTime(a.clock_in!)}? They can then clock in again.`)) attempt(() => { undoClockIn(a.id); }, `${e.full_name}'s clock-in was undone`); }}>Undo</button></>;
     return null;

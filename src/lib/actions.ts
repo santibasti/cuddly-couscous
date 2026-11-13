@@ -6,7 +6,7 @@ import type { DB, ExpenseCategory,
   Payment, Quotation, QuoteStatus, StockTx,
 } from './types';
 import {
-  appliedDiscount, backJobStatusFor, paymentPlanLabel, buildPayrollLines, computeTimes, currentRequest, docTotals, variationTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
+  appliedDiscount, backJobStatusFor, paymentPlanLabel, buildPayrollLines, openShift, computeTimes, currentRequest, docTotals, variationTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
 import { copyQuoteImages } from './quoteimages';
 import { syncFollowUps } from './followups';
@@ -43,6 +43,8 @@ export function clockIn(employeeId: string, geo: Geo, jobId?: string) {
   if (store.role !== 'owner' && store.user?.employee_id !== employeeId && !store.can('attendance.approve')) fail('You can only clock in for yourself.');
   const date = today();
   const existing = d.attendance.find((a) => a.employee_id === employeeId && a.date === date && !a.deleted_at);
+  const still = openShift(d.attendance, employeeId);
+  if (still && still.date !== date) fail(`You are still clocked in since ${still.clock_in!.slice(11)} yesterday (a shift that runs past midnight). Clock out first.`);
   if (existing?.clock_in) fail('Already clocked in today.');
   const at = nowLocal();
   const t = computeTimes(emp, at, undefined, d.settings.grace_minutes);
@@ -64,7 +66,7 @@ export function clockOut(employeeId: string, geo: Geo) {
   store.require('attendance.own');
   const d = db(); const emp = d.employees.find((e) => e.id === employeeId)!;
   if (store.role !== 'owner' && store.user?.employee_id !== employeeId && !store.can('attendance.approve')) fail('You can only clock out for yourself.');
-  const rec = d.attendance.find((a) => a.employee_id === employeeId && a.date === today() && a.clock_in && !a.clock_out && !a.deleted_at);
+  const rec = openShift(d.attendance, employeeId);   // today's, or yesterday's when the shift runs past midnight
   if (!rec) fail('No open clock-in found for today.');
   const at = nowLocal();
   const t = computeTimes(emp, rec!.clock_in, at, d.settings.grace_minutes);

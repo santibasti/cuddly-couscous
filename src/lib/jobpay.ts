@@ -68,7 +68,8 @@ export function jobsAttended(db: DB, empId: string, start: string, end: string, 
     const wf = (db.workflows ?? []).find((w) => w.job_id === j.id && !w.deleted_at);
     if (wf?.arr_crew_absent?.some((a) => a.id === empId)) return false;
     const from = j.start_at.slice(0, 10), to = j.end_at.slice(0, 10) >= from ? j.end_at.slice(0, 10) : from;
-    return att.some((a) => a.date >= from && a.date <= to && (!a.job_id || a.job_id === j.id || !!wf?.arr_crew_present?.includes(empId)));
+    // a shift can run past midnight (9 AM to 3 AM next day): the attendance covers every day from its clock-in to its clock-out
+    return att.some((a) => a.date <= to && (a.clock_out ? a.clock_out.slice(0, 10) : a.date) >= from && (!a.job_id || a.job_id === j.id || !!wf?.arr_crew_present?.includes(empId)));
   }).sort((a, b) => a.start_at.localeCompare(b.start_at));
 }
 

@@ -242,3 +242,36 @@ describe('reverse an approved payroll', () => {
     expect(() => A.reversePayroll(p2.id, 'oops')).toThrow(/finalized/); expect(() => A.deletePeriod(p2.id)).toThrow(/finalized/);
   });
 });
+
+describe('overnight and double shifts (9 AM to 3 AM the next day is one attendance)', () => {
+  it('finds the shift in progress: today, or the one started yesterday that is still open', async () => {
+    const { openShift } = await import('./business'); const { addDays } = await import('./util');
+    const day = '2026-11-12', now = `${day}T01:00`;                                  // 1 AM
+    const rec = (date: string, extra = {}) => ({ employee_id: 'e', date, clock_in: `${date}T09:00`, clock_out: undefined, deleted_at: undefined, ...extra });
+    expect(openShift([rec(addDays(day, -1))], 'e', now)).toBeTruthy();               // yesterday 9 AM, still on duty at 1 AM
+    expect(openShift([rec(addDays(day, -1), { clock_out: `${addDays(day, -1)}T15:00` })], 'e', now)).toBeUndefined();   // finished
+    expect(openShift([rec(addDays(day, -1))], 'e', `${day}T20:00`)).toBeUndefined();     // 35 hours later: forgotten, not a shift
+    expect(openShift([rec(day)], 'e', `${day}T10:00`)?.date).toBe(day);
+    expect(openShift([rec(addDays(day, -1)), rec(day)], 'e', `${day}T10:00`)?.date).toBe(day);   // today's comes first
+    expect(openShift([rec(addDays(day, -1), { deleted_at: 'x' })], 'e', now)).toBeUndefined();
+  });
+  it('clocks out after midnight on the record that started yesterday, and blocks a new clock-in until then', async () => {
+    const A = await import('./actions'); const { store } = await import('./store'); const { today, addDays } = await import('./util');
+    await store.login('owner@topmop.ph', 'topmop123');
+    const emp = store.getDB().employees.find((e) => !e.deleted_at && e.status !== 'inactive' && e.department === 'Field Operations')!; const y = addDays(today(), -1);
+    for (const a of store.getDB().attendance.filter((x) => x.employee_id === emp.id && (x.date === y || x.date === today()) && !x.deleted_at)) store.remove('attendance', a.id, { cascade: true });
+    store.insert('attendance', { employee_id: emp.id, date: y, kind: 'Present', clock_in: `${y}T22:00`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Approved' } as never);
+    expect(() => A.clockIn(emp.id, {})).toThrow(/still clocked in/);
+    A.clockOut(emp.id, {});
+    const mine = store.getDB().attendance.filter((x) => x.employee_id === emp.id && !x.deleted_at && (x.date === y || x.date === today()));
+    expect(mine).toHaveLength(1); expect(mine[0].date).toBe(y); expect(mine[0].clock_out!.slice(0, 10)).toBe(today()); expect(mine[0].worked_hours).toBeGreaterThan(0);
+  });
+  it('counts a job order that starts after midnight for the crew on the shift that began the day before', () => {
+    const { db, a, b, c } = world();                                                          // job on 2026-03-03; a, b, c clocked in that day
+    const night = { ...clone(db.jobs.find((j) => j.id === 'jx')!), id: 'jn', number: 'JOB-N', start_at: '2026-03-04T00:30', end_at: '2026-03-04T03:00' };
+    db.jobs.push(night as never); db.workflows.push({ id: 'wn', job_id: 'jn', panels: [], arr_crew_present: [a.id, b.id], arr_crew_absent: [] } as never);
+    db.attendance = db.attendance.map((x) => (x.employee_id === a.id ? { ...x, job_id: undefined, clock_out: '2026-03-04T03:00' } : x)) as never;   // a worked 9:30 AM to 3 AM
+    expect(jobsAttended(db, a.id, '2026-03-01', '2026-03-07', false, '2026-03-20').map((j) => j.id).sort()).toEqual(['jn', 'jx']);   // both job orders
+    expect(jobsAttended(db, c.id, '2026-03-01', '2026-03-07', false, '2026-03-20').map((j) => j.id)).toEqual(['jx']);                 // c finished the same evening: only the day job
+  });
+});
