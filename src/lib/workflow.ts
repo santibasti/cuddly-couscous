@@ -3,13 +3,14 @@
 // One JobWorkflow record per job; every step stamps date/time + user and is written through the audited store.
 // Photos are NOT kept in this app (TopMop uses its own file system for before / after, site and equipment photos).
 import { store, RuleError } from './store';
+import { CLOUD } from './cloud';
 import type {
   ClientFeedback, ConfirmMethod, ContainerCondition, PaymentConfirmation, DB, DiscountKind, DiscountRequest, FuelLevel, IncidentReport, IncidentType, IssueCategory, SatisfactionRating, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
 } from './types';
 import { isDone, ISSUE_CATEGORIES, RATING_STARS_FROM_QUESTIONS, needsFollowUp, openFollowUp, buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, packagePanels, resolveReviewItems, rowPanels, round2Safe, scopeRoute, variationTotals } from './business';
 import { syncFollowUps } from './followups';
 import { jobSavedHooks, settleConfirmation, syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
-import { nowLocal, today } from './util';
+import { isoNow, nowLocal, today } from './util';
 import { computeTimes } from './business';
 
 const db = (): DB => store.getDB();
@@ -192,7 +193,10 @@ export function arriveAtSite(id: string, f: CheckInForm) {
   for (const e of f.present) {
     const att = clocked(e)!;
     // an attendance record the office already approved is locked (corrections only): it stays as it is, the check-in itself records who was on site
-    if (att.approval !== 'Approved' && (!att.job_id || !att.field_work)) store.update('attendance', att.id, { job_id: job.id, field_work: true }, 'update', `Attendance linked to ${job.number} at site check-in`);
+    // passing the site check-in approves the attendance by itself: nobody has to approve it afterwards (on the live site the database does this when the check-in is saved)
+    const link = att.approval !== 'Approved' && (!att.job_id || !att.field_work);
+    const auto = !CLOUD && att.approval === 'Pending' && att.kind === 'Present';
+    if (link || auto) store.update('attendance', att.id, { ...(link ? { job_id: job.id, field_work: true } : {}), ...(auto ? { approval: 'Approved' as const, approved_by: 'auto', approved_at: isoNow() } : {}) } as never, 'update', `Attendance ${auto ? 'approved automatically and ' : ''}linked to ${job.number} at site check-in`);
   }
   store.update('workflows', id, { arr_at: at, arr_by: uidNow(), arr_contact_name: f.contact_name.trim(), arr_contact_mobile: f.contact_mobile, arr_notes: f.notes, arr_crew_present: f.present, arr_crew_absent: f.absent } as never, 'update', `${job.number}: checked in at site ${at.slice(11)}, attendance confirmed`);
   setStatus(db().jobs.find((j) => j.id === job.id)!, 'On Site');

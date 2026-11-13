@@ -111,9 +111,9 @@ describe('7-step workflow: normal recurring job', () => {
   it('runs end to end in a few taps and updates statuses, equipment, stock, attendance', async () => {
     await as('owner@topmop.ph');
     const lead = db().employees[3].id;
-    const mine = db().attendance.filter((a) => a.employee_id === lead && a.date === T() && !a.deleted_at);
-    if (mine.length) for (const a of mine) store.update('attendance', a.id, { job_id: undefined, field_work: false } as never);
-    else store.insert('attendance', { employee_id: lead, date: T(), kind: 'Present', clock_in: `${T()}T07:50`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending' } as never);
+    // a fresh, not yet approved clock-in (earlier tests may have left an approved one for this person today)
+    for (const a of db().attendance.filter((x) => x.employee_id === lead && x.date === T() && !x.deleted_at)) store.remove('attendance', a.id, { cascade: true });
+    store.insert('attendance', { employee_id: lead, date: T(), kind: 'Present', clock_in: `${T()}T07:50`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending' } as never);
     const sc = scenario('FULL', lead);
     const q = db().quotations.find((x) => x.status === 'Approved')!;
     store.update('jobs', sc.job.id, { quotation_id: q.id } as never); priorJob('FULL', sc.job.id);
@@ -134,6 +134,7 @@ describe('7-step workflow: normal recurring job', () => {
     expect(stat(sc.job.id)).toBe('On Site');
     const att = db().attendance.filter((a) => a.employee_id === lead && a.date === T() && !a.deleted_at);
     expect(att.length).toBe(attBefore);                       // no duplicate attendance record
+    expect(att.every((x) => x.approval === 'Approved')).toBe(true);   // passing the site check-in approves the attendance by itself
     expect(att.some((a) => a.job_id === sc.job.id)).toBe(true);
     // 4 scope approval: recurring, no change → no signature
     expect(B.scopeRoute(db(), db().jobs.find((j) => j.id === sc.job.id)!, wfOf(sc.job.id))).toBe('recurring');
@@ -209,7 +210,7 @@ describe('7-step workflow: normal recurring job', () => {
     await as('owner@topmop.ph');
     const [lead, crew] = [db().employees[3].id, db().employees[4].id];
     const sc = scenario('OWNCL', lead, [crew]);
-    for (const e of [lead, crew]) for (const a of db().attendance.filter((x) => x.employee_id === e && x.date === T() && !x.deleted_at)) store.remove('attendance', a.id);
+    for (const e of [lead, crew]) for (const a of db().attendance.filter((x) => x.employee_id === e && x.date === T() && !x.deleted_at)) store.remove('attendance', a.id, { cascade: true });
     const wf = W.openWorkflow(sc.job.id);
     W.completeHqChecklist(wf.id, prepForm(wf) as never);
     W.dispatchJob(wf.id, { confirmed: true });
@@ -1467,5 +1468,21 @@ describe('Job Order Confirmation', () => {
     expect(after.variationsNet).toBe(92 * 140);
     expect(after.variationsTotal).toBeGreaterThan(92 * 140 - 1);
     expect(db().jobs.find((j) => j.id === job.id)!.contract_amount).toBe(before.originalNet + 92 * 140);
+  });
+});
+
+describe('attendance approves itself at the site check-in', () => {
+  it('approves a late, pending clock-in of a crew member marked present, linking it to the job', async () => {
+    await as('owner@topmop.ph');
+    const lead = db().employees[4].id;
+    for (const a of db().attendance.filter((x) => x.employee_id === lead && x.date === T() && !x.deleted_at)) store.remove('attendance', a.id, { cascade: true });
+    store.insert('attendance', { employee_id: lead, date: T(), kind: 'Present', clock_in: `${T()}T09:40`, field_work: false, late_min: 100, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending' } as never);
+    const sc = scenario('AUTOATT', lead); const q = db().quotations.find((x) => x.status === 'Approved')!;
+    store.update('jobs', sc.job.id, { quotation_id: q.id } as never); priorJob('AUTOATT', sc.job.id);
+    const wf = W.openWorkflow(sc.job.id); W.completeHqChecklist(wf.id, prepForm(wf) as never); W.dispatchJob(wf.id, { confirmed: true });
+    expect(db().attendance.find((x) => x.employee_id === lead && x.date === T() && !x.deleted_at)!.approval).toBe('Pending');   // not before the check-in
+    W.arriveAtSite(wf.id, { contact_name: 'Ms. Reyes', present: [lead], absent: [] });
+    const a = db().attendance.find((x) => x.employee_id === lead && x.date === T() && !x.deleted_at)!;
+    expect(a).toMatchObject({ approval: 'Approved', approved_by: 'auto', job_id: sc.job.id, field_work: true, late_min: 100 });
   });
 });
