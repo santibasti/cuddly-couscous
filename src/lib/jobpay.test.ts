@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPayrollLines, computePayrollLine } from './business';
+import { buildPayrollLines, computePayrollLine, payrollEligible } from './business';
 import { employeeJobPay, jobBonus, jobsAttended, panelBonusPerCrew } from './jobpay';
 import { seedDB } from './seed';
 import { clone } from './util';
@@ -101,5 +101,26 @@ describe('pay per job order', () => {
     const { db, a, period } = world(); const e = db.employees.find((x) => x.id === a.id)!; e.pay_basis = 'per_job'; e.job_rate = 800; e.payroll_type = 'weekly'; e.hire_date = '2026-01-01'; e.status = 'regular';
     const line = buildPayrollLines(db, period as never, '2026-03-07').lines.find((l) => l.employee_id === a.id)!;
     expect(line.regular_pay).toBe(800); expect(line.incentives).toBe(420);
+  });
+});
+
+describe('who a payroll includes', () => {
+  it('includes the crew present on job orders in the period when they are paid per job order, whatever their Payroll type', () => {
+    const { db, a, b, c, d, period } = world();
+    const set = (id: string, patch: object) => Object.assign(db.employees.find((e) => e.id === id)!, { status: 'regular', hire_date: '2026-01-01', ...patch });
+    set(a.id, { pay_basis: 'per_job', job_rate: 800, payroll_type: 'monthly' });     // present on the job, type does not match
+    set(d.id, { pay_basis: 'per_job', job_rate: 800, payroll_type: 'weekly' });      // matches the type but was not on any job
+    set(b.id, { pay_basis: 'daily', payroll_type: 'monthly' }); set(c.id, { pay_basis: 'daily', payroll_type: 'weekly' });
+    const ids = payrollEligible(db, period as never).map((e) => e.id);
+    expect(ids).toContain(a.id); expect(ids).not.toContain(d.id);
+    expect(ids).not.toContain(b.id); expect(ids).toContain(c.id);                    // daily / monthly staff still follow their Payroll type
+    const line = buildPayrollLines(db, period as never, '2026-03-07').lines.find((l) => l.employee_id === a.id)!;
+    expect(line.regular_pay).toBe(800);
+  });
+  it('lists a per-job-order employee whose attendance is still pending (so the pending warning shows) but pays nothing until it is approved', () => {
+    const { db, a, period } = world(); Object.assign(db.employees.find((e) => e.id === a.id)!, { status: 'regular', hire_date: '2026-01-01', pay_basis: 'per_job', job_rate: 800, payroll_type: 'monthly' });
+    db.attendance = db.attendance.map((x) => (x.employee_id === a.id ? { ...x, approval: 'Pending' } : x)) as never;
+    const r = buildPayrollLines(db, period as never, '2026-03-07');
+    expect(r.lines.find((l) => l.employee_id === a.id)?.regular_pay).toBe(0); expect(r.pending).toBeGreaterThan(0);
   });
 });

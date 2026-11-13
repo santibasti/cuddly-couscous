@@ -31,7 +31,7 @@ function PeriodModal({ onClose }: { onClose: () => void }) {
         <Field label="Label"><input {...f.bind('label')} placeholder="Auto" /></Field>
         <Field label="Period start"><input type="date" {...f.bind('start')} /></Field><Field label="Period end"><input type="date" {...f.bind('end')} /></Field>
       </div>
-      <div style={{ marginTop: 10 }}><PayrollWho type={type} end={f.v.end} /></div>
+      <div style={{ marginTop: 10 }}><PayrollWho type={type} start={f.v.start} end={f.v.end} /></div>
       <p className="small muted">Only employees whose payroll type is “{type}” are included. Approved attendance in the range is pulled automatically.</p>
     </Modal>
   );

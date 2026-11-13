@@ -58,8 +58,8 @@ export const isCommercialClient = (db: DB, job: Job) => db.clients.find((c) => c
  * with a clock-in on a day of the job whose attendance is for this job (or not tied to any job) or the Team Leader checked them in on arrival.
  * Late arrival does not matter.
  */
-export function jobsAttended(db: DB, empId: string, start: string, end: string): Job[] {
-  const att = db.attendance.filter((a) => a.employee_id === empId && !a.deleted_at && a.approval === 'Approved' && !!a.clock_in && a.date >= start && a.date <= end);
+export function jobsAttended(db: DB, empId: string, start: string, end: string, anyApproval = false): Job[] {
+  const att = db.attendance.filter((a) => a.employee_id === empId && !a.deleted_at && (anyApproval ? a.approval !== 'Rejected' : a.approval === 'Approved') && !!a.clock_in && a.date >= start && a.date <= end);
   if (!att.length) return [];
   return (db.jobs ?? []).filter((j) => {
     if (j.deleted_at || ['Cancelled', 'Rescheduled', 'Pending'].includes(j.status) || !jobCrewIds(j).includes(empId)) return false;
