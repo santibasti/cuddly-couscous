@@ -4,7 +4,7 @@
 //  • POST from the signed-in Owner / Admin ({action:'status'|'connect'}): checks the bot and points Telegram at this function.
 // Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET (letters, digits, - and _ only). Deploy with --no-verify-jwt.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { decide, extFor, firstName, jobsFor, manilaDay, ocularsFor, parseCaption, type Kind, type TgJob, type TgOcular } from './logic.ts';
+import { decide, extFor, firstName, jobsFor, manilaDay, canSendToOcular, ocularsFor, parseCaption, type Kind, type TgJob, type TgOcular } from './logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const safeEq = (a: string, b: string) => { const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b); let d = x.length ^ y.length; for (let i = 0; i < Math.max(x.length, y.length); i++) d |= (x[i] ?? 0) ^ (y[i] ?? 0); return d === 0; };
@@ -113,8 +113,9 @@ async function onMessage(db: Db, m: Msg) {
   }
   const ovCmd = text.match(/^\/ocular(?:@\w+)?\s+(\S+)/i);
   if (ovCmd) {
-    const { data: o } = await db.from('ocular_visits').select('id, number, client_id').ilike('number', ovCmd[1]).is('deleted_at', null).maybeSingle();
+    const { data: o } = await db.from('ocular_visits').select('id, number, client_id, assignee_id').ilike('number', ovCmd[1]).is('deleted_at', null).maybeSingle();
     if (!o) return void await say(chat, `I could not find ${ovCmd[1].toUpperCase()}.`, reply);
+    if (!canSendToOcular(o as TgOcular, emp)) return void await say(chat, `⚠ ${o.number} is not assigned to you. Only the inspector assigned to the ocular visit can send photos to it.`, reply);
     await db.from('telegram_context').upsert({ employee_id: emp, job_id: null, ocular_id: o.id, expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
     return void await say(chat, `OK — your next photos for 30 minutes go to ocular visit ${o.number}.`, reply);
   }
@@ -135,6 +136,7 @@ async function onMessage(db: Db, m: Msg) {
     const { data } = await db.from('ocular_visits').select(OV).eq('assignee_id', emp).is('deleted_at', null).gte('start_at', manilaDay(Date.now()) + 'T00:00').lte('start_at', manilaDay(Date.now()) + 'T23:59');
     ocular = ocularsFor((data ?? []) as TgOcular[], emp, Date.now())[0] ?? null;
   }
+  if (ocular && !canSendToOcular(ocular, emp)) return void await say(chat, `⚠ ${ocular.number} is not assigned to you, so I did not save that. Only the inspector assigned to the ocular visit can send photos to it.`, reply);
   if (ocular) {
     let ro: Awaited<ReturnType<typeof saveMedia>>;
     try { ro = await saveMedia(db, m, media, emp, null, parsed, ocular); } catch (e) { console.error(String(e)); return void await say(chat, '⚠ I could not save that one. Please try again, or upload it in the app.', reply); }

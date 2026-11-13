@@ -55,3 +55,5 @@ export function ocularsFor(visits: TgOcular[], emp: string, nowMs: number): TgOc
   const today = manilaDay(nowMs);
   return visits.filter((v) => v.assignee_id === emp && v.start_at.slice(0, 10) === today && !['Cancelled', 'Converted to Quotation'].includes(v.status)).sort((a, b) => a.start_at.localeCompare(b.start_at));
 }
+/** Only the inspector assigned to an ocular visit can send photos to it (like the crew of a job order). */
+export const canSendToOcular = (o: Pick<TgOcular, 'assignee_id'>, emp: string) => !!o.assignee_id && o.assignee_id === emp;
