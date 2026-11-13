@@ -132,9 +132,12 @@ async function onMessage(db: Db, m: Msg) {
   let ocular: TgOcular | null = null; let ovWhy = '';
   if (parsed.ocularNumber) { const { data } = await db.from('ocular_visits').select(OV).ilike('number', parsed.ocularNumber).is('deleted_at', null).maybeSingle(); ocular = (data as TgOcular) ?? null; ovWhy = ocular ? '' : `I could not find ${parsed.ocularNumber}`; }
   else if (!captionJob && !parsed.jobNumber && ctx?.ocular_id && new Date(ctx.expires_at).getTime() > Date.now()) { const { data } = await db.from('ocular_visits').select(OV).eq('id', ctx.ocular_id).is('deleted_at', null).maybeSingle(); ocular = (data as TgOcular) ?? null; }
-  if (!ocular && !ovWhy && !captionJob && !contextJob && !parsed.jobNumber && !jobsFor(await loadJobs(db, emp), emp, Date.now()).length) {
+  // nothing chosen: the visits assigned to this person today. One visit and no job → it goes there; otherwise they are offered in the question below.
+  let ovToday: TgOcular[] = [];
+  if (!ocular && !ovWhy && !captionJob && !contextJob && !parsed.jobNumber) {
     const { data } = await db.from('ocular_visits').select(OV).eq('assignee_id', emp).is('deleted_at', null).gte('start_at', manilaDay(Date.now()) + 'T00:00').lte('start_at', manilaDay(Date.now()) + 'T23:59');
-    ocular = ocularsFor((data ?? []) as TgOcular[], emp, Date.now())[0] ?? null;
+    ovToday = ocularsFor((data ?? []) as TgOcular[], emp, Date.now());
+    if (ovToday.length === 1 && !jobsFor(await loadJobs(db, emp), emp, Date.now()).length) { ocular = ovToday[0]; ovToday = []; }
   }
   if (ocular && !canSendToOcular(ocular, emp)) return void await say(chat, `⚠ ${ocular.number} is not assigned to you, so I did not save that. Only the inspector assigned to the ocular visit can send photos to it.`, reply);
   if (ocular) {
@@ -146,7 +149,11 @@ async function onMessage(db: Db, m: Msg) {
     return void await say(chat, `✅ ${media.media === 'video' ? 'Video' : 'Photo'} saved to ocular visit ${ocular.number}.`, reply);
   }
   const today = captionJob || contextJob ? [] : jobsFor(await loadJobs(db, emp), emp, Date.now());
-  const d = decide({ captionJob, captionNumber: parsed.jobNumber, contextJob, today });
+  let d = decide({ captionJob, captionNumber: parsed.jobNumber, contextJob, today });
+  if (ovToday.length) {   // a job and/or several visits today: ask which one
+    const jobs = d.kind === 'ask' ? d.options : d.kind === 'job' ? [d.job] : [];
+    d = { kind: 'ask', options: jobs };
+  }
 
   const where = d.kind === 'job' ? d.job : null;
   let r: Awaited<ReturnType<typeof saveMedia>>;
@@ -165,7 +172,9 @@ async function onMessage(db: Db, m: Msg) {
   // several jobs today: ask once, covering every photo sent in the next couple of minutes
   const { data: open } = await db.from('telegram_pending').select('id, photo_ids').eq('chat_id', chat).eq('employee_id', emp).is('resolved_at', null).gte('created_at', new Date(Date.now() - 120_000).toISOString()).order('id', { ascending: false }).limit(1).maybeSingle();
   if (open) { await db.from('telegram_pending').update({ photo_ids: [...(open.photo_ids as string[]), me?.id] }).eq('id', open.id); return; }
-  const opts = await Promise.all(d.options.map(async (j) => ({ id: j.id, text: await label(db, j) })));
+  const jobOpts = await Promise.all(d.options.map(async (j) => ({ id: j.id, text: await label(db, j) })));
+  const ovOpts = await Promise.all(ovToday.map(async (o) => { const { data: c } = await db.from('clients').select('name').eq('id', o.client_id).maybeSingle(); return { id: o.id, text: `Ocular ${o.number} (${c?.name ?? 'client'})`, kind: 'o' }; }));
+  const opts = [...jobOpts, ...ovOpts].slice(0, 8);
   const { data: p } = await db.from('telegram_pending').insert({ chat_id: chat, employee_id: emp, photo_ids: [me?.id], jobs: opts }).select('id').single();
   await say(chat, `Which job is this ${noun.toLowerCase()} for?`, { ...reply, reply_markup: { inline_keyboard: [...opts.map((o, i) => [{ text: o.text.slice(0, 60), callback_data: `j:${p!.id}:${i}` }]), [{ text: 'Not sure — send to office', callback_data: `u:${p!.id}` }]] } });
 }
@@ -176,15 +185,23 @@ async function onButton(db: Db, q: { id: string; from: { id: number }; data?: st
   const { data: p } = await db.from('telegram_pending').select('*').eq('id', Number(pid)).maybeSingle();
   const { data: lk } = await db.from('telegram_links').select('employee_id').eq('telegram_user_id', q.from.id).maybeSingle();
   if (!p || p.resolved_at || !lk || lk.employee_id !== p.employee_id) return void await done('That question is closed or is not yours.');
-  let job: { id: string; client_id: string } | null = null; let said = 'Sent to the office (Unsorted).';
+  let job: { id: string; client_id: string } | null = null; let ov: { id: string; client_id: string } | null = null; let said = 'Sent to the office (Unsorted).';
   if (kind === 'j') {
-    const pick = (p.jobs as { id: string; text: string }[])[Number(idx)]; if (!pick) return void await done('Please try again.');
+    const pick = (p.jobs as { id: string; text: string; kind?: string }[])[Number(idx)]; if (!pick) return void await done('Please try again.');
+    if (pick.kind === 'o') {
+      const { data: o } = await db.from('ocular_visits').select('id, client_id, assignee_id').eq('id', pick.id).maybeSingle();
+      if (!o || o.assignee_id !== p.employee_id) return void await done('That ocular visit is not assigned to you.');
+      ov = o; said = `✅ Saved to ${pick.text}.`;
+      await db.from('telegram_context').upsert({ employee_id: p.employee_id, job_id: null, ocular_id: o.id, expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
+    } else {
     const { data: j } = await db.from('jobs').select('id, client_id').eq('id', pick.id).maybeSingle(); if (!j) return void await done('Job not found.');
     job = j; said = `✅ Saved to ${pick.text}.`;
-    await db.from('telegram_context').upsert({ employee_id: p.employee_id, job_id: j.id, expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
+    await db.from('telegram_context').upsert({ employee_id: p.employee_id, job_id: j.id, ocular_id: null, expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
+    }
   }
   const ids = (p.photo_ids as (string | null)[]).filter(Boolean) as string[];
   if (job && ids.length) await db.from('job_photos').update({ job_id: job.id, client_id: job.client_id }).in('id', ids);
+  if (ov && ids.length) await db.from('job_photos').update({ ocular_id: ov.id, client_id: ov.client_id }).in('id', ids);
   await db.from('telegram_pending').update({ resolved_at: new Date().toISOString() }).eq('id', p.id);
   await done('Done');
   if (chat && q.message) await tg('editMessageText', { chat_id: chat, message_id: q.message.message_id, text: `${said} (${ids.length} file${ids.length === 1 ? '' : 's'})` }).catch(() => undefined);
