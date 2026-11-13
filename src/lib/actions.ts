@@ -786,6 +786,17 @@ export function returnPayroll(periodId: string, note: string) {
   store.require('payroll.approve');
   store.update('periods', periodId, { status: 'Draft' }, 'update', `Returned payroll to draft: ${note}`);
 }
+/** Delete a payroll period that has not been approved yet (a draft, or one waiting for approval). Approved and finalized payrolls have posted an expense and stay. */
+export function deletePeriod(periodId: string) {
+  const per = db().periods.find((x) => x.id === periodId && !x.deleted_at) ?? fail('Payroll period not found.');
+  if (per.locked || per.status === 'Finalized') fail('A finalized payroll is locked and cannot be deleted.');
+  if (per.status === 'Approved') fail('This payroll is approved and its expense is already posted, so it cannot be deleted.');
+  store.require(per.status === 'For Approval' ? 'payroll.approve' : 'payroll.edit');
+  if (per.status === 'For Approval') store.update('periods', periodId, { status: 'Draft' }, 'update', `Returned payroll ${per.label} to draft so it could be deleted`);
+  store.remove('periods', periodId);
+  const run = db().runs.find((r) => r.period_id === periodId && !r.deleted_at);
+  if (run) store.remove('runs', run.id, { cascade: true });   // the calculated lines go with their period
+}
 export function approvePayroll(periodId: string) {
   store.require('payroll.approve');
   const per = db().periods.find((x) => x.id === periodId)!;

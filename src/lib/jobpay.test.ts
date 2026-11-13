@@ -124,3 +124,20 @@ describe('who a payroll includes', () => {
     expect(r.lines.find((l) => l.employee_id === a.id)?.regular_pay).toBe(0); expect(r.pending).toBeGreaterThan(0);
   });
 });
+
+describe('delete a payroll period', () => {
+  it('removes a draft or waiting period with its calculated lines, and refuses approved or finalized ones', async () => {
+    const A = await import('./actions'); const { store } = await import('./store');
+    await store.login('owner@topmop.ph', 'topmop123');
+    const mk = (label: string, start: string) => { const p = A.createPeriod({ label, start, end: start, type: 'daily' }); return p as { id: string }; };
+    const draft = mk('t-draft', '2031-01-02'); const waiting = mk('t-wait', '2031-01-03'); const approved = mk('t-appr', '2031-01-04');
+    A.generateRun(waiting.id); A.submitPayroll(waiting.id);
+    expect(store.getDB().periods.find((p) => p.id === waiting.id)?.status).toBe('For Approval');
+    A.deletePeriod(draft.id); A.deletePeriod(waiting.id);
+    const d = store.getDB();
+    expect(d.periods.find((p) => p.id === draft.id)?.deleted_at).toBeTruthy(); expect(d.periods.find((p) => p.id === waiting.id)?.deleted_at).toBeTruthy();
+    expect(d.runs.filter((r) => r.period_id === waiting.id).every((r) => !!r.deleted_at)).toBe(true);
+    store.update('periods', approved.id, { status: 'Approved' } as never);
+    expect(() => A.deletePeriod(approved.id)).toThrow(/approved/);
+  });
+});

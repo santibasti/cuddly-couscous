@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { store, useAuth } from '@/lib/store';
 import { Badge, Card, Icon, PageHead, Stat, attempt, ask } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { PayrollWho } from '@/components/PayrollWho';
-import { approvePayroll, finalizePayroll, generateRun, returnPayroll, submitPayroll } from '@/lib/actions';
+import { approvePayroll, deletePeriod, finalizePayroll, generateRun, returnPayroll, submitPayroll } from '@/lib/actions';
 import { buildPayrollLines } from '@/lib/business';
 import { payslipPdf } from '@/lib/export';
 import { fmtDate, fmtStamp, money, sum } from '@/lib/util';
@@ -13,7 +13,7 @@ import type { JobPayRow, PayrollLine } from '@/lib/types';
 const STEPS = ['Draft', 'For Approval', 'Approved', 'Finalized'] as const;
 
 export default function PayrollDetail() {
-  const { id } = useParams();
+  const { id } = useParams(); const nav = useNavigate();
   const { db, can } = useAuth();
   const per = db.periods.find((p) => p.id === id);
   if (!per) return <div className="alert warn">Payroll period not found. <Link to="/payroll">Back</Link></div>;
@@ -43,6 +43,7 @@ export default function PayrollDetail() {
         {per.status === 'Draft' && can('payroll.edit') && run && <button className="btn primary" onClick={() => attempt(() => submitPayroll(per.id), 'Submitted for approval')}>Submit for approval</button>}
         {per.status === 'For Approval' && can('payroll.approve') && <><button className="btn" onClick={async () => { const n = await ask('Return payroll to draft', 'What needs to change?'); if (n) attempt(() => returnPayroll(per.id, n), 'Returned to draft'); }}>Return</button><button className="btn primary" onClick={() => attempt(() => approvePayroll(per.id), 'Payroll approved — expense posted')}>Approve</button></>}
         {per.status === 'Approved' && can('payroll.approve') && <button className="btn primary" onClick={async () => { const c = await ask('Finalize & lock payroll', 'Type FINALIZE to confirm — this locks the period permanently', { okLabel: 'Finalize' }); if (c === 'FINALIZE') attempt(() => finalizePayroll(per.id), 'Payroll finalized and locked'); else if (c) attempt(() => { throw new Error('Confirmation text did not match.'); }); }}><Icon name="lock" />Finalize & lock</button>}
+      {((per.status === 'Draft' && can('payroll.edit')) || (per.status === 'For Approval' && can('payroll.approve'))) && <button className="btn danger" onClick={() => { if (confirm(`Delete the payroll period "${per.label}"? Its calculated payroll is removed too.`) && attempt(() => deletePeriod(per.id), 'Payroll period deleted')) nav('/payroll'); }}><Icon name="trash" size={14} />Delete</button>}
       </PageHead>
 
       <Card>
