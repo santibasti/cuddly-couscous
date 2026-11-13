@@ -1,5 +1,5 @@
 // The weekly payroll table: for each person, what they earned each day of the week (their rate for the day or job order) and the bonuses that came with it.
-import { addDays, eachDay, round2, sum, today, weekStart } from './util';
+import { addDays, dow, eachDay, round2, sum, today } from './util';
 import type { DB, Employee, PayrollLine, PayrollPeriod } from './types';
 
 export interface WeekCell { /** pay for the work that day: the job-order rate or the daily rate */ base: number; /** panel + Outside Metro Manila + Commercial bonuses of that day's job orders */ bonus: number; jobs: string[] }
@@ -11,8 +11,8 @@ export interface WeekRow {
   other: number; total: number;
 }
 
-/** Monday to Sunday of the week a date is in. */
-export const weekOf = (date: string) => { const start = weekStart(date); return { start, end: addDays(start, 6) }; };
+/** The payroll week a date is in: Sunday to Saturday (the crew also work on Sundays). */
+export const weekOf = (date: string) => { const start = addDays(date, -dow(date)); return { start, end: addDays(start, 6) }; };
 
 export function weeklyGrid(db: DB, per: Pick<PayrollPeriod, 'start' | 'end'>, lines: PayrollLine[], asOf: string = today()): { days: string[]; rows: WeekRow[] } {
   const days = eachDay(per.start, per.end);

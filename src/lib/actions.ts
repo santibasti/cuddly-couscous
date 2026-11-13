@@ -17,7 +17,8 @@ import { syncMaintenance } from './maintenance';
 import { syncRatings } from './ratings';
 import { paymentDays } from './quote-text';
 import { answerOf, isAsking, summary as crewSummary, teamOf } from './crew-confirm-core';
-import { addDays, fmtDate, isoNow, uid, money, nowLocal, round2, sum, today, weekStart } from './util';
+import { addDays, dow, fmtDate, isoNow, uid, money, nowLocal, round2, sum, today } from './util';
+import { weekOf } from './payrollweek';
 
 const db = () => store.getDB();
 const me = () => store.user;
@@ -773,12 +774,14 @@ export function generateRun(periodId: string) {
   return { pending, employees: lines.length };
 }
 /**
- * Weekly payroll (Monday to Sunday) appears by itself: the current week is created when it starts, and last week too if there was work in it.
+ * Weekly payroll (Sunday to Saturday) appears by itself: the current week is created when it starts, and last week too if there was work in it.
  * A week that was deleted is not brought back, and a week that clashes with an existing weekly period is skipped.
+ * Draft weeks that an earlier version made Monday to Sunday are replaced by the Sunday to Saturday weeks.
  */
 export function ensureWeeklyPeriods(): number {
   if (!store.can('payroll.edit')) return 0;
-  const ws = weekStart(today()); const prev = addDays(ws, -7); let made = 0;
+  for (const p of db().periods.filter((x) => !x.deleted_at && x.type === 'weekly' && x.status === 'Draft' && !x.locked && dow(x.start) === 1 && x.end === addDays(x.start, 6))) { try { deletePeriod(p.id); } catch { /* left as it is */ } }
+  const ws = weekOf(today()).start; const prev = addDays(ws, -7); let made = 0;
   const hadWork = (from: string, to: string) => db().attendance.some((a) => !a.deleted_at && a.clock_in && a.date >= from && a.date <= to);
   for (const start of [ws, prev]) {
     const end = addDays(start, 6);

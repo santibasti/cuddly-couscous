@@ -1,4 +1,4 @@
-// Creates the weekly payroll (Monday to Sunday) when the week starts and keeps the draft payrolls filled in from attendance by itself
+// Creates the weekly payroll (Sunday to Saturday) when the week starts and keeps the draft payrolls filled in from attendance by itself
 // (for people who can edit payroll): nobody has to create a period or press Generate.
 import { useEffect } from 'react';
 import { CLOUD } from '@/lib/cloud';

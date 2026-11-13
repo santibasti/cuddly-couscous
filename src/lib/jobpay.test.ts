@@ -193,17 +193,24 @@ describe('weekly payroll table', () => {
     expect(rb.days['2026-03-03']).toMatchObject({ base: 700, bonus: 420 }); expect(rb).toMatchObject({ rate: 700, unit: 'day', total: 1120 });
     for (const r of rows) expect(r.total).toBeCloseTo(Object.values(r.days).reduce((t, c) => t + c.base + c.bonus, 0) + r.other, 2);
   });
-  it('finds the Monday to Sunday of a date', () => { expect(weekOf('2026-11-13')).toEqual({ start: '2026-11-09', end: '2026-11-15' }); expect(weekOf('2026-11-15')).toEqual({ start: '2026-11-09', end: '2026-11-15' }); expect(weekOf('2026-11-09').start).toBe('2026-11-09'); });
+  it('finds the Sunday to Saturday of a date', () => { expect(weekOf('2026-11-13')).toEqual({ start: '2026-11-08', end: '2026-11-14' }); expect(weekOf('2026-11-14')).toEqual({ start: '2026-11-08', end: '2026-11-14' }); expect(weekOf('2026-11-08').start).toBe('2026-11-08'); expect(weekOf('2026-11-15').start).toBe('2026-11-15'); });
   it('creates this week by itself once, never brings back a deleted week, and last week only when there was work in it', async () => {
-    const A = await import('./actions'); const { store } = await import('./store'); const { today, addDays, weekStart } = await import('./util');
+    const A = await import('./actions'); const { store } = await import('./store'); const { today, addDays } = await import('./util');
     await store.login('owner@topmop.ph', 'topmop123');
     for (const p of store.getDB().periods.filter((x) => !x.deleted_at && x.type === 'weekly')) store.update('periods', p.id, { status: 'Draft' } as never), store.remove('periods', p.id);
-    const ws = weekStart(today());
+    const ws = weekOf(today()).start;
     expect(A.ensureWeeklyPeriods()).toBeGreaterThanOrEqual(1);
     const mine = () => store.getDB().periods.filter((p) => !p.deleted_at && p.type === 'weekly' && p.start === ws);
     expect(mine()).toHaveLength(1); expect(mine()[0].end).toBe(addDays(ws, 6));
     expect(A.ensureWeeklyPeriods()).toBe(0);                                 // already there
     store.remove('periods', mine()[0].id);
     expect(A.ensureWeeklyPeriods()).toBe(0); expect(mine()).toHaveLength(0);   // a deleted week stays deleted
+    // a draft week made Monday to Sunday by the earlier version is replaced by the Sunday to Saturday week
+    const mon = addDays(ws, 1); store.insert('periods', { label: 'old Monday week', start: mon, end: addDays(mon, 6), type: 'weekly', status: 'Draft', locked: false } as never);
+    store.update('periods', store.getDB().periods.find((p) => p.start === ws && p.deleted_at)!.id, { deleted_at: null } as never);
+    store.remove('periods', store.getDB().periods.find((p) => p.start === ws && !p.deleted_at)!.id);
+    expect(store.getDB().periods.some((p) => !p.deleted_at && p.start === mon)).toBe(true);
+    void A.ensureWeeklyPeriods();
+    expect(store.getDB().periods.some((p) => !p.deleted_at && p.start === mon)).toBe(false);
   });
 });
