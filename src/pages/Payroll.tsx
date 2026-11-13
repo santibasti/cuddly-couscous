@@ -109,6 +109,7 @@ function JobPaySettings() {
           {num('panel_bonus', 'Panel bonus (₱)', 'Paid per crew member for every complete step of additional panels.')}
           {num('panel_step', 'Additional panels per crew member for one bonus', 'Default 10: bonus = floor(additional panels ÷ (crew × 10)) × the bonus.')}
           {num('outside_mm_bonus', 'Outside Metro Manila bonus (₱ per crew member)', 'Added to a job when the Owner switches it on for that job.')}
+          <Field label="Payday cutoff (Saturday)" hint="Payday is Saturday night. Work from this time on Saturday counts in the next pay week (Sunday to Saturday)."><input type="time" disabled={!edit} value={v.payday_cutoff ?? '21:00'} onChange={(e) => setV({ ...v, payday_cutoff: e.target.value || '21:00' })} /></Field>
         </div>
         <div className="small muted">Example with 3 crew: {[30, 59, 60, 90].map((n) => `${n} additional panels → ${money(panelBonusPerCrew(n, 3, v.panel_step, v.panel_bonus))} each`).join(' · ')}.</div>
         <div className="row" style={{ gap: 8 }}><button className="btn primary" disabled={!edit || !dirty} onClick={save}>Save</button>{!edit && <span className="small muted">Only the Owner can change these.</span>}</div>

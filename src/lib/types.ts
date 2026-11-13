@@ -964,7 +964,7 @@ export interface Settings {
   marketing?: { mode: 'off' | 'approve' | 'auto'; per_week: number; days: number[]; time: string; topics: string[]; voice: string; tone?: string; website?: string; brief?: string; email?: string; phone?: string; facebook?: string };
   client_sms?: { enabled: boolean; day_before_time: string; morning_time: string };
   /** pay per job order and its bonuses (defaults apply when missing) */
-  job_pay?: { panel_bonus: number; panel_step: number; outside_mm_bonus: number; commercial_bonus: number };
+  job_pay?: { panel_bonus: number; panel_step: number; outside_mm_bonus: number; commercial_bonus: number; /** payday cutoff on Saturday (HH:mm): work after it counts in the next pay week */ payday_cutoff?: string };
   reminder_days: { quote_expiry: number; doc_expiry: number; chemical_expiry: number; invoice_due: number; maintenance: number };
   glass_group_size: number;
   access: Record<Role, string[]>; // permission overrides (editable by owner)

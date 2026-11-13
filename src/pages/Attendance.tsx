@@ -1,3 +1,4 @@
+import { MyEarnings } from '@/components/MyEarnings';
 import { RatingCard } from '@/components/RatingCard';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -167,6 +168,7 @@ export default function Attendance() {
       )}
       {tab === 'me' && employee && <RecognitionHub meId={employee.id} />}
       {tab === 'me' && employee && <MyClock emp={employee} />}
+      {tab === 'me' && employee && <MyEarnings emp={employee} />}
       {tab === 'me' && !employee && <div className="alert warn">Your user account is not linked to an employee record.</div>}
 
       {tab === 'daily' && canView && (

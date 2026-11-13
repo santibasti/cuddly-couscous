@@ -26,7 +26,7 @@ function world(over: { additional?: number; finished?: boolean } = {}) {
   const resident = db.clients.find((c) => c.type === 'Residential')!;      // a non-commercial client (commercial projects get no automatic bonus)
   const job = { ...clone(db.jobs[0]), client_id: resident.id, id: 'jx', number: 'JOB-X', leader_id: a.id, crew_ids: [b.id, c.id], status: over.finished === false ? 'In Progress' : 'Completed', start_at: '2026-03-03T08:00', end_at: '2026-03-03T17:00', pay_outside_mm: false, pay_commercial: false, deleted_at: undefined };
   const total = 30 + (over.additional ?? 90);
-  const wf = { id: 'wx', job_id: 'jx', panels: [{ id: 'r1', area: '1st Floor', side: 'Front', external: total, internal: 0 }], package_panels: 30, finish_at: over.finished === false ? undefined : '2026-03-03T15:00', arr_crew_present: [a.id, b.id, c.id], arr_crew_absent: [] };
+  const wf = { id: 'wx', job_id: 'jx', panels: [{ id: 'r1', area: '1st Floor', side: 'Front', external: total, internal: 0 }], package_panels: 30, finish_at: over.finished === false ? undefined : '2026-03-03T15:00', rep_client_at: over.finished === false ? undefined : '2026-03-03T16:00', arr_crew_present: [a.id, b.id, c.id], arr_crew_absent: [] };
   db.jobs = [...db.jobs, job as never]; db.workflows = [...db.workflows, wf as never];
   const att = (emp: string, date = '2026-03-03', extra = {}) => ({ id: `${emp}-${date}`, employee_id: emp, date, kind: 'Present', clock_in: `${date}T09:30`, clock_out: `${date}T17:00`, worked_hours: 6, late_min: 90, undertime_min: 0, ot_min: 0, approval: 'Approved', job_id: 'jx', field_work: true, ...extra });
   db.attendance = [...db.attendance.filter((x) => x.date < '2026-03-01' || x.date > '2026-03-31'), att(a.id), att(b.id), att(c.id), att(d.id, '2026-03-03', { job_id: undefined })] as never;
@@ -318,5 +318,40 @@ describe('double shift on one day: 9 AM–3 PM, then 11 PM–3 AM the next day',
     const emp = { ...a, pay_basis: 'per_job' as const, job_rate: 800 };
     const rows = employeeJobPay(db, emp, '2026-03-01', '2026-03-07', '2026-03-20');
     expect(rows.map((r) => r.number).sort()).toEqual(['JOB-NIGHT', 'JOB-X']); expect(rows.reduce((t, r) => t + r.rate, 0)).toBe(1600);   // two job orders at the rate each
+  });
+});
+
+describe('pay week: paid Saturday night, work after the cutoff counts next week; bonus final at the signed handover', () => {
+  const SAT = '2026-03-07', SUN = '2026-03-08', NEXT_SAT = '2026-03-14';
+  it('counts Saturday work from the cutoff (9 PM) in the next pay week', async () => {
+    const { payDateOf } = await import('./payrollweek');
+    expect(payDateOf(`${SAT}T20:59`)).toBe(SAT); expect(payDateOf(`${SAT}T21:00`)).toBe(SUN); expect(payDateOf(`${SAT}T23:30`)).toBe(SUN);
+    expect(payDateOf(`${SUN}T09:00`)).toBe(SUN); expect(payDateOf('2026-03-06T23:00')).toBe('2026-03-06');             // Friday night is still Friday
+    expect(payDateOf(`${SAT}T20:00`, '19:00')).toBe(SUN);                                                                   // another cutoff
+  });
+  it('pays a Saturday 11 PM job order in the NEXT week, and a Saturday afternoon job in this week', () => {
+    const { db, a, att } = world(); const emp = { ...a, pay_basis: 'per_job' as const, job_rate: 800 };
+    const mk = (id: string, start: string, end: string) => { db.jobs.push({ ...clone(db.jobs.find((j) => j.id === 'jx')!), id, number: id.toUpperCase(), start_at: start, end_at: end } as never); db.workflows.push({ id: 'w' + id, job_id: id, panels: [], arr_crew_present: [a.id], arr_crew_absent: [] } as never); };
+    mk('jday', `${SAT}T09:00`, `${SAT}T15:00`); mk('jnight', `${SAT}T23:00`, `${SUN}T03:00`);
+    db.attendance.push(att(a.id, SAT, { job_id: undefined, clock_in: `${SAT}T09:00`, clock_out: `${SUN}T03:00` }) as never);
+    const week1 = employeeJobPay(db, emp, '2026-03-01', SAT, '2026-03-20'); const week2 = employeeJobPay(db, emp, SUN, NEXT_SAT, '2026-03-20');
+    expect(week1.map((r) => r.number).sort()).toEqual(['JDAY', 'JOB-X']); expect(week2.map((r) => r.number)).toEqual(['JNIGHT']);
+    expect(week2[0]).toMatchObject({ rate: 800, date: SUN });                      // listed on Sunday, the first day of the week it counts in
+  });
+  it('moves a bonus to the next pay week when the client signs the handover after payday', () => {
+    const { db, a, att } = world(); const emp = { ...a, pay_basis: 'per_job' as const, job_rate: 800 };
+    db.jobs.push({ ...clone(db.jobs.find((j) => j.id === 'jx')!), id: 'jsat', number: 'JOB-SAT', start_at: `${SAT}T08:00`, end_at: `${SAT}T14:00` } as never);
+    db.workflows.push({ id: 'wsat', job_id: 'jsat', panels: [{ id: 'r', area: '1st Floor', side: 'Front', external: 120, internal: 0 }], package_panels: 30, arr_crew_present: [a.id], arr_crew_absent: [], rep_client_at: `${SUN}T10:00` } as never);   // signed Sunday morning
+    db.attendance.push(att(a.id, SAT, { job_id: undefined, clock_in: `${SAT}T08:00`, clock_out: `${SAT}T14:00` }) as never);
+    const w1 = employeeJobPay(db, emp, '2026-03-01', SAT, '2026-03-20').find((r) => r.job_id === 'jsat')!;
+    expect(w1).toMatchObject({ rate: 800, panel_bonus: 0, final: true });          // the rate is paid this Saturday, the bonus is not yet
+    const w2 = employeeJobPay(db, emp, SUN, NEXT_SAT, '2026-03-20').find((r) => r.job_id === 'jsat')!;
+    expect(w2).toMatchObject({ rate: 0, panel_bonus: 420, date: SUN });            // paid next Saturday, listed on the day it was signed
+  });
+  it('does not pay a bonus before the client signs the handover', () => {
+    const { db, a } = world({ finished: false }); const emp = { ...a, pay_basis: 'per_job' as const, job_rate: 800 };
+    expect(employeeJobPay(db, emp, '2026-03-01', '2026-03-07', '2026-03-20')[0]).toMatchObject({ rate: 800, panel_bonus: 0, final: false });
+    const fin = world(); fin.db.workflows.find((w) => w.id === 'wx')!.finish_at = '2026-03-03T15:00'; (fin.db.workflows.find((w) => w.id === 'wx') as { rep_client_at?: string }).rep_client_at = undefined;
+    expect(employeeJobPay(fin.db, { ...fin.a, pay_basis: 'per_job' as const, job_rate: 800 }, '2026-03-01', '2026-03-07', '2026-03-20')[0].panel_bonus).toBe(0);   // work finished is not enough
   });
 });

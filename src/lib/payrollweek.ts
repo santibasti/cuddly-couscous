@@ -33,3 +33,8 @@ export function weeklyGrid(db: DB, per: Pick<PayrollPeriod, 'start' | 'end'>, li
   }).filter((r) => r.emp);
   return { days, rows };
 }
+
+/** Payday is Saturday night (7-9 PM). Work from the payday cutoff on Saturday counts in the NEXT pay week, which starts on Sunday. */
+export const PAYDAY_CUTOFF = '21:00';
+/** The date a moment counts for in payroll: its own date, except Saturday at or after the cutoff counts as the next day (Sunday). */
+export const payDateOf = (moment: string, cutoff: string = PAYDAY_CUTOFF): string => { const d = moment.slice(0, 10); return dow(d) === 6 && (moment.slice(11, 16) || '00:00') >= cutoff ? addDays(d, 1) : d; };

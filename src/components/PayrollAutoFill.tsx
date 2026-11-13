@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { CLOUD } from '@/lib/cloud';
 import { store, useAuth, useBoot } from '@/lib/store';
+import { publishCrewEarnings } from '@/lib/crewearnings';
 import { autoFillPayroll, ensureWeeklyPeriods } from '@/lib/actions';
 
 export function PayrollAutoFill() {
@@ -12,7 +13,7 @@ export function PayrollAutoFill() {
     const t = setTimeout(() => {
       // on the live site only from data that was just fetched: never fill a payroll from an old copy kept on this device
       if (CLOUD && Date.now() - store.lastPull > 180_000) return;
-      try { ensureWeeklyPeriods(); autoFillPayroll(); } catch { /* it is tried again on the next change */ }
+      try { ensureWeeklyPeriods(); autoFillPayroll(); if (CLOUD) void publishCrewEarnings(db).catch(() => undefined); } catch { /* it is tried again on the next change */ }
     }, 2500);
     return () => clearTimeout(t);
   }, [boot, db.attendance, db.jobs, db.workflows, db.employees, db.holidays, db.adjustments, db.periods, db.settings]); // eslint-disable-line react-hooks/exhaustive-deps
