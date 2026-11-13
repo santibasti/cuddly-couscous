@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { store, useAuth } from '@/lib/store';
 import { Badge, Card, Icon, PageHead, Stat, attempt, ask } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
+import { PayrollWho } from '@/components/PayrollWho';
 import { approvePayroll, finalizePayroll, generateRun, returnPayroll, submitPayroll } from '@/lib/actions';
 import { buildPayrollLines } from '@/lib/business';
 import { payslipPdf } from '@/lib/export';
@@ -50,6 +51,7 @@ export default function PayrollDetail() {
       </Card>
       <div style={{ height: 12 }} />
       {pendingNow > 0 && <div className="alert warn" style={{ marginBottom: 12 }}>{pendingNow} attendance record(s) in this period are pending approval and are excluded from the calculation. <Link to="/attendance">Review attendance</Link></div>}
+      {per.status === 'Draft' && <div style={{ marginBottom: 10 }}><PayrollWho type={per.type} end={per.end} run={!!run} /></div>}
       {!run && <div className="alert info" style={{ marginBottom: 12 }}>No payroll has been generated yet. Click “Generate from attendance” to pull approved attendance for {per.type} employees.</div>}
       {run && (
         <>

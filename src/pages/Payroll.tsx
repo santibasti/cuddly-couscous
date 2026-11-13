@@ -5,6 +5,7 @@ import { isCommercialClient, jobBonus, jobPaySettings, outsideMetroHint, panelBo
 import { setJobPayOptions } from '@/lib/joborders';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
+import { PayrollWho } from '@/components/PayrollWho';
 import { createPeriod, saveAdjustment } from '@/lib/actions';
 import { addDays, dow, fmtDate, monthEnd, monthStart, money, sum, today } from '@/lib/util';
 import type { PayrollAdjustment, PayrollPeriod, PayrollType } from '@/lib/types';
@@ -30,6 +31,7 @@ function PeriodModal({ onClose }: { onClose: () => void }) {
         <Field label="Label"><input {...f.bind('label')} placeholder="Auto" /></Field>
         <Field label="Period start"><input type="date" {...f.bind('start')} /></Field><Field label="Period end"><input type="date" {...f.bind('end')} /></Field>
       </div>
+      <div style={{ marginTop: 10 }}><PayrollWho type={type} end={f.v.end} /></div>
       <p className="small muted">Only employees whose payroll type is “{type}” are included. Approved attendance in the range is pulled automatically.</p>
     </Modal>
   );

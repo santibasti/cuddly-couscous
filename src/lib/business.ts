@@ -518,9 +518,14 @@ export function nextDue(asset: Asset): string | null {
 export const payMethodList = ['Cash', 'Bank Transfer', 'Check', 'GCash', 'Credit Card', 'Other'] as const;
 export type { Payment };
 
+/** Who a payroll period includes: active employees whose Payroll type (set on the employee) is the period's type, hired by the period's end. */
+export const payrollEligible = (db: Pick<DB, 'employees'>, type: PayrollPeriod['type'], end: string) => db.employees.filter((e) => !e.deleted_at && e.status !== 'inactive' && e.payroll_type === type && e.hire_date <= end);
+/** How many active employees there are of each Payroll type (to explain an empty payroll). */
+export const payrollTypeCounts = (db: Pick<DB, 'employees'>) => db.employees.filter((e) => !e.deleted_at && e.status !== 'inactive').reduce<Record<string, number>>((m, e) => { m[e.payroll_type] = (m[e.payroll_type] ?? 0) + 1; return m; }, {});
+
 /** Build payroll lines for every eligible employee for a period (pure). */
 export function buildPayrollLines(db: DB, period: PayrollPeriod, asOf?: string): { lines: PayrollLine[]; pending: number } {
-  const emps = db.employees.filter((e) => !e.deleted_at && e.status !== 'inactive' && e.payroll_type === period.type && e.hire_date <= period.end);
+  const emps = payrollEligible(db, period.type, period.end);
   let pending = 0;
   const lines = emps.map((emp) => {
     const r = computePayrollLine({ emp, period, attendance: db.attendance, holidays: db.holidays, adjustments: db.adjustments, settings: db.settings, asOf, jobPay: employeeJobPay(db, emp, period.start, period.end) });
