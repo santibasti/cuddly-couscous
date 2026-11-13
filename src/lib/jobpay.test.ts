@@ -23,7 +23,8 @@ describe('panel bonus per crew member', () => {
 function world(over: { additional?: number; finished?: boolean } = {}) {
   const db = clone(seedDB());
   const [a, b, c, d] = db.employees.filter((e) => !e.deleted_at && e.status !== 'inactive').slice(0, 4);
-  const job = { ...clone(db.jobs[0]), id: 'jx', number: 'JOB-X', leader_id: a.id, crew_ids: [b.id, c.id], status: over.finished === false ? 'In Progress' : 'Completed', start_at: '2026-03-03T08:00', end_at: '2026-03-03T17:00', pay_outside_mm: false, pay_commercial: false, deleted_at: undefined };
+  const resident = db.clients.find((c) => c.type === 'Residential')!;      // a non-commercial client (commercial projects get no automatic bonus)
+  const job = { ...clone(db.jobs[0]), client_id: resident.id, id: 'jx', number: 'JOB-X', leader_id: a.id, crew_ids: [b.id, c.id], status: over.finished === false ? 'In Progress' : 'Completed', start_at: '2026-03-03T08:00', end_at: '2026-03-03T17:00', pay_outside_mm: false, pay_commercial: false, deleted_at: undefined };
   const total = 30 + (over.additional ?? 90);
   const wf = { id: 'wx', job_id: 'jx', panels: [{ id: 'r1', area: '1st Floor', side: 'Front', external: total, internal: 0 }], package_panels: 30, finish_at: over.finished === false ? undefined : '2026-03-03T15:00', arr_crew_present: [a.id, b.id, c.id], arr_crew_absent: [] };
   db.jobs = [...db.jobs, job as never]; db.workflows = [...db.workflows, wf as never];
@@ -55,6 +56,15 @@ describe('job bonus', () => {
   it('also treats an Absent / Leave attendance record on the job day as absent', () => {
     const w = world(); w.db.attendance = w.db.attendance.map((x) => (x.employee_id === w.c.id ? { ...x, kind: 'Absent', clock_in: undefined, clock_out: undefined } : x)) as never;
     expect(jobBonus(w.db, w.job as never)).toMatchObject({ crew: 2, absent: [w.c.id], panel_each: 560 });
+  });
+  it('gives no automatic bonus on a commercial project; the Owner types it by hand for each crew member', () => {
+    const { db, job } = world(); const commercial = db.clients.find((c) => c.type === 'Commercial')!;
+    db.settings.job_pay = { panel_bonus: 140, panel_step: 10, outside_mm_bonus: 300, commercial_bonus: 0 };
+    const cj = { ...(job as object), client_id: commercial.id };                             // 90 additional panels, 3 crew: a residential job would pay 420 each
+    expect(jobBonus(db, cj as never)).toMatchObject({ manual: true, panel_each: 0, outside_each: 0, commercial_each: 0, each: 0, total: 0 });
+    expect(jobBonus(db, { ...cj, pay_commercial_amount: 500 } as never)).toMatchObject({ manual: true, panel_each: 0, commercial_each: 500, each: 500, total: 1500 });
+    expect(jobBonus(db, { ...cj, pay_commercial_amount: 500, pay_outside_mm: true } as never)).toMatchObject({ outside_each: 300, each: 800 });   // the Owner's out-of-town tick still applies
+    expect(jobBonus(db, job as never)).toMatchObject({ manual: false, panel_each: 420 });                                                         // not commercial: the formula
   });
   it('is not final until the work is finished', () => { const { db, job } = world({ finished: false }); expect(jobBonus(db, job as never).final).toBe(false); });
 });

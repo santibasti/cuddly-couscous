@@ -195,6 +195,8 @@ export interface Job extends Base {
   jo_prices?: 'show' | 'hide';
   /** Owner's choice for this job's crew pay: add the Outside Metro Manila bonus / the Commercial Project bonus to every crew member */
   pay_outside_mm?: boolean; pay_commercial?: boolean;
+  /** commercial projects get no automatic bonus: the Owner types the bonus for each crew member here (₱) */
+  pay_commercial_amount?: number;
   /** each assigned person's answer to "can you make it?" (asked from 7 PM the evening before): employee id → answer for this schedule */
   /** Stage 8: after the service Admin enters every job expense (gas, toll, meals, purchases) and closes the job internally */
   /** planned spend on gas, toll, meals and other job expenses (compared with the actual in Stage 8) */

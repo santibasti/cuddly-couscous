@@ -20,7 +20,7 @@ export const jobCrewIds = (j: Pick<Job, 'leader_id' | 'crew_ids'>): string[] => 
 
 export interface JobBonus {
   /** crew who count for this job: assigned, minus anyone marked absent (so the crew size reduces automatically) */
-  crew: number; absent: string[]; additional_panels: number; step: number;
+  crew: number; absent: string[]; /** a commercial project: no automatic bonus, the Owner adds it by hand */ manual: boolean; additional_panels: number; step: number;
   panel_each: number; outside_each: number; commercial_each: number; each: number; total: number;
   /** the panel count is final once the work is finished (so payroll pays the bonus only then) */
   final: boolean; ids: string[];
@@ -41,10 +41,12 @@ export function jobBonus(db: DB, job: Job): JobBonus {
   const q = (db.quotations ?? []).find((x) => x.id === (wf?.conf_quotation_id ?? job.quotation_id));
   const additional = wf ? panelBreakdown(db, q, wf.panels, packagePanels(db, job, wf)).additional : 0;
   const ids = jobAttendees(db, job);
-  const panel = panelBonusPerCrew(additional, ids.length, cfg.panel_step, cfg.panel_bonus);
-  const outside = job.pay_outside_mm ? cfg.outside_mm_bonus : 0; const commercial = job.pay_commercial ? cfg.commercial_bonus : 0;
+  const manual = isCommercialClient(db, job);          // commercial projects: no automatic bonus, the Owner adds it by hand
+  const panel = manual ? 0 : panelBonusPerCrew(additional, ids.length, cfg.panel_step, cfg.panel_bonus);
+  const outside = job.pay_outside_mm ? cfg.outside_mm_bonus : 0;
+  const commercial = job.pay_commercial_amount ?? (job.pay_commercial ? cfg.commercial_bonus : 0);   // the amount the Owner typed (an older on/off tick still uses the old fixed amount)
   const each = panel + outside + commercial;
-  return { crew: ids.length, absent: jobAbsentIds(db, job), additional_panels: additional, step: cfg.panel_step, panel_each: panel, outside_each: outside, commercial_each: commercial, each, total: each * ids.length, final: !!wf?.finish_at || job.status === 'Completed', ids };
+  return { crew: ids.length, absent: jobAbsentIds(db, job), manual, additional_panels: additional, step: cfg.panel_step, panel_each: panel, outside_each: outside, commercial_each: commercial, each, total: each * ids.length, final: !!wf?.finish_at || job.status === 'Completed', ids };
 }
 
 /** Why this site is suggested for the Outside Metro Manila bonus, or why not (the Owner decides). */

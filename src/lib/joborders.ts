@@ -94,12 +94,13 @@ export function setJobOrderPrices(jobId: string, choice: 'auto' | 'show' | 'hide
 }
 
 /** The Owner's crew-pay options for a job: add the Outside Metro Manila bonus and / or the Commercial Project bonus to every crew member. */
-export function setJobPayOptions(jobId: string, opts: { outside?: boolean; commercial?: boolean }) {
+export function setJobPayOptions(jobId: string, opts: { outside?: boolean; commercial?: boolean; commercialAmount?: number }) {
   store.require('payroll.approve');
   const job = db().jobs.find((j) => j.id === jobId) ?? (() => { throw new RuleError('Booking not found.'); })();
   const patch: Record<string, boolean | undefined> = {};
   if (opts.outside !== undefined) patch.pay_outside_mm = opts.outside || undefined;
   if (opts.commercial !== undefined) patch.pay_commercial = opts.commercial || undefined;
-  const label = [opts.outside !== undefined ? `Outside Metro Manila bonus ${opts.outside ? 'on' : 'off'}` : '', opts.commercial !== undefined ? `Commercial Project bonus ${opts.commercial ? 'on' : 'off'}` : ''].filter(Boolean).join(', ');
+  if (opts.commercialAmount !== undefined) { if (!(opts.commercialAmount >= 0) || !Number.isFinite(opts.commercialAmount)) throw new RuleError('Enter the bonus amount for each crew member (0 or more).'); (patch as Record<string, number | boolean | undefined>).pay_commercial_amount = opts.commercialAmount > 0 ? Math.round(opts.commercialAmount * 100) / 100 : undefined; }
+  const label = [opts.outside !== undefined ? `Outside Metro Manila bonus ${opts.outside ? 'on' : 'off'}` : '', opts.commercial !== undefined ? `Commercial Project bonus ${opts.commercial ? 'on' : 'off'}` : '', opts.commercialAmount !== undefined ? `Commercial bonus ₱${opts.commercialAmount} per crew member (added by hand)` : ''].filter(Boolean).join(', ');
   store.update('jobs', jobId, patch as never, 'update', `Crew pay for ${job.number}: ${label}`);
 }

@@ -59,6 +59,13 @@ function AdjModal({ initial, onClose }: { initial?: PayrollAdjustment; onClose: 
 }
 
 /** The crew bonus of each job: panel bonus, and the Owner's Outside Metro Manila / Commercial Project options. Absent crew reduce the crew size automatically. */
+/** Commercial projects: the Owner types the bonus for each crew member (no automatic bonus). */
+function CommercialAmount({ job, enabled }: { job: import('@/lib/types').Job; enabled: boolean }) {
+  const [v, setV] = useState(String(job.pay_commercial_amount ?? (job.pay_commercial ? jobPaySettings(store.getDB().settings).commercial_bonus : 0) ?? 0)); const cur = job.pay_commercial_amount ?? 0;
+  const save = () => { const n = Number(v || 0); if (n === cur) return; attempt(() => setJobPayOptions(job.id, { commercialAmount: n }), n > 0 ? 'Commercial bonus saved' : 'Commercial bonus cleared'); };
+  return <div className="row" style={{ gap: 4, alignItems: 'center' }}><span className="small muted">₱</span><input type="number" min="0" step="10" style={{ width: 90 }} aria-label={`Commercial bonus for each crew member, ${job.number}`} disabled={!enabled} value={v} onChange={(e) => setV(e.target.value)} onBlur={save} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} /><span className="small muted">each</span></div>;
+}
+
 function JobBonuses() {
   const { db, can } = useAuth();
   const [from, setFrom] = useState(addDays(today(), -45)); const [to, setTo] = useState(today());
@@ -68,16 +75,16 @@ function JobBonuses() {
   const rows = jobs.map((j) => ({ j, b: jobBonus(db, j) }));
   return (
     <Card title="Crew bonus per job order" actions={<div className="row" style={{ gap: 6 }}><input type="date" aria-label="From" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} /><input type="date" aria-label="To" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} /></div>} flush>
-      <div className="small muted" style={{ padding: '10px 14px' }}>Panel bonus = ₱{cfg.panel_bonus} for every complete {cfg.panel_step} additional billable panels per crew member. Crew who are absent are taken out of the crew size automatically. The bonus is final once the work is finished and is added to each present crew member's payroll as an incentive. {owner ? 'Tick the two options for jobs that qualify.' : 'Only the Owner can change the two options.'}</div>
-      <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Job order</th><th className="num">Additional panels</th><th className="num">Crew</th><th className="num">Panel each</th><th>Outside Metro Manila ({money(cfg.outside_mm_bonus)})</th><th>Commercial ({money(cfg.commercial_bonus)})</th><th className="num">Each</th><th className="num">Total crew bonus</th></tr></thead>
+      <div className="small muted" style={{ padding: '10px 14px' }}>Panel bonus = ₱{cfg.panel_bonus} for every complete {cfg.panel_step} additional billable panels per crew member, except on <b>commercial projects</b>: they get no automatic bonus, and the Owner types the bonus for each crew member in the Commercial column. Crew who are absent are taken out of the crew size automatically. The bonus is final once the work is finished and is added to each present crew member's payroll as an incentive. {owner ? 'Tick the two options for jobs that qualify.' : 'Only the Owner can change the two options.'}</div>
+      <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Job order</th><th className="num">Additional panels</th><th className="num">Crew</th><th className="num">Panel each</th><th>Outside Metro Manila ({money(cfg.outside_mm_bonus)})</th><th>Commercial (typed by hand)</th><th className="num">Each</th><th className="num">Total crew bonus</th></tr></thead>
         <tbody>{rows.map(({ j, b }) => (
           <tr key={j.id}>
             <td><a href={`#/jobs/${j.id}`}><b>{j.number}</b></a><div className="small muted">{fmtDate(j.start_at.slice(0, 10))} · {db.clients.find((c) => c.id === j.client_id)?.name}{!b.final && ' · not final'}</div></td>
             <td className="num">{b.additional_panels}</td>
             <td className="num">{b.crew}{b.absent.length > 0 && <div className="small muted" title={b.absent.map(name).join(', ')}>{b.absent.length} absent</div>}</td>
-            <td className="num">{money(b.panel_each)}</td>
+            <td className="num">{b.manual ? <span className="small muted" title="Commercial project: no automatic bonus">by hand</span> : money(b.panel_each)}</td>
             <td><label className="check" title={outsideMetroHint(db, j)}><input type="checkbox" disabled={!owner} checked={!!j.pay_outside_mm} onChange={(e) => attempt(() => setJobPayOptions(j.id, { outside: e.target.checked }), e.target.checked ? 'Outside Metro Manila bonus added' : 'Outside Metro Manila bonus removed')} />{outsideMetroHint(db, j)?.replace('Site is in ', '') ?? 'site unknown'}</label></td>
-            <td><label className="check"><input type="checkbox" disabled={!owner} checked={!!j.pay_commercial} onChange={(e) => attempt(() => setJobPayOptions(j.id, { commercial: e.target.checked }), e.target.checked ? 'Commercial Project bonus added' : 'Commercial Project bonus removed')} />{isCommercialClient(db, j) ? 'commercial client' : 'yes'}</label></td>
+            <td>{isCommercialClient(db, j) ? <CommercialAmount job={j} enabled={owner} /> : <span className="small muted">—</span>}</td>
             <td className="num">{money(b.each)}</td><td className="num"><b>{money(b.total)}</b></td>
           </tr>))}
           {!rows.length && <tr><td colSpan={8} className="muted">No job orders in this range.</td></tr>}</tbody>
@@ -102,7 +109,6 @@ function JobPaySettings() {
           {num('panel_bonus', 'Panel bonus (₱)', 'Paid per crew member for every complete step of additional panels.')}
           {num('panel_step', 'Additional panels per crew member for one bonus', 'Default 10: bonus = floor(additional panels ÷ (crew × 10)) × the bonus.')}
           {num('outside_mm_bonus', 'Outside Metro Manila bonus (₱ per crew member)', 'Added to a job when the Owner switches it on for that job.')}
-          {num('commercial_bonus', 'Commercial Project bonus (₱ per crew member)', 'Added to a job when the Owner switches it on for that job.')}
         </div>
         <div className="small muted">Example with 3 crew: {[30, 59, 60, 90].map((n) => `${n} additional panels → ${money(panelBonusPerCrew(n, 3, v.panel_step, v.panel_bonus))} each`).join(' · ')}.</div>
         <div className="row" style={{ gap: 8 }}><button className="btn primary" disabled={!edit || !dirty} onClick={save}>Save</button>{!edit && <span className="small muted">Only the Owner can change these.</span>}</div>
