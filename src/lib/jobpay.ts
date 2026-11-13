@@ -1,5 +1,5 @@
-// Pay per job order. An employee on "per job order" pay earns a set amount for every job order they attended (late or not). Every assigned crew
-// member also earns the job's bonuses: the panel bonus (from the additional billable glass panels and the crew size), and the Owner's
+// Pay per job order. An employee on "per job order" pay earns a set amount for every job order they attended (late or not). Every crew member
+// who is present (the crew size reduces automatically when someone is absent) also earns the job's bonuses: the panel bonus (from the additional billable glass panels and the crew size), and the Owner's
 // "Outside Metro Manila" and "Commercial Project" bonuses when switched on for the job. Pure functions over the data, so payroll, the Job Order
 // screen and the employee record all show the same numbers.
 import { packagePanels, panelBreakdown } from './business';
@@ -18,21 +18,32 @@ export function panelBonusPerCrew(additionalPanels: number, crewCount: number, s
 export const jobCrewIds = (j: Pick<Job, 'leader_id' | 'crew_ids'>): string[] => [...new Set([...(j.leader_id ? [j.leader_id] : []), ...(j.crew_ids ?? [])])];
 
 export interface JobBonus {
-  crew: number; additional_panels: number; step: number;
+  /** crew who count for this job: assigned, minus anyone marked absent (so the crew size reduces automatically) */
+  crew: number; absent: string[]; additional_panels: number; step: number;
   panel_each: number; outside_each: number; commercial_each: number; each: number; total: number;
   /** the panel count is final once the work is finished (so payroll pays the bonus only then) */
   final: boolean; ids: string[];
 }
+/** Assigned crew who were absent on this job: marked absent at check-in, or absent / on leave in attendance on a day of the job. */
+export function jobAbsentIds(db: DB, job: Job): string[] {
+  const wf = (db.workflows ?? []).find((w) => w.job_id === job.id && !w.deleted_at);
+  const from = job.start_at.slice(0, 10), to = job.end_at.slice(0, 10) >= job.start_at.slice(0, 10) ? job.end_at.slice(0, 10) : from;
+  const marked = new Set((wf?.arr_crew_absent ?? []).map((a) => a.id));
+  return jobCrewIds(job).filter((id) => marked.has(id) || (db.attendance ?? []).some((a) => a.employee_id === id && !a.deleted_at && a.date >= from && a.date <= to && ['Absent', 'Leave'].includes(a.kind) && !a.clock_in));
+}
+/** The crew who count for the job's bonus: assigned crew who are not absent. */
+export function jobAttendees(db: DB, job: Job): string[] { const out = new Set(jobAbsentIds(db, job)); return jobCrewIds(job).filter((id) => !out.has(id)); }
+
 export function jobBonus(db: DB, job: Job): JobBonus {
   const cfg = jobPaySettings(db.settings);
   const wf = (db.workflows ?? []).find((w) => w.job_id === job.id && !w.deleted_at);
   const q = (db.quotations ?? []).find((x) => x.id === (wf?.conf_quotation_id ?? job.quotation_id));
   const additional = wf ? panelBreakdown(db, q, wf.panels, packagePanels(db, job, wf)).additional : 0;
-  const ids = jobCrewIds(job);
+  const ids = jobAttendees(db, job);
   const panel = panelBonusPerCrew(additional, ids.length, cfg.panel_step, cfg.panel_bonus);
   const outside = job.pay_outside_mm ? cfg.outside_mm_bonus : 0; const commercial = job.pay_commercial ? cfg.commercial_bonus : 0;
   const each = panel + outside + commercial;
-  return { crew: ids.length, additional_panels: additional, step: cfg.panel_step, panel_each: panel, outside_each: outside, commercial_each: commercial, each, total: each * ids.length, final: !!wf?.finish_at || job.status === 'Completed', ids };
+  return { crew: ids.length, absent: jobAbsentIds(db, job), additional_panels: additional, step: cfg.panel_step, panel_each: panel, outside_each: outside, commercial_each: commercial, each, total: each * ids.length, final: !!wf?.finish_at || job.status === 'Completed', ids };
 }
 
 /** Why this site is suggested for the Outside Metro Manila bonus, or why not (the Owner decides). */

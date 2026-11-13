@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
-import { jobPaySettings, panelBonusPerCrew } from '@/lib/jobpay';
+import { isCommercialClient, jobBonus, jobPaySettings, outsideMetroHint, panelBonusPerCrew } from '@/lib/jobpay';
+import { setJobPayOptions } from '@/lib/joborders';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { createPeriod, saveAdjustment } from '@/lib/actions';
@@ -55,6 +56,35 @@ function AdjModal({ initial, onClose }: { initial?: PayrollAdjustment; onClose: 
   );
 }
 
+/** The crew bonus of each job: panel bonus, and the Owner's Outside Metro Manila / Commercial Project options. Absent crew reduce the crew size automatically. */
+function JobBonuses() {
+  const { db, can } = useAuth();
+  const [from, setFrom] = useState(addDays(today(), -45)); const [to, setTo] = useState(today());
+  const owner = can('payroll.approve'); const cfg = jobPaySettings(db.settings);
+  const jobs = live(db.jobs).filter((j) => !['Cancelled', 'Rescheduled', 'Pending'].includes(j.status) && j.start_at.slice(0, 10) >= from && j.start_at.slice(0, 10) <= to && (j.leader_id || j.crew_ids.length)).sort((a, b) => b.start_at.localeCompare(a.start_at));
+  const name = (id: string) => db.employees.find((e) => e.id === id)?.full_name ?? '—';
+  const rows = jobs.map((j) => ({ j, b: jobBonus(db, j) }));
+  return (
+    <Card title="Crew bonus per job order" actions={<div className="row" style={{ gap: 6 }}><input type="date" aria-label="From" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} /><input type="date" aria-label="To" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} /></div>} flush>
+      <div className="small muted" style={{ padding: '10px 14px' }}>Panel bonus = ₱{cfg.panel_bonus} for every complete {cfg.panel_step} additional billable panels per crew member. Crew who are absent are taken out of the crew size automatically. The bonus is final once the work is finished and is added to each present crew member's payroll as an incentive. {owner ? 'Tick the two options for jobs that qualify.' : 'Only the Owner can change the two options.'}</div>
+      <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Job order</th><th className="num">Additional panels</th><th className="num">Crew</th><th className="num">Panel each</th><th>Outside Metro Manila ({money(cfg.outside_mm_bonus)})</th><th>Commercial ({money(cfg.commercial_bonus)})</th><th className="num">Each</th><th className="num">Total crew bonus</th></tr></thead>
+        <tbody>{rows.map(({ j, b }) => (
+          <tr key={j.id}>
+            <td><a href={`#/jobs/${j.id}`}><b>{j.number}</b></a><div className="small muted">{fmtDate(j.start_at.slice(0, 10))} · {db.clients.find((c) => c.id === j.client_id)?.name}{!b.final && ' · not final'}</div></td>
+            <td className="num">{b.additional_panels}</td>
+            <td className="num">{b.crew}{b.absent.length > 0 && <div className="small muted" title={b.absent.map(name).join(', ')}>{b.absent.length} absent</div>}</td>
+            <td className="num">{money(b.panel_each)}</td>
+            <td><label className="check" title={outsideMetroHint(db, j)}><input type="checkbox" disabled={!owner} checked={!!j.pay_outside_mm} onChange={(e) => attempt(() => setJobPayOptions(j.id, { outside: e.target.checked }), e.target.checked ? 'Outside Metro Manila bonus added' : 'Outside Metro Manila bonus removed')} />{outsideMetroHint(db, j)?.replace('Site is in ', '') ?? 'site unknown'}</label></td>
+            <td><label className="check"><input type="checkbox" disabled={!owner} checked={!!j.pay_commercial} onChange={(e) => attempt(() => setJobPayOptions(j.id, { commercial: e.target.checked }), e.target.checked ? 'Commercial Project bonus added' : 'Commercial Project bonus removed')} />{isCommercialClient(db, j) ? 'commercial client' : 'yes'}</label></td>
+            <td className="num">{money(b.each)}</td><td className="num"><b>{money(b.total)}</b></td>
+          </tr>))}
+          {!rows.length && <tr><td colSpan={8} className="muted">No job orders in this range.</td></tr>}</tbody>
+        {rows.length > 0 && <tfoot><tr><th colSpan={7}>Total · {rows.length} job order{rows.length === 1 ? '' : 's'}</th><th className="num">{money(sum(rows, (r) => r.b.total))}</th></tr></tfoot>}
+      </table></div>
+    </Card>
+  );
+}
+
 /** Pay per job order: the bonus amounts. (Each employee's rate per job order is set on the employee.) */
 function JobPaySettings() {
   const { db, can } = useAuth();
@@ -65,7 +95,7 @@ function JobPaySettings() {
   return (
     <Card title="Pay per job order & crew bonuses">
       <div className="stack">
-        <div className="small muted">Employees set to <b>Per job order</b> pay (on their employee record) earn their rate for every job order they attended, late or not; payroll fills it in from approved attendance. Every assigned crew member also earns the bonuses below, separate from their regular pay.</div>
+        <div className="small muted">Employees set to <b>Per job order</b> pay (on their employee record) earn their rate for every job order they attended, late or not; payroll fills it in from approved attendance. Every crew member present on the job also earns the bonuses below, separate from their regular pay (absent crew reduce the crew size automatically).</div>
         <div className="form-grid">
           {num('panel_bonus', 'Panel bonus (₱)', 'Paid per crew member for every complete step of additional panels.')}
           {num('panel_step', 'Additional panels per crew member for one bonus', 'Default 10: bonus = floor(additional panels ÷ (crew × 10)) × the bonus.')}
@@ -82,7 +112,7 @@ function JobPaySettings() {
 export default function Payroll() {
   const { db, can } = useAuth();
   const nav = useNavigate();
-  const [tab, setTab] = useState<'periods' | 'adjust' | 'jobpay'>('periods');
+  const [tab, setTab] = useState<'periods' | 'adjust' | 'bonus' | 'jobpay'>('periods');
   const [show, setShow] = useState(false);
   const [adj, setAdj] = useState<PayrollAdjustment | 'new' | null>(null);
   const periods = live(db.periods).sort((a, b) => b.start.localeCompare(a.start));
@@ -100,7 +130,7 @@ export default function Payroll() {
         <Stat k="Finalized (last 90d)" v={money(sum(periods.filter((p) => p.status === 'Finalized' && p.end >= addDays(today(), -90)), (p) => totals(p).net))} tone="good" />
         <Stat k="Active employees" v={live(db.employees).filter((e) => e.status !== 'inactive').length} />
       </div>
-      <Tabs tabs={[{ id: 'periods', label: 'Payroll periods', count: periods.length }, { id: 'adjust', label: 'Allowances, advances & loans' }, { id: 'jobpay', label: 'Job pay settings' }]} value={tab} onChange={setTab} />
+      <Tabs tabs={[{ id: 'periods', label: 'Payroll periods', count: periods.length }, { id: 'adjust', label: 'Allowances, advances & loans' }, { id: 'bonus', label: 'Job bonuses' }, { id: 'jobpay', label: 'Job pay settings' }]} value={tab} onChange={setTab} />
       {tab === 'periods' && (
         <Card flush><DataTable<PayrollPeriod> rows={periods} rowKey={(p) => p.id} onRow={(p) => nav(`/payroll/${p.id}`)} exportTitle="Payroll periods" initialSort={{ key: 'start', dir: -1 }} cols={[
           { key: 'label', header: 'Period', value: (p) => p.label, render: (p) => <b>{p.locked && <Icon name="lock" size={14} />} {p.label}</b> }, { key: 'type', header: 'Type', value: (p) => p.type },
@@ -118,6 +148,7 @@ export default function Payroll() {
           { key: 'actions', header: '', noExport: true, sortable: false, render: (a) => can('payroll.edit') ? <button className="btn sm" onClick={() => setAdj(a)}>Edit</button> : null },
         ]} /></Card>
       )}
+      {tab === 'bonus' && <JobBonuses />}
       {tab === 'jobpay' && <JobPaySettings />}
       {show && <PeriodModal onClose={() => setShow(false)} />}
       {adj && <AdjModal initial={adj === 'new' ? undefined : adj} onClose={() => setAdj(null)} />}

@@ -44,6 +44,17 @@ describe('job bonus', () => {
     expect(jobBonus(db, on)).toMatchObject({ outside_each: 300, commercial_each: 200, each: 920, total: 2760 });
     expect(jobBonus(db, { ...job, pay_outside_mm: true } as never).each).toBe(720);
   });
+  it('reduces the crew size automatically when someone is absent', () => {
+    const w = world(); const wf = w.db.workflows.find((x) => x.id === 'wx')!; wf.arr_crew_absent = [{ id: w.b.id, reason: 'Sick' }] as never;
+    const b = jobBonus(w.db, w.job as never);               // 90 additional panels, 2 present: floor(90 / 20) = 4 × 140
+    expect(b).toMatchObject({ crew: 2, absent: [w.b.id], panel_each: 560, total: 1120 }); expect(b.ids).toEqual([w.a.id, w.c.id]);
+    const rows = employeeJobPay(w.db, w.a, '2026-03-01', '2026-03-07'); expect(rows[0].panel_bonus).toBe(560);
+    expect(employeeJobPay(w.db, w.b, '2026-03-01', '2026-03-07')).toEqual([]);              // the absent one is not paid
+  });
+  it('also treats an Absent / Leave attendance record on the job day as absent', () => {
+    const w = world(); w.db.attendance = w.db.attendance.map((x) => (x.employee_id === w.c.id ? { ...x, kind: 'Absent', clock_in: undefined, clock_out: undefined } : x)) as never;
+    expect(jobBonus(w.db, w.job as never)).toMatchObject({ crew: 2, absent: [w.c.id], panel_each: 560 });
+  });
   it('is not final until the work is finished', () => { const { db, job } = world({ finished: false }); expect(jobBonus(db, job as never).final).toBe(false); });
 });
 

@@ -3,7 +3,6 @@ import { Link, useParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, Bar, attempt, useObj } from '@/components/ui';
 import { EmployeeForm } from './Employees';
-import { EmployeeJobPay } from '@/components/EmployeeJobPay';
 import { scorecard } from '@/lib/business';
 import { addDays, diffDays, fmtDate, fmtStamp, fmtTime, money, today } from '@/lib/util';
 import type { EmployeeDoc, PerfReview, Training } from '@/lib/types';
@@ -56,7 +55,6 @@ export default function EmployeeDetail() {
               {advances.length > 0 && <><h3 style={{ margin: '14px 0 6px' }}>Cash advances & loans</h3><ul className="list">{advances.map((a) => <li key={a.id}><span>{a.kind}: {a.note}</span><span className="mono">{money(a.balance ?? 0)} left {a.active ? '' : '(paid)'}</span></li>)}</ul></>}
             </Card>
           ) : <Card title="Compensation"><div className="muted">Pay, bank and government ID fields are restricted to Finance and the Owner.</div></Card>}
-          {pay && <div style={{ gridColumn: '1 / -1' }}><EmployeeJobPay emp={e} /></div>}
         </div>
       )}
 
