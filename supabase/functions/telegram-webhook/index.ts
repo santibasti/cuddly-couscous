@@ -4,7 +4,7 @@
 //  • POST from the signed-in Owner / Admin ({action:'status'|'connect'}): checks the bot and points Telegram at this function.
 // Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET (letters, digits, - and _ only). Deploy with --no-verify-jwt.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { decide, extFor, firstName, jobsFor, manilaDay, parseCaption, type Kind, type TgJob } from './logic.ts';
+import { decide, extFor, firstName, jobsFor, manilaDay, ocularsFor, parseCaption, type Kind, type TgJob, type TgOcular } from './logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const safeEq = (a: string, b: string) => { const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b); let d = x.length ^ y.length; for (let i = 0; i < Math.max(x.length, y.length); i++) d |= (x[i] ?? 0) ^ (y[i] ?? 0); return d === 0; };
@@ -44,7 +44,7 @@ async function loadJobs(db: Db, emp: string): Promise<TgJob[]> {
 }
 const label = async (db: Db, j: TgJob) => { const { data } = await db.from('clients').select('name').eq('id', j.client_id).maybeSingle(); return `${j.number} (${data?.name ?? 'client'})`; };
 
-async function saveMedia(db: Db, m: Msg, media: Media, emp: string, job: TgJob | null, parsed: ReturnType<typeof parseCaption>): Promise<'saved' | 'duplicate' | 'toobig'> {
+async function saveMedia(db: Db, m: Msg, media: Media, emp: string, job: TgJob | null, parsed: ReturnType<typeof parseCaption>, ocular: TgOcular | null = null): Promise<'saved' | 'duplicate' | 'toobig'> {
   if ((media.size ?? 0) > MAX_BYTES) return 'toobig';
   const { data: dup } = await db.from('job_photos').select('id').eq('tg_unique_id', media.uniqueId).maybeSingle();
   if (dup) return 'duplicate';
@@ -54,7 +54,8 @@ async function saveMedia(db: Db, m: Msg, media: Media, emp: string, job: TgJob |
   if (!res.ok) throw new Error(`download ${res.status}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
   const id = crypto.randomUUID(); const ext = extFor(media.mime, media.media === 'video' ? 'mp4' : 'jpg');
-  const path = `${job?.id ?? 'unsorted'}/${id}.${ext}`;
+  const folder = job?.id ?? (ocular ? `ocular/${ocular.id}` : 'unsorted');
+  const path = `${folder}/${id}.${ext}`;
   const up = await db.storage.from('job-photos').upload(path, bytes, { contentType: media.mime, upsert: false });
   if (up.error) throw new Error(up.error.message);
   // a small copy for the Photo Library grid (the original stays untouched for creatives)
@@ -62,10 +63,10 @@ async function saveMedia(db: Db, m: Msg, media: Media, emp: string, job: TgJob |
   if (media.thumbId) {
     try {
       const tf = await tg('getFile', { file_id: media.thumbId }); const tr = await fetch(`https://api.telegram.org/file/bot${env('TELEGRAM_BOT_TOKEN')}/${tf.file_path}`);
-      if (tr.ok) { const tp = `${job?.id ?? 'unsorted'}/${id}_t.jpg`; const tu = await db.storage.from('job-photos').upload(tp, new Uint8Array(await tr.arrayBuffer()), { contentType: 'image/jpeg' }); if (!tu.error) thumb = tp; }
+      if (tr.ok) { const tp = `${folder}/${id}_t.jpg`; const tu = await db.storage.from('job-photos').upload(tp, new Uint8Array(await tr.arrayBuffer()), { contentType: 'image/jpeg' }); if (!tu.error) thumb = tp; }
     } catch (e) { console.error(String(e)); }
   }
-  const ins = await db.from('job_photos').insert({ id, job_id: job?.id ?? null, client_id: job?.client_id ?? null, path, thumb_path: thumb, kind: parsed.kind, caption: parsed.caption, tags: ['telegram'], width: media.w ?? null, height: media.h ?? null,
+  const ins = await db.from('job_photos').insert({ id, job_id: job?.id ?? null, ocular_id: ocular?.id ?? null, client_id: job?.client_id ?? ocular?.client_id ?? null, path, thumb_path: thumb, kind: parsed.kind, caption: parsed.caption, tags: ['telegram'], width: media.w ?? null, height: media.h ?? null,
     taken_at: new Date(m.date * 1000).toISOString(), source: 'telegram', sent_by_employee_id: emp, media: media.media, tg_unique_id: media.uniqueId, size_bytes: bytes.length, uploaded_by: null });
   if (ins.error) { await db.storage.from('job-photos').remove(thumb ? [path, thumb] : [path]); if (ins.error.code === '23505') return 'duplicate'; throw new Error(ins.error.message); }
   return 'saved';
@@ -87,7 +88,7 @@ async function onMessage(db: Db, m: Msg) {
     await db.from('telegram_link_codes').update({ used_at: new Date().toISOString() }).eq('code', c.code);
     return void await say(chat, `✅ Linked, ${firstName(e?.full_name ?? '')}! Photos and videos you send here now go to your job automatically.`, reply);
   }
-  if (/^\/(start|help)\b/i.test(text)) return void await say(chat, 'TopMop photo bot.\n• For the best quality (for our posts), send photos as a File: tap the paperclip → File, instead of Photo.\n• /link 123456 — join with the code the office gives you (once).\n• Send photos or videos: they go to your job today. Add the job number (e.g. JOB-2026-0012) and Before / After in the caption to choose.\n• /job JOB-2026-0012 — send the next photos to that job.', reply);
+  if (/^\/(start|help)\b/i.test(text)) return void await say(chat, 'TopMop photo bot.\n• For the best quality (for our posts), send photos as a File: tap the paperclip → File, instead of Photo.\n• /link 123456 — join with the code the office gives you (once).\n• Send photos or videos: they go to your job today. Add the job number (e.g. JOB-2026-0012) and Before / After in the caption to choose.\n• /job JOB-2026-0012 — send the next photos to that job.\n• Ocular visit: put OV-2026-0001 in the caption, or send /ocular OV-2026-0001 first. With no job today, your photos go to your ocular visit of the day.', reply);
 
   const { data: lk } = await db.from('telegram_links').select('employee_id').eq('telegram_user_id', from.id).maybeSingle();
   const media = mediaOf(m);
@@ -110,14 +111,38 @@ async function onMessage(db: Db, m: Msg) {
     await db.from('telegram_context').upsert({ employee_id: emp, job_id: j.id, expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
     return void await say(chat, `OK — your next photos for 30 minutes go to ${await label(db, j as TgJob)}.`, reply);
   }
+  const ovCmd = text.match(/^\/ocular(?:@\w+)?\s+(\S+)/i);
+  if (ovCmd) {
+    const { data: o } = await db.from('ocular_visits').select('id, number, client_id').ilike('number', ovCmd[1]).is('deleted_at', null).maybeSingle();
+    if (!o) return void await say(chat, `I could not find ${ovCmd[1].toUpperCase()}.`, reply);
+    await db.from('telegram_context').upsert({ employee_id: emp, job_id: null, ocular_id: o.id, expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
+    return void await say(chat, `OK — your next photos for 30 minutes go to ocular visit ${o.number}.`, reply);
+  }
   if (!media) return;
 
   const parsed = parseCaption(m.caption);
   let captionJob: TgJob | null = null;
   if (parsed.jobNumber) { const { data } = await db.from('jobs').select('id, number, client_id, start_at, end_at, status, leader_id, crew_ids').ilike('number', parsed.jobNumber).is('deleted_at', null).maybeSingle(); captionJob = (data as TgJob) ?? null; }
-  const { data: ctx } = await db.from('telegram_context').select('job_id, expires_at').eq('employee_id', emp).maybeSingle();
+  const { data: ctx } = await db.from('telegram_context').select('job_id, ocular_id, expires_at').eq('employee_id', emp).maybeSingle();
   let contextJob: TgJob | null = null;
-  if (ctx && new Date(ctx.expires_at).getTime() > Date.now()) { const { data } = await db.from('jobs').select('id, number, client_id, start_at, end_at, status, leader_id, crew_ids').eq('id', ctx.job_id).is('deleted_at', null).maybeSingle(); contextJob = (data as TgJob) ?? null; }
+  if (ctx?.job_id && new Date(ctx.expires_at).getTime() > Date.now()) { const { data } = await db.from('jobs').select('id, number, client_id, start_at, end_at, status, leader_id, crew_ids').eq('id', ctx.job_id).is('deleted_at', null).maybeSingle(); contextJob = (data as TgJob) ?? null; }
+  // an ocular visit: its number in the caption, or /ocular OV-… lately, or (when there is no job today) the visit assigned to this person today
+  const OV = 'id, number, client_id, assignee_id, start_at, status';
+  let ocular: TgOcular | null = null; let ovWhy = '';
+  if (parsed.ocularNumber) { const { data } = await db.from('ocular_visits').select(OV).ilike('number', parsed.ocularNumber).is('deleted_at', null).maybeSingle(); ocular = (data as TgOcular) ?? null; ovWhy = ocular ? '' : `I could not find ${parsed.ocularNumber}`; }
+  else if (!captionJob && !parsed.jobNumber && ctx?.ocular_id && new Date(ctx.expires_at).getTime() > Date.now()) { const { data } = await db.from('ocular_visits').select(OV).eq('id', ctx.ocular_id).is('deleted_at', null).maybeSingle(); ocular = (data as TgOcular) ?? null; }
+  if (!ocular && !ovWhy && !captionJob && !contextJob && !parsed.jobNumber && !jobsFor(await loadJobs(db, emp), emp, Date.now()).length) {
+    const { data } = await db.from('ocular_visits').select(OV).eq('assignee_id', emp).is('deleted_at', null).gte('start_at', manilaDay(Date.now()) + 'T00:00').lte('start_at', manilaDay(Date.now()) + 'T23:59');
+    ocular = ocularsFor((data ?? []) as TgOcular[], emp, Date.now())[0] ?? null;
+  }
+  if (ocular) {
+    let ro: Awaited<ReturnType<typeof saveMedia>>;
+    try { ro = await saveMedia(db, m, media, emp, null, parsed, ocular); } catch (e) { console.error(String(e)); return void await say(chat, '⚠ I could not save that one. Please try again, or upload it in the app.', reply); }
+    if (ro === 'duplicate') return;
+    if (ro === 'toobig') return void await say(chat, '⚠ That file is over 20 MB, which is more than I can fetch from Telegram. Please upload it in the app.', reply);
+    if (m.media_group_id) { const { data: last } = await db.from('telegram_notice').select('at').eq('telegram_user_id', -from.id).maybeSingle(); if (last && Date.now() - new Date(last.at).getTime() < 60_000) return; await db.from('telegram_notice').upsert({ telegram_user_id: -from.id, at: new Date().toISOString() }); }
+    return void await say(chat, `✅ ${media.media === 'video' ? 'Video' : 'Photo'} saved to ocular visit ${ocular.number}.`, reply);
+  }
   const today = captionJob || contextJob ? [] : jobsFor(await loadJobs(db, emp), emp, Date.now());
   const d = decide({ captionJob, captionNumber: parsed.jobNumber, contextJob, today });
 

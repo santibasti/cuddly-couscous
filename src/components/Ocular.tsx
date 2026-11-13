@@ -1,3 +1,4 @@
+import { OcularPhotos } from './OcularPhotos';
 import { OcularReport } from '@/components/OcularReport';
 import { MeasureSection, OcularChecklistForm } from '@/components/OcularRecord';
 import { useMemo, useState } from 'react';
@@ -118,6 +119,7 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
             {v.findings && <div className="small">{v.findings}</div>}
           </div>
         )}
+        {!rec && (manager || mine) && <OcularPhotos visitId={v.id} number={v.number} sender={(id) => db.employees.find((e) => e.id === id)?.full_name ?? 'Office'} />}
         {v.visit_sig && !rec && <div className="alert info" style={{ display: 'grid', gap: 6 }}><span><b>Visit confirmed on site</b> by {v.visit_sig_name}{v.visit_sig_at ? ` · ${fmtDateTime(v.visit_sig_at)}` : ''}</span><img src={v.visit_sig} alt="Contact person signature" style={{ background: '#fff', borderRadius: 6, maxWidth: 240, border: '1px solid var(--line)' }} /></div>}
         {(v.status === 'Completed' || v.status === 'Converted to Quotation') && !rec && <OcularReport visit={v} />}
         {v.quotation_id && <div className="alert info">Converted to quotation <Link to={`/sales/quote/${v.quotation_id}`}>{db.quotations.find((q) => q.id === v.quotation_id)?.number}</Link> · {db.quotations.find((q) => q.id === v.quotation_id)?.status}</div>}
