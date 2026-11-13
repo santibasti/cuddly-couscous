@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { isCommercialClient, jobBonus, jobPaySettings, outsideMetroHint, panelBonusPerCrew } from '@/lib/jobpay';
 import { setJobPayOptions } from '@/lib/joborders';
-import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj } from '@/components/ui';
+import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, ask, attempt, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { PayrollWho } from '@/components/PayrollWho';
-import { createPeriod, deletePeriod, saveAdjustment } from '@/lib/actions';
+import { createPeriod, deletePeriod, reversePayroll, saveAdjustment } from '@/lib/actions';
 import { addDays, dow, fmtDate, monthEnd, monthStart, money, sum, today } from '@/lib/util';
 import type { PayrollAdjustment, PayrollPeriod, PayrollType } from '@/lib/types';
 
@@ -140,7 +140,7 @@ export default function Payroll() {
           { key: 'start', header: 'Dates', value: (p) => p.start, render: (p) => `${fmtDate(p.start)} – ${fmtDate(p.end)}` }, { key: 'n', header: 'Employees', num: true, value: (p) => totals(p).n },
           { key: 'gross', header: 'Gross', num: true, type: 'money', value: (p) => totals(p).gross, render: (p) => money(totals(p).gross) }, { key: 'net', header: 'Net pay', num: true, type: 'money', value: (p) => totals(p).net, render: (p) => money(totals(p).net) },
           { key: 'st', header: 'Status', value: (p) => p.status, render: (p) => <Badge>{p.status}</Badge> },
-          { key: 'del', header: '', noExport: true, sortable: false, render: (p) => (p.status === 'Draft' && can('payroll.edit')) || (p.status === 'For Approval' && can('payroll.approve')) ? <button className="btn sm danger" onClick={(e) => { e.stopPropagation(); if (confirm(`Delete the payroll period "${p.label}"?${totals(p).n ? ` Its calculated payroll for ${totals(p).n} employee(s) is removed too.` : ''}`)) attempt(() => deletePeriod(p.id), 'Payroll period deleted'); }}><Icon name="trash" size={14} />Delete</button> : null },
+          { key: 'del', header: '', noExport: true, sortable: false, render: (p) => (p.status === 'Draft' && can('payroll.edit')) || (p.status === 'For Approval' && can('payroll.approve')) ? <button className="btn sm danger" onClick={(e) => { e.stopPropagation(); if (confirm(`Delete the payroll period "${p.label}"?${totals(p).n ? ` Its calculated payroll for ${totals(p).n} employee(s) is removed too.` : ''}`)) attempt(() => deletePeriod(p.id), 'Payroll period deleted'); }}><Icon name="trash" size={14} />Delete</button> : p.status === 'Approved' && can('payroll.approve') ? <button className="btn sm" onClick={async (e) => { e.stopPropagation(); const r = await ask('Reverse this payroll', 'Why is it being reversed? Its expense is reversed and the period goes back to a draft, so it can be corrected or deleted.'); if (r) attempt(() => reversePayroll(p.id, r), 'Payroll reversed — it is a draft again'); }}>Reverse</button> : null },
         ]} /></Card>
       )}
       {tab === 'adjust' && (

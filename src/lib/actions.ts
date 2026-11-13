@@ -824,6 +824,21 @@ export function returnPayroll(periodId: string, note: string) {
   store.require('payroll.approve');
   store.update('periods', periodId, { status: 'Draft' }, 'update', `Returned payroll to draft: ${note}`);
 }
+/**
+ * Reverse an approved payroll: its expense is reversed and the period goes back to a draft, so it can be corrected or deleted.
+ * A finalized payroll has been paid and is locked, so it cannot be reversed here.
+ */
+export function reversePayroll(periodId: string, reason: string) {
+  store.require('payroll.approve');
+  const per = db().periods.find((x) => x.id === periodId && !x.deleted_at) ?? fail('Payroll period not found.');
+  if (per.status === 'Finalized' || per.locked) fail('A finalized payroll has been paid and is locked, so it cannot be reversed here.');
+  if (per.status !== 'Approved') fail('Only an approved payroll can be reversed.');
+  const why = reason.trim(); if (why.length < 3) fail('Give a reason for reversing the payroll.');
+  const exp = per.expense_id ? db().expenses.find((e) => e.id === per.expense_id) : undefined;
+  if (exp?.paid) fail('This payroll has already been paid, so it cannot be reversed.');
+  if (exp && !exp.reversed) store.update('expenses', exp.id, { reversed: true, notes: `${exp.notes ?? ''} [Reversed: ${why}]`.trim() } as never, 'reverse', `Reversed payroll expense ${exp.payee}: ${why}`);
+  store.update('periods', periodId, { status: 'Draft', approved_by: null, approved_at: null, expense_id: null, submitted_by: null } as never, 'reverse', `Reversed payroll ${per.label}: ${why}`);
+}
 /** Delete a payroll period that has not been approved yet (a draft, or one waiting for approval). Approved and finalized payrolls have posted an expense and stay. */
 export function deletePeriod(periodId: string) {
   const per = db().periods.find((x) => x.id === periodId && !x.deleted_at) ?? fail('Payroll period not found.');

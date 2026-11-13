@@ -214,3 +214,31 @@ describe('weekly payroll table', () => {
     expect(store.getDB().periods.some((p) => !p.deleted_at && p.start === mon)).toBe(false);
   });
 });
+
+describe('reverse an approved payroll', () => {
+  it('reverses the expense, returns the period to a draft, and then it can be deleted; finalized ones cannot', async () => {
+    const A = await import('./actions'); const { store } = await import('./store');
+    await store.login('owner@topmop.ph', 'topmop123');
+    const emp = store.getDB().employees.find((e) => !e.deleted_at && e.status !== 'inactive' && e.pay_basis === 'daily')!;
+    store.update('employees', emp.id, { hire_date: '2020-01-01', rest_day: 1 } as never);
+    const day = '2033-03-02';
+    store.insert('attendance', { employee_id: emp.id, date: day, kind: 'Present', clock_in: `${day}T08:00`, clock_out: `${day}T17:00`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 8, approval: 'Approved' } as never);
+    const per = A.createPeriod({ label: 'reverse test', start: day, end: day, type: emp.payroll_type }) as { id: string };
+    A.generateRun(per.id); A.submitPayroll(per.id); A.approvePayroll(per.id);
+    const d1 = store.getDB(); const approved = d1.periods.find((p) => p.id === per.id)!; const expId = approved.expense_id!;
+    expect(approved.status).toBe('Approved'); expect(d1.expenses.find((e) => e.id === expId)?.reversed).toBeFalsy();
+    expect(() => A.deletePeriod(per.id)).toThrow(/approved/);                       // an approved payroll cannot be deleted directly
+    expect(() => A.reversePayroll(per.id, ' ')).toThrow(/reason/);
+    A.reversePayroll(per.id, 'Wrong week');
+    const d2 = store.getDB(); const back = d2.periods.find((p) => p.id === per.id)!;
+    expect(back.status).toBe('Draft'); expect(back.expense_id ?? null).toBeNull(); expect(d2.expenses.find((e) => e.id === expId)?.reversed).toBe(true);
+    expect(() => A.reversePayroll(per.id, 'again')).toThrow(/approved/);            // only an approved payroll can be reversed
+    A.deletePeriod(per.id);
+    expect(store.getDB().periods.find((p) => p.id === per.id)?.deleted_at).toBeTruthy();
+    // a finalized payroll is locked
+    const day2 = '2033-03-03'; store.insert('attendance', { employee_id: emp.id, date: day2, kind: 'Present', clock_in: `${day2}T08:00`, clock_out: `${day2}T17:00`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 8, approval: 'Approved' } as never);
+    const p2 = A.createPeriod({ label: 'final test', start: day2, end: day2, type: emp.payroll_type }) as { id: string };
+    A.generateRun(p2.id); A.submitPayroll(p2.id); A.approvePayroll(p2.id); A.finalizePayroll(p2.id);
+    expect(() => A.reversePayroll(p2.id, 'oops')).toThrow(/finalized/); expect(() => A.deletePeriod(p2.id)).toThrow(/finalized/);
+  });
+});

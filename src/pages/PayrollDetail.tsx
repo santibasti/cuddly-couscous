@@ -4,7 +4,7 @@ import { store, useAuth } from '@/lib/store';
 import { Badge, Card, Icon, PageHead, Stat, attempt, ask } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { PayrollWho } from '@/components/PayrollWho';
-import { approvePayroll, deletePeriod, finalizePayroll, generateRun, returnPayroll, submitPayroll } from '@/lib/actions';
+import { approvePayroll, deletePeriod, finalizePayroll, generateRun, returnPayroll, reversePayroll, submitPayroll } from '@/lib/actions';
 import { buildPayrollLines } from '@/lib/business';
 import { payslipsPdf } from '@/lib/export';
 import { weeklyGrid, type WeekRow } from '@/lib/payrollweek';
@@ -47,6 +47,7 @@ export default function PayrollDetail() {
         {per.status === 'Draft' && can('payroll.edit') && run && <button className="btn primary" onClick={() => attempt(() => submitPayroll(per.id), 'Submitted for approval')}>Submit for approval</button>}
         {per.status === 'For Approval' && can('payroll.approve') && <><button className="btn" onClick={async () => { const n = await ask('Return payroll to draft', 'What needs to change?'); if (n) attempt(() => returnPayroll(per.id, n), 'Returned to draft'); }}>Return</button><button className="btn primary" onClick={() => attempt(() => approvePayroll(per.id), 'Payroll approved — expense posted')}>Approve</button></>}
         {per.status === 'Approved' && can('payroll.approve') && <button className="btn primary" onClick={async () => { const c = await ask('Finalize & lock payroll', 'Type FINALIZE to confirm — this locks the period permanently', { okLabel: 'Finalize' }); if (c === 'FINALIZE') attempt(() => finalizePayroll(per.id), 'Payroll finalized and locked'); else if (c) attempt(() => { throw new Error('Confirmation text did not match.'); }); }}><Icon name="lock" />Finalize & lock</button>}
+      {per.status === 'Approved' && can('payroll.approve') && <button className="btn" onClick={async () => { const r = await ask('Reverse this payroll', 'Why is it being reversed? Its expense is reversed and the period goes back to a draft.'); if (r) attempt(() => reversePayroll(per.id, r), 'Payroll reversed — it is a draft again'); }}>Reverse payroll</button>}
       {((per.status === 'Draft' && can('payroll.edit')) || (per.status === 'For Approval' && can('payroll.approve'))) && <button className="btn danger" onClick={() => { if (confirm(`Delete the payroll period "${per.label}"? Its calculated payroll is removed too.`) && attempt(() => deletePeriod(per.id), 'Payroll period deleted')) nav('/payroll'); }}><Icon name="trash" size={14} />Delete</button>}
       </PageHead>
 
