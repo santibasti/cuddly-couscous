@@ -1,3 +1,4 @@
+import { getGeo } from '@/lib/geo';
 import { OcularPhotos } from './OcularPhotos';
 import { OcularReport } from '@/components/OcularReport';
 import { MeasureSection, OcularChecklistForm } from '@/components/OcularRecord';
@@ -10,7 +11,7 @@ import { useDraft } from '@/lib/useDraft';
 import { confirmLeave } from '@/lib/sync';
 import { OCULAR_STATUSES, isOcularActive, ocularConflicts, ocularEnd, ocularStats, panelTotals } from '@/lib/business';
 import { PANEL_AREAS, PANEL_SIDES } from '@/lib/workflow';
-import { OCULAR_CHECKLIST, checklistConcerns, cancelOcularVisit, completeOcularVisit, confirmOcularVisit, createQuotationFromOcular, scheduleOcularVisit, updateOcularVisit, type OcularForm } from '@/lib/ocular';
+import { OCULAR_CHECKLIST, checklistConcerns, cancelOcularVisit, arriveAtOcularSite, completeOcularVisit, confirmOcularVisit, createQuotationFromOcular, scheduleOcularVisit, updateOcularVisit, type OcularForm } from '@/lib/ocular';
 import { addDays, fmtDate, fmtDateTime, fmtTime, today, uid } from '@/lib/util';
 import type { Measurement, OcularCheck, OcularVisit, PanelRow, ServiceCode } from '@/lib/types';
 
@@ -107,6 +108,7 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
           <dt>Service</dt><dd>{svcNames(db, v.service_codes)}</dd>
           <dt>When</dt><dd>{fmtDateTime(v.start_at)} – {fmtTime(ocularEnd(v))} ({v.duration_min} min)</dd>
           <dt>Assigned to</dt><dd>{who?.full_name ?? '—'}</dd>
+          <dt>Arrival</dt><dd>{v.arrived_at ? <>Arrived at the site {fmtDateTime(v.arrived_at)}{v.arr_lat !== undefined && <> · <a target="_blank" rel="noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${v.arr_lat},${v.arr_lng}`}>GPS ↗</a></>}</> : <span className="muted">Not arrived yet — the inspector confirms on arrival before the visit can start</span>}</dd>
           <dt>Client concerns</dt><dd>{v.concerns || '—'}</dd><dt>Access notes</dt><dd>{v.access_notes || '—'}</dd>
           {v.cancel_reason && <><dt>Cancelled because</dt><dd>{v.cancel_reason}</dd></>}
         </dl>
@@ -165,7 +167,8 @@ export function OcularDetailModal({ visit, onClose }: { visit: OcularVisit; onCl
           <div className="row">
             {manager && v.status === 'Scheduled' && <button className="btn" onClick={() => attempt(() => confirmOcularVisit(v.id), 'Confirmed with the client')}>Confirm with client</button>}
             {manager && isOcularActive(v) && <button className="btn" onClick={() => setEdit(true)}>Reschedule / edit</button>}
-            {(isOcularActive(v) || v.status === 'Completed') && !v.client_sig && v.start_at.slice(0, 10) <= today() && <button className="btn primary" onClick={() => setRec(true)}>{v.status === 'Completed' ? 'Update findings' : 'Complete visit'}</button>}
+            {isOcularActive(v) && !v.arrived_at && v.start_at.slice(0, 10) <= today() && <button className="btn primary lg" onClick={async () => { const g = await getGeo(); attempt(() => arriveAtOcularSite(v.id, g), g.lat === undefined ? 'Arrival confirmed (no GPS position from the phone)' : 'Arrival confirmed — you can start the visit'); }}>I have arrived at the site</button>}
+            {(v.arrived_at || v.status === 'Completed') && !v.client_sig && v.start_at.slice(0, 10) <= today() && <button className="btn primary" onClick={() => setRec(true)}>{v.status === 'Completed' ? 'Update findings' : 'Complete visit'}</button>}
             {v.status === 'Completed' && <button className="btn primary" onClick={toQuote}>Create quotation from this visit</button>}
             {manager && isOcularActive(v) && <button className="btn danger" onClick={async () => { const r = await ask('Cancel ocular visit', 'Reason for cancelling'); if (r) attempt(() => cancelOcularVisit(v.id, r), 'Ocular visit cancelled'); }}>Cancel visit</button>}
           </div>

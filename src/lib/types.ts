@@ -608,6 +608,8 @@ export interface OcularVisit extends Base, GeoFields {
   panels: PanelRow[]; measurements: Measurement[]; findings: string;
   checklist?: OcularCheck[];             // site checklist answers (see OCULAR_CHECKLIST)
   completed_at?: string; completed_by?: string; cancel_reason?: string;
+  /** the inspector confirmed on the day that they are at the site (with their GPS position when the phone gave it): the visit cannot be started before this */
+  arrived_at?: string; arrived_by?: string; arr_lat?: number; arr_lng?: number;
   quotation_id?: string; converted_at?: string;
   // ocular report: what the estimator recommends, and the client's signed acknowledgement of the findings
   report_surface?: string; report_hazards?: string; report_recommendation?: string; report_services?: ServiceCode[]; report_days?: number; report_crew?: string; report_at?: string;

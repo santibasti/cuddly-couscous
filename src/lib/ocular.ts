@@ -91,6 +91,17 @@ export function reopenOcularReport(id: string, reason: string) {
   if (!v.client_sig) fail('The report is not signed.'); if (!reason.trim()) fail('Give a reason for reopening the report.');
   return store.update('ocular_visits', id, { client_sig: undefined, client_sig_name: undefined, client_sig_at: undefined, assessor_sig: undefined, assessor_sig_at: undefined } as never, 'update', `Ocular report ${v.number} reopened: ${reason.trim()}`);
 }
+/** The inspector confirms they have arrived at the site; recording the visit starts only after this. The assigned estimator or Admin / Operations can do it, on the day of the visit. */
+export function arriveAtOcularSite(id: string, g: { lat?: number; lng?: number } = {}) {
+  const v = vOf(id);
+  if (!canWork(v)) fail('Only the assigned Team Leader / estimator or Admin / Operations can confirm the arrival.');
+  if (!['Scheduled', 'Confirmed'].includes(v.status)) fail(`A ${v.status.toLowerCase()} visit cannot be started.`);
+  if (v.arrived_at) fail('The arrival was already confirmed.');
+  if (v.start_at.slice(0, 10) > today()) fail('The visit has not happened yet.');
+  const r = store.update('ocular_visits', id, { arrived_at: nowLocal(), arrived_by: me() ?? store.user?.id, ...(g.lat !== undefined && g.lng !== undefined ? { arr_lat: g.lat, arr_lng: g.lng } : {}) } as never, 'update', `Inspector arrived at the site for ocular visit ${v.number}`);
+  runAutomations();
+  return r;
+}
 export interface OcularResult { panels: PanelRow[]; measurements: Measurement[]; findings: string; checklist?: OcularCheck[]; visit_sig?: string; visit_sig_name?: string }
 
 /** Standard site checklist. `bad` = the answer that is a concern for the quotation (shown as a flag): "no" for good-to-have items, "yes" for problems. */
@@ -131,6 +142,7 @@ export function completeOcularVisit(id: string, r: OcularResult) {
   if (v.status === 'Converted to Quotation') fail('A quotation was already created from this visit.');
   if (!['Scheduled', 'Confirmed', 'Completed'].includes(v.status)) fail(`A ${v.status.toLowerCase()} visit cannot be completed.`);
   if (v.start_at.slice(0, 10) > today()) fail('The visit has not happened yet.');
+  if (!v.arrived_at && v.status !== 'Completed') fail('Confirm that the inspector has arrived at the site before starting the visit.');
   const glass = v.service_codes.some((c) => c === 'GLASS_EXT' || c === 'GLASS_INT');
   if (glass && !r.panels.length && !r.measurements.length) fail('Record the glass panel count (floor, side, external, internal) or a measurement.');
   if (!glass && !r.measurements.length && !r.findings.trim()) fail('Record at least one measurement or a note.');

@@ -1051,6 +1051,11 @@ describe('Ocular visits', () => {
     await as('field@topmop.ph');
     expect(() => O.completeOcularVisit(v.id, { panels, measurements: meas, findings: '' })).toThrow(/assigned/);
     await as('leader@topmop.ph');
+    expect(() => O.completeOcularVisit(v.id, { panels, measurements: meas, findings: '' })).toThrow(/arrived at the site/);
+    expect(() => O.arriveAtOcularSite(future.id)).toThrow(/not happened yet/);
+    O.arriveAtOcularSite(v.id, { lat: 14.55, lng: 121.02 });
+    expect(db().ocular_visits.find((x) => x.id === v.id)).toMatchObject({ arr_lat: 14.55, arr_lng: 121.02 }); expect(db().ocular_visits.find((x) => x.id === v.id)!.arrived_at).toBeTruthy();
+    expect(() => O.arriveAtOcularSite(v.id)).toThrow(/already confirmed/);
     expect(() => O.completeOcularVisit(v.id, { panels: [], measurements: [], findings: 'x' })).toThrow(/glass panel count/);
     expect(() => O.completeOcularVisit(v.id, { panels, measurements: [{ id: 'm', label: '', qty: 0, unit: '' }], findings: '' })).toThrow(/label/);
     expect(() => O.completeOcularVisit(v.id, { panels, measurements: meas, findings: 'Hard-water stains upstairs' })).toThrow(/contact person to sign/);
