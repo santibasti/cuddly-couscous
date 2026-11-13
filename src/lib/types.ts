@@ -193,6 +193,8 @@ export interface Job extends Base {
   number: string;
   /** prices on the client's Job Order: unset = automatic (hidden after an ocular visit, rates only otherwise); 'show' = the approved quotation's amounts; 'hide' = no prices */
   jo_prices?: 'show' | 'hide';
+  /** Owner's choice for this job's crew pay: add the Outside Metro Manila bonus / the Commercial Project bonus to every crew member */
+  pay_outside_mm?: boolean; pay_commercial?: boolean;
   /** each assigned person's answer to "can you make it?" (asked from 7 PM the evening before): employee id → answer for this schedule */
   /** Stage 8: after the service Admin enters every job expense (gas, toll, meals, purchases) and closes the job internally */
   /** planned spend on gas, toll, meals and other job expenses (compared with the actual in Stage 8) */
@@ -250,7 +252,10 @@ export interface Employee extends Base {
   tier: EmployeeTier;
   department: 'Field Operations' | 'Operations' | 'Finance & Admin' | 'Management';
   branch_id: string;
-  pay_basis: 'daily' | 'monthly';
+  /** 'per_job' = paid a set amount for every job order they attended (late or not), see job_rate */
+  pay_basis: 'daily' | 'monthly' | 'per_job';
+  /** pay for each job order attended, when pay_basis is 'per_job' */
+  job_rate?: number;
   daily_rate: number;
   monthly_salary: number;
   payroll_type: PayrollType;
@@ -366,7 +371,11 @@ export interface PayrollLine {
   net: number;
   adjustment_ids: string[];
   direct_labor_by_job: Record<string, number>;
+  /** per job order worked in the period: the job pay and the bonuses recorded under this employee */
+  job_pay?: JobPayRow[];
 }
+/** One job order worked by one employee: what it paid and which bonuses came with it. */
+export interface JobPayRow { job_id: string; number: string; date: string; client?: string; rate: number; panel_bonus: number; outside_bonus: number; commercial_bonus: number; total: number; final: boolean }
 export interface PayrollRun extends Base { period_id: string; lines: PayrollLine[] }
 
 /* ---------- Inventory ---------- */
@@ -950,6 +959,8 @@ export interface Settings {
   bir?: { sls_class?: Record<string, 'vatable' | 'zero' | 'exempt'>; sls_skip?: string[]; slp_skip?: string[]; rdo?: string; fiscal_month?: number };
   marketing?: { mode: 'off' | 'approve' | 'auto'; per_week: number; days: number[]; time: string; topics: string[]; voice: string; tone?: string; website?: string; brief?: string; email?: string; phone?: string; facebook?: string };
   client_sms?: { enabled: boolean; day_before_time: string; morning_time: string };
+  /** pay per job order and its bonuses (defaults apply when missing) */
+  job_pay?: { panel_bonus: number; panel_step: number; outside_mm_bonus: number; commercial_bonus: number };
   reminder_days: { quote_expiry: number; doc_expiry: number; chemical_expiry: number; invoice_due: number; maintenance: number };
   glass_group_size: number;
   access: Record<Role, string[]>; // permission overrides (editable by owner)

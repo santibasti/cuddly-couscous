@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth, live } from '@/lib/store';
+import { store, useAuth, live } from '@/lib/store';
+import { jobPaySettings, panelBonusPerCrew } from '@/lib/jobpay';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, attempt, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { createPeriod, saveAdjustment } from '@/lib/actions';
@@ -54,10 +55,34 @@ function AdjModal({ initial, onClose }: { initial?: PayrollAdjustment; onClose: 
   );
 }
 
+/** Pay per job order: the bonus amounts. (Each employee's rate per job order is set on the employee.) */
+function JobPaySettings() {
+  const { db, can } = useAuth();
+  const cur = jobPaySettings(db.settings);
+  const [v, setV] = useState(cur); const dirty = JSON.stringify(v) !== JSON.stringify(cur); const edit = can('payroll.approve');
+  const num = (k: keyof typeof v, label: string, hint?: string) => <Field label={label} hint={hint}><input type="number" min="0" disabled={!edit} value={v[k]} onChange={(e) => setV({ ...v, [k]: Math.max(0, +e.target.value || 0) })} /></Field>;
+  const save = () => attempt(() => { store.require('payroll.approve'); if (!(v.panel_step > 0)) throw new Error('Panels per bonus step must be more than 0.'); store.patchSettings({ job_pay: v }, 'Job pay settings updated'); }, 'Saved');
+  return (
+    <Card title="Pay per job order & crew bonuses">
+      <div className="stack">
+        <div className="small muted">Employees set to <b>Per job order</b> pay (on their employee record) earn their rate for every job order they attended, late or not; payroll fills it in from approved attendance. Every assigned crew member also earns the bonuses below, separate from their regular pay.</div>
+        <div className="form-grid">
+          {num('panel_bonus', 'Panel bonus (₱)', 'Paid per crew member for every complete step of additional panels.')}
+          {num('panel_step', 'Additional panels per crew member for one bonus', 'Default 10: bonus = floor(additional panels ÷ (crew × 10)) × the bonus.')}
+          {num('outside_mm_bonus', 'Outside Metro Manila bonus (₱ per crew member)', 'Added to a job when the Owner switches it on for that job.')}
+          {num('commercial_bonus', 'Commercial Project bonus (₱ per crew member)', 'Added to a job when the Owner switches it on for that job.')}
+        </div>
+        <div className="small muted">Example with 3 crew: {[30, 59, 60, 90].map((n) => `${n} additional panels → ${money(panelBonusPerCrew(n, 3, v.panel_step, v.panel_bonus))} each`).join(' · ')}.</div>
+        <div className="row" style={{ gap: 8 }}><button className="btn primary" disabled={!edit || !dirty} onClick={save}>Save</button>{!edit && <span className="small muted">Only the Owner can change these.</span>}</div>
+      </div>
+    </Card>
+  );
+}
+
 export default function Payroll() {
   const { db, can } = useAuth();
   const nav = useNavigate();
-  const [tab, setTab] = useState<'periods' | 'adjust'>('periods');
+  const [tab, setTab] = useState<'periods' | 'adjust' | 'jobpay'>('periods');
   const [show, setShow] = useState(false);
   const [adj, setAdj] = useState<PayrollAdjustment | 'new' | null>(null);
   const periods = live(db.periods).sort((a, b) => b.start.localeCompare(a.start));
@@ -75,7 +100,7 @@ export default function Payroll() {
         <Stat k="Finalized (last 90d)" v={money(sum(periods.filter((p) => p.status === 'Finalized' && p.end >= addDays(today(), -90)), (p) => totals(p).net))} tone="good" />
         <Stat k="Active employees" v={live(db.employees).filter((e) => e.status !== 'inactive').length} />
       </div>
-      <Tabs tabs={[{ id: 'periods', label: 'Payroll periods', count: periods.length }, { id: 'adjust', label: 'Allowances, advances & loans' }]} value={tab} onChange={setTab} />
+      <Tabs tabs={[{ id: 'periods', label: 'Payroll periods', count: periods.length }, { id: 'adjust', label: 'Allowances, advances & loans' }, { id: 'jobpay', label: 'Job pay settings' }]} value={tab} onChange={setTab} />
       {tab === 'periods' && (
         <Card flush><DataTable<PayrollPeriod> rows={periods} rowKey={(p) => p.id} onRow={(p) => nav(`/payroll/${p.id}`)} exportTitle="Payroll periods" initialSort={{ key: 'start', dir: -1 }} cols={[
           { key: 'label', header: 'Period', value: (p) => p.label, render: (p) => <b>{p.locked && <Icon name="lock" size={14} />} {p.label}</b> }, { key: 'type', header: 'Type', value: (p) => p.type },
@@ -93,6 +118,7 @@ export default function Payroll() {
           { key: 'actions', header: '', noExport: true, sortable: false, render: (a) => can('payroll.edit') ? <button className="btn sm" onClick={() => setAdj(a)}>Edit</button> : null },
         ]} /></Card>
       )}
+      {tab === 'jobpay' && <JobPaySettings />}
       {show && <PeriodModal onClose={() => setShow(false)} />}
       {adj && <AdjModal initial={adj === 'new' ? undefined : adj} onClose={() => setAdj(null)} />}
     </>

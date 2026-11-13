@@ -16,6 +16,7 @@ import { canCreateBackJob } from '@/lib/backjobs';
 import { RecordPaymentModal, canRecordPayment } from '@/components/RecordPayment';
 import { FollowUpBanner } from '@/components/workflow/Satisfaction';
 import { WorkflowPanel } from '@/components/workflow/WorkflowPanel';
+import { JobCrewPay } from '@/components/JobCrewPay';
 import { JobOrderPanel } from '@/components/JobOrderPanel';
 import { ReportIncidentModal } from '@/components/workflow/Incidents';
 import { deleteBooking } from '@/lib/deletion';
@@ -81,6 +82,7 @@ export default function JobDetail() {
       <FollowUpBanner jobId={j.id} />
       {!crewView && (hasVars || fc.discount > 0) && <div className="alert info" style={{ marginBottom: 12 }}>Contract value: original {money(fc.originalNet)}{hasVars ? ` + approved variations ${money(fc.variationsNet)}` : ''}{fc.discount > 0 ? ` − discount granted ${money(fc.discountNet)}` : ''} = <b>{money(fc.payableNet)}</b> (ex-VAT). The original quotation is unchanged.{fc.discount > 0 && ' Discount approved by TopMop management and reflected in the final agreed amount.'}</div>}
       <div style={{ marginBottom: 14 }}><JobOrderPanel job={j} fold={!!db.workflows.find((w) => w.job_id === j.id && !w.deleted_at)?.disp_at || ['Closed', 'Cancelled'].includes(j.status)} /></div>
+      {can('joborders.manage') && !['Cancelled', 'Rescheduled'].includes(j.status) && <JobCrewPay job={j} />}
       {!wide && !crewView && <Tabs tabs={[{ id: 'workflow' as const, label: 'Workflow' }, { id: 'details' as const, label: 'Job details' }]} value={tab} onChange={setTab} />}
       {!crewView && (wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><WorkflowPanel job={j} above={(step) => <div style={{ marginBottom: 14 }}><ServicePriceCard job={j} step={step} /></div>} onDetails={() => { setTab('details'); window.scrollTo({ top: 0 }); }} /></div>}
       {!crewView && (wide || tab === 'workflow') && <div style={{ marginBottom: 14 }}><JobExpensesPanel job={j} /></div>}

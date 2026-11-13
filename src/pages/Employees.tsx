@@ -14,13 +14,13 @@ export function EmployeeForm({ initial, onClose }: { initial?: Employee; onClose
   const { db, can } = useAuth();
   const pay = can('employees.pay');
   const f = useObj<Omit<Employee, 'id' | 'created_at' | 'updated_at' | 'created_by'>>(() => initial ?? {
-    code: '', full_name: '', position: '', tier: 'Technician', department: 'Field Operations', branch_id: db.branches[0].id, pay_basis: 'daily', daily_rate: 700, monthly_salary: 0, payroll_type: 'biweekly',
+    code: '', full_name: '', position: '', tier: 'Technician', department: 'Field Operations', branch_id: db.branches[0].id, pay_basis: 'daily', daily_rate: 700, job_rate: 0, monthly_salary: 0, payroll_type: 'biweekly',
     hire_date: today(), bank_name: '', bank_account: '', payout_method: 'Bank transfer', mobile: '', emergency_name: '', emergency_mobile: '', sss: '', philhealth: '', pagibig: '', tin: '', status: 'probationary',
     documents: [{ name: 'NBI Clearance' }, { name: 'Medical Certificate' }, { name: 'Signed Employment Contract' }], trainings: [], shift_start: '08:00', shift_end: '17:00', rest_day: 0,
   });
   const save = () => {
     if (!f.v.full_name.trim() || !f.v.position.trim()) return attempt(() => { throw new Error('Name and position are required.'); });
-    if (f.v.pay_basis === 'daily' ? !(f.v.daily_rate > 0) : !(f.v.monthly_salary > 0)) return attempt(() => { throw new Error('Enter the pay rate.'); });
+    if (f.v.pay_basis === 'per_job' ? !((f.v.job_rate ?? 0) > 0) : f.v.pay_basis === 'daily' ? !(f.v.daily_rate > 0) : !(f.v.monthly_salary > 0)) return attempt(() => { throw new Error('Enter the pay rate.'); });
     attempt(() => (initial ? store.update('employees', initial.id, f.v, 'update', `Updated employee ${f.v.full_name}`) : store.insert('employees', { ...f.v, code: store.nextNumber('EMP') })), 'Employee saved'); onClose();
   };
   return (
@@ -34,8 +34,8 @@ export function EmployeeForm({ initial, onClose }: { initial?: Employee; onClose
         <Field label="Weekly rest day"><select value={f.v.rest_day} onChange={(e) => f.set('rest_day', +e.target.value)}>{['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => <option key={d} value={i}>{d}</option>)}</select></Field><span />
         <Field label="Emergency contact"><input {...f.bind('emergency_name')} /></Field><Field label="Emergency mobile"><input {...f.bind('emergency_mobile')} /></Field>
         {pay && <>
-          <Field label="Pay basis"><select {...f.bind('pay_basis')}><option value="daily">Daily rate</option><option value="monthly">Monthly salary</option></select></Field>
-          {f.v.pay_basis === 'daily' ? <Field label="Daily rate (₱)"><input type="number" min="0" {...f.bind('daily_rate')} /></Field> : <Field label="Monthly salary (₱)"><input type="number" min="0" {...f.bind('monthly_salary')} /></Field>}
+          <Field label="Pay basis"><select {...f.bind('pay_basis')}><option value="daily">Daily rate</option><option value="per_job">Per job order</option><option value="monthly">Monthly salary</option></select></Field>
+          {f.v.pay_basis === 'per_job' ? <Field label="Pay per job order (₱)" hint="Paid for every job order they attended, late or not. Payroll fills it in from attendance."><input type="number" min="0" value={f.v.job_rate ?? 0} onChange={(e) => f.set('job_rate', +e.target.value)} /></Field> : f.v.pay_basis === 'daily' ? <Field label="Daily rate (₱)"><input type="number" min="0" {...f.bind('daily_rate')} /></Field> : <Field label="Monthly salary (₱)"><input type="number" min="0" {...f.bind('monthly_salary')} /></Field>}
           <Field label="Payroll type"><select {...f.bind('payroll_type')}>{['daily', 'weekly', 'biweekly', 'monthly'].map((t) => <option key={t}>{t}</option>)}</select></Field><Field label="Payout method"><select {...f.bind('payout_method')}><option>Bank transfer</option><option>GCash</option><option>Cash</option></select></Field>
           <Field label="Bank / e-wallet"><input {...f.bind('bank_name')} /></Field><Field label="Account number"><input {...f.bind('bank_account')} /></Field>
           <Field label="SSS no."><input {...f.bind('sss')} /></Field><Field label="PhilHealth no."><input {...f.bind('philhealth')} /></Field><Field label="Pag-IBIG no."><input {...f.bind('pagibig')} /></Field><Field label="TIN"><input {...f.bind('tin')} /></Field>
@@ -76,7 +76,7 @@ export default function Employees() {
               ...(can('performance.view') ? [{ key: 'rating', header: 'Rating', num: true, value: (e: Employee) => e.rating ?? 0, render: (e: Employee) => (e.rating !== undefined ? <span><span style={{ color: '#f5b83d' }}>★</span> <b>{e.rating.toFixed(1)}</b></span> : <span className="muted">—</span>) }] : []),
               { key: 'tier', header: 'Tier', value: (e) => e.tier }, { key: 'dept', header: 'Department', value: (e) => e.department },
               { key: 'status', header: 'Status', value: (e) => e.status, render: (e) => <Badge>{e.status}</Badge> }, { key: 'hire', header: 'Hired', value: (e) => e.hire_date, render: (e) => fmtDate(e.hire_date) },
-              ...(pay ? [{ key: 'rate', header: 'Rate', num: true, value: (e: Employee) => (e.pay_basis === 'daily' ? e.daily_rate : e.monthly_salary), render: (e: Employee) => `${money(e.pay_basis === 'daily' ? e.daily_rate : e.monthly_salary)}${e.pay_basis === 'daily' ? '/day' : '/mo'}` }, { key: 'pt', header: 'Payroll', value: (e: Employee) => e.payroll_type }] : []),
+              ...(pay ? [{ key: 'rate', header: 'Rate', num: true, value: (e: Employee) => (e.pay_basis === 'per_job' ? e.job_rate ?? 0 : e.pay_basis === 'daily' ? e.daily_rate : e.monthly_salary), render: (e: Employee) => e.pay_basis === 'per_job' ? `${money(e.job_rate ?? 0)}/job order` : `${money(e.pay_basis === 'daily' ? e.daily_rate : e.monthly_salary)}${e.pay_basis === 'daily' ? '/day' : '/mo'}` }, { key: 'pt', header: 'Payroll', value: (e: Employee) => e.payroll_type }] : []),
               { key: 'docs', header: 'Compliance', value: (e) => (expiring(e) ? 'Expiring' : 'OK'), render: (e) => (expiring(e) ? <Badge tone="amber">Docs expiring</Badge> : <Badge tone="green">OK</Badge>) },
             ]} />
         </Card>

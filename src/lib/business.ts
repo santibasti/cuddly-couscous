@@ -1,11 +1,12 @@
 import { quoteShowsAmounts } from './quote-text';
+import { employeeJobPay, jobBonus } from './jobpay';
 import type {
   CheckItem,
   JobWorkflow,
   PanelRow,
   Variation,
   JobStatus,
-  Asset, Attendance, DB, Employee, Holiday, Invoice, Job, PayrollAdjustment, PayrollLine, PayrollPeriod,
+  Asset, Attendance, DB, Employee, Holiday, Invoice, Job, JobPayRow, PayrollAdjustment, PayrollLine, PayrollPeriod,
   Payment, Quotation, QuoteItem, ServiceDef, Settings, StatutoryRate, AdditionalCategory, ServiceCode, DiscountRequest, DiscountKind, ClientFeedback, IssueCategory, SatisfactionRating, BackJob,
 } from './types';
 import { addDays, diffDays, dow, eachDay, minutesBetween, nowLocal, round2, sum, today } from './util';
@@ -209,6 +210,7 @@ export function findConflicts(db: Pick<DB, 'jobs'>, j: Pick<Job, 'start_at' | 'e
 
 /* ============ Attendance ============ */
 export function dailyEquivalent(e: Employee, s: Settings): number {
+  if (e.pay_basis === 'per_job') return 0;      // paid per job order, not per day (see jobpay.ts)
   return e.pay_basis === 'daily' ? e.daily_rate : e.monthly_salary / s.monthly_divisor_days;
 }
 export const hourlyRate = (e: Employee, s: Settings) => dailyEquivalent(e, s) / s.std_hours_per_day;
@@ -246,6 +248,8 @@ function statutory(rate: StatutoryRate | undefined, base: number): number {
 export interface PayrollInput {
   emp: Employee; period: PayrollPeriod; attendance: Attendance[]; holidays: Holiday[];
   adjustments: PayrollAdjustment[]; settings: Settings; asOf?: string;
+  /** the job orders this employee attended in the period, with their job pay and bonuses (see jobpay.ts) */
+  jobPay?: JobPayRow[];
 }
 export function computePayrollLine(inp: PayrollInput): { line: PayrollLine; pendingAttendance: number } {
   const { emp, period, holidays, settings: s } = inp;
@@ -261,10 +265,13 @@ export function computePayrollLine(inp: PayrollInput): { line: PayrollLine; pend
   let regular = 0, lateDed = 0, ot = 0, holPay = 0, restPay = 0, leavePay = 0, days = 0;
   const laborByJob: Record<string, number> = {};
   const isMonthly = emp.pay_basis === 'monthly';
+  const perJob = emp.pay_basis === 'per_job';
+  const jobRows = inp.jobPay ?? [];
   // Paid by the day (default): any day worked is one full day, whatever the hours spent at the client — no hourly proration, overtime or late / undertime deduction.
   const byDay = s.pay_by_day !== false;
 
   for (const a of ok) {
+    if (perJob) { if (a.clock_in) days += 1; continue; }      // per job order: the pay comes from the job orders attended below, late or not
     const worked = byDay ? !!a.clock_in : a.clock_in && a.clock_out;
     const hol = holidayOn(a.date);
     const isRest = dow(a.date) === emp.rest_day;
@@ -286,7 +293,9 @@ export function computePayrollLine(inp: PayrollInput): { line: PayrollLine; pend
     lateDed += byDay ? 0 : ((a.late_min + a.undertime_min) / 60) * hourly * (isMonthly ? 1 : 0); // daily-paid: fraction already reflects hours worked
   }
 
-  if (isMonthly) {
+  if (perJob) {
+    regular = sum(jobRows, (r) => r.rate);
+  } else if (isMonthly) {
     regular = emp.monthly_salary * (PERIODS_PER_MONTH_FACTOR[period.type] ?? 1);
     // unexcused missing workdays up to today count as absences
     let absent = 0;
@@ -306,7 +315,10 @@ export function computePayrollLine(inp: PayrollInput): { line: PayrollLine; pend
 
   const applicable = inp.adjustments.filter((a) => a.employee_id === emp.id && a.active && !a.deleted_at && (a.period_id ? a.period_id === period.id : (a.balance === undefined || a.balance > 0)));
   const sumKind = (k: PayrollAdjustment['kind']) => applicable.filter((a) => a.kind === k).reduce((t, a) => t + (a.balance !== undefined && a.period_id == null ? Math.min(a.amount, a.balance) : a.amount), 0);
-  const allowances = sumKind('Allowance'), incentives = sumKind('Incentive'), reimb = sumKind('Reimbursement');
+  // the job bonuses (panel, outside Metro Manila, commercial) are recorded under every assigned employee, whatever their pay basis
+  const jobBonuses = round2(sum(jobRows, (r) => r.panel_bonus + r.outside_bonus + r.commercial_bonus));
+  for (const r of jobRows) laborByJob[r.job_id] = round2((laborByJob[r.job_id] || 0) + r.rate + r.panel_bonus + r.outside_bonus + r.commercial_bonus);
+  const allowances = sumKind('Allowance'), incentives = round2(sumKind('Incentive') + jobBonuses), reimb = sumKind('Reimbursement');
   const cashAdv = sumKind('Cash Advance'), loan = sumKind('Loan'), otherDed = sumKind('Other Deduction');
 
   regular = round2(regular); lateDed = round2(Math.min(lateDed, regular + holPay + restPay));
@@ -327,7 +339,7 @@ export function computePayrollLine(inp: PayrollInput): { line: PayrollLine; pend
       holiday_pay: holPay, rest_day_pay: restPay, leave_pay: leavePay, allowances, incentives, reimbursements: reimb, gross,
       sss, philhealth: ph, pagibig: pi, wtax, cash_advance: cashAdv, loan, other_deductions: otherDed,
       total_deductions: totalDed, net: round2(gross - totalDed),
-      adjustment_ids: applicable.map((a) => a.id), direct_labor_by_job: laborByJob,
+      adjustment_ids: applicable.map((a) => a.id), direct_labor_by_job: laborByJob, ...(jobRows.length ? { job_pay: jobRows } : {}),
     },
   };
 }
@@ -368,15 +380,19 @@ export function jobCost(db: DB, j: Job): JobCost {
   const att = db.attendance.filter((a) => a.job_id === j.id && a.approval !== 'Rejected' && !a.deleted_at && a.clock_in && a.clock_out);
   let labor = 0, laborEstimated = false;
   if (att.length) {
+    const perJobIds = new Set<string>();   // paid per job order: one job rate each, not per day
     labor = sum(att, (a) => {
       const e = db.employees.find((x) => x.id === a.employee_id);
+      if (e?.pay_basis === 'per_job') { perJobIds.add(e.id); return 0; }
       return e ? dailyEquivalent(e, s) * Math.min(1, a.worked_hours / s.std_hours_per_day) + (a.ot_min / 60) * hourlyRate(e, s) * s.multipliers.overtime : 0;
     });
+    labor += sum([...perJobIds], (id) => db.employees.find((x) => x.id === id)?.job_rate ?? 0);
   } else {
     laborEstimated = true;
     const crew = new Set([...j.crew_ids, ...(j.leader_id ? [j.leader_id] : [])]);
-    labor = sum([...crew], (id) => { const e = db.employees.find((x) => x.id === id); return e ? dailyEquivalent(e, s) : 0; }) * jobDays(j);
+    labor = sum([...crew], (id) => { const e = db.employees.find((x) => x.id === id); return e ? (e.pay_basis === 'per_job' ? e.job_rate ?? 0 : dailyEquivalent(e, s) * jobDays(j)) : 0; });
   }
+  { const jb = jobBonus(db, j); if (jb.final) labor += jb.total; }   // the crew's job bonuses are a real labor cost of the job
   const tx = activeStock(db).filter((t) => t.job_id === j.id);
   let materials = sum(tx.filter((t) => ['Issue to Job', 'Return from Job', 'Damaged / Wasted'].includes(t.type)), (t) => -t.qty * t.unit_cost);
   let materialsEstimated = false;
@@ -507,7 +523,7 @@ export function buildPayrollLines(db: DB, period: PayrollPeriod, asOf?: string):
   const emps = db.employees.filter((e) => !e.deleted_at && e.status !== 'inactive' && e.payroll_type === period.type && e.hire_date <= period.end);
   let pending = 0;
   const lines = emps.map((emp) => {
-    const r = computePayrollLine({ emp, period, attendance: db.attendance, holidays: db.holidays, adjustments: db.adjustments, settings: db.settings, asOf });
+    const r = computePayrollLine({ emp, period, attendance: db.attendance, holidays: db.holidays, adjustments: db.adjustments, settings: db.settings, asOf, jobPay: employeeJobPay(db, emp, period.start, period.end) });
     pending += r.pendingAttendance;
     return r.line;
   });

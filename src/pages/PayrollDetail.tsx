@@ -6,7 +6,7 @@ import { approvePayroll, finalizePayroll, generateRun, returnPayroll, submitPayr
 import { buildPayrollLines } from '@/lib/business';
 import { payslipPdf } from '@/lib/export';
 import { fmtDate, fmtStamp, money, sum } from '@/lib/util';
-import type { PayrollLine } from '@/lib/types';
+import type { JobPayRow, PayrollLine } from '@/lib/types';
 
 const STEPS = ['Draft', 'For Approval', 'Approved', 'Finalized'] as const;
 
@@ -61,6 +61,25 @@ export default function PayrollDetail() {
                 ]} />
             </div>
           </Card>
+          {lines.some((l) => l.job_pay?.length) && (
+            <>
+              <div style={{ height: 12 }} />
+              <Card title="Job orders & bonuses in this payroll" flush actions={<span className="small muted">Job pay is filled in from approved attendance, late or not. Bonuses are recorded under each assigned employee.</span>}>
+                <DataTable<JobPayRow & { emp: string }> rows={lines.flatMap((l) => (l.job_pay ?? []).map((r) => ({ ...r, emp: l.employee_id })))} rowKey={(r) => `${r.emp}:${r.job_id}`} exportTitle={`Job orders and bonuses ${per.label}`} pageSize={25}
+                  totals={['Total', '', '', sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.rate), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.panel_bonus), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.outside_bonus), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.commercial_bonus), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.total)]}
+                  cols={[
+                    { key: 'emp', header: 'Employee', value: (r) => db.employees.find((e) => e.id === r.emp)?.full_name ?? '', render: (r) => <b>{db.employees.find((e) => e.id === r.emp)?.full_name}</b> },
+                    { key: 'date', header: 'Date', value: (r) => r.date, render: (r) => fmtDate(r.date) },
+                    { key: 'job', header: 'Job order', value: (r) => r.number, render: (r) => <Link to={`/jobs/${r.job_id}`}>{r.number}</Link> },
+                    { key: 'rate', header: 'Job pay', num: true, type: 'money' as const, value: (r) => r.rate, render: (r) => (r.rate ? money(r.rate) : '—') },
+                    { key: 'panel', header: 'Panel bonus', num: true, type: 'money' as const, value: (r) => r.panel_bonus, render: (r) => (r.panel_bonus ? money(r.panel_bonus) : '—') },
+                    { key: 'outside', header: 'Outside Metro Manila', num: true, type: 'money' as const, value: (r) => r.outside_bonus, render: (r) => (r.outside_bonus ? money(r.outside_bonus) : '—') },
+                    { key: 'commercial', header: 'Commercial', num: true, type: 'money' as const, value: (r) => r.commercial_bonus, render: (r) => (r.commercial_bonus ? money(r.commercial_bonus) : '—') },
+                    { key: 'total', header: 'Total', num: true, type: 'money' as const, value: (r) => r.total, render: (r) => <b>{money(r.total)}</b> },
+                  ]} />
+              </Card>
+            </>
+          )}
         </>
       )}
       <p className="small muted" style={{ marginTop: 10 }}>SSS, PhilHealth, Pag-IBIG and withholding tax use the configurable rates in Admin → Rates & settings, not hard-coded legal tables. Verify them against current government schedules before finalizing.</p>

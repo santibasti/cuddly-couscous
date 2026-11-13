@@ -92,3 +92,14 @@ export function setJobOrderPrices(jobId: string, choice: 'auto' | 'show' | 'hide
   store.update('jobs', jobId, { jo_prices: next } as never, 'update', `Job Order prices for ${job.number}: ${choice === 'auto' ? 'automatic' : choice === 'show' ? 'show the quotation amounts' : 'hide prices'}`);
   syncJobOrders(jobId);
 }
+
+/** The Owner's crew-pay options for a job: add the Outside Metro Manila bonus and / or the Commercial Project bonus to every crew member. */
+export function setJobPayOptions(jobId: string, opts: { outside?: boolean; commercial?: boolean }) {
+  store.require('payroll.approve');
+  const job = db().jobs.find((j) => j.id === jobId) ?? (() => { throw new RuleError('Booking not found.'); })();
+  const patch: Record<string, boolean | undefined> = {};
+  if (opts.outside !== undefined) patch.pay_outside_mm = opts.outside || undefined;
+  if (opts.commercial !== undefined) patch.pay_commercial = opts.commercial || undefined;
+  const label = [opts.outside !== undefined ? `Outside Metro Manila bonus ${opts.outside ? 'on' : 'off'}` : '', opts.commercial !== undefined ? `Commercial Project bonus ${opts.commercial ? 'on' : 'off'}` : ''].filter(Boolean).join(', ');
+  store.update('jobs', jobId, patch as never, 'update', `Crew pay for ${job.number}: ${label}`);
+}

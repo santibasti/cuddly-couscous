@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Icon, Modal, PageHead, PhotoInput, Stat, Tabs, Bar, attempt, useObj } from '@/components/ui';
 import { EmployeeForm } from './Employees';
+import { EmployeeJobPay } from '@/components/EmployeeJobPay';
 import { scorecard } from '@/lib/business';
 import { addDays, diffDays, fmtDate, fmtStamp, fmtTime, money, today } from '@/lib/util';
 import type { EmployeeDoc, PerfReview, Training } from '@/lib/types';
@@ -50,11 +51,12 @@ export default function EmployeeDetail() {
           </Card>
           {pay ? (
             <Card title="Compensation & government IDs">
-              <dl className="kv"><dt>Pay</dt><dd>{e.pay_basis === 'daily' ? `${money(e.daily_rate)} / day` : `${money(e.monthly_salary)} / month`}</dd><dt>Payroll type</dt><dd>{e.payroll_type}</dd><dt>Payout</dt><dd>{e.payout_method} · {e.bank_name} {e.bank_account}</dd>
+              <dl className="kv"><dt>Pay</dt><dd>{e.pay_basis === 'per_job' ? `${money(e.job_rate ?? 0)} / job order` : e.pay_basis === 'daily' ? `${money(e.daily_rate)} / day` : `${money(e.monthly_salary)} / month`}</dd><dt>Payroll type</dt><dd>{e.payroll_type}</dd><dt>Payout</dt><dd>{e.payout_method} · {e.bank_name} {e.bank_account}</dd>
                 <dt>SSS</dt><dd>{e.sss}</dd><dt>PhilHealth</dt><dd>{e.philhealth}</dd><dt>Pag-IBIG</dt><dd>{e.pagibig}</dd><dt>TIN</dt><dd>{e.tin}</dd></dl>
               {advances.length > 0 && <><h3 style={{ margin: '14px 0 6px' }}>Cash advances & loans</h3><ul className="list">{advances.map((a) => <li key={a.id}><span>{a.kind}: {a.note}</span><span className="mono">{money(a.balance ?? 0)} left {a.active ? '' : '(paid)'}</span></li>)}</ul></>}
             </Card>
           ) : <Card title="Compensation"><div className="muted">Pay, bank and government ID fields are restricted to Finance and the Owner.</div></Card>}
+          {pay && <div style={{ gridColumn: '1 / -1' }}><EmployeeJobPay emp={e} /></div>}
         </div>
       )}
 
