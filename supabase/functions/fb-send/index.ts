@@ -1,5 +1,5 @@
 // Staff sends (or discards) a reply from the Facebook Inbox. Called by the app with the signed-in user's token.
-// body: { message_id: number, text?: string, action?: 'send' | 'discard' }  — secrets: FB_PAGE_TOKEN
+// body: { message_id: number, text?: string, action?: 'send' | 'discard' }  — secrets: FB_MESSENGER_TOKEN (or FB_PAGE_TOKEN)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
   if (msg.status !== 'draft' && msg.status !== 'failed') return json({ error: 'This reply was already sent' }, 409);
   const { data: conv } = await sb.from('fb_conversations').select('psid').eq('id', msg.conversation_id).maybeSingle();
   const body = String(text ?? msg.text).trim(); if (!conv || !body) return json({ error: 'Nothing to send' }, 400);
-  const res = await fetch(`https://graph.facebook.com/v21.0/me/messages?access_token=${encodeURIComponent(env('FB_PAGE_TOKEN'))}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient: { id: conv.psid }, messaging_type: 'RESPONSE', message: { text: body.slice(0, 1900) } }) });
+  const res = await fetch(`https://graph.facebook.com/v21.0/me/messages?access_token=${encodeURIComponent(env('FB_MESSENGER_TOKEN') || env('FB_PAGE_TOKEN'))}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient: { id: conv.psid }, messaging_type: 'RESPONSE', message: { text: body.slice(0, 1900) } }) });
   if (!res.ok) { const err = (await res.text()).slice(0, 250); await sb.from('fb_messages').update({ status: 'failed', error: err }).eq('id', msg.id); return json({ error: `Facebook did not accept the message: ${err}` }, 502); }
   await sb.from('fb_messages').update({ status: 'sent', text: body, error: null }).eq('id', msg.id);
   await sb.from('fb_conversations').update({ last_message_at: new Date().toISOString(), needs_human: false }).eq('id', msg.conversation_id);

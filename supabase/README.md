@@ -143,7 +143,7 @@ Customer messages on your Facebook Page are stored in the app (**Facebook Inbox*
 1. `supabase.cmd db push` (migration `0053`: inbox tables + permission) and, in the app, Admin → Settings → Facebook AI assistant → set the mode and add your extra facts → **Save**.
 2. **Anthropic key:** create an API key at console.anthropic.com. **Meta app:** at developers.facebook.com create an app (type *Business*), add the **Messenger** product, connect your Page, and generate the Page access token. Note the App Secret (Settings → Basic).
 3. Secrets (your own values; no spaces or `<` `>`):
-   `supabase secrets set FB_VERIFY_TOKEN=any-random-word FB_APP_SECRET=... FB_PAGE_TOKEN=... ANTHROPIC_API_KEY=...`
+   `supabase secrets set FB_VERIFY_TOKEN=any-random-word FB_APP_SECRET=... FB_MESSENGER_TOKEN=... (a separate secret, so the Marketing AI posting token FB_PAGE_TOKEN stays untouched) ANTHROPIC_API_KEY=...`
 4. `supabase functions deploy fb-webhook --no-verify-jwt` and `supabase functions deploy fb-send`
 5. In the Meta app → Messenger → Webhooks: callback URL `https://<project-ref>.supabase.co/functions/v1/fb-webhook`, verify token = the word from step 3, subscribe the Page to **messages**.
 6. Facebook only delivers messages from the public once the app has the **pages_messaging** permission approved (App Review, business verification). Before that, only people with a role on the app (you, testers) can chat with it — enough to test.

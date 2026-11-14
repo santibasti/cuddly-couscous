@@ -5,7 +5,7 @@
 //           - mode "auto"   : the reply is sent right away (unless the AI says a person is needed);
 //           - mode "off"    : messages are only stored.
 //    When the customer has given their details, the AI creates a client + inquiry (source "Facebook") in TopMop.
-// Secrets: FB_VERIFY_TOKEN, FB_APP_SECRET, FB_PAGE_TOKEN, ANTHROPIC_API_KEY; optional FB_AI_MODEL (default claude-haiku-5-5), APP_URL.
+// Secrets: FB_VERIFY_TOKEN, FB_APP_SECRET, FB_MESSENGER_TOKEN (the Messenger Page token; falls back to FB_PAGE_TOKEN), ANTHROPIC_API_KEY; optional FB_AI_MODEL (default claude-haiku-5-5), APP_URL.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
@@ -23,7 +23,7 @@ async function validSignature(req: Request, raw: string) {
 }
 
 async function sendToFacebook(psid: string, text: string) {
-  const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(env('FB_PAGE_TOKEN'))}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient: { id: psid }, messaging_type: 'RESPONSE', message: { text: text.slice(0, 1900) } }) });
+  const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(env('FB_MESSENGER_TOKEN') || env('FB_PAGE_TOKEN'))}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient: { id: psid }, messaging_type: 'RESPONSE', message: { text: text.slice(0, 1900) } }) });
   if (!res.ok) throw new Error(`Facebook ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
 
@@ -87,7 +87,7 @@ async function handle(psid: string, text: string, mid: string | undefined, ts: n
   let { data: conv } = await sb.from('fb_conversations').select('*').eq('psid', psid).maybeSingle();
   if (!conv) {
     let name: string | undefined;
-    try { const r = await fetch(`${GRAPH}/${psid}?fields=name&access_token=${encodeURIComponent(env('FB_PAGE_TOKEN'))}`); if (r.ok) name = (await r.json()).name; } catch { /* name is optional */ }
+    try { const r = await fetch(`${GRAPH}/${psid}?fields=name&access_token=${encodeURIComponent(env('FB_MESSENGER_TOKEN') || env('FB_PAGE_TOKEN'))}`); if (r.ok) name = (await r.json()).name; } catch { /* name is optional */ }
     const { data } = await sb.from('fb_conversations').insert({ psid, name }).select('*').single(); conv = data;
   }
   if (!conv) return;
