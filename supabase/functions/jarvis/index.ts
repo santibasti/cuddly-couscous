@@ -11,7 +11,7 @@
 //          ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID. Optional: JARVIS_MODEL (default claude-sonnet-5-5), JARVIS_ADDRESS (how it addresses you), JARVIS_SPEAK_NAMES=0 (do not say client names),
 //          JARVIS_WEB=0 (turn off the web search; on by default), ELEVENLABS_TTS_MODEL (default eleven_multilingual_v2), ELEVENLABS_STT_MODEL (default scribe_v1; scribe_v2 is tried if that one is refused). Deploy with --no-verify-jwt.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { addDays, alertIsInstant, alertLine, chunks, CITY_COORDS, cityOf, cleanNote, invoiceBalance, knowledgeBlock, MAX_KNOWLEDGE_CHARS, parseProposals, pickSections, splitKnowledge, weatherRisk, invoiceTotal, LEARN_RULES, manilaDay, MAX_NOTES, memoryBlock, NOTE_KINDS, ownerIds, personaPrompt, round2, speakable, TOOL_TOPIC, type WxHour } from './logic.ts';
+import { addDays, alertIsInstant, alertLine, chunks, CITY_COORDS, cityOf, cleanNote, crewBonus, invoiceBalance, knowledgeBlock, MAX_KNOWLEDGE_CHARS, parseProposals, pickSections, splitKnowledge, weatherRisk, invoiceTotal, LEARN_RULES, manilaDay, MAX_NOTES, memoryBlock, NOTE_KINDS, ownerIds, personaPrompt, round2, speakable, TOOL_TOPIC, type WxHour } from './logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-jarvis-action', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -289,6 +289,7 @@ const TOOLS = [
   { name: 'get_receivables', description: 'Unpaid invoices: total outstanding, overdue amount and count, biggest balances.', input_schema: { type: 'object', properties: {} } },
   { name: 'get_money_in', description: 'Payments received (verified) in the last N days.', input_schema: { type: 'object', properties: { days: { type: 'number' } }, required: ['days'] } },
   { name: 'get_quotations_summary', description: 'Quotations approved or rejected in the last N days with the approved value.', input_schema: { type: 'object', properties: { days: { type: 'number' } }, required: ['days'] } },
+  { name: 'calc_crew_bonus', description: 'Compute the crew extra-panel bonus per person using the real pay settings: give the number of crew on site and the number of additional billable panels.', input_schema: { type: 'object', properties: { crew: { type: 'number' }, extra_panels: { type: 'number' } }, required: ['crew', 'extra_panels'] } },
   { name: 'get_weather', description: 'Weather risk for the jobs on one date (Manila date, default tomorrow): per job the city, start time and whether rain, thunderstorms or strong gusts threaten the work.', input_schema: { type: 'object', properties: { date: { type: 'string' } } } },
   { name: 'lookup_knowledge', description: 'Read the owner-uploaded company knowledge base (services, methods, reference prices, safety limits, clients, policies, plans, rules). Pass a topic or keywords, or a section number from the list in your instructions. Returns the best matching sections.', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'remember_note', description: 'Save one short lasting note about how the owner wants you to work (preference, correction, routine, or business fact they told you). Only what the owner said themselves in this conversation.', input_schema: { type: 'object', properties: { text: { type: 'string' }, kind: { type: 'string', enum: ['preference', 'fact', 'routine', 'correction'] } }, required: ['text'] } },
@@ -305,6 +306,12 @@ async function runTool(sb: Db, name: string, a: Record<string, unknown>) {
     case 'get_money_in': return await getMoneyIn(sb, clampDays(a.days));
     case 'get_quotations_summary': return await getQuotes(sb, clampDays(a.days, 30));
     case 'get_handovers_waiting': return await getHandovers(sb);
+    case 'calc_crew_bonus': {
+      const { data } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle(); const jp = ((data?.data ?? {}) as Record<string, unknown>).job_pay as Record<string, number> | undefined;
+      const step = Number(jp?.panel_step) > 0 ? Number(jp?.panel_step) : 10, bonus = Number(jp?.panel_bonus) >= 0 && jp?.panel_bonus !== undefined ? Number(jp?.panel_bonus) : 140;
+      const crew = Math.max(0, Math.min(50, Math.floor(Number(a.crew) || 0))), extra = Math.max(0, Math.min(100000, Math.floor(Number(a.extra_panels) || 0)));
+      return { crew, extra_panels: extra, panels_per_crew_step: step, bonus_per_step: bonus, ...crewBonus(extra, crew, step, bonus), rule: 'Bonus per person = floor(extra panels / (crew x step)) x bonus per step; only full steps count.' };
+    }
     case 'get_weather': return await weatherForDay(sb, dateArg(a.date, addDays(today(), 1)));
     case 'lookup_knowledge': { const hits = pickSections(String(a.query ?? ''), await loadKnowledge(sb)); return hits.length ? { sections: hits.map((h) => ({ section: h.num, title: h.title, text: h.body.slice(0, 8000) })) } : { found: false }; }
     case 'remember_note': return await saveNote(sb, a.kind, a.text);
@@ -326,7 +333,7 @@ const textOf = (c: { type: string; text?: string }[]) => c.filter((b) => b.type 
 
 /** One conversation turn: the AI looks things up with its read-only tools and answers. Used by Telegram (with stored memory) and by the screen in the app (history sent by the page). */
 async function converse(sb: Db, history: Turn[], question: string, src = 'screen'): Promise<string> {
-  const system = `${persona()}\n${LEARN_RULES}${await memory(sb)}${knowledgeBlock(await loadKnowledge(sb))}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. ${webOn() ? 'If the question is not about the business, answer it helpfully, searching the web when you need current or outside facts.' : 'If the question is not about the business, answer briefly or say it is outside what you do.'}`;
+  const system = `${persona()}\n${LEARN_RULES}${await memory(sb)}${knowledgeBlock(await loadKnowledge(sb))}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. For any question about a crew bonus for extra panels, call calc_crew_bonus rather than working it out yourself. ${webOn() ? 'If the question is not about the business, answer it helpfully, searching the web when you need current or outside facts.' : 'If the question is not about the business, answer briefly or say it is outside what you do.'}`;
   const tools = webOn() ? [...TOOLS, WEB_SEARCH] : TOOLS;
   const messages: { role: string; content: unknown }[] = [...history, { role: 'user', content: question }];
   let reply = ''; let searched = false; const used: string[] = [];

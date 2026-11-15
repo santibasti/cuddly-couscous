@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cityOf, parseProposals, weatherRisk, knowledgeBlock, pickSections, splitKnowledge, cleanNote, memoryBlock, addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, speakable } from '../../supabase/functions/jarvis/logic';
+import { crewBonus, cityOf, parseProposals, weatherRisk, knowledgeBlock, pickSections, splitKnowledge, cleanNote, memoryBlock, addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, speakable } from '../../supabase/functions/jarvis/logic';
 
 describe('jarvis helpers', () => {
   it('works in Manila time', () => {
@@ -97,5 +97,13 @@ describe('Jarvis weather and learning helpers', () => {
     const reply = 'Here you go: [{"kind":"preference","text":"Prefers short answers","why":"asked twice"},{"kind":"weird","text":"Likes the weather first"},{"kind":"fact","text":"call 0917 123 4567"},{"text":"x"}]';
     expect(parseProposals(reply).map((p) => [p.kind, p.text])).toEqual([['preference', 'Prefers short answers'], ['preference', 'Likes the weather first']]);
     expect(parseProposals('nothing')).toEqual([]); expect(parseProposals('[not json]')).toEqual([]);
+  });
+});
+
+describe('Jarvis crew bonus tool', () => {
+  it('matches the payroll rule: full thresholds only', () => {
+    expect(crewBonus(60, 3)).toEqual({ each: 280, total: 840, threshold: 30, steps: 2 });
+    expect(crewBonus(29, 3).each).toBe(0); expect(crewBonus(30, 3).each).toBe(140); expect(crewBonus(80, 4).each).toBe(280);
+    expect(crewBonus(50, 2, 10, 200).each).toBe(400); expect(crewBonus(0, 3).each).toBe(0); expect(crewBonus(60, 0).total).toBe(0);
   });
 });

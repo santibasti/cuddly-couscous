@@ -76,7 +76,7 @@ export function cleanNote(t: unknown): string | null {
   if (/\b(password|passcode|api[ -]?key|secret|token|pin code)\b/i.test(s)) return null;
   return s;
 }
-export const TOOL_TOPIC: Record<string, string> = { get_jobs: 'jobs and schedule', get_attendance: 'crew attendance', get_pending_approvals: 'approvals waiting', get_leads: 'new inquiries', get_receivables: 'unpaid invoices', get_money_in: 'money received', get_quotations_summary: 'quotations', get_handovers_waiting: 'handovers', web_search: 'general questions', get_weather: 'weather and job risks' };
+export const TOOL_TOPIC: Record<string, string> = { get_jobs: 'jobs and schedule', get_attendance: 'crew attendance', get_pending_approvals: 'approvals waiting', get_leads: 'new inquiries', get_receivables: 'unpaid invoices', get_money_in: 'money received', get_quotations_summary: 'quotations', get_handovers_waiting: 'handovers', web_search: 'general questions', get_weather: 'weather and job risks', calc_crew_bonus: 'crew bonus' };
 /** The memory section of Jarvis's instructions: saved notes (with ids so he can forget one) and what the owner asks about most. */
 export function memoryBlock(notes: { id: number; kind: string; text: string }[], topics: { topic: string; n: number }[]): string {
   const parts: string[] = [];
@@ -154,4 +154,11 @@ export function parseProposals(text: string): { kind: string; text: string; why:
     if (out.length >= 3) break;
   }
   return out;
+}
+
+/** Crew bonus per person for extra panels: FLOOR(extra ÷ (crew × step)) × bonus. Only full thresholds count (same rule as the app's payroll). */
+export function crewBonus(extraPanels: number, crew: number, step = 10, bonus = 140): { each: number; total: number; threshold: number; steps: number } {
+  const threshold = Math.max(0, crew * step); const ok = crew > 0 && step > 0 && extraPanels > 0;
+  const steps = ok ? Math.floor(extraPanels / threshold) : 0;
+  return { each: steps * bonus, total: steps * bonus * Math.max(0, crew), threshold, steps };
 }
