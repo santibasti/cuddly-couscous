@@ -102,7 +102,7 @@ function Clock() {
 
 export interface ConsoleProps {
   S: Summary; panel: JarvisPanel; mode: CoreMode; analyser: React.MutableRefObject<AnalyserNode | null>; theme: ConsoleTheme;
-  typed: string; say: string; idleHint: string; text: string; setText: (v: string) => void; submit: (e: React.FormEvent) => void; onCore: () => void; onBrief: () => void; busy: boolean; live: boolean;
+  sub: string; say: string; idleHint: string; text: string; setText: (v: string) => void; submit: (e: React.FormEvent) => void; onCore: () => void; onBrief: () => void; busy: boolean; live: boolean;
   money: (n: number) => string;
 }
 const KIND: Record<string, string> = { brief: 'BRIEF', alert: 'ALERT', inquiry: 'LEAD', search: 'WEB', answer: 'ANSWER' };
@@ -128,7 +128,7 @@ export function JarvisConsole(p: ConsoleProps) {
             <ParticleCore mode={p.mode} analyser={p.analyser} theme={p.theme} />
           </div>
           <div className="jc-state">{p.mode === 'idle' ? 'STANDING BY' : p.mode.toUpperCase()}</div>
-          <div className="jc-say">{p.typed || (p.mode === 'idle' ? p.idleHint : '')}{p.mode === 'speaking' && p.typed.length < p.say.length && <span className="cur" />}</div>
+          <div className="jc-say">{p.sub ? <span key={p.sub} className="jc-cap">{p.sub}</span> : !p.say && p.mode === 'idle' ? p.idleHint : ''}</div>
           <form className="jc-bar" onSubmit={p.submit}>
             <button type="button" className={`mic ${p.mode === 'listening' ? 'on' : ''}`} onClick={p.onCore} aria-label="Microphone">🎙</button>
             <input value={p.text} onChange={(e) => p.setText(e.target.value)} placeholder="Ask Jarvis…" disabled={p.busy} />
@@ -177,7 +177,10 @@ const CSS = `
 @keyframes jchalo{0%,100%{transform:scale(.95);opacity:.8}50%{transform:scale(1.06);opacity:1}}
 .jc-canvas{position:relative;width:100%;height:100%;display:block}
 .jc-state{letter-spacing:.34em;font-size:.82em;color:#d9e6ff;text-shadow:0 0 10px rgba(150,180,255,.8)}
-.jc-say{min-height:3.2em;max-width:min(760px,100%);text-align:center;font:1.25em "Segoe UI",system-ui,sans-serif;color:#fff;text-shadow:0 0 12px rgba(150,180,255,.7)}
+.jc-say{min-height:3.2em;max-width:min(760px,100%);text-align:center;font:1.25em "Segoe UI",system-ui,sans-serif;color:#fff}
+.jc-cap{display:inline-block;letter-spacing:.01em;text-transform:none;font-size:.88em;max-width:100%;padding:.2em .7em;border-radius:6px;background:rgba(0,0,0,.55);font-weight:600;line-height:1.35;text-shadow:0 1px 2px #000,0 0 3px #000;animation:jccap .25s ease-out}
+@keyframes jccap{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.jc-cap{animation:none}}
 .jc .cur{display:inline-block;width:8px;height:1em;margin-left:3px;vertical-align:-2px;background:#dfe9ff;box-shadow:0 0 8px #aac;animation:jcblink .8s steps(2) infinite}@keyframes jcblink{50%{opacity:.2}}
 .jc-bar{display:flex;gap:8px;align-items:center;width:min(720px,100%);border:1px solid rgba(190,210,255,.6);border-radius:26px;padding:6px 8px;background:rgba(8,14,110,.6);font-family:"Segoe UI",system-ui,sans-serif}.jc.cyan .jc-bar{background:rgba(2,30,48,.72);border-color:rgba(0,220,255,.45)}
 .jc .jc-bar input{flex:1;min-width:0;background:transparent!important;border:0!important;box-shadow:none!important;outline:0;color:#f2f6ff;font-size:14px;padding:6px 4px}.jc-bar input::placeholder{color:#9fb4ee}

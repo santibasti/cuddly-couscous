@@ -2,6 +2,7 @@
 // Live system: figures, answers and the voice come from the `jarvis` Edge Function (owner login only, read-only). The demo build shows sample figures.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CLOUD, fnFetch } from '@/lib/cloud';
+import { lineAt, readSeconds, subtitleChunks } from '@/lib/subtitles';
 import { JarvisBackdrop, JarvisCore, type CoreMode } from '@/components/JarvisCore';
 import { JarvisConsole, type ConsoleTheme } from '@/components/JarvisConsole';
 import { DEMO_PANEL, ago, manilaClock, summarize, type JarvisPanel } from '@/lib/jarvisview';
@@ -31,16 +32,22 @@ function useCount(value: number, ms = 900) {
   }, [value, ms]);
   return v;
 }
-/** Text types itself out, like a console. */
-function useTypewriter(text: string, cps = 70) {
-  const [n, setN] = useState(0);
+/** Movie-style subtitles: one short line at a time, following the voice (or reading speed when there is no audio). */
+function useSubtitle(text: string, active: boolean, audio: React.MutableRefObject<HTMLAudioElement | null>) {
+  const [line, setLine] = useState('');
   useEffect(() => {
-    setN(0); if (!text) return; if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setN(text.length); return; }
-    const t0 = performance.now(); let raf = 0;
-    const step = (now: number) => { const k = Math.min(text.length, Math.floor(((now - t0) / 1000) * cps)); setN(k); if (k < text.length) raf = requestAnimationFrame(step); };
+    const chunks = subtitleChunks(text);
+    if (!chunks.length || !active) { setLine(''); return; }
+    const total = readSeconds(text) * 1000, t0 = performance.now(); let raf = 0, last = '\u0000';
+    const step = (now: number) => {
+      const a = audio.current; const hasAudio = !!a && !a.ended && Number.isFinite(a.duration) && a.duration > 0 && (a.currentTime > 0 || !a.paused);
+      const p = a && a.ended ? 1 : hasAudio ? a.currentTime / a.duration : (now - t0) / total;
+      const l = lineAt(chunks, p); if (l !== last) { last = l; setLine(l); }
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
     raf = requestAnimationFrame(step); return () => cancelAnimationFrame(raf);
-  }, [text, cps]);
-  return text.slice(0, n);
+  }, [text, active, audio]);
+  return line;
 }
 
 const BOOT_KEY = 'topmop-jarvis-booted';
@@ -126,7 +133,7 @@ export default function Jarvis() {
   const submit = (e: React.FormEvent) => { e.preventDefault(); const q = text; setText(''); void ask(q); };
   const toggleFull = () => { if (document.fullscreenElement) void document.exitFullscreen(); else void root.current?.requestFullscreen?.(); };
 
-  const typed = useTypewriter(say);
+  const sub = useSubtitle(say, mode !== 'thinking', audio);
   const S = useMemo(() => (panel ? summarize(panel) : null), [panel]);
   const cOut = useCount(S?.cash.outstanding ?? 0), cPipe = useCount(S?.pipeline.total ?? 0, 700);
   const clock = new Date().toLocaleString('en-PH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' });
@@ -141,7 +148,7 @@ export default function Jarvis() {
       {!CLOUD && <div className="jv-note">Demo data. On the live system Jarvis shows your real figures and talks.</div>}
       {err && <div className="jv-note err">{err}</div>}
       {view === 'console' && S && panel ? (
-        <JarvisConsole S={S} panel={panel} mode={mode} analyser={analyser} theme={theme} typed={typed} say={say} idleHint={CLOUD ? 'Tap the core to talk, or type below.' : 'Tap the core to preview its states.'} text={text} setText={setText} submit={submit} onCore={() => void listen()} onBrief={() => void ask('Give me my brief for right now.')} busy={mode === 'thinking'} live={CLOUD} money={money} />
+        <JarvisConsole S={S} panel={panel} mode={mode} analyser={analyser} theme={theme} sub={sub} say={say} idleHint={CLOUD ? 'Tap the core to talk, or type below.' : 'Tap the core to preview its states.'} text={text} setText={setText} submit={submit} onCore={() => void listen()} onBrief={() => void ask('Give me my brief for right now.')} busy={mode === 'thinking'} live={CLOUD} money={money} />
       ) : view === 'console' ? <div className="jv-note">Loading Jarvis…</div> : (
       <div className={`jv-grid ${booted ? 'in' : ''}`}>
         <div className="jv-col">
@@ -168,7 +175,7 @@ export default function Jarvis() {
               <div className="jv-state">{STATUS[mode]}</div>
             </div>
           </div>
-          <div className="jv-say">{typed || (mode === 'idle' ? (CLOUD ? 'Tap the core to talk, or type below.' : 'Tap the core to preview its states.') : '')}{mode === 'speaking' && typed.length < say.length && <span className="cur" />}</div>
+          <div className="jv-say">{sub ? <span key={sub} className="jv-sub">{sub}</span> : !say && mode === 'idle' ? (CLOUD ? 'Tap the core to talk, or type below.' : 'Tap the core to preview its states.') : ''}</div>
           <form className="jv-bar" onSubmit={submit}>
             <button type="button" className={`mic ${mode === 'listening' ? 'on' : ''}`} onClick={() => void listen()} aria-label="Microphone">🎙</button>
             <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask Jarvis…" disabled={mode === 'thinking'} />
@@ -242,7 +249,10 @@ const CSS = `
 .jv-canvas{position:relative;width:100%;height:100%;display:block}
 .jv-state{position:absolute;left:0;right:0;bottom:-10px;text-align:center;letter-spacing:.34em;font-size:11px;color:#8be9ff;text-shadow:0 0 10px rgba(53,224,255,.8)}.jv-state:before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#35e0ff;margin-right:10px;vertical-align:middle;box-shadow:0 0 8px #35e0ff;animation:jvblink 1.4s infinite}
 @keyframes jvblink{50%{opacity:.25}}
-.jv-say{min-height:48px;max-width:min(760px,100%);text-align:center;font-size:1.22em;color:#e8fbff;text-shadow:0 0 12px rgba(0,200,255,.55)}
+.jv-say{min-height:56px;max-width:min(760px,100%);text-align:center;font-size:1.22em;color:#e8fbff}
+.jv-sub{display:inline-block;letter-spacing:.01em;text-transform:none;padding:.2em .7em;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;font-weight:600;line-height:1.35;text-shadow:0 1px 2px #000,0 0 3px #000;animation:jvsub .25s ease-out}
+@keyframes jvsub{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.jv-sub{animation:none}}
 .cur{display:inline-block;width:8px;height:1em;margin-left:3px;vertical-align:-2px;background:#7be9ff;box-shadow:0 0 8px #35e0ff;animation:jvblink .8s steps(2) infinite}
 .jv-bar{display:flex;gap:8px;align-items:center;width:min(720px,100%);border:1px solid rgba(0,220,255,.45);border-radius:26px;padding:6px 8px;background:rgba(2,30,48,.72);box-shadow:0 0 24px rgba(0,180,255,.15),inset 0 0 14px rgba(0,200,255,.08);transition:box-shadow .2s}.jv-bar:focus-within{box-shadow:0 0 30px rgba(53,224,255,.4),inset 0 0 14px rgba(0,200,255,.12)}
 .jv .jv-bar input{flex:1;min-width:0;background:transparent!important;border:0!important;box-shadow:none!important;outline:0;color:#e8fbff;font-size:14px;padding:6px 4px}.jv-bar input::placeholder{color:#59a8bb}
