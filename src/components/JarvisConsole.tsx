@@ -102,10 +102,10 @@ function Clock() {
 
 export interface ConsoleProps {
   S: Summary; panel: JarvisPanel; mode: CoreMode; analyser: React.MutableRefObject<AnalyserNode | null>; theme: ConsoleTheme;
-  sub: string; say: string; idleHint: string; text: string; setText: (v: string) => void; submit: (e: React.FormEvent) => void; onCore: () => void; onBrief: () => void; busy: boolean; live: boolean;
+  sub: string; say: string; idleHint: string; text: string; setText: (v: string) => void; submit: (e: React.FormEvent) => void; onCore: () => void; onBrief: () => void; onForget: (id: number) => void; busy: boolean; live: boolean;
   money: (n: number) => string;
 }
-const KIND: Record<string, string> = { brief: 'BRIEF', alert: 'ALERT', inquiry: 'LEAD', search: 'WEB', answer: 'ANSWER' };
+const KIND: Record<string, string> = { brief: 'BRIEF', alert: 'ALERT', inquiry: 'LEAD', search: 'WEB', answer: 'ANSWER', memory: 'LEARN' };
 
 export function JarvisConsole(p: ConsoleProps) {
   const { S, panel } = p;
@@ -118,7 +118,10 @@ export function JarvisConsole(p: ConsoleProps) {
             <div className="jc-bars">{S.health.map((h) => <div key={h.label}><span>{h.label}</span><i style={{ ['--w' as string]: `${h.pct ?? 0}%` }} /><b>{h.pct === null ? '—' : `${h.pct}%`}</b></div>)}{!S.health.length && <div className="jc-mut">Waiting for the live system…</div>}</div></section>
           <section className="jc-box jc-logbox"><h6>ACTIVITY LOG</h6>
             <div className="jc-log">{!S.events.length && <div className="jc-mut">{p.live ? 'No activity yet. It fills as Jarvis works.' : 'Sample activity.'}</div>}
-              {S.events.slice(0, 14).map((e, i) => <div key={`${e.at}-${i}`} className="ln"><span className="t">{manilaClock(e.at)}</span> <em className={e.kind === 'alert' ? 'am' : ''}>{KIND[e.kind] ?? e.kind.toUpperCase()}</em> {e.text}</div>)}</div></section>
+              {S.events.slice(0, 7).map((e, i) => <div key={`${e.at}-${i}`} className="ln"><span className="t">{manilaClock(e.at)}</span> <em className={e.kind === 'alert' ? 'am' : ''}>{KIND[e.kind] ?? e.kind.toUpperCase()}</em> {e.text}</div>)}</div></section>
+          <section className="jc-box"><h6>MEMORY <em>{S.memory.length} LEARNED</em></h6>
+            <div className="jc-mem">{!S.memory.length && <div className="jc-mut">Nothing yet. Tell Jarvis how you like things (for example "keep briefs short") and he will remember.</div>}
+              {S.memory.slice(-5).reverse().map((n) => <div key={n.id} className="mn"><span>{n.text}</span><button type="button" title="Forget this" aria-label="Forget this note" onClick={() => p.onForget(n.id)}>×</button></div>)}</div></section>
           <section className="jc-box"><h6>NEEDS YOU <em>{S.attention || 'CLEAR'}</em></h6>
             {S.decisions.slice(0, 4).map((d, i) => <div className="row" key={i}><span className={d.tone === 'warn' ? 'am' : ''}>{d.label}</span><b>{d.value}</b></div>)}</section>
         </aside>
@@ -167,7 +170,7 @@ const CSS = `
 .jc h6{margin:0 0 7px;font-size:.82em;letter-spacing:.22em;color:var(--dim);font-weight:600;display:flex;justify-content:space-between}.jc h6 em{font-style:normal;opacity:.8}
 .jc .row{display:flex;justify-content:space-between;gap:10px;padding:2px 0;border-bottom:1px dashed rgba(170,200,255,.2)}.jc .row b{color:var(--hi)}.jc .am{color:var(--am)}.jc-mut{opacity:.65;font-size:.9em}
 .jc-bars>div{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:.85em}.jc-bars span{width:5.2em;flex:none}.jc-bars i{flex:1;height:4px;background:rgba(170,200,255,.2);position:relative}.jc-bars i:after{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--w);background:linear-gradient(90deg,#7fa8ff,#fff);transition:width .8s}.jc-bars b{width:3.2em;text-align:right;color:var(--hi);font-weight:500}
-.jc-logbox{min-height:200px}.jc-log{max-height:calc(100vh - 560px);min-height:150px;overflow:hidden;line-height:1.7;font-size:.92em;color:#bcd0ff}.jc.cyan .jc-log{color:#a8e8fa}
+.jc-logbox{min-height:140px}.jc-log{max-height:calc(100vh - 560px);min-height:110px;overflow:hidden;line-height:1.7;font-size:.92em;color:#bcd0ff}.jc.cyan .jc-log{color:#a8e8fa}
 .jc-log .ln{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:jcln .6s ease-out}.jc-log .t{color:#7f9cf5}.jc.cyan .jc-log .t{color:#4bc0dc}.jc-log em{font-style:normal;color:#fff;margin:0 4px}.jc-log em.am{color:var(--am)}
 @keyframes jcln{from{opacity:0;transform:translateX(-8px);background:rgba(255,255,255,.2)}to{opacity:1;transform:none;background:transparent}}
 .jc-center{display:grid;justify-items:center;align-content:center;gap:8px}
@@ -192,6 +195,7 @@ const CSS = `
 .jc-radar .dot{fill:#fff;filter:drop-shadow(0 0 4px #fff)}.jc-radar .dot.warn{fill:var(--am);filter:drop-shadow(0 0 5px var(--am));animation:jcblink 1.2s infinite}
 .jc-wave{display:block;width:100%;height:56px}
 .jc-foot{text-align:center;margin-top:10px;font-size:.78em;letter-spacing:.15em;opacity:.55}
+.jc-mem .mn{display:flex;gap:8px;justify-content:space-between;align-items:flex-start;font-size:.88em;line-height:1.4;padding:3px 0;color:#d9e6ff;border-bottom:1px dashed rgba(150,180,255,.18)}.jc-mem .mn button{background:none;border:0;color:#7f9cf5;cursor:pointer;font-size:1.1em;line-height:1;padding:0 2px}.jc-mem .mn button:hover{color:#fff}
 @media (max-width:1000px){.jc-grid{grid-template-columns:1fr}.jc-center{order:-1}.jc-core{width:min(420px,86vw)}.jc-log{max-height:260px}}
 @media (prefers-reduced-motion:reduce){.jc-core:before,.jc-radar .sweep,.jc .cur,.jc-radar .dot.warn,.jc-log .ln{animation:none}}
 `;

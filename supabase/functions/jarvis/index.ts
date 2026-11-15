@@ -11,7 +11,7 @@
 //          ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID. Optional: JARVIS_MODEL (default claude-sonnet-5-5), JARVIS_ADDRESS (how it addresses you), JARVIS_SPEAK_NAMES=0 (do not say client names),
 //          JARVIS_WEB=0 (turn off the web search; on by default), ELEVENLABS_TTS_MODEL (default eleven_multilingual_v2), ELEVENLABS_STT_MODEL (default scribe_v1; scribe_v2 is tried if that one is refused). Deploy with --no-verify-jwt.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, round2, speakable } from './logic.ts';
+import { addDays, alertIsInstant, alertLine, chunks, cleanNote, invoiceBalance, invoiceTotal, LEARN_RULES, manilaDay, MAX_NOTES, memoryBlock, NOTE_KINDS, ownerIds, personaPrompt, round2, speakable, TOOL_TOPIC } from './logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-jarvis-action', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -82,10 +82,36 @@ async function logEvent(sb: Db, kind: string, text: string) { try { await sb.fro
 type Turn = { role: 'user' | 'assistant'; content: string };
 async function remember(sb: Db, chat: number): Promise<Turn[]> {
   const { data } = await sb.from('jarvis_memory').select('turns, updated_at').eq('chat_id', chat).maybeSingle();
-  if (!data || Date.now() - new Date(data.updated_at).getTime() > 30 * 60_000) return [];
-  return (data.turns as Turn[]).slice(-6);
+  if (!data || Date.now() - new Date(data.updated_at).getTime() > 3 * 3600_000) return [];
+  return (data.turns as Turn[]).slice(-10);
 }
-const store = (sb: Db, chat: number, turns: Turn[]) => sb.from('jarvis_memory').upsert({ chat_id: chat, turns: turns.slice(-6), updated_at: new Date().toISOString() });
+const store = (sb: Db, chat: number, turns: Turn[]) => sb.from('jarvis_memory').upsert({ chat_id: chat, turns: turns.slice(-10), updated_at: new Date().toISOString() });
+
+/* ---------------- long-term memory: notes and favourite topics ---------------- */
+type Note = { id: number; kind: string; text: string };
+async function loadNotes(sb: Db): Promise<Note[]> { try { const { data } = await sb.from('jarvis_notes').select('id, kind, text').order('id', { ascending: true }).limit(MAX_NOTES); return (data ?? []) as Note[]; } catch { return []; } }
+async function loadTopics(sb: Db): Promise<{ topic: string; n: number }[]> { try { const { data } = await sb.from('jarvis_topics').select('topic, n').order('n', { ascending: false }).limit(8); return data ?? []; } catch { return []; } }
+const memory = async (sb: Db) => memoryBlock(await loadNotes(sb), await loadTopics(sb));
+async function saveNote(sb: Db, kind: unknown, text: unknown) {
+  const t = cleanNote(text); if (!t) return { saved: false, reason: 'That cannot be kept as a note (too short, or it holds a link, a number or a secret).' };
+  const k = (NOTE_KINDS as readonly string[]).includes(String(kind)) ? String(kind) : 'fact';
+  const notes = await loadNotes(sb); const same = notes.find((n) => n.text.toLowerCase() === t.toLowerCase());
+  if (same) return { saved: true, id: same.id, already: true };
+  if (notes.length >= MAX_NOTES) return { saved: false, reason: 'Memory is full. Ask the owner which note to forget first.' };
+  const { data, error } = await sb.from('jarvis_notes').insert({ kind: k, text: t }).select('id').maybeSingle();
+  if (error) return { saved: false, reason: 'Could not save it.' };
+  await logEvent(sb, 'memory', 'Learned a new note'); return { saved: true, id: data?.id };
+}
+async function forgetNote(sb: Db, id: unknown) {
+  const n = Number(id); if (!Number.isInteger(n)) return { forgotten: false };
+  const { error } = await sb.from('jarvis_notes').delete().eq('id', n); if (!error) await logEvent(sb, 'memory', 'Forgot a note');
+  return { forgotten: !error };
+}
+async function countTopics(sb: Db, used: string[]) {
+  for (const topic of new Set(used.map((u) => TOOL_TOPIC[u]).filter(Boolean))) {
+    try { const { data } = await sb.from('jarvis_topics').select('n').eq('topic', topic).maybeSingle(); await sb.from('jarvis_topics').upsert({ topic, n: (data?.n ?? 0) + 1, last_at: new Date().toISOString() }); } catch { /* learning is best effort */ }
+  }
+}
 
 /* ---------------- business data (read-only) ---------------- */
 const names = async (sb: Db, table: string, col: string, ids: string[]): Promise<Record<string, string>> => {
@@ -170,6 +196,8 @@ const TOOLS = [
   { name: 'get_receivables', description: 'Unpaid invoices: total outstanding, overdue amount and count, biggest balances.', input_schema: { type: 'object', properties: {} } },
   { name: 'get_money_in', description: 'Payments received (verified) in the last N days.', input_schema: { type: 'object', properties: { days: { type: 'number' } }, required: ['days'] } },
   { name: 'get_quotations_summary', description: 'Quotations approved or rejected in the last N days with the approved value.', input_schema: { type: 'object', properties: { days: { type: 'number' } }, required: ['days'] } },
+  { name: 'remember_note', description: 'Save one short lasting note about how the owner wants you to work (preference, correction, routine, or business fact they told you). Only what the owner said themselves in this conversation.', input_schema: { type: 'object', properties: { text: { type: 'string' }, kind: { type: 'string', enum: ['preference', 'fact', 'routine', 'correction'] } }, required: ['text'] } },
+  { name: 'forget_note', description: 'Delete one saved note by its id (shown as [#id] in your notes) when the owner asks you to forget it.', input_schema: { type: 'object', properties: { id: { type: 'number' } }, required: ['id'] } },
   { name: 'get_handovers_waiting', description: 'Finished jobs whose client has not yet signed the handover (their bonus and billing wait for it).', input_schema: { type: 'object', properties: {} } }];
 const dateArg = (v: unknown, d: string) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : d);
 async function runTool(sb: Db, name: string, a: Record<string, unknown>) {
@@ -182,6 +210,8 @@ async function runTool(sb: Db, name: string, a: Record<string, unknown>) {
     case 'get_money_in': return await getMoneyIn(sb, clampDays(a.days));
     case 'get_quotations_summary': return await getQuotes(sb, clampDays(a.days, 30));
     case 'get_handovers_waiting': return await getHandovers(sb);
+    case 'remember_note': return await saveNote(sb, a.kind, a.text);
+    case 'forget_note': return await forgetNote(sb, a.id);
     default: return { error: 'unknown tool' };
   }
 }
@@ -199,22 +229,24 @@ const textOf = (c: { type: string; text?: string }[]) => c.filter((b) => b.type 
 
 /** One conversation turn: the AI looks things up with its read-only tools and answers. Used by Telegram (with stored memory) and by the screen in the app (history sent by the page). */
 async function converse(sb: Db, history: Turn[], question: string, src = 'screen'): Promise<string> {
-  const system = `${persona()}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. ${webOn() ? 'If the question is not about the business, answer it helpfully, searching the web when you need current or outside facts.' : 'If the question is not about the business, answer briefly or say it is outside what you do.'}`;
+  const system = `${persona()}\n${LEARN_RULES}${await memory(sb)}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. ${webOn() ? 'If the question is not about the business, answer it helpfully, searching the web when you need current or outside facts.' : 'If the question is not about the business, answer briefly or say it is outside what you do.'}`;
   const tools = webOn() ? [...TOOLS, WEB_SEARCH] : TOOLS;
   const messages: { role: string; content: unknown }[] = [...history, { role: 'user', content: question }];
-  let reply = ''; let searched = false;
+  let reply = ''; let searched = false; const used: string[] = [];
   for (let round = 0; round < 6; round++) {
     const out = await claude(system, messages, tools);
-    reply = textOf(out.content); if (out.content.some((b) => b.type === 'server_tool_use')) searched = true;
+    reply = textOf(out.content); if (out.content.some((b) => b.type === 'server_tool_use')) { searched = true; used.push('web_search'); }
     const uses = out.content.filter((b) => b.type === 'tool_use');
     if (!uses.length && out.stop_reason === 'pause_turn') { messages.push({ role: 'assistant', content: out.content }); continue; }   // a long web search: let it carry on
     if (!uses.length) break;
     messages.push({ role: 'assistant', content: out.content });
+    used.push(...uses.map((u) => u.name ?? ''));
     const results = [];
     for (const u of uses) results.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(await safe(runTool(sb, u.name ?? '', u.input ?? {}))).slice(0, 9000) });
     messages.push({ role: 'user', content: results });
   }
   if (searched) await logEvent(sb, 'search', 'Web search used');
+  await countTopics(sb, used);
   await logEvent(sb, 'answer', `Question answered · ${src}`);
   return reply || 'I could not put an answer together. Please ask again.';
 }
@@ -233,7 +265,7 @@ async function morningBrief(sb: Db, owners: number[]) {
     safe(getJobs(sb, t, t)), safe(getJobs(sb, addDays(t, 1), addDays(t, 1))), safe(getAttendance(sb, y)), safe(getPending(sb)), safe(getLeads(sb, 1)),
     safe(getReceivables(sb)), safe(getMoneyIn(sb, 1)), safe(getHandovers(sb))]);
   const data = { today: t, weekday: new Date(t + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }), jobsToday, jobsTomorrow, attendanceYesterday, waitingForYou: pending, newInquiriesLast24h: leads, receivables, moneyReceivedYesterday: moneyYesterday, handoversWaitingForClientSignature: handovers };
-  const out = await claude(`${persona()}\nWrite the owner's MORNING BRIEF to be listened to. Open with a short greeting and the day. Put what needs the owner's attention or a decision first (waiting approvals, unassigned jobs, absent crew, overdue money, handovers waiting), then today's jobs in time order, then tomorrow in one line. Skip empty sections. Roughly 100 to 160 words.`,
+  const out = await claude(`${persona()}${await memory(sb)}\nWrite the owner's MORNING BRIEF to be listened to. Open with a short greeting and the day. Put what needs the owner's attention or a decision first (waiting approvals, unassigned jobs, absent crew, overdue money, handovers waiting), then today's jobs in time order, then tomorrow in one line. Skip empty sections. Roughly 100 to 160 words.`,
     [{ role: 'user', content: `Data (JSON):\n${JSON.stringify(data).slice(0, 14000)}` }]);
   const text = textOf(out.content) || 'Good morning. I could not prepare the brief today.';
   for (const c of owners) await deliver(c, text);
@@ -294,7 +326,8 @@ async function panel(sb: Db) {
   const okParts = parts.filter((x) => !(x && typeof x === 'object' && !Array.isArray(x) && 'unavailable' in (x as object))).length;
   const events = await safe((async () => { const { data } = await sb.from('jarvis_events').select('kind, text, at').order('at', { ascending: false }).limit(16); return data ?? []; })());
   const delivered = await safe((async () => { const { data } = await sb.from('alert_outbox').select('sent_at').order('created_at', { ascending: false }).limit(20); const rows = data ?? []; return rows.length ? Math.round(rows.filter((r: Db) => r.sent_at).length / rows.length * 100) : null; })());
-  return { at: new Date().toISOString(), today: t, voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'),
+  const memoryNotes = await loadNotes(sb);
+  return { at: new Date().toISOString(), today: t, memory: memoryNotes, voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'),
     health: { data: Math.round(okParts / parts.length * 100), voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'), alerts: typeof delivered === 'number' ? delivered : null, web: webOn() },
     events, jobsToday, jobsTomorrow, attendanceToday, attendanceYesterday, pending, leads, receivables, moneyToday, quotes, handovers, alerts };
 }
@@ -315,6 +348,7 @@ async function webRequest(req: Request): Promise<Response> {
     const history: Turn[] = (Array.isArray(b.history) ? b.history : []).filter((h) => (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string').slice(-8).map((h) => ({ role: h.role as Turn['role'], content: h.content.slice(0, 1500) }));
     return json({ text: await converse(sb, history, q, 'screen') });
   }
+  if (b.action === 'forget') return json(await forgetNote(sb, (b as { id?: unknown }).id));
   if (b.action === 'speak') {
     if (!env('ELEVENLABS_API_KEY') || !env('ELEVENLABS_VOICE_ID')) return json({ error: 'No voice is connected yet.' }, 400);
     const text = speakable(String(b.text ?? ''), 1200); if (!text) return json({ error: 'Nothing to say.' }, 400);

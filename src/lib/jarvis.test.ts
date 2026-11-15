@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, speakable } from '../../supabase/functions/jarvis/logic';
+import { cleanNote, memoryBlock, addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, speakable } from '../../supabase/functions/jarvis/logic';
 
 describe('jarvis helpers', () => {
   it('works in Manila time', () => {
@@ -38,5 +38,23 @@ describe('jarvis helpers', () => {
     expect(personaPrompt('Boss', true)).toContain('"Boss"'); expect(personaPrompt('', false)).toContain('Do not say client names');
     expect(personaPrompt('', true)).toContain('You can only read information'); expect(personaPrompt('', true)).toContain('honorific'); expect(personaPrompt('Boss', true)).not.toContain('honorific');
     expect(personaPrompt('', true)).not.toContain('search the web'); expect(personaPrompt('', true, true)).toMatch(/search the web[\s\S]*NEVER put a client name/);
+  });
+});
+
+describe('Jarvis long-term memory', () => {
+  it('keeps short plain notes and refuses links, numbers and secrets', () => {
+    expect(cleanNote('  Prefers   the brief under 100 words ')).toBe('Prefers the brief under 100 words');
+    expect(cleanNote('ok')).toBeNull();
+    expect(cleanNote('see https://example.com')).toBeNull();
+    expect(cleanNote('call him on 0917 123 4567')).toBeNull();
+    expect(cleanNote('the api key is abc')).toBeNull();
+    expect(cleanNote('x'.repeat(40) + ' long token')).toBeNull();
+    expect(cleanNote(42)).toBeNull();
+    expect(cleanNote('word '.repeat(80))!.length).toBe(200);
+  });
+  it('builds the memory section with ids and favourite topics', () => {
+    expect(memoryBlock([], [])).toBe('');
+    const b = memoryBlock([{ id: 7, kind: 'preference', text: 'Keep it short' }], [{ topic: 'unpaid invoices', n: 9 }, { topic: 'quotations', n: 1 }, { topic: 'crew attendance', n: 4 }]);
+    expect(b).toContain('[#7] Keep it short'); expect(b).toContain('unpaid invoices, crew attendance'); expect(b).not.toContain('quotations');
   });
 });

@@ -105,6 +105,10 @@ export default function Jarvis() {
     } catch (e) { setErr(e instanceof Error ? e.message : 'Jarvis could not answer.'); setMode('idle'); }
   }, [history, speak]);
 
+  const forget = async (id: number) => {
+    if (!CLOUD) { setPanel((p) => (p ? { ...p, memory: (Array.isArray(p.memory) ? p.memory : []).filter((n: { id: number }) => n.id !== id) } : p)); return; }
+    try { await call({ action: 'forget', id }); await load(); } catch (e) { setErr(e instanceof Error ? e.message : 'Could not forget that.'); }
+  };
   const stopListening = () => { if (rec.current && rec.current.state !== 'inactive') rec.current.stop(); };
   const listen = async () => {
     if (!CLOUD) { const order: Mode[] = ['idle', 'listening', 'thinking', 'speaking']; const nx = order[(order.indexOf(mode) + 1) % 4]; setMode(nx); setSay(nx === 'speaking' ? 'Good morning. Two items need you: a discount request, and a handover still waiting for the client.' : ''); return; }
@@ -148,7 +152,7 @@ export default function Jarvis() {
       {!CLOUD && <div className="jv-note">Demo data. On the live system Jarvis shows your real figures and talks.</div>}
       {err && <div className="jv-note err">{err}</div>}
       {view === 'console' && S && panel ? (
-        <JarvisConsole S={S} panel={panel} mode={mode} analyser={analyser} theme={theme} sub={sub} say={say} idleHint={CLOUD ? 'Tap the core to talk, or type below.' : 'Tap the core to preview its states.'} text={text} setText={setText} submit={submit} onCore={() => void listen()} onBrief={() => void ask('Give me my brief for right now.')} busy={mode === 'thinking'} live={CLOUD} money={money} />
+        <JarvisConsole S={S} panel={panel} mode={mode} analyser={analyser} theme={theme} sub={sub} say={say} idleHint={CLOUD ? 'Tap the core to talk, or type below.' : 'Tap the core to preview its states.'} text={text} setText={setText} submit={submit} onCore={() => void listen()} onBrief={() => void ask('Give me my brief for right now.')} onForget={(id) => void forget(id)} busy={mode === 'thinking'} live={CLOUD} money={money} />
       ) : view === 'console' ? <div className="jv-note">Loading Jarvis…</div> : (
       <div className={`jv-grid ${booted ? 'in' : ''}`}>
         <div className="jv-col">
