@@ -959,6 +959,8 @@ export interface Settings {
   pay_by_day?: boolean;
   /** approve an attendance record automatically when the person clocks out and the day is clean (not late, no undertime, no overtime) */
   auto_approve_attendance?: boolean;
+  /** with auto approval on: still wait for the Owner when someone is late by more than this many minutes (after the grace period). Default 15. */
+  auto_approve_late_min?: number;
   fb_ai?: { mode: 'off' | 'suggest' | 'auto'; notes: string };
   /** Marketing AI: writes and posts to the Facebook Page. approve = I approve each post, auto = posts go out on schedule. */
   /** BIR compliance tab: how a sale is classified on the SLS when it is not plain VATable, and rows left out of the lists (by record id) */

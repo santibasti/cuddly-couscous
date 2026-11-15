@@ -234,6 +234,12 @@ export function computeTimes(e: Pick<Employee, 'shift_start' | 'shift_end'>, inA
   return { late_min: late, undertime_min: undertime, ot_min: ot >= 30 ? Math.floor(ot / 30) * 30 : 0, worked_hours: round2(worked) };
 }
 
+/** Approve a finished day automatically: Admin turned it on, the person was not late beyond the threshold (default 15 min, after the grace period) and worked no overtime.
+ *  Leaving early (undertime) does not hold it back. Mirrors the database rule (migration 0115). */
+export function autoApproveOk(t: { late_min?: number; ot_min?: number }, s: { auto_approve_attendance?: boolean; auto_approve_late_min?: number }): boolean {
+  return !!s.auto_approve_attendance && (t.late_min ?? 0) <= (s.auto_approve_late_min ?? 15) && (t.ot_min ?? 0) === 0;
+}
+
 /* ============ Payroll ============ */
 export const PERIODS_PER_MONTH_FACTOR: Record<string, number> = { monthly: 1, biweekly: 0.5, weekly: 12 / 52 };
 

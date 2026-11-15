@@ -213,6 +213,28 @@ describe('business rules enforced by the store', () => {
     m.store.patchSettings({ auto_approve_attendance: false });
   });
 
+  it('auto-approval rules: late threshold, overtime, undertime and the site check-in', async () => {
+    const { autoApproveOk } = await import('./business');
+    const on = { auto_approve_attendance: true };
+    expect(autoApproveOk({ late_min: 0, ot_min: 0 }, on)).toBe(true);
+    expect(autoApproveOk({ late_min: 15, ot_min: 0 }, on)).toBe(true);              // default threshold is 15 minutes
+    expect(autoApproveOk({ late_min: 16, ot_min: 0 }, on)).toBe(false);
+    expect(autoApproveOk({ late_min: 30, ot_min: 0 }, { ...on, auto_approve_late_min: 45 })).toBe(true);
+    expect(autoApproveOk({ late_min: 0, ot_min: 30 }, on)).toBe(false);             // overtime always waits for the Owner
+    expect(autoApproveOk({ late_min: 0, ot_min: 0 }, { auto_approve_attendance: false })).toBe(false);
+  });
+
+  it('a crew member who clocks in after the site check-in is approved at once and linked to the job', async () => {
+    await as('owner@topmop.ph');
+    const { today, nowLocal } = await import('./util');
+    const job = db().jobs[0]; const emp = db().employees.find((e) => e.status !== 'inactive' && !e.deleted_at && e.department === 'Field Operations')!;
+    for (const a of db().attendance.filter((x) => x.employee_id === emp.id && x.date === today() && !x.deleted_at)) m.store.remove('attendance', a.id, { cascade: true });
+    m.store.insert('workflows', { id: 'wsite', job_id: job.id, panels: [], arr_at: nowLocal(), arr_crew_present: [emp.id], arr_crew_absent: [] } as never);
+    m.A.clockIn(emp.id, {});
+    expect(db().attendance.find((x) => x.employee_id === emp.id && x.date === today() && !x.deleted_at)).toMatchObject({ approval: 'Approved', approved_by: 'auto', field_work: true });
+    expect(db().attendance.find((x) => x.employee_id === emp.id && x.date === today() && !x.deleted_at)!.job_id).toBeTruthy();
+  });
+
   it('writes an audit entry for every mutation with before/after', async () => {
     await as('owner@topmop.ph');
     const n = db().audit.length;

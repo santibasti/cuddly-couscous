@@ -6,7 +6,7 @@ import type { DB, ExpenseCategory,
   Payment, Quotation, QuoteStatus, StockTx,
 } from './types';
 import {
-  appliedDiscount, backJobStatusFor, paymentPlanLabel, buildPayrollLines, openShift, shiftTimes, computeTimes, currentRequest, docTotals, variationTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
+  appliedDiscount, autoApproveOk, backJobStatusFor, paymentPlanLabel, buildPayrollLines, openShift, shiftTimes, computeTimes, currentRequest, docTotals, variationTotals, finalContract, findConflicts, invoiceBalance, invoiceLedger, invoiceTotals, isDone, isOpen, LIVE_JOB, onHand, overlaps, stockSummary,
 } from './business';
 import { copyQuoteImages } from './quoteimages';
 import { syncFollowUps } from './followups';
@@ -54,8 +54,10 @@ export function clockIn(employeeId: string, geo: Geo, jobId?: string) {
   }
   if (existing?.clock_in) fail('Already clocked in today.');
   const t = computeTimes(emp, at, undefined, d.settings.grace_minutes);
-  const patch = { kind: 'Present' as const, clock_in: at, job_id: jobId, field_work: !!jobId, in_lat: geo.lat, in_lng: geo.lng, late_min: t.late_min };
-  if (existing) return store.update('attendance', existing.id, patch, 'update', `${emp.full_name} clocked in`);
+  // the Team Leader's Site Check-In for today already lists this person as present: approved at once and linked to that job (on the live site the database does this)
+  const site = !CLOUD ? d.workflows.filter((w) => !w.deleted_at && w.arr_at?.slice(0, 10) === date && w.arr_crew_present?.includes(employeeId)).sort((a, b) => (b.arr_at ?? '').localeCompare(a.arr_at ?? ''))[0] : undefined;
+  const patch = { kind: 'Present' as const, clock_in: at, job_id: jobId ?? site?.job_id, field_work: !!(jobId ?? site?.job_id), in_lat: geo.lat, in_lng: geo.lng, late_min: t.late_min, ...(site ? { approval: 'Approved' as const, approved_by: 'auto', approved_at: isoNow() } : {}) };
+  if (existing) return store.update('attendance', existing.id, patch, 'update', `${emp.full_name} clocked in${site ? ' — approved automatically (site check-in)' : ''}`);
   return store.insert('attendance', { employee_id: employeeId, date, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending', ...patch } as never, `${emp.full_name} clocked in ${at.slice(11)}`);
 }
 /** Owner only: take back a clock-in made by mistake (the record has no clock-out yet), so the person can clock in again properly. */
@@ -77,9 +79,9 @@ export function clockOut(employeeId: string, geo: Geo) {
   const at = nowLocal();
   const sessions = rec!.sessions?.length ? rec!.sessions.map((s, i, all) => (i === all.length - 1 ? { ...s, out: at } : s)) : undefined;
   const t = sessions ? shiftTimes(emp, sessions, d.settings.grace_minutes, d.settings.std_hours_per_day) : computeTimes(emp, rec!.clock_in, at, d.settings.grace_minutes);
-  // a clean day approves itself when Admin turned that on (on the live site the database does this; here it keeps the demo the same)
-  const clean = !!d.settings.auto_approve_attendance && rec!.kind === 'Present' && t.late_min === 0 && t.undertime_min === 0 && t.ot_min === 0;
-  return store.update('attendance', rec!.id, { clock_out: at, ...(sessions ? { sessions } : {}), out_lat: geo.lat, out_lng: geo.lng, ...t, ...(clean && !CLOUD ? { approval: 'Approved' as const, approved_by: 'auto', approved_at: isoNow() } : {}) }, 'update', `${emp.full_name} clocked out ${at.slice(11)}${clean ? ' — clean day, approved automatically' : ''}`);
+  // a normal day approves itself when Admin turned that on (not late beyond the threshold, no overtime; leaving early does not hold it back) (on the live site the database does this; here it keeps the demo the same)
+  const clean = rec!.kind === 'Present' && autoApproveOk(t, d.settings);
+  return store.update('attendance', rec!.id, { clock_out: at, ...(sessions ? { sessions } : {}), out_lat: geo.lat, out_lng: geo.lng, ...t, ...(clean && !CLOUD ? { approval: 'Approved' as const, approved_by: 'auto', approved_at: isoNow() } : {}) }, 'update', `${emp.full_name} clocked out ${at.slice(11)}${clean ? ' — normal day, approved automatically' : ''}`);
 }
 export function decideAttendance(id: string, approve: boolean, note?: string) {
   store.require('attendance.approve');
