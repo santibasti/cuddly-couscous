@@ -9,7 +9,7 @@
 // Every call must carry the header x-webhook-secret = WEBHOOK_SECRET (this function refuses to run without that secret). Read-only: Jarvis never changes any business data.
 // Secrets: TELEGRAM_BOT_TOKEN, WEBHOOK_SECRET, ANTHROPIC_API_KEY, JARVIS_OWNER_TELEGRAM_ID (your Telegram id, from /myid; several: comma separated),
 //          ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID. Optional: JARVIS_MODEL (default claude-sonnet-5-5), JARVIS_ADDRESS (how it addresses you), JARVIS_SPEAK_NAMES=0 (do not say client names),
-//          ELEVENLABS_TTS_MODEL (default eleven_multilingual_v2), ELEVENLABS_STT_MODEL (default scribe_v1; scribe_v2 is tried if that one is refused). Deploy with --no-verify-jwt.
+//          JARVIS_WEB=0 (turn off the web search; on by default), ELEVENLABS_TTS_MODEL (default eleven_multilingual_v2), ELEVENLABS_STT_MODEL (default scribe_v1; scribe_v2 is tried if that one is refused). Deploy with --no-verify-jwt.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, round2, speakable } from './logic.ts';
 
@@ -183,24 +183,29 @@ async function runTool(sb: Db, name: string, a: Record<string, unknown>) {
     default: return { error: 'unknown tool' };
   }
 }
-const persona = () => personaPrompt(env('JARVIS_ADDRESS'), env('JARVIS_SPEAK_NAMES') !== '0');
+const webOn = () => env('JARVIS_WEB') !== '0';
+const persona = () => personaPrompt(env('JARVIS_ADDRESS'), env('JARVIS_SPEAK_NAMES') !== '0', webOn());
+/** Claude's own web search (no Google key needed): the search runs on Anthropic's side and its results come back inside the reply. */
+const WEB_SEARCH = { type: 'web_search_20250305', name: 'web_search', max_uses: 3, user_location: { type: 'approximate', country: 'PH', city: 'Manila', timezone: 'Asia/Manila' } };
 async function claude(system: string, messages: { role: string; content: unknown }[], tools?: unknown[]) {
   const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({ model: env('JARVIS_MODEL') || 'claude-sonnet-5-5', max_tokens: 700, system, messages, ...(tools ? { tools } : {}) }) });
   if (!res.ok) { const detail = (await res.text()).slice(0, 300); console.error('AI', res.status, detail); throw new Error(`AI ${res.status}: ${detail}`); }
   return await res.json() as { content: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[]; stop_reason: string };
 }
-const textOf = (c: { type: string; text?: string }[]) => c.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+const textOf = (c: { type: string; text?: string }[]) => c.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
 
 /** One conversation turn: the AI looks things up with its read-only tools and answers. Used by Telegram (with stored memory) and by the screen in the app (history sent by the page). */
 async function converse(sb: Db, history: Turn[], question: string): Promise<string> {
-  const system = `${persona()}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. If the question is not about the business, answer briefly or say it is outside what you do.`;
+  const system = `${persona()}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. ${webOn() ? 'If the question is not about the business, answer it helpfully, searching the web when you need current or outside facts.' : 'If the question is not about the business, answer briefly or say it is outside what you do.'}`;
+  const tools = webOn() ? [...TOOLS, WEB_SEARCH] : TOOLS;
   const messages: { role: string; content: unknown }[] = [...history, { role: 'user', content: question }];
   let reply = '';
-  for (let round = 0; round < 5; round++) {
-    const out = await claude(system, messages, TOOLS);
+  for (let round = 0; round < 6; round++) {
+    const out = await claude(system, messages, tools);
     reply = textOf(out.content);
     const uses = out.content.filter((b) => b.type === 'tool_use');
+    if (!uses.length && out.stop_reason === 'pause_turn') { messages.push({ role: 'assistant', content: out.content }); continue; }   // a long web search: let it carry on
     if (!uses.length) break;
     messages.push({ role: 'assistant', content: out.content });
     const results = [];

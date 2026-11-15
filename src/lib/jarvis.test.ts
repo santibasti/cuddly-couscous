@@ -37,5 +37,6 @@ describe('jarvis helpers', () => {
   it('tells the assistant to stay read-only and keep names out when asked', () => {
     expect(personaPrompt('Boss', true)).toContain('"Boss"'); expect(personaPrompt('', false)).toContain('Do not say client names');
     expect(personaPrompt('', true)).toContain('You can only read information');
+    expect(personaPrompt('', true)).not.toContain('search the web'); expect(personaPrompt('', true, true)).toMatch(/search the web[\s\S]*NEVER put a client name/);
   });
 });
