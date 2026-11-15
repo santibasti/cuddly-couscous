@@ -25,6 +25,28 @@ export function driverIncentive(db: Pick<DB, 'employees'>, job: Pick<Job, 'drive
   return { id: e.id, amount: Math.max(0, e.driver_incentive ?? 0) };
 }
 
+/**
+ * The days a person earns the driver incentive in a date range: the incentive is a fixed amount per day they were the chosen driver of a job they attended.
+ * Two jobs on the same day still pay once (the earlier job gets it). Returns date → job id.
+ */
+export function driverDays(db: DB, empId: string, start: string, end: string, asOf: string = today()): Map<string, string> {
+  const out = new Map<string, string>();
+  const att = db.attendance.filter((a) => a.employee_id === empId && !a.deleted_at && a.approval === 'Approved' && !!a.clock_in && !(a.date === asOf && !a.clock_out));
+  if (!att.length) return out;
+  const jobs = (db.jobs ?? []).filter((j) => j.driver_id === empId && !j.deleted_at && !['Cancelled', 'Rescheduled', 'Pending'].includes(j.status) && driverIncentive(db, j).id === empId).sort((a, b) => a.start_at.localeCompare(b.start_at));
+  for (const j of jobs) {
+    const wf = (db.workflows ?? []).find((w) => w.job_id === j.id && !w.deleted_at);
+    if (wf?.arr_crew_absent?.some((a) => a.id === empId)) continue;
+    const from = j.start_at.slice(0, 10), to = j.end_at.slice(0, 10) >= from ? j.end_at.slice(0, 10) : from;
+    for (let d = from < start ? start : from; d <= to && d <= end; d = addDays(d, 1)) {
+      if (out.has(d)) continue;
+      const here = att.some((a) => a.date <= d && (a.clock_out ? a.clock_out.slice(0, 10) : a.date) >= d && (!a.job_id || a.job_id === j.id || !!wf?.arr_crew_present?.includes(empId)));
+      if (here) out.set(d, j.id);
+    }
+  }
+  return out;
+}
+
 /** Everyone assigned to the job: the leader first, then the crew, each once. */
 export const jobCrewIds = (j: Pick<Job, 'leader_id' | 'crew_ids'>): string[] => [...new Set([...(j.leader_id ? [j.leader_id] : []), ...(j.crew_ids ?? [])])];
 
@@ -99,12 +121,20 @@ export function jobsAttended(db: DB, empId: string, start: string, end: string, 
 
 /** Job pay and bonuses for one employee over a date range: one row per job order paid in the range (the rate on its pay day, the bonus once the client has signed the handover). */
 export function employeeJobPay(db: DB, emp: Employee, start: string, end: string, asOf?: string): JobPayRow[] {
-  return jobsAttended(db, emp.id, start, end, false, asOf).map((j) => {
+  const days = driverDays(db, emp.id, start, end, asOf); const amount = Math.max(0, emp.driver_incentive ?? 0);
+  const driven = new Map<string, string[]>(); for (const [d, id] of days) driven.set(id, [...(driven.get(id) ?? []), d]);   // job id → days driven in this range
+  const rows = jobsAttended(db, emp.id, start, end, false, asOf).map((j) => {
     const b = jobBonus(db, j); const rd = jobPayDate(db, j), bd = jobBonusDate(db, j, b);
     const inRate = rd >= start && rd <= end, inBonus = !!bd && bd >= start && bd <= end;
     const rate = inRate && emp.pay_basis === 'per_job' ? emp.job_rate ?? 0 : 0;
-    const drv = driverIncentive(db, j);   // paid on the job's pay day, to the one person who drove (not tied to the handover signature)
-    const row = { panel_bonus: inBonus ? b.panel_each : 0, outside_bonus: inBonus ? b.outside_each : 0, commercial_bonus: inBonus ? b.commercial_each : 0, driver_bonus: inRate && drv.id === emp.id ? drv.amount : 0 };
+    const row = { panel_bonus: inBonus ? b.panel_each : 0, outside_bonus: inBonus ? b.outside_each : 0, commercial_bonus: inBonus ? b.commercial_each : 0, driver_bonus: Math.round((driven.get(j.id)?.length ?? 0) * amount * 100) / 100 };
+    driven.delete(j.id);
     return { job_id: j.id, number: j.number, date: inRate ? rd : bd!, client: (db.clients ?? []).find((c) => c.id === j.client_id)?.name, rate, ...row, total: Math.round((rate + jobRowBonus(row)) * 100) / 100, final: b.final };
   });
+  // days driven on a job whose rate day or bonus day falls in another pay period still count in the period they were driven
+  for (const [id, ds] of driven) {
+    const j = (db.jobs ?? []).find((x) => x.id === id)!; const bonus = Math.round(ds.length * amount * 100) / 100;
+    rows.push({ job_id: id, number: j.number, date: [...ds].sort()[0], client: (db.clients ?? []).find((c) => c.id === j.client_id)?.name, rate: 0, panel_bonus: 0, outside_bonus: 0, commercial_bonus: 0, driver_bonus: bonus, total: bonus, final: true });
+  }
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
 }

@@ -262,7 +262,7 @@ export interface Employee extends Base {
   job_rate?: number;
   /** drives the company van: can be chosen as a job's driver and earns driver_incentive for every job they drive */
   is_driver?: boolean;
-  /** the driver incentive (₱) paid for each job order they drove (only one driver per job, even if two drivers ride in the van) */
+  /** the driver incentive (₱) paid for each DAY they are the chosen driver of a job they attended (only one driver per job, even if two drivers ride in the van) */
   driver_incentive?: number;
   daily_rate: number;
   monthly_salary: number;

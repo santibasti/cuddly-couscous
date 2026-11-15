@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildPayrollLines, computePayrollLine, payrollEligible } from './business';
-import { driverIncentive, employeeJobPay, jobBonus, jobsAttended, panelBonusPerCrew } from './jobpay';
+import { driverDays, driverIncentive, employeeJobPay, jobBonus, jobsAttended, panelBonusPerCrew } from './jobpay';
 import { weekOf, weeklyGrid } from './payrollweek';
 import { seedDB } from './seed';
 import { clone } from './util';
@@ -108,6 +108,24 @@ describe('pay per job order', () => {
     (w.job as { driver_id?: string }).driver_id = w.d.id; expect(driverIncentive(w.db, w.job as never).amount).toBe(0);
     w.db.employees = w.db.employees.map((e) => (e.id === w.b.id ? { ...e, is_driver: false } : e)) as never;
     (w.job as { driver_id?: string }).driver_id = w.b.id; expect(driverIncentive(w.db, w.job as never).amount).toBe(0);
+  });
+  it('pays the driver incentive per day driven: once for two jobs on one day, and for each day of a multi-day job', () => {
+    const w = world();
+    w.db.employees = w.db.employees.map((e) => (e.id === w.b.id ? { ...e, is_driver: true, driver_incentive: 250 } : e)) as never;
+    const asDriver = { ...w.db.employees.find((e) => e.id === w.b.id)!, pay_basis: 'per_job' as const, job_rate: 0 };
+    (w.job as { driver_id?: string }).driver_id = w.b.id;
+    // a second job the same day (same driver): the day pays once, to the earlier job
+    w.db.jobs.push({ ...clone(w.job), id: 'jz', number: 'JOB-Z', start_at: '2026-03-03T13:00', end_at: '2026-03-03T17:00', driver_id: w.b.id } as never);
+    w.db.workflows.push({ id: 'wz', job_id: 'jz', panels: [], arr_crew_present: [w.b.id], arr_crew_absent: [] } as never);
+    const sumDriver = (rows: { driver_bonus?: number }[]) => rows.reduce((t, r) => t + (r.driver_bonus ?? 0), 0);
+    expect(sumDriver(employeeJobPay(w.db, asDriver as never, '2026-03-01', '2026-03-07'))).toBe(250);
+    expect(Array.from(driverDays(w.db, w.b.id, '2026-03-01', '2026-03-07')).length).toBe(1);
+    // a job over three days: 250 for each day he attended; days outside the pay period are not counted in it
+    w.db.jobs = w.db.jobs.filter((j) => j.id !== 'jz') as never; (w.job as { end_at: string }).end_at = '2026-03-05T17:00';
+    w.db.attendance.push(w.att(w.b.id, '2026-03-04', { job_id: 'jx' }) as never, w.att(w.b.id, '2026-03-05', { job_id: 'jx' }) as never);
+    expect(sumDriver(employeeJobPay(w.db, asDriver as never, '2026-03-01', '2026-03-07'))).toBe(750);
+    const next = employeeJobPay(w.db, asDriver as never, '2026-03-04', '2026-03-10');               // the next period sees only its own days, even though the job started earlier
+    expect(sumDriver(next)).toBe(500); expect(next.some((r) => r.job_id === 'jx' && r.driver_bonus === 500)).toBe(true);
   });
   it('pays two job orders at the rate each', () => {
     const { db, a, period, att } = world(); const emp = { ...a, pay_basis: 'per_job' as const, job_rate: 800, rest_day: 0 };

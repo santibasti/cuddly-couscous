@@ -2,7 +2,7 @@
 // The bonus of a job shows as an estimate until the client signs the handover; work after Saturday's cutoff counts in the next week.
 import { eachDay, money, nowLocal, round2, sum } from './util';
 import { payDateOf, weekOf } from './payrollweek';
-import { driverIncentive, jobBonus, jobBonusDate, jobPayDate, jobPaySettings, jobsAttended } from './jobpay';
+import { driverDays, jobBonus, jobBonusDate, jobPayDate, jobPaySettings, jobsAttended } from './jobpay';
 import type { DB, Employee } from './types';
 
 export interface EarnDay { date: string; rate: number; bonus: number; total: number; /** the bonus of this day is not final yet */ estimate: boolean; /** the day was worked and finished but the attendance is not approved yet, so no pay shows for it */ pending?: boolean }
@@ -23,11 +23,12 @@ export function crewEarnings(db: DB, emp: Employee, now: string = nowLocal()): C
     if (inWeek(rd)) {
       if (emp.pay_basis === 'per_job') day(rd)!.rate += emp.job_rate ?? 0;
       if (rd !== j.start_at.slice(0, 10)) notes.add(`${j.number} started after Saturday ${cfg.payday_cutoff ?? '21:00'}, so it counts in this week.`);
-      const drv = driverIncentive(db, j); if (drv.id === emp.id && drv.amount > 0) { day(rd)!.bonus += drv.amount; notes.add(`${j.number}: driver incentive ${money(drv.amount)} included.`); }
       if (b.final && inWeek(bd)) day(bd!)!.bonus += b.each;
       else if (!b.final && b.each > 0) { day(rd)!.bonus += b.each; day(rd)!.estimate = true; notes.add(`${j.number}: the bonus is an estimate until the client signs the handover.`); }
     } else if (b.final && inWeek(bd)) { day(bd!)!.bonus += b.each; notes.add(`${j.number}: bonus added after the client signed the handover.`); }
   }
+  // the driver incentive is a fixed amount for each day the person was the chosen driver
+  if ((emp.driver_incentive ?? 0) > 0) for (const [date] of driverDays(db, emp.id, week.start, week.end, now.slice(0, 10))) { day(date)!.bonus += emp.driver_incentive!; notes.add(`Driver incentive ${money(emp.driver_incentive!)} per day driven is included.`); }
   if (emp.pay_basis === 'daily') for (const a of db.attendance) {
     if (a.employee_id !== emp.id || a.deleted_at || a.approval !== 'Approved' || !a.clock_in || a.kind === 'Leave' || (a.date === now.slice(0, 10) && !a.clock_out)) continue;
     const d = day(a.date); if (d && !d.rate) d.rate = emp.daily_rate;
