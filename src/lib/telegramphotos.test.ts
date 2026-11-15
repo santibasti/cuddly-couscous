@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decide, jobsFor, canSendToOcular, ocularsFor, parseCaption, type TgJob } from '../../supabase/functions/telegram-webhook/logic';
+import { decide, jobsFor, canSendToJob, canSendToOcular, ocularsFor, parseCaption, type TgJob } from '../../supabase/functions/telegram-webhook/logic';
 
 const NOW = Date.parse('2026-11-06T02:00:00Z');   // 10:00 Manila
 const job = (id: string, start: string, o: Partial<TgJob> = {}): TgJob => ({ id, number: `JOB-${id}`, client_id: 'c' + id, start_at: start, end_at: start, status: 'Confirmed', leader_id: 'e1', crew_ids: ['e2'], ...o });
@@ -45,5 +45,14 @@ describe('who may send to an ocular visit', () => {
   it('only the assigned inspector', () => {
     expect(canSendToOcular({ assignee_id: 'e1' }, 'e1')).toBe(true);
     expect(canSendToOcular({ assignee_id: 'e1' }, 'e2')).toBe(false); expect(canSendToOcular({ assignee_id: null }, 'e1')).toBe(false);
+  });
+});
+
+describe('who may send to a job', () => {
+  it('its leader or crew, or the office', () => {
+    const j = { leader_id: 'e1', crew_ids: ['e2', 'e3'] };
+    expect(canSendToJob(j, 'e1', false)).toBe(true); expect(canSendToJob(j, 'e3', false)).toBe(true);
+    expect(canSendToJob(j, 'e9', false)).toBe(false); expect(canSendToJob(j, 'e9', true)).toBe(true);
+    expect(canSendToJob({ leader_id: null, crew_ids: 'x' }, 'e1', false)).toBe(false);
   });
 });

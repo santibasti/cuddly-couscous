@@ -57,3 +57,5 @@ export function ocularsFor(visits: TgOcular[], emp: string, nowMs: number): TgOc
 }
 /** Only the inspector assigned to an ocular visit can send photos to it (like the crew of a job order). */
 export const canSendToOcular = (o: Pick<TgOcular, 'assignee_id'>, emp: string) => !!o.assignee_id && o.assignee_id === emp;
+/** Only the leader or crew of a job (or the office) can send photos to it, like the app's photo_job_ok rule. */
+export const canSendToJob = (j: Pick<TgJob, 'leader_id' | 'crew_ids'>, emp: string, office: boolean) => office || onJob(j as TgJob, emp);

@@ -4,7 +4,7 @@
 //  • POST from the signed-in Owner / Admin ({action:'status'|'connect'}): checks the bot and points Telegram at this function.
 // Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET (letters, digits, - and _ only). Deploy with --no-verify-jwt.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { decide, extFor, firstName, jobsFor, manilaDay, canSendToOcular, ocularsFor, parseCaption, type Kind, type TgJob, type TgOcular } from './logic.ts';
+import { decide, extFor, firstName, jobsFor, manilaDay, canSendToJob, canSendToOcular, ocularsFor, parseCaption, type Kind, type TgJob, type TgOcular } from './logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const safeEq = (a: string, b: string) => { const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b); let d = x.length ^ y.length; for (let i = 0; i < Math.max(x.length, y.length); i++) d |= (x[i] ?? 0) ^ (y[i] ?? 0); return d === 0; };
@@ -43,6 +43,15 @@ async function loadJobs(db: Db, emp: string): Promise<TgJob[]> {
   return ((data ?? []) as TgJob[]).filter((j) => j.leader_id === emp || (Array.isArray(j.crew_ids) && (j.crew_ids as unknown[]).includes(emp)));
 }
 const label = async (db: Db, j: TgJob) => { const { data } = await db.from('clients').select('name').eq('id', j.client_id).maybeSingle(); return `${j.number} (${data?.name ?? 'client'})`; };
+
+/** The office (owner, photos.manage or jobs.all) may file to any job, as in the app. */
+async function isOffice(db: Db, emp: string): Promise<boolean> {
+  const { data: p } = await db.from('profiles').select('role').eq('employee_id', emp).eq('active', true).maybeSingle();
+  if (!p?.role) return false; if (p.role === 'owner') return true;
+  const { data: r } = await db.from('role_permissions').select('permission').eq('role', p.role).in('permission', ['photos.manage', 'jobs.all']).limit(1);
+  return !!r?.length;
+}
+const jobAllowed = async (db: Db, j: TgJob, emp: string) => canSendToJob(j, emp, false) || canSendToJob(j, emp, await isOffice(db, emp));
 
 async function saveMedia(db: Db, m: Msg, media: Media, emp: string, job: TgJob | null, parsed: ReturnType<typeof parseCaption>, ocular: TgOcular | null = null): Promise<'saved' | 'duplicate' | 'toobig'> {
   if ((media.size ?? 0) > MAX_BYTES) return 'toobig';
@@ -106,8 +115,9 @@ async function onMessage(db: Db, m: Msg) {
 
   const jobCmd = text.match(/^\/job(?:@\w+)?\s+(\S+)/i);
   if (jobCmd) {
-    const { data: j } = await db.from('jobs').select('id, number, client_id').ilike('number', jobCmd[1]).is('deleted_at', null).maybeSingle();
+    const { data: j } = await db.from('jobs').select('id, number, client_id, leader_id, crew_ids').ilike('number', jobCmd[1]).is('deleted_at', null).maybeSingle();
     if (!j) return void await say(chat, `I could not find ${jobCmd[1].toUpperCase()}.`, reply);
+    if (!(await jobAllowed(db, j as TgJob, emp))) return void await say(chat, `⚠ ${(j as TgJob).number} is not a job you are on. Only the leader or crew of a job (or the office) can send photos to it.`, reply);
     await db.from('telegram_context').upsert({ employee_id: emp, job_id: j.id, expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
     return void await say(chat, `OK — your next photos for 30 minutes go to ${await label(db, j as TgJob)}.`, reply);
   }
@@ -124,9 +134,11 @@ async function onMessage(db: Db, m: Msg) {
   const parsed = parseCaption(m.caption);
   let captionJob: TgJob | null = null;
   if (parsed.jobNumber) { const { data } = await db.from('jobs').select('id, number, client_id, start_at, end_at, status, leader_id, crew_ids').ilike('number', parsed.jobNumber).is('deleted_at', null).maybeSingle(); captionJob = (data as TgJob) ?? null; }
+  if (captionJob && !(await jobAllowed(db, captionJob, emp))) return void await say(chat, `⚠ ${captionJob.number} is not a job you are on, so I did not save that. Only the leader or crew of a job (or the office) can send photos to it.`, reply);
   const { data: ctx } = await db.from('telegram_context').select('job_id, ocular_id, expires_at').eq('employee_id', emp).maybeSingle();
   let contextJob: TgJob | null = null;
   if (ctx?.job_id && new Date(ctx.expires_at).getTime() > Date.now()) { const { data } = await db.from('jobs').select('id, number, client_id, start_at, end_at, status, leader_id, crew_ids').eq('id', ctx.job_id).is('deleted_at', null).maybeSingle(); contextJob = (data as TgJob) ?? null; }
+  if (contextJob && !(await jobAllowed(db, contextJob, emp))) contextJob = null;
   // an ocular visit: its number in the caption, or /ocular OV-… lately, or (when there is no job today) the visit assigned to this person today
   const OV = 'id, number, client_id, assignee_id, start_at, status';
   let ocular: TgOcular | null = null; let ovWhy = '';
