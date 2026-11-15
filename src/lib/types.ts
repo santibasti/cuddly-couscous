@@ -195,6 +195,8 @@ export interface Job extends Base {
   jo_prices?: 'show' | 'hide';
   /** Owner's choice for this job's crew pay: add the Outside Metro Manila bonus / the Commercial Project bonus to every crew member */
   pay_outside_mm?: boolean; pay_commercial?: boolean;
+  /** more crew-pay options the Owner can switch on for a job: a second site, a night shift, and a manlift (paid only to crew who may use the manlift) */
+  pay_second_site?: boolean; pay_night_shift?: boolean; pay_manlift?: boolean;
   /** commercial projects get no automatic bonus: the Owner types the bonus for each crew member here (₱) */
   pay_commercial_amount?: number;
   /** each assigned person's answer to "can you make it?" (asked from 7 PM the evening before): employee id → answer for this schedule */
@@ -261,6 +263,8 @@ export interface Employee extends Base {
   /** pay for each job order attended, when pay_basis is 'per_job' */
   job_rate?: number;
   /** drives the company van: can be chosen as a job's driver and earns driver_incentive for every job they drive */
+  /** may use the manlift: only these people earn the Manlift bonus on a job that uses one */
+  manlift_ok?: boolean;
   is_driver?: boolean;
   /** the driver incentive (₱) paid for each DAY they are the chosen driver of a job they attended (only one driver per job, even if two drivers ride in the van) */
   driver_incentive?: number;
@@ -385,7 +389,7 @@ export interface PayrollLine {
   job_pay?: JobPayRow[];
 }
 /** One job order worked by one employee: what it paid and which bonuses came with it. */
-export interface JobPayRow { job_id: string; number: string; date: string; client?: string; rate: number; panel_bonus: number; outside_bonus: number; commercial_bonus: number; /** the driver incentive of the job, only for the one person who drove */ driver_bonus?: number; total: number; final: boolean }
+export interface JobPayRow { job_id: string; number: string; date: string; client?: string; rate: number; panel_bonus: number; outside_bonus: number; commercial_bonus: number; /** more job bonuses, each only when it applies */ second_site_bonus?: number; night_bonus?: number; manlift_bonus?: number; /** the driver incentive of the job, only for the one person who drove */ driver_bonus?: number; total: number; final: boolean }
 export interface PayrollRun extends Base { period_id: string; lines: PayrollLine[] }
 
 /* ---------- Inventory ---------- */
@@ -974,7 +978,7 @@ export interface Settings {
   marketing?: { mode: 'off' | 'approve' | 'auto'; per_week: number; days: number[]; time: string; topics: string[]; voice: string; tone?: string; website?: string; brief?: string; email?: string; phone?: string; facebook?: string };
   client_sms?: { enabled: boolean; day_before_time: string; morning_time: string };
   /** pay per job order and its bonuses (defaults apply when missing) */
-  job_pay?: { panel_bonus: number; panel_step: number; outside_mm_bonus: number; commercial_bonus: number; /** payday cutoff on Saturday (HH:mm): work after it counts in the next pay week */ payday_cutoff?: string };
+  job_pay?: { panel_bonus: number; panel_step: number; outside_mm_bonus: number; commercial_bonus: number; /** per crew member, when the Owner switches it on for a job (defaults 300 / 500) */ second_site_bonus?: number; night_shift_bonus?: number; /** only for crew who may use the manlift (default 500) */ manlift_bonus?: number; /** payday cutoff on Saturday (HH:mm): work after it counts in the next pay week */ payday_cutoff?: string };
   reminder_days: { quote_expiry: number; doc_expiry: number; chemical_expiry: number; invoice_due: number; maintenance: number };
   glass_group_size: number;
   access: Record<Role, string[]>; // permission overrides (editable by owner)

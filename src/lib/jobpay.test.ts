@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildPayrollLines, computePayrollLine, payrollEligible } from './business';
-import { driverDays, driverIncentive, employeeJobPay, jobBonus, jobsAttended, panelBonusPerCrew } from './jobpay';
+import { driverDays, driverIncentive, employeeJobPay, jobBonus, jobsAttended, nightShiftHint, panelBonusPerCrew } from './jobpay';
 import { weekOf, weeklyGrid } from './payrollweek';
 import { seedDB } from './seed';
 import { clone } from './util';
@@ -126,6 +126,19 @@ describe('pay per job order', () => {
     expect(sumDriver(employeeJobPay(w.db, asDriver as never, '2026-03-01', '2026-03-07'))).toBe(750);
     const next = employeeJobPay(w.db, asDriver as never, '2026-03-04', '2026-03-10');               // the next period sees only its own days, even though the job started earlier
     expect(sumDriver(next)).toBe(500); expect(next.some((r) => r.job_id === 'jx' && r.driver_bonus === 500)).toBe(true);
+  });
+  it('adds the 2nd site, night shift and manlift bonuses; the manlift bonus goes only to crew who may use the manlift', () => {
+    const w = world(); const job = w.job as Record<string, unknown>;
+    w.db.employees = w.db.employees.map((e) => (e.id === w.b.id ? { ...e, manlift_ok: true } : e)) as never;
+    Object.assign(job, { pay_second_site: true, pay_night_shift: true, pay_manlift: true, pay_outside_mm: true });
+    const b = jobBonus(w.db, w.job as never);
+    expect(b).toMatchObject({ panel_each: 420, outside_each: 250, second_site_each: 300, night_each: 500, manlift_each: 500, manlift_ids: [w.b.id], each: 1470, total: 1470 * 3 + 500 });
+    const rowOf = (id: string) => employeeJobPay(w.db, { ...w.db.employees.find((e) => e.id === id)!, pay_basis: 'per_job', job_rate: 800 } as never, '2026-03-01', '2026-03-07')[0];
+    expect(rowOf(w.b.id)).toMatchObject({ second_site_bonus: 300, night_bonus: 500, manlift_bonus: 500, outside_bonus: 250, panel_bonus: 420, total: 800 + 420 + 250 + 300 + 500 + 500 });
+    expect(rowOf(w.a.id)).toMatchObject({ second_site_bonus: 300, night_bonus: 500, manlift_bonus: 0, total: 800 + 420 + 250 + 300 + 500 });
+    Object.assign(job, { pay_manlift: false }); expect(jobBonus(w.db, w.job as never)).toMatchObject({ manlift_each: 0, manlift_ids: [], total: 1470 * 3 });
+    expect(nightShiftHint({ start_at: '2026-03-03T22:00', end_at: '2026-03-04T05:00' })).toBeTruthy(); expect(nightShiftHint({ start_at: '2026-03-03T09:00', end_at: '2026-03-04T03:00' })).toBeTruthy();
+    expect(nightShiftHint({ start_at: '2026-03-03T08:00', end_at: '2026-03-03T17:00' })).toBeUndefined(); expect(nightShiftHint({ start_at: '2026-03-03T08:00', end_at: '2026-03-05T17:00' })).toBeUndefined();
   });
   it('pays two job orders at the rate each', () => {
     const { db, a, period, att } = world(); const emp = { ...a, pay_basis: 'per_job' as const, job_rate: 800, rest_day: 0 };

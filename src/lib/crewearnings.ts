@@ -20,12 +20,13 @@ export function crewEarnings(db: DB, emp: Employee, now: string = nowLocal()): C
   const inWeek = (d?: string) => !!d && d >= week.start && d <= week.end;
   for (const j of jobsAttended(db, emp.id, week.start, week.end, false, now.slice(0, 10))) {
     const b = jobBonus(db, j); const rd = jobPayDate(db, j), bd = jobBonusDate(db, j, b);
+    const each = b.each + (b.manlift_ids.includes(emp.id) ? b.manlift_each : 0);   // the manlift bonus is only for the crew who may use the manlift
     if (inWeek(rd)) {
       if (emp.pay_basis === 'per_job') day(rd)!.rate += emp.job_rate ?? 0;
       if (rd !== j.start_at.slice(0, 10)) notes.add(`${j.number} started after Saturday ${cfg.payday_cutoff ?? '21:00'}, so it counts in this week.`);
-      if (b.final && inWeek(bd)) day(bd!)!.bonus += b.each;
-      else if (!b.final && b.each > 0) { day(rd)!.bonus += b.each; day(rd)!.estimate = true; notes.add(`${j.number}: the bonus is an estimate until the client signs the handover.`); }
-    } else if (b.final && inWeek(bd)) { day(bd!)!.bonus += b.each; notes.add(`${j.number}: bonus added after the client signed the handover.`); }
+      if (b.final && inWeek(bd)) day(bd!)!.bonus += each;
+      else if (!b.final && each > 0) { day(rd)!.bonus += each; day(rd)!.estimate = true; notes.add(`${j.number}: the bonus is an estimate until the client signs the handover.`); }
+    } else if (b.final && inWeek(bd)) { day(bd!)!.bonus += each; notes.add(`${j.number}: bonus added after the client signed the handover.`); }
   }
   // the driver incentive is a fixed amount for each day the person was the chosen driver
   if ((emp.driver_incentive ?? 0) > 0) for (const [date] of driverDays(db, emp.id, week.start, week.end, now.slice(0, 10))) { day(date)!.bonus += emp.driver_incentive!; notes.add(`Driver incentive ${money(emp.driver_incentive!)} per day driven is included.`); }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
-import { isCommercialClient, jobBonus, jobPaySettings, outsideMetroHint, panelBonusPerCrew } from '@/lib/jobpay';
+import { isCommercialClient, jobBonus, jobPaySettings, nightShiftHint, outsideMetroHint, panelBonusPerCrew } from '@/lib/jobpay';
 import { setJobPayOptions } from '@/lib/joborders';
 import { Badge, Card, Field, Icon, Modal, PageHead, Stat, Tabs, ask, attempt, useObj } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
@@ -76,7 +76,7 @@ function JobBonuses() {
   return (
     <Card title="Crew bonus per job order" actions={<div className="row" style={{ gap: 6 }}><input type="date" aria-label="From" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} /><input type="date" aria-label="To" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} /></div>} flush>
       <div className="small muted" style={{ padding: '10px 14px' }}>Panel bonus = ₱{cfg.panel_bonus} for every complete {cfg.panel_step} additional billable panels per crew member, except on <b>commercial projects</b>: they get no automatic bonus, and the Owner types the bonus for each crew member in the Commercial column. Crew who are absent are taken out of the crew size automatically. The bonus is final once the work is finished and is added to each present crew member's payroll as an incentive. {owner ? 'Tick the two options for jobs that qualify.' : 'Only the Owner can change the two options.'}</div>
-      <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Job order</th><th className="num">Additional panels</th><th className="num">Crew</th><th className="num">Panel each</th><th>Outside Metro Manila ({money(cfg.outside_mm_bonus)})</th><th>Commercial (typed by hand)</th><th className="num">Each</th><th className="num">Total crew bonus</th></tr></thead>
+      <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>Job order</th><th className="num">Additional panels</th><th className="num">Crew</th><th className="num">Panel each</th><th>Outside Metro Manila ({money(cfg.outside_mm_bonus)})</th><th>2nd site ({money(cfg.second_site_bonus)})</th><th>Night shift ({money(cfg.night_shift_bonus)})</th><th>Manlift ({money(cfg.manlift_bonus)}, operators only)</th><th>Commercial (typed by hand)</th><th className="num">Each</th><th className="num">Total crew bonus</th></tr></thead>
         <tbody>{rows.map(({ j, b }) => (
           <tr key={j.id}>
             <td><a href={`#/jobs/${j.id}`}><b>{j.number}</b></a><div className="small muted">{fmtDate(j.start_at.slice(0, 10))} · {db.clients.find((c) => c.id === j.client_id)?.name}{!b.final && ' · not final'}</div></td>
@@ -84,11 +84,14 @@ function JobBonuses() {
             <td className="num">{b.crew}{b.absent.length > 0 && <div className="small muted" title={b.absent.map(name).join(', ')}>{b.absent.length} absent</div>}</td>
             <td className="num">{b.manual ? <span className="small muted" title="Commercial project: no automatic bonus">by hand</span> : money(b.panel_each)}</td>
             <td><label className="check" title={outsideMetroHint(db, j)}><input type="checkbox" disabled={!owner} checked={!!j.pay_outside_mm} onChange={(e) => attempt(() => setJobPayOptions(j.id, { outside: e.target.checked }), e.target.checked ? 'Outside Metro Manila bonus added' : 'Outside Metro Manila bonus removed')} />{outsideMetroHint(db, j)?.replace('Site is in ', '') ?? 'site unknown'}</label></td>
+            <td><label className="check"><input type="checkbox" disabled={!owner} checked={!!j.pay_second_site} onChange={(e) => attempt(() => setJobPayOptions(j.id, { secondSite: e.target.checked }), e.target.checked ? '2nd site bonus added' : '2nd site bonus removed')} />2nd site</label></td>
+            <td><label className="check" title={nightShiftHint(j)}><input type="checkbox" disabled={!owner} checked={!!j.pay_night_shift} onChange={(e) => attempt(() => setJobPayOptions(j.id, { night: e.target.checked }), e.target.checked ? 'Night shift bonus added' : 'Night shift bonus removed')} />{nightShiftHint(j) ? 'Night work' : 'Night shift'}</label></td>
+            <td><label className="check" title="Paid only to crew marked as manlift operators in Employees"><input type="checkbox" disabled={!owner} checked={!!j.pay_manlift} onChange={(e) => attempt(() => setJobPayOptions(j.id, { manlift: e.target.checked }), e.target.checked ? 'Manlift bonus added' : 'Manlift bonus removed')} />{j.pay_manlift ? `${b.manlift_ids.length} of ${b.crew} operator${b.manlift_ids.length === 1 ? '' : 's'}` : 'Manlift job'}</label></td>
             <td>{isCommercialClient(db, j) ? <CommercialAmount job={j} enabled={owner} /> : <span className="small muted">—</span>}</td>
             <td className="num">{money(b.each)}</td><td className="num"><b>{money(b.total)}</b></td>
           </tr>))}
-          {!rows.length && <tr><td colSpan={8} className="muted">No job orders in this range.</td></tr>}</tbody>
-        {rows.length > 0 && <tfoot><tr><th colSpan={7}>Total · {rows.length} job order{rows.length === 1 ? '' : 's'}</th><th className="num">{money(sum(rows, (r) => r.b.total))}</th></tr></tfoot>}
+          {!rows.length && <tr><td colSpan={11} className="muted">No job orders in this range.</td></tr>}</tbody>
+        {rows.length > 0 && <tfoot><tr><th colSpan={10}>Total · {rows.length} job order{rows.length === 1 ? '' : 's'}</th><th className="num">{money(sum(rows, (r) => r.b.total))}</th></tr></tfoot>}
       </table></div>
     </Card>
   );
@@ -109,6 +112,9 @@ function JobPaySettings() {
           {num('panel_bonus', 'Panel bonus (₱)', 'Paid per crew member for every complete step of additional panels.')}
           {num('panel_step', 'Additional panels per crew member for one bonus', 'Default 10: bonus = floor(additional panels ÷ (crew × 10)) × the bonus.')}
           {num('outside_mm_bonus', 'Outside Metro Manila bonus (₱ per crew member)', 'Added to a job when the Owner switches it on for that job.')}
+          {num('second_site_bonus', '2nd site bonus (₱ per crew member)', 'Added to a job that covers a second site, when the Owner switches it on.')}
+          {num('night_shift_bonus', 'Night shift bonus (₱ per crew member)', 'Added to a job worked at night (10 PM to 6 AM), when the Owner switches it on.')}
+          {num('manlift_bonus', 'Manlift bonus (₱, operators only)', 'Added to a job that uses a manlift, only for crew marked as Manlift operator in Employees.')}
           <Field label="Payday cutoff (Saturday)" hint="Payday is Saturday night. Work from this time on Saturday counts in the next pay week (Sunday to Saturday)."><input type="time" disabled={!edit} value={v.payday_cutoff ?? '21:00'} onChange={(e) => setV({ ...v, payday_cutoff: e.target.value || '21:00' })} /></Field>
         </div>
         <div className="small muted">Example with 3 crew: {[30, 59, 60, 90].map((n) => `${n} additional panels → ${money(panelBonusPerCrew(n, 3, v.panel_step, v.panel_bonus))} each`).join(' · ')}.</div>

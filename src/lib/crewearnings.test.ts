@@ -56,6 +56,14 @@ describe('crew earnings this pay week', () => {
     db.jobs = db.jobs.map((j) => (j.id === 'jx' ? { ...j, driver_id: undefined } : j)) as never;
     expect(crewEarnings(db, me, '2026-03-04T10:00')!.days[2].bonus).toBe(420);
   });
+  it('adds the job bonuses: 2nd site and night shift for everyone, the manlift bonus only for the operator', () => {
+    const { db, a } = world('2026-03-03T16:30');
+    const [b] = db.employees.filter((e) => !e.deleted_at && e.status !== 'inactive').slice(1, 2);
+    db.employees = db.employees.map((e) => (e.id === b.id ? { ...e, manlift_ok: true } : e)) as never;
+    db.jobs = db.jobs.map((j) => (j.id === 'jx' ? { ...j, pay_second_site: true, pay_night_shift: true, pay_manlift: true } : j)) as never;
+    expect(crewEarnings(db, a, '2026-03-04T10:00')!.days[2].bonus).toBe(420 + 300 + 500);              // not an operator: no manlift bonus
+    expect(crewEarnings(db, { ...b, pay_basis: 'per_job', job_rate: 800 }, '2026-03-04T10:00')!.days[2].bonus).toBe(420 + 300 + 500 + 500);
+  });
   it('has nothing for people on a monthly salary', () => {
     const { db, a } = world(undefined); expect(crewEarnings(db, { ...a, pay_basis: 'monthly' }, '2026-03-04T10:00')).toBeNull();
   });

@@ -29,8 +29,9 @@ export default function PayrollDetail() {
   const who = (id?: string) => db.users.find((u) => u.id === id)?.name ?? '—';
 
   // the compact view: what each person earned for the work (daily / job-order pay), the three job bonuses, and the total
-  const bonusOf = (l: PayrollLine, k: 'panel_bonus' | 'outside_bonus' | 'commercial_bonus' | 'driver_bonus') => sum(l.job_pay ?? [], (r) => r[k] ?? 0);
-  const jobBonusTotal = (l: PayrollLine) => bonusOf(l, 'panel_bonus') + bonusOf(l, 'outside_bonus') + bonusOf(l, 'commercial_bonus') + bonusOf(l, 'driver_bonus');
+  const bonusOf = (l: PayrollLine, k: 'panel_bonus' | 'outside_bonus' | 'commercial_bonus' | 'driver_bonus' | 'second_site_bonus' | 'night_bonus' | 'manlift_bonus') => sum(l.job_pay ?? [], (r) => r[k] ?? 0);
+  const extraOf = (l: PayrollLine) => bonusOf(l, 'second_site_bonus') + bonusOf(l, 'night_bonus') + bonusOf(l, 'manlift_bonus');
+  const jobBonusTotal = (l: PayrollLine) => bonusOf(l, 'panel_bonus') + bonusOf(l, 'outside_bonus') + bonusOf(l, 'commercial_bonus') + bonusOf(l, 'driver_bonus') + extraOf(l);
   const daily = (l: PayrollLine) => Math.round((l.gross - l.allowances - l.incentives - l.reimbursements) * 100) / 100;
   const other = (l: PayrollLine) => Math.round((l.allowances + (l.incentives - jobBonusTotal(l)) + l.reimbursements) * 100) / 100;
   // weekly payroll: a day-by-day table (rate and bonus each day) and weekly payslips
@@ -38,6 +39,8 @@ export default function PayrollDetail() {
   const wkOther = !!wk?.rows.some((r) => Math.abs(r.other) > 0.004);
   const wkDriver = !!wk?.rows.some((r) => r.driver > 0);
   const hasDriver = lines.some((l) => bonusOf(l, 'driver_bonus') > 0);
+  const hasExtra = lines.some((l) => extraOf(l) > 0);
+  const wkExtra = !!wk?.rows.some((r) => r.extra > 0);
   const hasOther = lines.some((l) => Math.abs(other(l)) > 0.004);
   const rateNote = (l: PayrollLine) => { const e = db.employees.find((x) => x.id === l.employee_id); if (!e) return ''; return e.pay_basis === 'per_job' ? `${l.job_pay?.length ?? 0} job order${(l.job_pay?.length ?? 0) === 1 ? '' : 's'} × ${money(e.job_rate ?? 0)}` : e.pay_basis === 'daily' ? `${l.days_worked} day${l.days_worked === 1 ? '' : 's'} × ${money(e.daily_rate)}` : 'monthly salary'; };
   const money2 = (k: keyof PayrollLine, h: string) => ({ key: k as string, header: h, num: true, type: 'money' as const, value: (l: PayrollLine) => l[k] as number, render: (l: PayrollLine) => ((l[k] as number) ? money(l[k] as number) : '—') });
@@ -71,7 +74,7 @@ export default function PayrollDetail() {
           {wk ? (
             <Card title={`Weekly payroll · ${fmtDate(per.start)} – ${fmtDate(per.end)}`} flush actions={<div className="row" style={{ gap: 6 }}><button type="button" className="btn sm primary" disabled={!lines.length} onClick={() => attempt(() => payslipsPdf(db, per, lines))}>Print all payslips</button><button type="button" className="btn sm" onClick={() => setFull(!full)}>{full ? 'Hide' : 'Show'} full register (deductions, net pay)</button></div>}>
               <DataTable<WeekRow> rows={wk.rows} rowKey={(r) => r.emp.id} exportTitle={`Weekly payroll ${per.label}`} pageSize={25}
-                totals={['Total', '', ...wk.days.map((d) => money(sum(wk.rows, (r) => r.days[d].base + r.days[d].bonus))), money(sum(wk.rows, (r) => r.panel)), money(sum(wk.rows, (r) => r.outside)), money(sum(wk.rows, (r) => r.commercial)), ...(wkDriver ? [money(sum(wk.rows, (r) => r.driver))] : []), ...(wkOther ? [money(sum(wk.rows, (r) => r.other))] : []), money(sum(wk.rows, (r) => r.total)), '']}
+                totals={['Total', '', ...wk.days.map((d) => money(sum(wk.rows, (r) => r.days[d].base + r.days[d].bonus))), money(sum(wk.rows, (r) => r.panel)), money(sum(wk.rows, (r) => r.outside)), money(sum(wk.rows, (r) => r.commercial)), ...(wkDriver ? [money(sum(wk.rows, (r) => r.driver))] : []), ...(wkExtra ? [money(sum(wk.rows, (r) => r.extra))] : []), ...(wkOther ? [money(sum(wk.rows, (r) => r.other))] : []), money(sum(wk.rows, (r) => r.total)), '']}
                 cols={[
                   { key: 'emp', header: 'Name', value: (r) => r.emp.full_name, render: (r) => <b>{r.emp.full_name}</b> },
                   { key: 'rate', header: 'Rate', num: true, type: 'money' as const, value: (r) => r.rate, render: (r) => <>{money(r.rate)}<div className="small muted">per {r.unit === 'job' ? 'job order' : r.unit}</div></> },
@@ -81,6 +84,7 @@ export default function PayrollDetail() {
                   { key: 'oot', header: 'Out of town', num: true, type: 'money' as const, value: (r) => r.outside, render: (r) => (r.outside ? money(r.outside) : '—') },
                   { key: 'com', header: 'Commercial', num: true, type: 'money' as const, value: (r) => r.commercial, render: (r) => (r.commercial ? money(r.commercial) : '—') },
                   ...(wkDriver ? [{ key: 'drv', header: 'Driver', num: true, type: 'money' as const, value: (r: WeekRow) => r.driver, render: (r: WeekRow) => (r.driver ? money(r.driver) : '—') }] : []),
+                  ...(wkExtra ? [{ key: 'ext', header: '2nd site / night / manlift', num: true, type: 'money' as const, value: (r: WeekRow) => r.extra, render: (r: WeekRow) => (r.extra ? money(r.extra) : '—') }] : []),
                   ...(wkOther ? [{ key: 'other', header: 'Other', num: true, type: 'money' as const, value: (r: WeekRow) => r.other, render: (r: WeekRow) => (Math.abs(r.other) > 0.004 ? money(r.other) : '—') }] : []),
                   { key: 'total', header: 'Total', num: true, type: 'money' as const, value: (r) => r.total, render: (r) => <b>{money(r.total)}</b> },
                   { key: 'actions', header: '', noExport: true, sortable: false, render: (r) => { const l = lines.find((x) => x.employee_id === r.emp.id)!; return <button className="btn sm" onClick={() => attempt(() => payslipsPdf(db, per, [l]))}>Payslip</button>; } },
@@ -90,7 +94,7 @@ export default function PayrollDetail() {
           ) : (
           <Card title="Payroll" flush actions={<button type="button" className="btn sm" onClick={() => setFull(!full)}>{full ? 'Hide' : 'Show'} full register (deductions, net pay)</button>}>
             <DataTable<PayrollLine> rows={lines} rowKey={(l) => l.employee_id} exportTitle={`Payroll ${per.label}`} pageSize={25}
-              totals={['Total', money(sum(lines, daily)), money(sum(lines, (l) => bonusOf(l, 'panel_bonus'))), money(sum(lines, (l) => bonusOf(l, 'outside_bonus'))), money(sum(lines, (l) => bonusOf(l, 'commercial_bonus'))), ...(hasDriver ? [money(sum(lines, (l) => bonusOf(l, 'driver_bonus')))] : []), ...(hasOther ? [money(sum(lines, other))] : []), money(t('gross'))]}
+              totals={['Total', money(sum(lines, daily)), money(sum(lines, (l) => bonusOf(l, 'panel_bonus'))), money(sum(lines, (l) => bonusOf(l, 'outside_bonus'))), money(sum(lines, (l) => bonusOf(l, 'commercial_bonus'))), ...(hasDriver ? [money(sum(lines, (l) => bonusOf(l, 'driver_bonus')))] : []), ...(hasExtra ? [money(sum(lines, extraOf))] : []), ...(hasOther ? [money(sum(lines, other))] : []), money(t('gross'))]}
               cols={[
                 { key: 'emp', header: 'Name', value: name, render: (l) => <b>{name(l)}</b> },
                 { key: 'daily', header: 'Daily rate pay', num: true, type: 'money' as const, value: daily, render: (l) => <>{daily(l) ? money(daily(l)) : '—'}{rateNote(l) && <div className="small muted">{rateNote(l)}</div>}</> },
@@ -98,6 +102,7 @@ export default function PayrollDetail() {
                 { key: 'oot', header: 'Out of town', num: true, type: 'money' as const, value: (l) => bonusOf(l, 'outside_bonus'), render: (l) => (bonusOf(l, 'outside_bonus') ? money(bonusOf(l, 'outside_bonus')) : '—') },
                 { key: 'com', header: 'Commercial', num: true, type: 'money' as const, value: (l) => bonusOf(l, 'commercial_bonus'), render: (l) => (bonusOf(l, 'commercial_bonus') ? money(bonusOf(l, 'commercial_bonus')) : '—') },
                 ...(hasDriver ? [{ key: 'drv', header: 'Driver', num: true, type: 'money' as const, value: (l: PayrollLine) => bonusOf(l, 'driver_bonus'), render: (l: PayrollLine) => (bonusOf(l, 'driver_bonus') ? money(bonusOf(l, 'driver_bonus')) : '—') }] : []),
+                ...(hasExtra ? [{ key: 'ext', header: '2nd site / night / manlift', num: true, type: 'money' as const, value: extraOf, render: (l: PayrollLine) => (extraOf(l) ? money(extraOf(l)) : '—') }] : []),
                 ...(hasOther ? [{ key: 'other', header: 'Other', num: true, type: 'money' as const, value: other, render: (l: PayrollLine) => (other(l) ? money(other(l)) : '—') }] : []),
                 { key: 'total', header: 'Total', num: true, type: 'money' as const, value: (l) => l.gross, render: (l) => <b>{money(l.gross)}</b> },
                 { key: 'actions', header: '', noExport: true, sortable: false, render: () => null },
@@ -124,7 +129,7 @@ export default function PayrollDetail() {
               <div style={{ height: 12 }} />
               <Card title="Job orders & bonuses in this payroll" flush actions={<span className="small muted">Job pay is filled in from approved attendance, late or not. Bonuses are recorded under each assigned employee.</span>}>
                 <DataTable<JobPayRow & { emp: string }> rows={lines.flatMap((l) => (l.job_pay ?? []).map((r) => ({ ...r, emp: l.employee_id })))} rowKey={(r) => `${r.emp}:${r.job_id}`} exportTitle={`Job orders and bonuses ${per.label}`} pageSize={25}
-                  totals={['Total', '', '', sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.rate), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.panel_bonus), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.outside_bonus), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.commercial_bonus), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.driver_bonus ?? 0), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.total)]}
+                  totals={['Total', '', '', sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.rate), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.panel_bonus), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.outside_bonus), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.commercial_bonus), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.driver_bonus ?? 0), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.second_site_bonus ?? 0), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.night_bonus ?? 0), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.manlift_bonus ?? 0), sum(lines.flatMap((l) => l.job_pay ?? []), (r) => r.total)]}
                   cols={[
                     { key: 'emp', header: 'Employee', value: (r) => db.employees.find((e) => e.id === r.emp)?.full_name ?? '', render: (r) => <b>{db.employees.find((e) => e.id === r.emp)?.full_name}</b> },
                     { key: 'date', header: 'Date', value: (r) => r.date, render: (r) => fmtDate(r.date) },
@@ -134,6 +139,9 @@ export default function PayrollDetail() {
                     { key: 'outside', header: 'Outside Metro Manila', num: true, type: 'money' as const, value: (r) => r.outside_bonus, render: (r) => (r.outside_bonus ? money(r.outside_bonus) : '—') },
                     { key: 'commercial', header: 'Commercial', num: true, type: 'money' as const, value: (r) => r.commercial_bonus, render: (r) => (r.commercial_bonus ? money(r.commercial_bonus) : '—') },
                     { key: 'driver', header: 'Driver', num: true, type: 'money' as const, value: (r) => r.driver_bonus ?? 0, render: (r) => (r.driver_bonus ? money(r.driver_bonus) : '—') },
+                    { key: 'site2', header: '2nd site', num: true, type: 'money' as const, value: (r) => r.second_site_bonus ?? 0, render: (r) => (r.second_site_bonus ? money(r.second_site_bonus) : '—') },
+                    { key: 'night', header: 'Night shift', num: true, type: 'money' as const, value: (r) => r.night_bonus ?? 0, render: (r) => (r.night_bonus ? money(r.night_bonus) : '—') },
+                    { key: 'lift', header: 'Manlift', num: true, type: 'money' as const, value: (r) => r.manlift_bonus ?? 0, render: (r) => (r.manlift_bonus ? money(r.manlift_bonus) : '—') },
                     { key: 'total', header: 'Total', num: true, type: 'money' as const, value: (r) => r.total, render: (r) => <b>{money(r.total)}</b> },
                   ]} />
               </Card>

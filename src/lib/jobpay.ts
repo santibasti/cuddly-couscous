@@ -7,7 +7,7 @@ import { addDays, today } from './util';
 import { PAYDAY_CUTOFF, payDateOf } from './payrollweek';
 import type { DB, Employee, Job, JobPayRow, Settings } from './types';
 
-export const DEFAULT_JOB_PAY = { panel_bonus: 140, panel_step: 10, outside_mm_bonus: 0, commercial_bonus: 0, payday_cutoff: PAYDAY_CUTOFF };
+export const DEFAULT_JOB_PAY = { panel_bonus: 140, panel_step: 10, outside_mm_bonus: 250, commercial_bonus: 0, second_site_bonus: 300, night_shift_bonus: 500, manlift_bonus: 500, payday_cutoff: PAYDAY_CUTOFF };
 export const jobPaySettings = (s: Pick<Settings, 'job_pay'>) => ({ ...DEFAULT_JOB_PAY, ...(s.job_pay ?? {}) });
 
 /** Bonus per crew member = FLOOR(additional panels ÷ (crew × step)) × bonus. Only full thresholds count: no partial bonus. */
@@ -17,7 +17,9 @@ export function panelBonusPerCrew(additionalPanels: number, crewCount: number, s
 }
 
 /** What a job row adds on top of the rate: panel, outside Metro Manila, commercial and the driver incentive. */
-export const jobRowBonus = (r: Pick<JobPayRow, 'panel_bonus' | 'outside_bonus' | 'commercial_bonus' | 'driver_bonus'>) => r.panel_bonus + r.outside_bonus + r.commercial_bonus + (r.driver_bonus ?? 0);
+export const jobRowBonus = (r: Pick<JobPayRow, 'panel_bonus' | 'outside_bonus' | 'commercial_bonus' | 'driver_bonus' | 'second_site_bonus' | 'night_bonus' | 'manlift_bonus'>) => r.panel_bonus + r.outside_bonus + r.commercial_bonus + (r.driver_bonus ?? 0) + (r.second_site_bonus ?? 0) + (r.night_bonus ?? 0) + (r.manlift_bonus ?? 0);
+/** The second site, night shift and manlift bonuses of a row together (shown as one column in the compact payroll tables). */
+export const jobRowExtras = (r: Pick<JobPayRow, 'second_site_bonus' | 'night_bonus' | 'manlift_bonus'>) => (r.second_site_bonus ?? 0) + (r.night_bonus ?? 0) + (r.manlift_bonus ?? 0);
 /** The driver incentive of a job: the one assigned person marked as a driver who was chosen to drive. Zero when nobody was chosen, or they are not assigned to the job. */
 export function driverIncentive(db: Pick<DB, 'employees'>, job: Pick<Job, 'driver_id' | 'leader_id' | 'crew_ids'>): { id?: string; amount: number } {
   const e = job.driver_id ? db.employees.find((x) => x.id === job.driver_id && !x.deleted_at) : undefined;
@@ -53,7 +55,9 @@ export const jobCrewIds = (j: Pick<Job, 'leader_id' | 'crew_ids'>): string[] => 
 export interface JobBonus {
   /** crew who count for this job: assigned, minus anyone marked absent (so the crew size reduces automatically) */
   crew: number; absent: string[]; /** a commercial project: no automatic bonus, the Owner adds it by hand */ manual: boolean; additional_panels: number; step: number;
-  panel_each: number; outside_each: number; commercial_each: number; each: number; total: number;
+  panel_each: number; outside_each: number; commercial_each: number; /** the same for every crew member on the job when the Owner switched it on */ second_site_each: number; night_each: number;
+  /** the manlift bonus goes only to the crew who may use the manlift (manlift_ids), when the job uses one */ manlift_each: number; manlift_ids: string[];
+  /** the bonus every crew member gets (panel + outside + commercial + second site + night shift; the manlift bonus and the driver incentive are on top for the people they apply to) */ each: number; total: number;
   /** the bonus is final once the client has signed the handover (the service is done and the final panel count is known); payroll pays it only then */
   final: boolean; final_at?: string; ids: string[];
 }
@@ -77,8 +81,18 @@ export function jobBonus(db: DB, job: Job): JobBonus {
   const panel = manual ? 0 : panelBonusPerCrew(additional, ids.length, cfg.panel_step, cfg.panel_bonus);
   const outside = job.pay_outside_mm ? cfg.outside_mm_bonus : 0;
   const commercial = job.pay_commercial_amount ?? (job.pay_commercial ? cfg.commercial_bonus : 0);   // the amount the Owner typed (an older on/off tick still uses the old fixed amount)
-  const each = panel + outside + commercial;
-  return { crew: ids.length, absent: jobAbsentIds(db, job), manual, additional_panels: additional, step: cfg.panel_step, panel_each: panel, outside_each: outside, commercial_each: commercial, each, total: each * ids.length, final: !!wf?.rep_client_at, final_at: wf?.rep_client_at, ids };
+  const second = job.pay_second_site ? cfg.second_site_bonus : 0, night = job.pay_night_shift ? cfg.night_shift_bonus : 0;
+  const each = panel + outside + commercial + second + night;
+  const manliftIds = job.pay_manlift ? ids.filter((id) => (db.employees ?? []).find((e) => e.id === id)?.manlift_ok) : [], manliftEach = job.pay_manlift ? cfg.manlift_bonus : 0;
+  return { crew: ids.length, absent: jobAbsentIds(db, job), manual, additional_panels: additional, step: cfg.panel_step, panel_each: panel, outside_each: outside, commercial_each: commercial, second_site_each: second, night_each: night, manlift_each: manliftEach, manlift_ids: manliftIds, each, total: each * ids.length + manliftEach * manliftIds.length, final: !!wf?.rep_client_at, final_at: wf?.rep_client_at, ids };
+}
+
+/** Whether the job's working hours run into the night shift (10 PM to 6 AM), so the Owner can decide on the Night shift bonus. */
+export function nightShiftHint(job: Pick<Job, 'start_at' | 'end_at'>): string | undefined {
+  const hm = (s: string) => Number(s.slice(11, 13)) * 60 + Number(s.slice(14, 16)); const s = hm(job.start_at), e = hm(job.end_at);
+  const overnight = job.end_at.slice(0, 10) > job.start_at.slice(0, 10);
+  if (s >= 22 * 60 || s < 6 * 60 || e > 22 * 60 || (overnight && e <= 6 * 60)) return `Work runs into the night (${job.start_at.slice(11, 16)} to ${job.end_at.slice(11, 16)})`;
+  return undefined;
 }
 
 /** Why this site is suggested for the Outside Metro Manila bonus, or why not (the Owner decides). */
@@ -123,11 +137,12 @@ export function jobsAttended(db: DB, empId: string, start: string, end: string, 
 export function employeeJobPay(db: DB, emp: Employee, start: string, end: string, asOf?: string): JobPayRow[] {
   const days = driverDays(db, emp.id, start, end, asOf); const amount = Math.max(0, emp.driver_incentive ?? 0);
   const driven = new Map<string, string[]>(); for (const [d, id] of days) driven.set(id, [...(driven.get(id) ?? []), d]);   // job id → days driven in this range
-  const rows = jobsAttended(db, emp.id, start, end, false, asOf).map((j) => {
+  const rows: JobPayRow[] = jobsAttended(db, emp.id, start, end, false, asOf).map((j) => {
     const b = jobBonus(db, j); const rd = jobPayDate(db, j), bd = jobBonusDate(db, j, b);
     const inRate = rd >= start && rd <= end, inBonus = !!bd && bd >= start && bd <= end;
     const rate = inRate && emp.pay_basis === 'per_job' ? emp.job_rate ?? 0 : 0;
-    const row = { panel_bonus: inBonus ? b.panel_each : 0, outside_bonus: inBonus ? b.outside_each : 0, commercial_bonus: inBonus ? b.commercial_each : 0, driver_bonus: Math.round((driven.get(j.id)?.length ?? 0) * amount * 100) / 100 };
+    const row = { panel_bonus: inBonus ? b.panel_each : 0, outside_bonus: inBonus ? b.outside_each : 0, commercial_bonus: inBonus ? b.commercial_each : 0, driver_bonus: Math.round((driven.get(j.id)?.length ?? 0) * amount * 100) / 100,
+      second_site_bonus: inBonus ? b.second_site_each : 0, night_bonus: inBonus ? b.night_each : 0, manlift_bonus: inBonus && b.manlift_ids.includes(emp.id) ? b.manlift_each : 0 };
     driven.delete(j.id);
     return { job_id: j.id, number: j.number, date: inRate ? rd : bd!, client: (db.clients ?? []).find((c) => c.id === j.client_id)?.name, rate, ...row, total: Math.round((rate + jobRowBonus(row)) * 100) / 100, final: b.final };
   });

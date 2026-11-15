@@ -50,7 +50,7 @@ export default function EmployeeDetail() {
           </Card>
           {pay ? (
             <Card title="Compensation & government IDs">
-              <dl className="kv"><dt>Pay</dt><dd>{e.pay_basis === 'per_job' ? `${money(e.job_rate ?? 0)} / job order` : e.pay_basis === 'daily' ? `${money(e.daily_rate)} / day` : `${money(e.monthly_salary)} / month`}</dd><dt>Driver</dt><dd>{e.is_driver ? `Yes · ${money(e.driver_incentive ?? 0)} per day driven` : 'No'}</dd><dt>Payroll type</dt><dd>{e.payroll_type}</dd><dt>Payout</dt><dd>{e.payout_method} · {e.bank_name} {e.bank_account}</dd>
+              <dl className="kv"><dt>Pay</dt><dd>{e.pay_basis === 'per_job' ? `${money(e.job_rate ?? 0)} / job order` : e.pay_basis === 'daily' ? `${money(e.daily_rate)} / day` : `${money(e.monthly_salary)} / month`}</dd><dt>Manlift operator</dt><dd>{e.manlift_ok ? 'Yes' : 'No'}</dd><dt>Driver</dt><dd>{e.is_driver ? `Yes · ${money(e.driver_incentive ?? 0)} per day driven` : 'No'}</dd><dt>Payroll type</dt><dd>{e.payroll_type}</dd><dt>Payout</dt><dd>{e.payout_method} · {e.bank_name} {e.bank_account}</dd>
                 <dt>SSS</dt><dd>{e.sss}</dd><dt>PhilHealth</dt><dd>{e.philhealth}</dd><dt>Pag-IBIG</dt><dd>{e.pagibig}</dd><dt>TIN</dt><dd>{e.tin}</dd></dl>
               {advances.length > 0 && <><h3 style={{ margin: '14px 0 6px' }}>Cash advances & loans</h3><ul className="list">{advances.map((a) => <li key={a.id}><span>{a.kind}: {a.note}</span><span className="mono">{money(a.balance ?? 0)} left {a.active ? '' : '(paid)'}</span></li>)}</ul></>}
             </Card>
