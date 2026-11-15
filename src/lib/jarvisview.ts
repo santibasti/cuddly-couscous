@@ -2,10 +2,11 @@
 export interface JarvisJob { number: string; client: string; day: string; start: string; status: string; leader: string; crew: number }
 export interface JarvisEvent { kind: string; text: string; at: string }
 export interface JarvisNote { id: number; kind: string; text: string }
+export interface JarvisProposal { id: number; kind: string; text: string; why: string }
 export interface JarvisKnowledge { num: number; title: string; chars: number }
 export interface JarvisHealth { data: number; voice: boolean; ai: boolean; alerts: number | null; web: boolean }
 export interface JarvisPanel {
-  at: string; today: string; voice: boolean; ai: boolean; health?: JarvisHealth; events?: unknown; memory?: unknown; knowledge?: unknown;
+  at: string; today: string; voice: boolean; ai: boolean; health?: JarvisHealth; events?: unknown; memory?: unknown; knowledge?: unknown; proposals?: unknown;
   jobsToday: unknown; jobsTomorrow: unknown; attendanceToday: unknown; attendanceYesterday: unknown; pending: unknown; leads: unknown;
   receivables: unknown; moneyToday: unknown; quotes: unknown; handovers: unknown; alerts: unknown;
 }
@@ -22,7 +23,7 @@ export interface Summary {
   alerts: { when: string; title: string }[];
   tomorrowJobs: { time: string; number: string; note: string }[];
   handovers: { job: string; client: string; day: string }[];
-  events: JarvisEvent[]; memory: JarvisNote[]; knowledge: JarvisKnowledge[];
+  events: JarvisEvent[]; memory: JarvisNote[]; knowledge: JarvisKnowledge[]; proposals: JarvisProposal[];
   health: { label: string; pct: number | null }[];
   radar: { angle: number; warn: boolean; label: string }[];
   attention: number;                                   // how many things need the owner
@@ -56,6 +57,7 @@ export function summarize(p: JarvisPanel): Summary {
     tomorrowJobs: arr<JarvisJob>(p.jobsTomorrow).filter((j) => j && j.number).map((j) => ({ time: j.start, number: j.number, note: j.leader === 'NOT ASSIGNED' ? 'No leader' : j.status })),
     handovers: waitingHand.map((w) => ({ job: String(w.job ?? ''), client: String(w.client ?? ''), day: String(w.day ?? '') })),
     events: arr<JarvisEvent>(p.events).filter((e) => e && e.text),
+    proposals: arr<JarvisProposal>(p.proposals).filter((x) => x && typeof x.id === 'number' && x.text),
     knowledge: arr<JarvisKnowledge>(p.knowledge).filter((k) => k && typeof k.num === 'number' && k.title),
     memory: arr<JarvisNote>(p.memory).filter((n) => n && typeof n.id === 'number' && n.text),
     health: p.health ? [{ label: 'DATA LINK', pct: p.health.data }, { label: 'VOICE', pct: p.health.voice ? 100 : 0 }, { label: 'AI', pct: p.health.ai ? 100 : 0 }, { label: 'ALERTS', pct: p.health.alerts }, { label: 'WEB SEARCH', pct: p.health.web ? 100 : 0 }] : [],
@@ -80,6 +82,7 @@ export const DEMO_PANEL: JarvisPanel = {
   leads: { total: 5, by_stage: { Inquiry: 4, Quotation: 1 } }, receivables: { outstanding_total: 62000, overdue_total: 38000, overdue_count: 2 }, moneyToday: { received: 18400 },
   quotes: { approved: 2, approved_value: 41000 }, handovers: { waiting: [{ job: 'JOB-0139' }] },
   health: { data: 100, voice: false, ai: false, alerts: 100, web: true },
+  proposals: [{ id: 9, kind: 'preference', text: 'Wants the weather risk mentioned first on rainy days', why: 'Asked about rain three times this week' }],
   knowledge: [{ num: 1, title: 'COMPANY OVERVIEW', chars: 1800 }, { num: 5, title: 'CORE SERVICES', chars: 5200 }, { num: 9, title: 'RESIDENTIAL WINDOW CLEANING PRICING', chars: 2600 }],
   memory: [{ id: 1, kind: 'preference', text: 'Prefers the morning brief under 100 words' }, { id: 2, kind: 'routine', text: 'Checks payments to verify before noon' }, { id: 3, kind: 'correction', text: 'Calls the crew leaders "team leaders"' }],
   events: [{ kind: 'brief', text: 'Morning brief delivered', at: new Date(Date.now() - 3 * 60000).toISOString() }, { kind: 'alert', text: 'Discount requested', at: new Date(Date.now() - 22 * 60000).toISOString() }, { kind: 'search', text: 'Web search used', at: new Date(Date.now() - 41 * 60000).toISOString() }, { kind: 'answer', text: 'Question answered · screen', at: new Date(Date.now() - 41 * 60000).toISOString() }, { kind: 'inquiry', text: 'New inquiry · Facebook', at: new Date(Date.now() - 95 * 60000).toISOString() }, { kind: 'alert', text: 'Quotation approved', at: new Date(Date.now() - 5 * 3600000).toISOString() }],

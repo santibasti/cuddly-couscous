@@ -61,6 +61,7 @@ function Boot({ voice, live, done }: { voice: boolean | null; live: boolean; don
 }
 
 export default function Jarvis() {
+  const lastQ = useRef(''); const [rated, setRated] = useState<number | null>(null);
   const [panel, setPanel] = useState<JarvisPanel | null>(CLOUD ? null : DEMO_PANEL);
   const [err, setErr] = useState(''); const [mode, setMode] = useState<Mode>('idle');
   const [say, setSay] = useState(''); const [text, setText] = useState(''); const [history, setHistory] = useState<Turn[]>([]);
@@ -97,7 +98,7 @@ export default function Jarvis() {
 
   const ask = useCallback(async (q: string) => {
     const question = q.trim(); if (!question) return;
-    setMode('thinking'); setSay(''); setErr('');
+    setMode('thinking'); setSay(''); setErr(''); setRated(null); lastQ.current = question;
     try {
       const { text: reply } = await call<{ text: string }>({ action: 'chat', text: question, history });
       setSay(reply); setHistory((h) => [...h, { role: 'user' as const, content: question }, { role: 'assistant' as const, content: reply }].slice(-8));
@@ -117,9 +118,18 @@ export default function Jarvis() {
       return r.error ?? `Saved ${r.sections} sections. Jarvis can use them now.`;
     } catch (e) { return e instanceof Error ? e.message : 'Could not save the document.'; }
   };
+  const rateAnswer = async (r: 1 | -1, reason?: string) => {
+    setRated(r);
+    if (!CLOUD) return;
+    try { await call({ action: 'feedback', rating: r, question: lastQ.current, answer: say, reason: reason ?? '' }); await load(); } catch (e) { setErr(e instanceof Error ? e.message : 'Could not send that.'); }
+  };
+  const decide = async (id: number, accept: boolean) => {
+    if (!CLOUD) { setPanel((p) => (p ? { ...p, proposals: (Array.isArray(p.proposals) ? p.proposals : []).filter((x: { id: number }) => x.id !== id) } : p)); return; }
+    try { await call({ action: accept ? 'proposal_accept' : 'proposal_reject', id }); await load(); } catch (e) { setErr(e instanceof Error ? e.message : 'Could not do that.'); }
+  };
   const stopListening = () => { if (rec.current && rec.current.state !== 'inactive') rec.current.stop(); };
   const listen = async () => {
-    if (!CLOUD) { const order: Mode[] = ['idle', 'listening', 'thinking', 'speaking']; const nx = order[(order.indexOf(mode) + 1) % 4]; setMode(nx); setSay(nx === 'speaking' ? 'Good morning. Two items need you: a discount request, and a handover still waiting for the client.' : ''); return; }
+    if (!CLOUD) { const order: Mode[] = ['idle', 'listening', 'thinking', 'speaking']; const nx = order[(order.indexOf(mode) + 1) % 4]; setMode(nx); setRated(null); if (nx === 'speaking') lastQ.current = 'demo'; setSay(nx === 'speaking' ? 'Good morning. Two items need you: a discount request, and a handover still waiting for the client.' : ''); return; }
     if (mode === 'listening') return stopListening();
     if (!panel?.voice) { setErr('Voice needs a connected voice service. You can still type.'); return; }
     try {
@@ -160,7 +170,7 @@ export default function Jarvis() {
       {!CLOUD && <div className="jv-note">Demo data. On the live system Jarvis shows your real figures and talks.</div>}
       {err && <div className="jv-note err">{err}</div>}
       {view === 'console' && S && panel ? (
-        <JarvisConsole S={S} panel={panel} mode={mode} analyser={analyser} theme={theme} sub={sub} say={say} idleHint={CLOUD ? 'Tap the core to talk, or type below.' : 'Tap the core to preview its states.'} text={text} setText={setText} submit={submit} onCore={() => void listen()} onBrief={() => void ask('Give me my brief for right now.')} onForget={(id) => void forget(id)} onKnowledge={knowledge} busy={mode === 'thinking'} live={CLOUD} money={money} />
+        <JarvisConsole S={S} panel={panel} mode={mode} analyser={analyser} theme={theme} sub={sub} say={say} idleHint={CLOUD ? 'Tap the core to talk, or type below.' : 'Tap the core to preview its states.'} text={text} setText={setText} submit={submit} onCore={() => void listen()} onBrief={() => void ask('Give me my brief for right now.')} onForget={(id) => void forget(id)} onKnowledge={knowledge} canRate={!!say && !!lastQ.current && (mode === 'idle' || (!CLOUD && mode === 'speaking'))} rated={rated} onRate={(r, reason) => void rateAnswer(r, reason)} onProposal={(id, ok) => void decide(id, ok)} busy={mode === 'thinking'} live={CLOUD} money={money} />
       ) : view === 'console' ? <div className="jv-note">Loading Jarvis…</div> : (
       <div className={`jv-grid ${booted ? 'in' : ''}`}>
         <div className="jv-col">

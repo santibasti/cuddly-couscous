@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { knowledgeBlock, pickSections, splitKnowledge, cleanNote, memoryBlock, addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, speakable } from '../../supabase/functions/jarvis/logic';
+import { cityOf, parseProposals, weatherRisk, knowledgeBlock, pickSections, splitKnowledge, cleanNote, memoryBlock, addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, speakable } from '../../supabase/functions/jarvis/logic';
 
 describe('jarvis helpers', () => {
   it('works in Manila time', () => {
@@ -76,5 +76,26 @@ describe('Jarvis company knowledge base', () => {
   it('lists the sections and always includes the rules', () => {
     const b = knowledgeBlock(splitKnowledge(doc));
     expect(b).toContain('2 CORE SERVICES'); expect(b).toContain('Never invent prices.'); expect(knowledgeBlock([])).toBe('');
+  });
+});
+
+describe('Jarvis weather and learning helpers', () => {
+  const h = (hour: number, prob: number, mm = 0, gust = 10, code = 1) => ({ hour, prob, mm, gust, code });
+  it('finds the city in a site address, defaulting to Manila', () => {
+    expect(cityOf('12 Rizal St., Brgy. Holy Spirit, Quezon City')).toBe('quezon city'); expect(cityOf('Lot 4, Imus, Cavite')).toBe('cavite'); expect(cityOf('somewhere')).toBe('manila'); expect(cityOf(null)).toBe('manila');
+  });
+  it('rates the weather risk for the working window only', () => {
+    expect(weatherRisk([h(9, 10), h(10, 20)]).level).toBe('none');
+    expect(weatherRisk([h(9, 45)]).level).toBe('watch');
+    expect(weatherRisk([h(9, 80, 6)]).level).toBe('high');
+    expect(weatherRisk([h(9, 10, 0, 55)]).reasons[0]).toContain('gusts');
+    expect(weatherRisk([h(14, 10, 0, 10, 95)], 13, 17)).toEqual({ level: 'high', reasons: ['thunderstorms'] });
+    expect(weatherRisk([h(20, 95, 20)], 7, 17).level).toBe('none');          // storm after the job is not a risk to it
+    expect(weatherRisk([]).level).toBe('none');
+  });
+  it('reads the nightly review reply and drops bad notes', () => {
+    const reply = 'Here you go: [{"kind":"preference","text":"Prefers short answers","why":"asked twice"},{"kind":"weird","text":"Likes the weather first"},{"kind":"fact","text":"call 0917 123 4567"},{"text":"x"}]';
+    expect(parseProposals(reply).map((p) => [p.kind, p.text])).toEqual([['preference', 'Prefers short answers'], ['preference', 'Likes the weather first']]);
+    expect(parseProposals('nothing')).toEqual([]); expect(parseProposals('[not json]')).toEqual([]);
   });
 });

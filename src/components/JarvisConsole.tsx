@@ -100,6 +100,16 @@ function Clock() {
   return <div className="jc-clk">{t.toLocaleTimeString('en-GB', { hour12: false, timeZone: 'Asia/Manila' })}</div>;
 }
 
+/** Thumbs up / down on the last answer. A thumbs-down can say why (optional); that becomes something Jarvis learns. */
+function Rate({ rated, onRate }: { rated: number | null; onRate: (r: 1 | -1, reason?: string) => void }) {
+  const [why, setWhy] = useState(false); const [reason, setReason] = useState('');
+  if (rated !== null) return <div className="jc-fb"><span className="jc-mut">{rated === 1 ? 'Thanks, noted.' : 'Thanks, I will learn from that.'}</span></div>;
+  if (why) return <form className="jc-fb" onSubmit={(e) => { e.preventDefault(); onRate(-1, reason.trim()); }}>
+    <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200} placeholder="What was wrong? (optional)" />
+    <button type="submit">Send</button><button type="button" onClick={() => onRate(-1)}>Skip</button></form>;
+  return <div className="jc-fb"><span className="jc-mut">Was that helpful?</span><button type="button" aria-label="Helpful" onClick={() => onRate(1)}>👍</button><button type="button" aria-label="Not helpful" onClick={() => setWhy(true)}>👎</button></div>;
+}
+
 /** The company knowledge base: upload or paste a document; Jarvis looks up the right section when asked. Stored only in the database. */
 function KnowledgeBox({ k, save }: { k: { num: number; title: string; chars: number }[]; save: (text: string | null) => Promise<string> }) {
   const [open, setOpen] = useState(false); const [text, setText] = useState(''); const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false);
@@ -116,10 +126,10 @@ function KnowledgeBox({ k, save }: { k: { num: number; title: string; chars: num
 
 export interface ConsoleProps {
   S: Summary; panel: JarvisPanel; mode: CoreMode; analyser: React.MutableRefObject<AnalyserNode | null>; theme: ConsoleTheme;
-  sub: string; say: string; idleHint: string; text: string; setText: (v: string) => void; submit: (e: React.FormEvent) => void; onCore: () => void; onBrief: () => void; onForget: (id: number) => void; onKnowledge: (text: string | null) => Promise<string>; busy: boolean; live: boolean;
+  sub: string; say: string; idleHint: string; text: string; setText: (v: string) => void; submit: (e: React.FormEvent) => void; onCore: () => void; onBrief: () => void; onForget: (id: number) => void; onKnowledge: (text: string | null) => Promise<string>; canRate: boolean; rated: number | null; onRate: (rating: 1 | -1, reason?: string) => void; onProposal: (id: number, accept: boolean) => void; busy: boolean; live: boolean;
   money: (n: number) => string;
 }
-const KIND: Record<string, string> = { brief: 'BRIEF', alert: 'ALERT', inquiry: 'LEAD', search: 'WEB', answer: 'ANSWER', memory: 'LEARN' };
+const KIND: Record<string, string> = { brief: 'BRIEF', alert: 'ALERT', inquiry: 'LEAD', search: 'WEB', answer: 'ANSWER', memory: 'LEARN', review: 'REVIEW', weather: 'WEATHER' };
 
 export function JarvisConsole(p: ConsoleProps) {
   const { S, panel } = p;
@@ -134,6 +144,7 @@ export function JarvisConsole(p: ConsoleProps) {
             <div className="jc-log">{!S.events.length && <div className="jc-mut">{p.live ? 'No activity yet. It fills as Jarvis works.' : 'Sample activity.'}</div>}
               {S.events.slice(0, 7).map((e, i) => <div key={`${e.at}-${i}`} className="ln"><span className="t">{manilaClock(e.at)}</span> <em className={e.kind === 'alert' ? 'am' : ''}>{KIND[e.kind] ?? e.kind.toUpperCase()}</em> {e.text}</div>)}</div></section>
           <section className="jc-box"><h6>MEMORY <em>{S.memory.length} LEARNED</em></h6>
+            {S.proposals.length > 0 && <div className="jc-prop"><div className="jc-mut">I'D LIKE TO LEARN</div>{S.proposals.map((x) => <div key={x.id} className="mn" title={x.why}><span>{x.text}</span><span className="pb"><button type="button" title="Remember this" aria-label="Approve" onClick={() => p.onProposal(x.id, true)}>✓</button><button type="button" title="No" aria-label="Reject" onClick={() => p.onProposal(x.id, false)}>×</button></span></div>)}</div>}
             <div className="jc-mem">{!S.memory.length && <div className="jc-mut">Nothing yet. Tell Jarvis how you like things (for example "keep briefs short") and he will remember.</div>}
               {S.memory.slice(-5).reverse().map((n) => <div key={n.id} className="mn"><span>{n.text}</span><button type="button" title="Forget this" aria-label="Forget this note" onClick={() => p.onForget(n.id)}>×</button></div>)}</div></section>
           <KnowledgeBox k={S.knowledge} save={p.onKnowledge} />
@@ -147,6 +158,7 @@ export function JarvisConsole(p: ConsoleProps) {
           </div>
           <div className="jc-state">{p.mode === 'idle' ? 'STANDING BY' : p.mode.toUpperCase()}</div>
           <div className="jc-say">{p.sub ? <span key={p.sub} className="jc-cap">{p.sub}</span> : !p.say && p.mode === 'idle' ? p.idleHint : ''}</div>
+          {p.canRate && <Rate rated={p.rated} onRate={p.onRate} />}
           <form className="jc-bar" onSubmit={p.submit}>
             <button type="button" className={`mic ${p.mode === 'listening' ? 'on' : ''}`} onClick={p.onCore} aria-label="Microphone">🎙</button>
             <input value={p.text} onChange={(e) => p.setText(e.target.value)} placeholder="Ask Jarvis…" disabled={p.busy} />
@@ -210,7 +222,8 @@ const CSS = `
 .jc-radar .dot{fill:#fff;filter:drop-shadow(0 0 4px #fff)}.jc-radar .dot.warn{fill:var(--am);filter:drop-shadow(0 0 5px var(--am));animation:jcblink 1.2s infinite}
 .jc-wave{display:block;width:100%;height:56px}
 .jc-foot{text-align:center;margin-top:10px;font-size:.78em;letter-spacing:.15em;opacity:.55}
-.jc-mem .mn{display:flex;gap:8px;justify-content:space-between;align-items:flex-start;font-size:.88em;line-height:1.4;padding:3px 0;color:#d9e6ff;border-bottom:1px dashed rgba(150,180,255,.18)}.jc-mem .mn button{background:none;border:0;color:#7f9cf5;cursor:pointer;font-size:1.1em;line-height:1;padding:0 2px}.jc-mem .mn button:hover{color:#fff}
+.jc-mem .mn,.jc-prop .mn{display:flex;gap:8px;justify-content:space-between;align-items:flex-start;font-size:.88em;line-height:1.4;padding:3px 0;color:#d9e6ff;border-bottom:1px dashed rgba(150,180,255,.18)}.jc-mem .mn button,.jc-prop .mn button{background:none;border:0;color:#7f9cf5;cursor:pointer;font-size:1.1em;line-height:1;padding:0 2px}.jc-mem .mn button:hover,.jc-prop .mn button:hover{color:#fff}
+.jc-fb{display:flex;gap:8px;align-items:center;justify-content:center;margin:6px 0;font-size:.85em}.jc-fb button{background:rgba(110,140,255,.15);border:1px solid rgba(150,180,255,.4);color:#e8eeff;border-radius:6px;padding:2px 9px;cursor:pointer}.jc-fb input{background:rgba(0,0,0,.35);color:#e8eeff;border:1px solid rgba(150,180,255,.3);border-radius:6px;padding:4px 8px;min-width:190px}.jc-prop{margin-bottom:6px}.jc-prop .pb{display:flex;gap:4px}.jc-prop .mn button{color:#9be6b4}.jc-prop .mn button+button{color:#7f9cf5}
 .jc-kn textarea{width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);color:#e8eeff;border:1px solid rgba(150,180,255,.3);border-radius:6px;padding:6px;font:inherit;font-size:.85em;resize:vertical}.jc-kn input{margin-top:6px;font-size:.8em;color:#bcd0ff;max-width:100%}.jc-kb{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.jc-kb button{background:rgba(110,140,255,.15);border:1px solid rgba(150,180,255,.4);color:#e8eeff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.82em}.jc-kb button:disabled{opacity:.45;cursor:default}
 @media (max-width:1000px){.jc-grid{grid-template-columns:1fr}.jc-center{order:-1}.jc-core{width:min(420px,86vw)}.jc-log{max-height:260px}}
 @media (prefers-reduced-motion:reduce){.jc-core:before,.jc-radar .sweep,.jc .cur,.jc-radar .dot.warn,.jc-log .ln{animation:none}}

@@ -76,7 +76,7 @@ export function cleanNote(t: unknown): string | null {
   if (/\b(password|passcode|api[ -]?key|secret|token|pin code)\b/i.test(s)) return null;
   return s;
 }
-export const TOOL_TOPIC: Record<string, string> = { get_jobs: 'jobs and schedule', get_attendance: 'crew attendance', get_pending_approvals: 'approvals waiting', get_leads: 'new inquiries', get_receivables: 'unpaid invoices', get_money_in: 'money received', get_quotations_summary: 'quotations', get_handovers_waiting: 'handovers', web_search: 'general questions' };
+export const TOOL_TOPIC: Record<string, string> = { get_jobs: 'jobs and schedule', get_attendance: 'crew attendance', get_pending_approvals: 'approvals waiting', get_leads: 'new inquiries', get_receivables: 'unpaid invoices', get_money_in: 'money received', get_quotations_summary: 'quotations', get_handovers_waiting: 'handovers', web_search: 'general questions', get_weather: 'weather and job risks' };
 /** The memory section of Jarvis's instructions: saved notes (with ids so he can forget one) and what the owner asks about most. */
 export function memoryBlock(notes: { id: number; kind: string; text: string }[], topics: { topic: string; n: number }[]): string {
   const parts: string[] = [];
@@ -115,4 +115,43 @@ export function knowledgeBlock(sections: KSection[]): string {
   if (!sections.length) return '';
   const rules = sections.filter((s) => /\brules?\b/i.test(s.title)).map((s) => `${s.title.toUpperCase()}:\n${s.body.slice(0, 4500)}`).join('\n\n');
   return `\n\nCOMPANY KNOWLEDGE BASE (confidential, uploaded by the owner). Sections you can read with lookup_knowledge: ${sections.map((s) => `${s.num} ${s.title}`).join('; ')}. For any question about the company, its services, prices, policies, equipment, safety limits, clients or plans, look up the relevant section first. Live records from your data tools always win over this document; it holds historical figures and reference prices.${rules ? `\n\n${rules}` : ''}`;
+}
+
+/* ---------------- weather for the jobs ---------------- */
+export const CITY_COORDS: Record<string, [number, number]> = {
+  'quezon city': [14.676, 121.044], caloocan: [14.65, 120.972], 'las piñas': [14.45, 120.983], 'las pinas': [14.45, 120.983], makati: [14.554, 121.024], malabon: [14.662, 120.957],
+  mandaluyong: [14.579, 121.036], manila: [14.599, 120.984], marikina: [14.65, 121.102], muntinlupa: [14.408, 121.041], navotas: [14.667, 120.941], 'parañaque': [14.479, 121.019], paranaque: [14.479, 121.019],
+  pasay: [14.538, 121.001], pasig: [14.576, 121.085], pateros: [14.545, 121.068], 'san juan': [14.6, 121.03], taguig: [14.52, 121.054], valenzuela: [14.701, 120.983],
+  bulacan: [14.794, 120.88], marilao: [14.759, 120.949], cavite: [14.479, 120.897], bacoor: [14.459, 120.943], imus: [14.43, 120.937], 'dasmariñas': [14.329, 120.937], dasmarinas: [14.329, 120.937], 'general trias': [14.386, 120.88],
+  carmona: [14.313, 121.057], laguna: [14.17, 121.33], batangas: [13.756, 121.058], tagaytay: [14.11, 120.962], rizal: [14.6, 121.3], pampanga: [15.07, 120.66], bataan: [14.68, 120.54] };
+/** The place name found in a site address (the first known city), or "Manila" when none is recognised. */
+export function cityOf(address: unknown): string {
+  const a = String(address ?? '').toLowerCase();
+  for (const k of Object.keys(CITY_COORDS)) if (a.includes(k)) return k;
+  return 'manila';
+}
+export interface WxHour { hour: number; prob: number; mm: number; gust: number; code: number }
+export interface WxRisk { level: 'none' | 'watch' | 'high'; reasons: string[] }
+/** How risky the weather is for outdoor cleaning in a window of hours: thunderstorms, rain chance or amount, and gusts. */
+export function weatherRisk(hours: WxHour[], fromHour = 7, toHour = 17): WxRisk {
+  const w = hours.filter((h) => h.hour >= fromHour && h.hour <= toHour); const reasons: string[] = []; let level: WxRisk['level'] = 'none';
+  const up = (l: WxRisk['level']) => { if (l === 'high' || level === 'none') level = l; };
+  if (!w.length) return { level, reasons };
+  const prob = Math.max(...w.map((h) => h.prob)), mm = w.reduce((a, h) => a + h.mm, 0), gust = Math.max(...w.map((h) => h.gust));
+  if (w.some((h) => h.code >= 95)) { up('high'); reasons.push('thunderstorms'); }
+  if (prob >= 70 || mm >= 5) { up('high'); reasons.push(`heavy rain likely (${Math.round(prob)}% chance)`); } else if (prob >= 40 || mm >= 1) { up('watch'); reasons.push(`possible rain (${Math.round(prob)}% chance)`); }
+  if (gust >= 50) { up('high'); reasons.push(`strong gusts up to ${Math.round(gust)} km/h`); } else if (gust >= 35) { up('watch'); reasons.push(`gusty, up to ${Math.round(gust)} km/h`); }
+  return { level, reasons };
+}
+/** Reads the model's reply for the nightly review: a JSON list of proposed notes; returns the valid ones (at most 3). */
+export function parseProposals(text: string): { kind: string; text: string; why: string }[] {
+  const m = /\[[\s\S]*\]/.exec(String(text ?? '')); if (!m) return [];
+  let arr: unknown; try { arr = JSON.parse(m[0]); } catch { return []; } if (!Array.isArray(arr)) return [];
+  const out: { kind: string; text: string; why: string }[] = [];
+  for (const x of arr) {
+    const o = (x ?? {}) as Record<string, unknown>; const t = cleanNote(o.text); if (!t) continue;
+    out.push({ kind: (NOTE_KINDS as readonly string[]).includes(String(o.kind)) ? String(o.kind) : 'preference', text: t, why: String(o.why ?? '').replace(/\s+/g, ' ').trim().slice(0, 160) });
+    if (out.length >= 3) break;
+  }
+  return out;
 }

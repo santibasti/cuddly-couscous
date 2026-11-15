@@ -215,3 +215,9 @@ Jarvis keeps short notes about how the owner likes to work (`jarvis_notes`) and 
 
 ## Jarvis company knowledge base (migration 0113)
 The owner uploads (or pastes) the company document in the KNOWLEDGE box on the Jarvis screen. It is cut into sections at its `# ` headings and stored in `jarvis_knowledge`; Jarvis sees the list of sections and any "rules" section on every answer, and reads the right section with `lookup_knowledge`. The document is confidential and the repository is public, so it is never committed: it lives only in the database. Uploading again replaces the old one. Deploy: `supabase.cmd db push` then `supabase.cmd functions deploy jarvis --no-verify-jwt`.
+
+## Jarvis learning loop and weather (migration 0114)
+- **Thumbs up/down** under each answer on the Jarvis screen. A thumbs-down can say why: with a reason it becomes a saved note straight away; without one, Jarvis proposes a note for the owner to approve.
+- **Nightly review** at 22:00 Manila: Jarvis reads the day's questions (kept 14 days in `jarvis_turns`) and thumbs (`jarvis_feedback`), and proposes up to 3 notes (`jarvis_proposals`). They appear in the MEMORY box ("I'd like to learn") with ✓ / ×; nothing is saved until the owner approves. Rejected ones are not proposed again.
+- **Weather check** at 18:00 Manila for tomorrow's jobs, using the free Open-Meteo forecast (no key) for the city found in each site address. A message is sent only when rain, thunderstorms or strong gusts threaten a job; the morning brief also mentions risks for today's jobs, and he can answer "will it rain tomorrow?" with the `get_weather` tool.
+- Deploy: `supabase.cmd db push` (answer Y) then `supabase.cmd functions deploy jarvis --no-verify-jwt`.

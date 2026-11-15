@@ -11,7 +11,7 @@
 //          ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID. Optional: JARVIS_MODEL (default claude-sonnet-5-5), JARVIS_ADDRESS (how it addresses you), JARVIS_SPEAK_NAMES=0 (do not say client names),
 //          JARVIS_WEB=0 (turn off the web search; on by default), ELEVENLABS_TTS_MODEL (default eleven_multilingual_v2), ELEVENLABS_STT_MODEL (default scribe_v1; scribe_v2 is tried if that one is refused). Deploy with --no-verify-jwt.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { addDays, alertIsInstant, alertLine, chunks, cleanNote, invoiceBalance, knowledgeBlock, MAX_KNOWLEDGE_CHARS, pickSections, splitKnowledge, invoiceTotal, LEARN_RULES, manilaDay, MAX_NOTES, memoryBlock, NOTE_KINDS, ownerIds, personaPrompt, round2, speakable, TOOL_TOPIC } from './logic.ts';
+import { addDays, alertIsInstant, alertLine, chunks, CITY_COORDS, cityOf, cleanNote, invoiceBalance, knowledgeBlock, MAX_KNOWLEDGE_CHARS, parseProposals, pickSections, splitKnowledge, weatherRisk, invoiceTotal, LEARN_RULES, manilaDay, MAX_NOTES, memoryBlock, NOTE_KINDS, ownerIds, personaPrompt, round2, speakable, TOOL_TOPIC, type WxHour } from './logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-jarvis-action', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -127,6 +127,85 @@ async function saveKnowledge(sb: Db, text: string) {
 }
 const knowledgeList = async (sb: Db) => { try { const { data } = await sb.from('jarvis_knowledge').select('num, title, chars').order('num', { ascending: true }); return data ?? []; } catch { return []; } };
 
+/* ---------------- learning loop: turns, thumbs, nightly review ---------------- */
+async function logTurn(sb: Db, src: string, q: string, a: string, used: string[]) { try { await sb.from('jarvis_turns').insert({ src, question: q.slice(0, 400), answer: a.slice(0, 800), tools: [...new Set(used)].join(',').slice(0, 200) }); } catch (e) { console.error('turn', String(e)); } }
+const claudeText = async (system: string, user: string) => textOf((await claude(system, [{ role: 'user', content: user }])).content);
+async function addProposal(sb: Db, kind: string, text: string, why: string): Promise<boolean> {
+  const t = cleanNote(text); if (!t) return false;
+  if ((await loadNotes(sb)).some((n) => n.text.toLowerCase() === t.toLowerCase())) return false;
+  const { count } = await sb.from('jarvis_proposals').select('id', { count: 'exact', head: true }).eq('status', 'pending'); if ((count ?? 0) >= 5) return false;
+  const { error } = await sb.from('jarvis_proposals').insert({ kind: (NOTE_KINDS as readonly string[]).includes(kind) ? kind : 'preference', text: t, why: why.slice(0, 160) });
+  return !error;
+}
+async function rate(sb: Db, rating: number, question: string, answer: string, reason: string) {
+  if (rating !== 1 && rating !== -1) return { error: 'Bad rating.' };
+  await sb.from('jarvis_feedback').insert({ rating, question: question.slice(0, 400), answer: answer.slice(0, 800), note: reason.slice(0, 300) });
+  await logEvent(sb, 'memory', rating === 1 ? 'Thumbs up received' : 'Thumbs down received');
+  if (rating === 1) return { ok: true };
+  const txt = (await claudeText(`You help a business assistant learn from its owner. The owner gave a thumbs-down to an answer${reason ? ' and said why' : ''}. Write ONE short lasting note (under 150 characters, third person, for example "Prefers shorter answers") that would stop this happening again. If nothing lasting can be learned, answer exactly NONE. Never include names, numbers, links or secrets. Reply with the note only.`, `Question: ${question.slice(0, 400)}\nAnswer: ${answer.slice(0, 800)}\nOwner's reason: ${reason || '(none given)'}`)).trim();
+  const note = /^none\b/i.test(txt) ? null : cleanNote(txt.replace(/^["'\s-]+|["'\s]+$/g, ''));
+  if (!note) return { ok: true, learned: 'none' };
+  if (reason.trim()) return { ok: true, learned: (await saveNote(sb, 'correction', note)).saved ? 'note' : 'none' };   // the owner said why: that is a direct correction
+  return { ok: true, learned: (await addProposal(sb, 'correction', note, 'You gave a thumbs-down to an answer.')) ? 'proposal' : 'none' };
+}
+async function loadProposals(sb: Db) { try { const { data } = await sb.from('jarvis_proposals').select('id, kind, text, why').eq('status', 'pending').order('id', { ascending: true }).limit(5); return data ?? []; } catch { return []; } }
+async function decideProposal(sb: Db, id: unknown, accept: boolean) {
+  const n = Number(id); if (!Number.isInteger(n)) return { ok: false };
+  const { data: p } = await sb.from('jarvis_proposals').select('kind, text').eq('id', n).eq('status', 'pending').maybeSingle(); if (!p) return { ok: false };
+  if (accept) { const r = await saveNote(sb, p.kind, p.text); if (!r.saved) return { ok: false, reason: r.reason }; await sb.from('jarvis_proposals').update({ status: 'accepted' }).eq('id', n); }
+  else await sb.from('jarvis_proposals').update({ status: 'rejected' }).eq('id', n);
+  return { ok: true };
+}
+async function review(sb: Db, owners: number[]) {
+  if (!(await once(sb, `review:${today()}`))) return;
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const [{ data: turns }, { data: fb }, notes, { data: rej }] = await Promise.all([
+    sb.from('jarvis_turns').select('question, answer, tools').gte('at', since).order('at').limit(40), sb.from('jarvis_feedback').select('rating, question, note').gte('at', since).order('at').limit(30),
+    loadNotes(sb), sb.from('jarvis_proposals').select('text').eq('status', 'rejected').order('id', { ascending: false }).limit(15)]);
+  if ((turns ?? []).length < 3 && !(fb ?? []).length) { await logEvent(sb, 'review', 'Nightly review · nothing new'); return; }
+  const txt = await claudeText(`You are the learning module of JARVIS, the owner's private business assistant. From the owner's last-day questions, JARVIS's answers and the thumbs the owner gave, propose up to 3 NEW short lasting notes about how the owner likes things done: style and length, topics they care about, routines, corrections. Use only what the owner themselves showed or said. Do not repeat anything already in the saved notes or in the rejected list. No names, numbers, links or secrets. Reply with a JSON array only, for example [{"kind":"preference","text":"Prefers short answers","why":"Asked for shorter replies twice"}], or [] when nothing is worth saving. kind is one of preference, fact, routine, correction.`,
+    JSON.stringify({ questions: (turns ?? []).map((t: Db) => ({ q: t.question, a: String(t.answer).slice(0, 240), tools: t.tools })), thumbs: fb ?? [], savedNotes: notes.map((n) => n.text), rejected: (rej ?? []).map((r: Db) => r.text) }).slice(0, 14000));
+  let added = 0; for (const p of parseProposals(txt)) if (await addProposal(sb, p.kind, p.text, p.why)) added++;
+  await logEvent(sb, 'review', added ? `Nightly review · ${added} to approve` : 'Nightly review · nothing new');
+  if (added) for (const c of owners) await deliver(c, `Nightly review. I would like to remember ${added === 1 ? 'one thing' : `${added} things`} about how you like to work. Open the Jarvis screen to approve or reject ${added === 1 ? 'it' : 'them'}.`);
+  const old = new Date(Date.now() - 30 * 86400_000).toISOString();
+  try { await sb.from('jarvis_turns').delete().lt('at', new Date(Date.now() - 14 * 86400_000).toISOString()); await sb.from('jarvis_feedback').delete().lt('at', old); await sb.from('jarvis_proposals').delete().neq('status', 'pending').lt('created_at', old); } catch { /* old rows stay a little longer */ }
+}
+
+/* ---------------- weather for the jobs ---------------- */
+async function forecast(city: string, date: string): Promise<WxHour[]> {
+  const [lat, lon] = CITY_COORDS[city] ?? CITY_COORDS.manila;
+  const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation_probability,precipitation,wind_gusts_10m,weather_code&timezone=Asia%2FManila&start_date=${date}&end_date=${date}`);
+  if (!r.ok) throw new Error(`forecast ${r.status}`);
+  const j = await r.json() as { hourly?: { time: string[]; precipitation_probability: (number | null)[]; precipitation: (number | null)[]; wind_gusts_10m: (number | null)[]; weather_code: (number | null)[] } };
+  const h = j.hourly; if (!h?.time) throw new Error('no forecast');
+  return h.time.map((t, i) => ({ hour: Number(t.slice(11, 13)), prob: h.precipitation_probability[i] ?? 0, mm: h.precipitation[i] ?? 0, gust: h.wind_gusts_10m[i] ?? 0, code: h.weather_code[i] ?? 0 }));
+}
+async function weatherForDay(sb: Db, date: string) {
+  const { data } = await sb.from('jobs').select('number, client_id, site_id, start_at, status').is('deleted_at', null).gte('start_at', `${date}T00:00:00`).lte('start_at', `${date}T23:59:59`).order('start_at').limit(40);
+  const jobs = (data ?? []).filter((j: Db) => !['Cancelled', 'Rescheduled'].includes(String(j.status)));
+  const [cn, sn] = await Promise.all([names(sb, 'clients', 'name', jobs.map((j: Db) => j.client_id)), names(sb, 'sites', 'address', jobs.map((j: Db) => j.site_id))]);
+  const cities = [...new Set(jobs.map((j: Db) => cityOf(sn[j.site_id])))].slice(0, 6); const fc: Record<string, WxHour[] | null> = {};
+  await Promise.all(cities.map(async (c) => { try { fc[c] = await forecast(c, date); } catch { fc[c] = null; } }));
+  return { date, jobs: jobs.map((j: Db) => {
+    const city = cityOf(sn[j.site_id]); const startHour = Number(String(j.start_at).slice(11, 13)); const hours = fc[city] ?? (cities[0] ? fc[cities[0]] : null);
+    const risk = hours ? weatherRisk(hours, startHour, Math.min(18, startHour + 4)) : null;
+    return { number: j.number, client: cn[j.client_id] ?? '', start: String(j.start_at).slice(11, 16), city, level: risk?.level ?? 'unknown', reasons: risk?.reasons ?? ['forecast unavailable'] };
+  }) };
+}
+const time12 = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`; };
+async function weatherAlert(sb: Db, owners: number[]) {
+  const date = addDays(today(), 1); if (!(await once(sb, `weather:${date}`))) return;
+  const w = await weatherForDay(sb, date); const risky = w.jobs.filter((j) => j.level === 'watch' || j.level === 'high');
+  if (!w.jobs.length) { await logEvent(sb, 'weather', 'Weather check · no jobs tomorrow'); return; }
+  if (!risky.length) { await logEvent(sb, 'weather', 'Weather check · all clear'); return; }
+  const speak = env('JARVIS_SPEAK_NAMES') !== '0';
+  const lines = risky.slice(0, 5).map((j) => `${speak && j.client ? j.client : `job ${j.number}`} at ${time12(j.start)} in ${j.city.replace(/\b\w/g, (c) => c.toUpperCase())}: ${j.reasons.join(', ')}${j.level === 'high' ? ', high risk' : ''}.`);
+  const text = speakable(`Weather check for tomorrow. ${risky.length} of ${w.jobs.length} ${w.jobs.length === 1 ? 'job' : 'jobs'} may be affected. ${lines.join(' ')} You may want to confirm or reschedule with the clients.`, 900);
+  for (const c of owners) await deliver(c, text);
+  await logEvent(sb, 'weather', `Weather warning · ${risky.length} job${risky.length === 1 ? '' : 's'}`);
+}
+
 /* ---------------- business data (read-only) ---------------- */
 const names = async (sb: Db, table: string, col: string, ids: string[]): Promise<Record<string, string>> => {
   const u = [...new Set(ids.filter(Boolean))]; if (!u.length) return {};
@@ -210,6 +289,7 @@ const TOOLS = [
   { name: 'get_receivables', description: 'Unpaid invoices: total outstanding, overdue amount and count, biggest balances.', input_schema: { type: 'object', properties: {} } },
   { name: 'get_money_in', description: 'Payments received (verified) in the last N days.', input_schema: { type: 'object', properties: { days: { type: 'number' } }, required: ['days'] } },
   { name: 'get_quotations_summary', description: 'Quotations approved or rejected in the last N days with the approved value.', input_schema: { type: 'object', properties: { days: { type: 'number' } }, required: ['days'] } },
+  { name: 'get_weather', description: 'Weather risk for the jobs on one date (Manila date, default tomorrow): per job the city, start time and whether rain, thunderstorms or strong gusts threaten the work.', input_schema: { type: 'object', properties: { date: { type: 'string' } } } },
   { name: 'lookup_knowledge', description: 'Read the owner-uploaded company knowledge base (services, methods, reference prices, safety limits, clients, policies, plans, rules). Pass a topic or keywords, or a section number from the list in your instructions. Returns the best matching sections.', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'remember_note', description: 'Save one short lasting note about how the owner wants you to work (preference, correction, routine, or business fact they told you). Only what the owner said themselves in this conversation.', input_schema: { type: 'object', properties: { text: { type: 'string' }, kind: { type: 'string', enum: ['preference', 'fact', 'routine', 'correction'] } }, required: ['text'] } },
   { name: 'forget_note', description: 'Delete one saved note by its id (shown as [#id] in your notes) when the owner asks you to forget it.', input_schema: { type: 'object', properties: { id: { type: 'number' } }, required: ['id'] } },
@@ -225,6 +305,7 @@ async function runTool(sb: Db, name: string, a: Record<string, unknown>) {
     case 'get_money_in': return await getMoneyIn(sb, clampDays(a.days));
     case 'get_quotations_summary': return await getQuotes(sb, clampDays(a.days, 30));
     case 'get_handovers_waiting': return await getHandovers(sb);
+    case 'get_weather': return await weatherForDay(sb, dateArg(a.date, addDays(today(), 1)));
     case 'lookup_knowledge': { const hits = pickSections(String(a.query ?? ''), await loadKnowledge(sb)); return hits.length ? { sections: hits.map((h) => ({ section: h.num, title: h.title, text: h.body.slice(0, 8000) })) } : { found: false }; }
     case 'remember_note': return await saveNote(sb, a.kind, a.text);
     case 'forget_note': return await forgetNote(sb, a.id);
@@ -263,6 +344,7 @@ async function converse(sb: Db, history: Turn[], question: string, src = 'screen
   }
   if (searched) await logEvent(sb, 'search', 'Web search used');
   await countTopics(sb, used);
+  await logTurn(sb, src, question, reply, used);
   await logEvent(sb, 'answer', `Question answered · ${src}`);
   return reply || 'I could not put an answer together. Please ask again.';
 }
@@ -277,11 +359,11 @@ async function answer(sb: Db, chat: number, question: string): Promise<string> {
 async function morningBrief(sb: Db, owners: number[]) {
   if (!(await once(sb, `brief:${today()}`))) return;
   const t = today(); const y = addDays(t, -1);
-  const [jobsToday, jobsTomorrow, attendanceYesterday, pending, leads, receivables, moneyYesterday, handovers] = await Promise.all([
+  const [jobsToday, jobsTomorrow, attendanceYesterday, pending, leads, receivables, moneyYesterday, handovers, weatherToday] = await Promise.all([
     safe(getJobs(sb, t, t)), safe(getJobs(sb, addDays(t, 1), addDays(t, 1))), safe(getAttendance(sb, y)), safe(getPending(sb)), safe(getLeads(sb, 1)),
-    safe(getReceivables(sb)), safe(getMoneyIn(sb, 1)), safe(getHandovers(sb))]);
-  const data = { today: t, weekday: new Date(t + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }), jobsToday, jobsTomorrow, attendanceYesterday, waitingForYou: pending, newInquiriesLast24h: leads, receivables, moneyReceivedYesterday: moneyYesterday, handoversWaitingForClientSignature: handovers };
-  const out = await claude(`${persona()}${await memory(sb)}${knowledgeBlock(await loadKnowledge(sb))}\nWrite the owner's MORNING BRIEF to be listened to. Open with a short greeting and the day. Put what needs the owner's attention or a decision first (waiting approvals, unassigned jobs, absent crew, overdue money, handovers waiting), then today's jobs in time order, then tomorrow in one line. Skip empty sections. Roughly 100 to 160 words.`,
+    safe(getReceivables(sb)), safe(getMoneyIn(sb, 1)), safe(getHandovers(sb)), safe(weatherForDay(sb, t))]);
+  const data = { today: t, weekday: new Date(t + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }), jobsToday, jobsTomorrow, attendanceYesterday, waitingForYou: pending, newInquiriesLast24h: leads, receivables, moneyReceivedYesterday: moneyYesterday, handoversWaitingForClientSignature: handovers, weatherRiskForTodaysJobs: weatherToday };
+  const out = await claude(`${persona()}${await memory(sb)}${knowledgeBlock(await loadKnowledge(sb))}\nWrite the owner's MORNING BRIEF to be listened to. Open with a short greeting and the day. Put what needs the owner's attention or a decision first (waiting approvals, unassigned jobs, absent crew, overdue money, handovers waiting), (including any job at risk from rain, thunderstorms or strong wind), then today's jobs in time order, then tomorrow in one line. Skip empty sections. Roughly 100 to 160 words.`,
     [{ role: 'user', content: `Data (JSON):\n${JSON.stringify(data).slice(0, 14000)}` }]);
   const text = textOf(out.content) || 'Good morning. I could not prepare the brief today.';
   for (const c of owners) await deliver(c, text);
@@ -343,7 +425,7 @@ async function panel(sb: Db) {
   const events = await safe((async () => { const { data } = await sb.from('jarvis_events').select('kind, text, at').order('at', { ascending: false }).limit(16); return data ?? []; })());
   const delivered = await safe((async () => { const { data } = await sb.from('alert_outbox').select('sent_at').order('created_at', { ascending: false }).limit(20); const rows = data ?? []; return rows.length ? Math.round(rows.filter((r: Db) => r.sent_at).length / rows.length * 100) : null; })());
   const memoryNotes = await loadNotes(sb);
-  return { at: new Date().toISOString(), today: t, memory: memoryNotes, knowledge: await knowledgeList(sb), voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'),
+  return { at: new Date().toISOString(), today: t, memory: memoryNotes, proposals: await loadProposals(sb), knowledge: await knowledgeList(sb), voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'),
     health: { data: Math.round(okParts / parts.length * 100), voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'), alerts: typeof delivered === 'number' ? delivered : null, web: webOn() },
     events, jobsToday, jobsTomorrow, attendanceToday, attendanceYesterday, pending, leads, receivables, moneyToday, quotes, handovers, alerts };
 }
@@ -356,7 +438,7 @@ async function webRequest(req: Request): Promise<Response> {
     const type = (req.headers.get('content-type') ?? 'audio/webm').split(';')[0] || 'audio/webm';
     return json({ text: await transcribe(bytes, type, type.includes('mp4') ? 'voice.m4a' : 'voice.webm') });
   }
-  const b = await req.json().catch(() => ({})) as { action?: string; text?: string; id?: unknown; history?: { role: string; content: string }[] };
+  const b = await req.json().catch(() => ({})) as { action?: string; text?: string; id?: unknown; rating?: number; question?: string; answer?: string; reason?: string; history?: { role: string; content: string }[] };
   if (b.action === 'panel') return json(await panel(sb));
   if (b.action === 'chat') {
     if (!env('ANTHROPIC_API_KEY')) return json({ error: 'The AI key is not set yet.' }, 400);
@@ -366,6 +448,8 @@ async function webRequest(req: Request): Promise<Response> {
   }
   if (b.action === 'knowledge_save') return json(await saveKnowledge(sb, String(b.text ?? '')));
   if (b.action === 'knowledge_clear') { const r = await sb.from('jarvis_knowledge').delete().gte('num', 0); return json({ ok: !r.error }); }
+  if (b.action === 'feedback') { const f = b as { rating?: number; question?: string; answer?: string; reason?: string }; return json(await rate(sb, Number(f.rating), String(f.question ?? ''), String(f.answer ?? ''), String(f.reason ?? '').slice(0, 300))); }
+  if (b.action === 'proposal_accept' || b.action === 'proposal_reject') return json(await decideProposal(sb, b.id, b.action === 'proposal_accept'));
   if (b.action === 'forget') return json(await forgetNote(sb, (b as { id?: unknown }).id));
   if (b.action === 'speak') {
     if (!env('ELEVENLABS_API_KEY') || !env('ELEVENLABS_VOICE_ID')) return json({ error: 'No voice is connected yet.' }, 400);
@@ -391,6 +475,8 @@ Deno.serve(async (req) => {
       if (body.action === 'brief') await morningBrief(sb, owners);
       else if (body.action === 'alert') await instantAlert(sb, Number(body.id), owners);
       else if (body.action === 'inquiry') await newInquiry(sb, String(body.id), owners);
+      else if (body.action === 'review') await review(sb, owners);
+      else if (body.action === 'weather') await weatherAlert(sb, owners);
       else if (body.action === 'ask') await ask(sb, body as AskBody, owners);
       else if (body.action === 'test') for (const c of owners) await deliver(c, 'Jarvis online. All systems nominal.');
     } catch (e) { console.error('jarvis', String(e)); }
