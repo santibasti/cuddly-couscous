@@ -35,6 +35,17 @@ describe('crew earnings this pay week', () => {
     const { db, a } = world('2026-03-08T10:00'); const w = crewEarnings(db, a, '2026-03-09T09:00')!;
     expect(w).toMatchObject({ start: '2026-03-08', rate: 0, bonus: 420, total: 420 }); expect(w.days[0].bonus).toBe(420); expect(w.notes.join(' ')).toContain('signed');
   });
+  it('shows a worked day as waiting for approval until the attendance is approved', () => {
+    const { db, a } = world('2026-03-03T16:30');
+    db.attendance = db.attendance.map((x) => (x.employee_id === a.id ? { ...x, approval: 'Pending' as const } : x));
+    const w = crewEarnings(db, a, '2026-03-04T10:00')!;
+    expect(w.days[2]).toMatchObject({ date: '2026-03-03', rate: 0, total: 0, pending: true }); expect(w.days[1].pending).toBeFalsy();
+    expect(w.notes.join(' ')).toContain('waiting for approval');
+    const daily = crewEarnings(db, { ...a, pay_basis: 'daily', daily_rate: 700 }, '2026-03-04T10:00')!;
+    expect(daily.days[2]).toMatchObject({ pending: true, rate: 0 });
+    const open = { ...db, attendance: db.attendance.map((x) => (x.employee_id === a.id ? { ...x, clock_out: undefined } : x)) };
+    expect(crewEarnings(open, { ...a, pay_basis: 'daily', daily_rate: 700 }, '2026-03-04T10:00')!.days[2].pending).toBeFalsy();   // still on shift: nothing to approve yet
+  });
   it('has nothing for people on a monthly salary', () => {
     const { db, a } = world(undefined); expect(crewEarnings(db, { ...a, pay_basis: 'monthly' }, '2026-03-04T10:00')).toBeNull();
   });

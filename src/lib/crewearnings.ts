@@ -5,7 +5,7 @@ import { payDateOf, weekOf } from './payrollweek';
 import { jobBonus, jobBonusDate, jobPayDate, jobPaySettings, jobsAttended } from './jobpay';
 import type { DB, Employee } from './types';
 
-export interface EarnDay { date: string; rate: number; bonus: number; total: number; /** the bonus of this day is not final yet */ estimate: boolean }
+export interface EarnDay { date: string; rate: number; bonus: number; total: number; /** the bonus of this day is not final yet */ estimate: boolean; /** the day was worked and finished but the attendance is not approved yet, so no pay shows for it */ pending?: boolean }
 export interface CrewWeek { start: string; end: string; days: EarnDay[]; rate: number; bonus: number; total: number; estimate: boolean; notes: string[]; updated_at: string }
 
 /** The pay week "now" is in: after the Saturday payday cutoff it is already the next week. */
@@ -31,6 +31,14 @@ export function crewEarnings(db: DB, emp: Employee, now: string = nowLocal()): C
     if (a.employee_id !== emp.id || a.deleted_at || a.approval !== 'Approved' || !a.clock_in || a.kind === 'Leave' || (a.date === now.slice(0, 10) && !a.clock_out)) continue;
     const d = day(a.date); if (d && !d.rate) d.rate = emp.daily_rate;
   }
+  // worked and finished days whose attendance still waits for approval: show "waiting for approval" instead of nothing
+  const markPending = (date: string | undefined) => { const d = date && inWeek(date) ? day(date) : undefined; if (d && !d.rate && !d.bonus) d.pending = true; };
+  if (emp.pay_basis === 'daily') for (const a of db.attendance) { if (a.employee_id === emp.id && !a.deleted_at && a.approval === 'Pending' && a.kind === 'Present' && a.clock_in && a.clock_out) markPending(a.date); }
+  else if (emp.pay_basis === 'per_job') {
+    const ok = new Set(jobsAttended(db, emp.id, week.start, week.end, false, now.slice(0, 10)).map((j) => j.id));
+    for (const j of jobsAttended(db, emp.id, week.start, week.end, true, now.slice(0, 10))) if (!ok.has(j.id)) markPending(jobPayDate(db, j));
+  }
+  const waiting = days.filter((d) => d.pending).length; if (waiting) notes.add(`${waiting} day${waiting === 1 ? ' is' : 's are'} waiting for approval. ${waiting === 1 ? 'It' : 'They'} will be added once approved.`);
   for (const d of days) { d.rate = round2(d.rate); d.bonus = round2(d.bonus); d.total = round2(d.rate + d.bonus); }
   return { start: week.start, end: week.end, days, rate: round2(sum(days, (d) => d.rate)), bonus: round2(sum(days, (d) => d.bonus)), total: round2(sum(days, (d) => d.total)), estimate: days.some((d) => d.estimate), notes: [...notes], updated_at: now };
 }

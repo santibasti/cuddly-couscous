@@ -190,17 +190,17 @@ export function JarvisConsole(p: ConsoleProps) {
 const CSS = `
 .jc{--ink:#cfe0ff;--hi:#fff;--line:rgba(170,200,255,.5);--dim:#9fc0ff;--box:rgba(8,14,110,.5);--am:#ffd37a;position:relative;z-index:1;margin-top:10px;color:var(--ink);font-family:ui-monospace,Consolas,"Segoe UI",monospace;font-size:clamp(12px,calc(.3vw + .45vh + 6px),16px);flex:1;display:flex;flex-direction:column}
 .jc.cyan{--ink:#bfefff;--line:rgba(0,220,255,.4);--dim:#59d6ff;--box:rgba(3,34,52,.6);--am:#ffc857}
-.jc-grid{display:grid;grid-template-columns:minmax(230px,clamp(270px,22vw,400px)) 1fr minmax(230px,clamp(270px,22vw,400px));gap:18px;align-items:stretch;flex:1}
-.jc-col{display:grid;gap:12px;align-content:start}
+.jc-grid{display:grid;grid-template-columns:minmax(230px,clamp(300px,26vw,400px)) minmax(0,1fr) minmax(230px,clamp(300px,26vw,400px));gap:18px;align-items:start;flex:none;margin-bottom:auto}
+.jc-col{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-content:start;min-width:0}.jc-col>*,.jc-center{min-width:0}
 .jc-box{position:relative;border:1px solid var(--line);background:var(--box);padding:10px 12px;backdrop-filter:blur(3px)}
 .jc-box:before{content:"";position:absolute;left:-1px;top:-1px;width:12px;height:12px;border-left:2px solid #fff;border-top:2px solid #fff}
-.jc h6{margin:0 0 7px;font-size:.82em;letter-spacing:.22em;color:var(--dim);font-weight:600;display:flex;justify-content:space-between}.jc h6 em{font-style:normal;opacity:.8}
+.jc h6{margin:0 0 7px;font-size:.82em;letter-spacing:.22em;color:var(--dim);font-weight:600;display:flex;justify-content:space-between;flex-wrap:wrap;gap:2px 10px}.jc h6 em{font-style:normal;opacity:.8}
 .jc .row{display:flex;justify-content:space-between;gap:10px;padding:2px 0;border-bottom:1px dashed rgba(170,200,255,.2)}.jc .row b{color:var(--hi)}.jc .am{color:var(--am)}.jc-mut{opacity:.65;font-size:.9em}
 .jc-bars>div{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:.85em}.jc-bars span{width:5.2em;flex:none}.jc-bars i{flex:1;height:4px;background:rgba(170,200,255,.2);position:relative}.jc-bars i:after{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--w);background:linear-gradient(90deg,#7fa8ff,#fff);transition:width .8s}.jc-bars b{width:3.2em;text-align:right;color:var(--hi);font-weight:500}
 .jc-logbox{min-height:140px}.jc-log{max-height:calc(100vh - 560px);min-height:110px;overflow:hidden;line-height:1.7;font-size:.92em;color:#bcd0ff}.jc.cyan .jc-log{color:#a8e8fa}
 .jc-log .ln{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:jcln .6s ease-out}.jc-log .t{color:#7f9cf5}.jc.cyan .jc-log .t{color:#4bc0dc}.jc-log em{font-style:normal;color:#fff;margin:0 4px}.jc-log em.am{color:var(--am)}
 @keyframes jcln{from{opacity:0;transform:translateX(-8px);background:rgba(255,255,255,.2)}to{opacity:1;transform:none;background:transparent}}
-.jc-center{display:grid;justify-items:center;align-content:center;gap:8px}
+.jc-center{display:grid;justify-items:center;align-content:center;align-self:center;gap:8px}
 .jc-core{position:relative;width:min(640px,60vh,100%);aspect-ratio:1;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
 .jc-core:before{content:"";position:absolute;inset:-6%;border-radius:50%;background:radial-gradient(circle,rgba(110,140,255,.25),transparent 62%);animation:jchalo 5s ease-in-out infinite;pointer-events:none}.jc.cyan .jc-core:before{background:radial-gradient(circle,rgba(40,210,255,.25),transparent 62%)}
 .jc-core.speaking:before,.jc-core.thinking:before{animation-duration:1s}.jc-core.listening:before{animation-duration:1.5s}

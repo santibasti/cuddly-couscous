@@ -41,9 +41,10 @@ export function MyEarnings({ emp }: { emp: Employee }) {
               {wk.days.map((d) => (
                 <tr key={d.date}>
                   <td>{WD[new Date(d.date + 'T00:00:00Z').getUTCDay()]} {d.date.slice(8)}</td>
-                  <td className="r">{d.rate ? money(d.rate) : '—'}</td>
-                  <td className="r">{d.bonus ? <>{money(d.bonus)}{d.estimate && <span className="muted"> estimate</span>}</> : '—'}</td>
-                  <td className="r">{d.total ? money(d.total) : '—'}</td>
+                  {d.pending && !d.total ? <td className="r muted" colSpan={3}>Waiting for approval</td> : <>
+                    <td className="r">{d.rate ? money(d.rate) : '—'}</td>
+                    <td className="r">{d.bonus ? <>{money(d.bonus)}{d.estimate && <span className="muted"> estimate</span>}</> : '—'}</td>
+                    <td className="r">{d.total ? money(d.total) : '—'}</td></>}
                 </tr>
               ))}
               <tr><th>Week</th><th className="r">{money(wk.rate)}</th><th className="r">{money(wk.bonus)}{wk.estimate && <span className="muted"> estimate</span>}</th><th className="r">{money(wk.total)}</th></tr>
