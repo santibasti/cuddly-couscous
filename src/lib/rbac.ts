@@ -140,6 +140,7 @@ export const ROUTE_ACCESS: Record<string, string[]> = {
   dashboard: ['dashboard.view', 'dashboard.finance'],
   today: ['dashboard.view', 'dashboard.finance'],
   executive: ['executive.view'],
+  jarvis: ['admin.users'],                 // the owner's command center (the function itself only answers the owner)
   announcements: ['announce.view', 'announce.manage'],
   sms: ['admin.settings'],
   telegram: ['admin.settings'],

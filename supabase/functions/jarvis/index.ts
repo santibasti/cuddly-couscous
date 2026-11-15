@@ -4,6 +4,8 @@
 //  • POST {action:'inquiry', id}            a new inquiry arrived (Facebook, lead form …)
 //  • POST {action:'ask', chat_id, message_id, text? , voice?}   the owner wrote or sent a voice note to the bot (forwarded by telegram-webhook)
 //  • POST {action:'test'}                   "Jarvis is online" check
+//  • The Jarvis screen in the app (owner login, Authorization: Bearer <jwt>): {action:'panel'} live figures, {action:'chat', text, history} an answer, {action:'speak', text} the voice as an mp3,
+//    and raw audio with header x-jarvis-action: transcribe → {text}. The owner is the profile with role 'owner'.
 // Every call must carry the header x-webhook-secret = WEBHOOK_SECRET (this function refuses to run without that secret). Read-only: Jarvis never changes any business data.
 // Secrets: TELEGRAM_BOT_TOKEN, WEBHOOK_SECRET, ANTHROPIC_API_KEY, JARVIS_OWNER_TELEGRAM_ID (your Telegram id, from /myid; several: comma separated),
 //          ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID. Optional: JARVIS_MODEL (default claude-sonnet-5-5), JARVIS_ADDRESS (how it addresses you), JARVIS_SPEAK_NAMES=0 (do not say client names),
@@ -12,7 +14,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, round2, speakable } from './logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
-const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } });
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-jarvis-action', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
+const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json', ...CORS } });
 const safeEq = (a: string, b: string) => { const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b); let d = x.length ^ y.length; for (let i = 0; i < Math.max(x.length, y.length); i++) d |= (x[i] ?? 0) ^ (y[i] ?? 0); return d === 0; };
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -56,9 +59,9 @@ async function deliver(chat: number, text: string) {
     if (mp3) await tgFile('sendAudio', 'audio', chat, mp3, 'audio/mpeg', 'jarvis.mp3');
   } catch (e) { console.error('voice', String(e)); }
 }
-async function transcribe(bytes: Uint8Array): Promise<string> {
+async function transcribe(bytes: Uint8Array, mime = 'audio/ogg', name = 'voice.ogg'): Promise<string> {
   for (const model of [env('ELEVENLABS_STT_MODEL') || 'scribe_v1', 'scribe_v2']) {
-    const f = new FormData(); f.set('model_id', model); f.set('file', new Blob([bytes], { type: 'audio/ogg' }), 'voice.ogg');
+    const f = new FormData(); f.set('model_id', model); f.set('file', new Blob([bytes], { type: mime }), name);
     const r = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': env('ELEVENLABS_API_KEY') }, body: f });
     if (r.ok) return String((await r.json())?.text ?? '').trim();
     console.error('stt', model, r.status, (await r.text()).slice(0, 200)); if (![400, 404, 422].includes(r.status)) break;
@@ -189,9 +192,9 @@ async function claude(system: string, messages: { role: string; content: unknown
 }
 const textOf = (c: { type: string; text?: string }[]) => c.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
 
-async function answer(sb: Db, chat: number, question: string): Promise<string> {
+/** One conversation turn: the AI looks things up with its read-only tools and answers. Used by Telegram (with stored memory) and by the screen in the app (history sent by the page). */
+async function converse(sb: Db, history: Turn[], question: string): Promise<string> {
   const system = `${persona()}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. If the question is not about the business, answer briefly or say it is outside what you do.`;
-  const history = await remember(sb, chat);
   const messages: { role: string; content: unknown }[] = [...history, { role: 'user', content: question }];
   let reply = '';
   for (let round = 0; round < 5; round++) {
@@ -204,7 +207,11 @@ async function answer(sb: Db, chat: number, question: string): Promise<string> {
     for (const u of uses) results.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(await safe(runTool(sb, u.name ?? '', u.input ?? {}))).slice(0, 9000) });
     messages.push({ role: 'user', content: results });
   }
-  if (!reply) reply = 'I could not put an answer together. Please ask again.';
+  return reply || 'I could not put an answer together. Please ask again.';
+}
+async function answer(sb: Db, chat: number, question: string): Promise<string> {
+  const history = await remember(sb, chat);
+  const reply = await converse(sb, history, question);
   await store(sb, chat, [...history, { role: 'user', content: question }, { role: 'assistant', content: reply }]);
   return reply;
 }
@@ -254,9 +261,54 @@ async function ask(sb: Db, b: AskBody, owners: number[]) {
   } catch (e) { console.error('ask', String(e)); await tgText(b.chat_id, 'Sorry, something went wrong on my side. Please try again in a moment.'); }
 }
 
+/* ---------------- the screen in the app ---------------- */
+async function ownerFromJwt(sb: Db, req: Request): Promise<boolean> {
+  const h = req.headers.get('authorization') ?? ''; const jwt = h.toLowerCase().startsWith('bearer ') ? h.slice(7).trim() : '';
+  if (!jwt) return false;
+  const { data } = await sb.auth.getUser(jwt); const uid = data?.user?.id; if (!uid) return false;
+  const { data: p } = await sb.from('profiles').select('role, active').eq('id', uid).maybeSingle();
+  return !!p && p.active === true && p.role === 'owner';
+}
+async function panel(sb: Db) {
+  const t = today();
+  const [jobsToday, jobsTomorrow, attendanceToday, attendanceYesterday, pending, leads, receivables, moneyToday, quotes, handovers, alerts] = await Promise.all([
+    safe(getJobs(sb, t, t)), safe(getJobs(sb, addDays(t, 1), addDays(t, 1))), safe(getAttendance(sb, t)), safe(getAttendance(sb, addDays(t, -1))), safe(getPending(sb)), safe(getLeads(sb, 1)),
+    safe(getReceivables(sb)), safe(getMoneyIn(sb, 1)), safe(getQuotes(sb, 7)), safe(getHandovers(sb)),
+    safe((async () => { const { data } = await sb.from('alert_outbox').select('kind, title, body, created_at').order('created_at', { ascending: false }).limit(8); return data ?? []; })())]);
+  return { at: new Date().toISOString(), today: t, voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'),
+    jobsToday, jobsTomorrow, attendanceToday, attendanceYesterday, pending, leads, receivables, moneyToday, quotes, handovers, alerts };
+}
+async function webRequest(req: Request): Promise<Response> {
+  const sb = db();
+  if (!(await ownerFromJwt(sb, req))) return json({ error: 'Only the owner can use Jarvis.' }, 403);
+  if (req.headers.get('x-jarvis-action') === 'transcribe') {
+    if (!env('ELEVENLABS_API_KEY')) return json({ error: 'The voice service key is not set yet.' }, 400);
+    const bytes = new Uint8Array(await req.arrayBuffer()); if (!bytes.length || bytes.length > 6_000_000) return json({ error: 'No audio, or it is too long.' }, 400);
+    const type = (req.headers.get('content-type') ?? 'audio/webm').split(';')[0] || 'audio/webm';
+    return json({ text: await transcribe(bytes, type, type.includes('mp4') ? 'voice.m4a' : 'voice.webm') });
+  }
+  const b = await req.json().catch(() => ({})) as { action?: string; text?: string; history?: { role: string; content: string }[] };
+  if (b.action === 'panel') return json(await panel(sb));
+  if (b.action === 'chat') {
+    if (!env('ANTHROPIC_API_KEY')) return json({ error: 'The AI key is not set yet.' }, 400);
+    const q = String(b.text ?? '').trim().slice(0, 2000); if (!q) return json({ error: 'Say or type something first.' }, 400);
+    const history: Turn[] = (Array.isArray(b.history) ? b.history : []).filter((h) => (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string').slice(-8).map((h) => ({ role: h.role as Turn['role'], content: h.content.slice(0, 1500) }));
+    return json({ text: await converse(sb, history, q) });
+  }
+  if (b.action === 'speak') {
+    if (!env('ELEVENLABS_API_KEY') || !env('ELEVENLABS_VOICE_ID')) return json({ error: 'No voice is connected yet.' }, 400);
+    const text = speakable(String(b.text ?? ''), 1200); if (!text) return json({ error: 'Nothing to say.' }, 400);
+    const mp3 = await tts(text, 'mp3_44100_128'); if (!mp3) return json({ error: 'The voice service did not answer.' }, 502);
+    return new Response(mp3, { headers: { 'Content-Type': 'audio/mpeg', ...CORS } });
+  }
+  return json({ error: 'Unknown action.' }, 400);
+}
+
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
   const secret = env('WEBHOOK_SECRET');
+  if (!req.headers.get('x-webhook-secret') && req.headers.get('authorization')) { try { return await webRequest(req); } catch (e) { console.error('web', String(e)); return json({ error: 'Something went wrong.' }, 500); } }
   if (!secret || !safeEq(req.headers.get('x-webhook-secret') ?? '', secret)) return json({ error: 'Unauthorized' }, 401);
   const owners = ownerIds(env('JARVIS_OWNER_TELEGRAM_ID'));
   if (!owners.length || !env('TELEGRAM_BOT_TOKEN') || !env('ANTHROPIC_API_KEY')) return json({ ok: true, configured: false });

@@ -14,6 +14,13 @@ export const CLOUD = !!(URL && KEY);
 let _client: SupabaseClient | null = null;
 export const supabase = (): SupabaseClient => (_client ??= createClient(URL!, KEY!, { auth: { persistSession: true, autoRefreshToken: true } }));
 
+/** A direct call to an Edge Function as the signed-in user (for replies that are not JSON, such as audio). */
+export async function fnFetch(name: string, init: { body?: BodyInit; headers?: Record<string, string> }): Promise<Response> {
+  const { data } = await supabase().auth.getSession(); const token = data.session?.access_token;
+  if (!token) throw new Error('Please sign in again.');
+  return fetch(`${URL}/functions/v1/${name}`, { method: 'POST', body: init.body, headers: { apikey: KEY!, Authorization: `Bearer ${token}`, ...(init.headers ?? {}) } });
+}
+
 /** Tables copied between the app and Supabase, parents first (foreign keys). `users`, `notifications` and `audit` are handled separately. */
 export const SYNC_TABLES = ['branches', 'clients', 'sites', 'communications', 'complaints', 'services', 'inquiries', 'quotations', 'employees', 'jobs', 'attendance', 'corrections', 'holidays', 'reviews', 'adjustments', 'periods', 'runs', 'locations', 'items', 'stock', 'requests', 'assets', 'checkouts', 'tickets', 'invoices', 'payments', 'expenses', 'petty', 'workflows', 'variations', 'incidents', 'discount_requests', 'client_feedback', 'back_jobs', 'payment_confirmations', 'ocular_visits', 'quote_images', 'followups', 'followup_rules', 'job_orders', 'service_reports', 'maint_profiles', 'maint_plans', 'maint_templates', 'maint_records'] as const satisfies readonly TableName[];
 export type SyncTable = (typeof SYNC_TABLES)[number];

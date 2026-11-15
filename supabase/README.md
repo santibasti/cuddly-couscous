@@ -203,3 +203,5 @@ Function: `supabase/functions/jarvis`; database part: migration `0110`.
 6. Test: in your private chat with the bot send `/jarvis` → "Jarvis online". Then send a voice note or a question.
 
 Only the Telegram ids in `JARVIS_OWNER_TELEGRAM_ID`, writing in a private chat with the bot, can talk to Jarvis. Without the voice key it still sends the text; without `ELEVENLABS_VOICE_ID` it stays text-only.
+
+**The Jarvis screen (in the app, menu → Jarvis).** A command-center page for the owner: a glowing core that pulses while Jarvis listens and speaks, live panels (what needs you, today's jobs, crew, cash, new inquiries, alerts) and a way to talk to it (tap the core and speak, or type). It uses the same `jarvis` function, so after pulling this change redeploy it: `supabase functions deploy jarvis --no-verify-jwt` (no database change). Only the account with role `owner` can use it; the browser asks for microphone permission the first time. The full-screen button is for a TV or tablet.
