@@ -22,7 +22,7 @@ async function tg(method: string, body: Record<string, unknown>) {
 }
 const say = (chat: number, text: string, extra: Record<string, unknown> = {}) => tg('sendMessage', { chat_id: chat, text, ...extra }).catch((e) => { console.error(String(e)); });
 
-interface Msg { message_id: number; date: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string; is_bot?: boolean }; text?: string; caption?: string;
+interface Msg { voice?: { file_id: string; duration?: number }; audio?: { file_id: string; duration?: number }; message_id: number; date: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string; is_bot?: boolean }; text?: string; caption?: string;
   photo?: { file_id: string; file_unique_id: string; file_size?: number; width: number; height: number }[];
   video?: { file_id: string; file_unique_id: string; file_size?: number; mime_type?: string; width: number; height: number; thumbnail?: { file_id: string } };
   video_note?: { file_id: string; file_unique_id: string; file_size?: number };
@@ -86,6 +86,18 @@ async function onMessage(db: Db, m: Msg) {
   const chat = m.chat.id; const text = (m.text ?? '').trim();
   const reply = { reply_to_message_id: m.message_id, allow_sending_without_reply: true };
 
+  // Jarvis (the owner's voice assistant): /myid tells anyone their own Telegram id (to be set as JARVIS_OWNER_TELEGRAM_ID); the owner's private messages go to the jarvis function
+  if (/^\/myid\b/i.test(text)) return void await say(chat, `Your Telegram id is ${from.id}.`, reply);
+  const jarvisOwners = (env('JARVIS_OWNER_TELEGRAM_ID') ?? '').split(/[,\s]+/).map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  if (m.chat.type === 'private' && jarvisOwners.includes(from.id) && env('WEBHOOK_SECRET')) {
+    const voice = m.voice ?? m.audio; const isTest = /^\/jarvis\b/i.test(text);
+    if (isTest || voice || (text && !text.startsWith('/'))) {
+      await fetch(`${env('SUPABASE_URL')}/functions/v1/jarvis`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-webhook-secret': env('WEBHOOK_SECRET') },
+        body: JSON.stringify(isTest ? { action: 'test' } : { action: 'ask', chat_id: chat, message_id: m.message_id, text: voice ? undefined : text, voice: voice ? { file_id: voice.file_id, duration: voice.duration } : undefined }) }).catch((e) => console.error('jarvis', String(e)));
+      return;
+    }
+  }
+
   // /link 123456  — joins this Telegram account to an employee
   const link = text.match(/^\/link(?:@\w+)?\s+(\d{6})\b/i);
   if (link) {
@@ -97,7 +109,7 @@ async function onMessage(db: Db, m: Msg) {
     await db.from('telegram_link_codes').update({ used_at: new Date().toISOString() }).eq('code', c.code);
     return void await say(chat, `✅ Linked, ${firstName(e?.full_name ?? '')}! Photos and videos you send here now go to your job automatically.`, reply);
   }
-  if (/^\/(start|help)\b/i.test(text)) return void await say(chat, 'TopMop photo bot.\n• For the best quality (for our posts), send photos as a File: tap the paperclip → File, instead of Photo.\n• /link 123456 — join with the code the office gives you (once).\n• Send photos or videos: they go to your job today. Add the job number (e.g. JOB-2026-0012) and Before / After in the caption to choose.\n• /job JOB-2026-0012 — send the next photos to that job.\n• Ocular visit: put OV-2026-0001 in the caption, or send /ocular OV-2026-0001 first. With no job today, your photos go to your ocular visit of the day.', reply);
+  if (/^\/(start|help)\b/i.test(text)) return void await say(chat, 'TopMop photo bot.\n• For the best quality (for our posts), send photos as a File: tap the paperclip → File, instead of Photo.\n• /myid — shows your Telegram id.\n• /link 123456 — join with the code the office gives you (once).\n• Send photos or videos: they go to your job today. Add the job number (e.g. JOB-2026-0012) and Before / After in the caption to choose.\n• /job JOB-2026-0012 — send the next photos to that job.\n• Ocular visit: put OV-2026-0001 in the caption, or send /ocular OV-2026-0001 first. With no job today, your photos go to your ocular visit of the day.', reply);
 
   const { data: lk } = await db.from('telegram_links').select('employee_id').eq('telegram_user_id', from.id).maybeSingle();
   const media = mediaOf(m);

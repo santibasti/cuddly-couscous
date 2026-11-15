@@ -186,3 +186,20 @@ Only photos marked "client agreed to marketing use" in the Photo Library are eve
 
 ## Crew recognition (attendance screen)
 `supabase db push` applies migration `0064` (badge data on employees, the boards, praise wall, crew-versus-crew score and the monthly announcement table). Badges (perfect attendance, on-time streak, most improved, documentation star) are recalculated whenever an Admin / HR session has the app open — the same place the ratings are refreshed.
+
+## Jarvis (the owner's voice assistant on Telegram)
+
+Jarvis sends the owner a spoken + written **morning brief at 7:00 (Manila time)**, **instant voice alerts** (a discount is requested, a quotation is accepted, a new inquiry arrives) and answers **questions sent as text or voice notes** ("how many jobs tomorrow?", "who has not paid?"). It only reads data; it never changes anything.
+Function: `supabase/functions/jarvis`; database part: migration `0110`.
+
+1. **Voice service:** make an account at elevenlabs.io, create an API key, and choose a voice you like in the Voice Library (for example a calm British male voice); copy its **Voice ID**. The same key is used to understand your voice notes (speech-to-text). Check the current prices on their site.
+2. **Your Telegram id:** after deploying `telegram-webhook` (step 5), open your private chat with the company bot and send `/myid`; it answers with a number.
+3. **Secrets** (your own values; run on your computer, never paste them into chat). `WEBHOOK_SECRET`, `TELEGRAM_BOT_TOKEN` and `ANTHROPIC_API_KEY` must already be set (the SMS alerts and the Telegram bot use them; the Vault secret `webhook_secret` must hold the same value as `WEBHOOK_SECRET`, see migration 0088):
+   `supabase secrets set ELEVENLABS_API_KEY=... ELEVENLABS_VOICE_ID=... JARVIS_OWNER_TELEGRAM_ID=<your id from /myid>`
+   Optional: `JARVIS_ADDRESS=Boss` (how it addresses you), `JARVIS_SPEAK_NAMES=0` (never say client names), `JARVIS_MODEL`, `ELEVENLABS_TTS_MODEL`, `ELEVENLABS_STT_MODEL`.
+   Several owners: `JARVIS_OWNER_TELEGRAM_ID=111,222`.
+4. `supabase db push` (migration `0110`: the tables, the triggers and the 7:00 schedule).
+5. `supabase functions deploy jarvis --no-verify-jwt` and `supabase functions deploy telegram-webhook --no-verify-jwt`.
+6. Test: in your private chat with the bot send `/jarvis` → "Jarvis online". Then send a voice note or a question.
+
+Only the Telegram ids in `JARVIS_OWNER_TELEGRAM_ID`, writing in a private chat with the bot, can talk to Jarvis. Without the voice key it still sends the text; without `ELEVENLABS_VOICE_ID` it stays text-only.
