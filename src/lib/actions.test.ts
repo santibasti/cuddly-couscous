@@ -235,6 +235,18 @@ describe('business rules enforced by the store', () => {
     expect(db().attendance.find((x) => x.employee_id === emp.id && x.date === today() && !x.deleted_at)!.job_id).toBeTruthy();
   });
 
+  it('only an assigned employee marked as Driver can be the job driver', async () => {
+    await as('owner@topmop.ph');
+    const field = db().employees.filter((e) => e.status !== 'inactive' && !e.deleted_at && e.department === 'Field Operations');
+    const [x, y] = field; const job = db().jobs.find((j) => !['Cancelled', 'Rescheduled', 'Completed'].includes(j.status) && !j.deleted_at)!;
+    const base = { ...job, leader_id: undefined, crew_ids: [x.id], start_at: '2031-05-04T08:00', end_at: '2031-05-04T17:00', status: 'Confirmed' as const };
+    m.store.update('employees', x.id, { is_driver: false } as never); m.store.update('employees', y.id, { is_driver: true, driver_incentive: 200 } as never);
+    expect(() => m.A.saveJob({ ...base, driver_id: x.id } as never)).toThrow(/marked as Driver/);        // not a driver
+    expect(() => m.A.saveJob({ ...base, driver_id: y.id } as never)).toThrow(/not assigned/);            // a driver, but not on this job
+    m.store.update('employees', x.id, { is_driver: true, driver_incentive: 150 } as never);
+    expect(m.A.saveJob({ ...base, driver_id: x.id } as never).driver_id).toBe(x.id);
+  });
+
   it('writes an audit entry for every mutation with before/after', async () => {
     await as('owner@topmop.ph');
     const n = db().audit.length;

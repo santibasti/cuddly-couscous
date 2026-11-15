@@ -16,6 +16,15 @@ export function panelBonusPerCrew(additionalPanels: number, crewCount: number, s
   return Math.floor(additionalPanels / (crewCount * step)) * bonus;
 }
 
+/** What a job row adds on top of the rate: panel, outside Metro Manila, commercial and the driver incentive. */
+export const jobRowBonus = (r: Pick<JobPayRow, 'panel_bonus' | 'outside_bonus' | 'commercial_bonus' | 'driver_bonus'>) => r.panel_bonus + r.outside_bonus + r.commercial_bonus + (r.driver_bonus ?? 0);
+/** The driver incentive of a job: the one assigned person marked as a driver who was chosen to drive. Zero when nobody was chosen, or they are not assigned to the job. */
+export function driverIncentive(db: Pick<DB, 'employees'>, job: Pick<Job, 'driver_id' | 'leader_id' | 'crew_ids'>): { id?: string; amount: number } {
+  const e = job.driver_id ? db.employees.find((x) => x.id === job.driver_id && !x.deleted_at) : undefined;
+  if (!e || !e.is_driver || !jobCrewIds(job).includes(e.id)) return { amount: 0 };
+  return { id: e.id, amount: Math.max(0, e.driver_incentive ?? 0) };
+}
+
 /** Everyone assigned to the job: the leader first, then the crew, each once. */
 export const jobCrewIds = (j: Pick<Job, 'leader_id' | 'crew_ids'>): string[] => [...new Set([...(j.leader_id ? [j.leader_id] : []), ...(j.crew_ids ?? [])])];
 
@@ -94,7 +103,8 @@ export function employeeJobPay(db: DB, emp: Employee, start: string, end: string
     const b = jobBonus(db, j); const rd = jobPayDate(db, j), bd = jobBonusDate(db, j, b);
     const inRate = rd >= start && rd <= end, inBonus = !!bd && bd >= start && bd <= end;
     const rate = inRate && emp.pay_basis === 'per_job' ? emp.job_rate ?? 0 : 0;
-    const row = { panel_bonus: inBonus ? b.panel_each : 0, outside_bonus: inBonus ? b.outside_each : 0, commercial_bonus: inBonus ? b.commercial_each : 0 };
-    return { job_id: j.id, number: j.number, date: inRate ? rd : bd!, client: (db.clients ?? []).find((c) => c.id === j.client_id)?.name, rate, ...row, total: Math.round((rate + row.panel_bonus + row.outside_bonus + row.commercial_bonus) * 100) / 100, final: b.final };
+    const drv = driverIncentive(db, j);   // paid on the job's pay day, to the one person who drove (not tied to the handover signature)
+    const row = { panel_bonus: inBonus ? b.panel_each : 0, outside_bonus: inBonus ? b.outside_each : 0, commercial_bonus: inBonus ? b.commercial_each : 0, driver_bonus: inRate && drv.id === emp.id ? drv.amount : 0 };
+    return { job_id: j.id, number: j.number, date: inRate ? rd : bd!, client: (db.clients ?? []).find((c) => c.id === j.client_id)?.name, rate, ...row, total: Math.round((rate + jobRowBonus(row)) * 100) / 100, final: b.final };
   });
 }

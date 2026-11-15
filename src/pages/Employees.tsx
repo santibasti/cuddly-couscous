@@ -14,7 +14,7 @@ export function EmployeeForm({ initial, onClose }: { initial?: Employee; onClose
   const { db, can } = useAuth();
   const pay = can('employees.pay');
   const f = useObj<Omit<Employee, 'id' | 'created_at' | 'updated_at' | 'created_by'>>(() => initial ?? {
-    code: '', full_name: '', position: '', tier: 'Technician', department: 'Field Operations', branch_id: db.branches[0].id, pay_basis: 'daily', daily_rate: 700, job_rate: 0, monthly_salary: 0, payroll_type: 'biweekly',
+    code: '', full_name: '', position: '', tier: 'Technician', department: 'Field Operations', branch_id: db.branches[0].id, pay_basis: 'daily', daily_rate: 700, job_rate: 0, is_driver: false, driver_incentive: 0, monthly_salary: 0, payroll_type: 'biweekly',
     hire_date: today(), bank_name: '', bank_account: '', payout_method: 'Bank transfer', mobile: '', emergency_name: '', emergency_mobile: '', sss: '', philhealth: '', pagibig: '', tin: '', status: 'probationary',
     documents: [{ name: 'NBI Clearance' }, { name: 'Medical Certificate' }, { name: 'Signed Employment Contract' }], trainings: [], shift_start: '08:00', shift_end: '17:00', rest_day: 0,
   });
@@ -36,6 +36,8 @@ export function EmployeeForm({ initial, onClose }: { initial?: Employee; onClose
         {pay && <>
           <Field label="Pay basis"><select {...f.bind('pay_basis')}><option value="daily">Daily rate</option><option value="per_job">Per job order</option><option value="monthly">Monthly salary</option></select></Field>
           {f.v.pay_basis === 'per_job' ? <Field label="Pay per job order (₱)" hint="Paid for every job order they attended, late or not. They appear in any payroll whose dates cover a job order they attended, whatever the Payroll type."><input type="number" min="0" value={f.v.job_rate ?? 0} onChange={(e) => f.set('job_rate', +e.target.value)} /></Field> : f.v.pay_basis === 'daily' ? <Field label="Daily rate (₱)"><input type="number" min="0" {...f.bind('daily_rate')} /></Field> : <Field label="Monthly salary (₱)"><input type="number" min="0" {...f.bind('monthly_salary')} /></Field>}
+          <Field label="Driver" hint="Yes if this person drives the company van. When two drivers ride in the same van, only the one chosen as the job's driver earns the incentive."><select value={f.v.is_driver ? 'yes' : 'no'} onChange={(e) => f.set('is_driver', e.target.value === 'yes')}><option value="no">No</option><option value="yes">Yes, drives the van</option></select></Field>
+          {f.v.is_driver && <Field label="Driver incentive per job (₱)" hint="Added to their pay for every job order they are chosen to drive (and attended). Paid on the job's pay day."><input type="number" min="0" value={f.v.driver_incentive ?? 0} onChange={(e) => f.set('driver_incentive', Math.max(0, +e.target.value || 0))} /></Field>}
           <Field label="Payroll type"><select {...f.bind('payroll_type')}>{['daily', 'weekly', 'biweekly', 'monthly'].map((t) => <option key={t}>{t}</option>)}</select></Field><Field label="Payout method"><select {...f.bind('payout_method')}><option>Bank transfer</option><option>GCash</option><option>Cash</option></select></Field>
           <Field label="Bank / e-wallet"><input {...f.bind('bank_name')} /></Field><Field label="Account number"><input {...f.bind('bank_account')} /></Field>
           <Field label="SSS no."><input {...f.bind('sss')} /></Field><Field label="PhilHealth no."><input {...f.bind('philhealth')} /></Field><Field label="Pag-IBIG no."><input {...f.bind('pagibig')} /></Field><Field label="TIN"><input {...f.bind('tin')} /></Field>

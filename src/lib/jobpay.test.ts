@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildPayrollLines, computePayrollLine, payrollEligible } from './business';
-import { employeeJobPay, jobBonus, jobsAttended, panelBonusPerCrew } from './jobpay';
+import { driverIncentive, employeeJobPay, jobBonus, jobsAttended, panelBonusPerCrew } from './jobpay';
 import { weekOf, weeklyGrid } from './payrollweek';
 import { seedDB } from './seed';
 import { clone } from './util';
@@ -91,6 +91,23 @@ describe('pay per job order', () => {
     const l = computePayrollLine({ emp, period, attendance: db.attendance, holidays: [], adjustments: [], settings: db.settings, asOf: '2026-03-07', jobPay: rows }).line;
     expect(l.regular_pay).toBe(800); expect(l.late_undertime_deduction).toBe(0); expect(l.incentives).toBe(420); expect(l.days_worked).toBe(1);
     expect(l.direct_labor_by_job.jx).toBe(1220); expect(l.job_pay).toHaveLength(1); expect(l.gross).toBe(1220);
+  });
+  it('pays the driver incentive only to the one driver chosen on the job, even when two drivers ride in the van', () => {
+    const w = world();
+    // a and b are both drivers (two in the same van); only b is chosen for this job
+    w.db.employees = w.db.employees.map((e) => (e.id === w.a.id ? { ...e, is_driver: true, driver_incentive: 300 } : e.id === w.b.id ? { ...e, is_driver: true, driver_incentive: 250 } : e)) as never;
+    (w.job as { driver_id?: string }).driver_id = w.b.id;
+    const pay = (id: string) => employeeJobPay(w.db, { ...w.db.employees.find((e) => e.id === id)!, pay_basis: 'per_job', job_rate: 800 } as never, '2026-03-01', '2026-03-07')[0];
+    expect(pay(w.b.id)).toMatchObject({ rate: 800, panel_bonus: 420, driver_bonus: 250, total: 1470 });
+    expect(pay(w.a.id)).toMatchObject({ driver_bonus: 0, total: 1220 });                       // also a driver, but not chosen
+    expect(driverIncentive(w.db, w.job as never)).toEqual({ id: w.b.id, amount: 250 });
+    const emp = { ...w.db.employees.find((e) => e.id === w.b.id)!, pay_basis: 'per_job' as const, job_rate: 800, rest_day: 0 };
+    const l = computePayrollLine({ emp, period: w.period, attendance: w.db.attendance, holidays: [], adjustments: [], settings: w.db.settings, asOf: '2026-03-07', jobPay: employeeJobPay(w.db, emp, '2026-03-01', '2026-03-07') }).line;
+    expect(l.incentives).toBe(670); expect(l.direct_labor_by_job.jx).toBe(1470);              // panel bonus 420 + driver 250
+    // not a driver, or not assigned to the job: no incentive
+    (w.job as { driver_id?: string }).driver_id = w.d.id; expect(driverIncentive(w.db, w.job as never).amount).toBe(0);
+    w.db.employees = w.db.employees.map((e) => (e.id === w.b.id ? { ...e, is_driver: false } : e)) as never;
+    (w.job as { driver_id?: string }).driver_id = w.b.id; expect(driverIncentive(w.db, w.job as never).amount).toBe(0);
   });
   it('pays two job orders at the rate each', () => {
     const { db, a, period, att } = world(); const emp = { ...a, pay_basis: 'per_job' as const, job_rate: 800, rest_day: 0 };

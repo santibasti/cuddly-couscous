@@ -218,6 +218,8 @@ export interface Job extends Base {
   leader_id?: string;
   crew_ids: string[];
   vehicle_id?: string;
+  /** who drives the van on this job: one of the assigned crew who is marked as a driver; they earn their driver incentive for the job */
+  driver_id?: string;
   equipment_ids: string[];
   materials: JobMaterial[];
   ppe: string[];
@@ -258,6 +260,10 @@ export interface Employee extends Base {
   pay_basis: 'daily' | 'monthly' | 'per_job';
   /** pay for each job order attended, when pay_basis is 'per_job' */
   job_rate?: number;
+  /** drives the company van: can be chosen as a job's driver and earns driver_incentive for every job they drive */
+  is_driver?: boolean;
+  /** the driver incentive (₱) paid for each job order they drove (only one driver per job, even if two drivers ride in the van) */
+  driver_incentive?: number;
   daily_rate: number;
   monthly_salary: number;
   payroll_type: PayrollType;
@@ -379,7 +385,7 @@ export interface PayrollLine {
   job_pay?: JobPayRow[];
 }
 /** One job order worked by one employee: what it paid and which bonuses came with it. */
-export interface JobPayRow { job_id: string; number: string; date: string; client?: string; rate: number; panel_bonus: number; outside_bonus: number; commercial_bonus: number; total: number; final: boolean }
+export interface JobPayRow { job_id: string; number: string; date: string; client?: string; rate: number; panel_bonus: number; outside_bonus: number; commercial_bonus: number; /** the driver incentive of the job, only for the one person who drove */ driver_bonus?: number; total: number; final: boolean }
 export interface PayrollRun extends Base { period_id: string; lines: PayrollLine[] }
 
 /* ---------- Inventory ---------- */

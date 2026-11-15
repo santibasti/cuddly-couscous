@@ -1,8 +1,8 @@
 // What a crew member has earned so far this pay week (Sunday to Saturday, paid Saturday night): the rate, the bonus and the total for each day.
 // The bonus of a job shows as an estimate until the client signs the handover; work after Saturday's cutoff counts in the next week.
-import { eachDay, nowLocal, round2, sum } from './util';
+import { eachDay, money, nowLocal, round2, sum } from './util';
 import { payDateOf, weekOf } from './payrollweek';
-import { jobBonus, jobBonusDate, jobPayDate, jobPaySettings, jobsAttended } from './jobpay';
+import { driverIncentive, jobBonus, jobBonusDate, jobPayDate, jobPaySettings, jobsAttended } from './jobpay';
 import type { DB, Employee } from './types';
 
 export interface EarnDay { date: string; rate: number; bonus: number; total: number; /** the bonus of this day is not final yet */ estimate: boolean; /** the day was worked and finished but the attendance is not approved yet, so no pay shows for it */ pending?: boolean }
@@ -23,6 +23,7 @@ export function crewEarnings(db: DB, emp: Employee, now: string = nowLocal()): C
     if (inWeek(rd)) {
       if (emp.pay_basis === 'per_job') day(rd)!.rate += emp.job_rate ?? 0;
       if (rd !== j.start_at.slice(0, 10)) notes.add(`${j.number} started after Saturday ${cfg.payday_cutoff ?? '21:00'}, so it counts in this week.`);
+      const drv = driverIncentive(db, j); if (drv.id === emp.id && drv.amount > 0) { day(rd)!.bonus += drv.amount; notes.add(`${j.number}: driver incentive ${money(drv.amount)} included.`); }
       if (b.final && inWeek(bd)) day(bd!)!.bonus += b.each;
       else if (!b.final && b.each > 0) { day(rd)!.bonus += b.each; day(rd)!.estimate = true; notes.add(`${j.number}: the bonus is an estimate until the client signs the handover.`); }
     } else if (b.final && inWeek(bd)) { day(bd!)!.bonus += b.each; notes.add(`${j.number}: bonus added after the client signed the handover.`); }

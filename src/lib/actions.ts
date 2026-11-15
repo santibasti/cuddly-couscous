@@ -124,10 +124,15 @@ export function decideCorrection(id: string, approve: boolean, note?: string) {
 
 /* ================= Jobs & scheduling ================= */
 export type JobInput = Omit<Job, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'number'> & { id?: string; number?: string };
-function checkJob(j: Pick<Job, 'id' | 'start_at' | 'end_at' | 'leader_id' | 'crew_ids' | 'vehicle_id' | 'equipment_ids' | 'status'>) {
+function checkJob(j: Pick<Job, 'id' | 'start_at' | 'end_at' | 'leader_id' | 'crew_ids' | 'vehicle_id' | 'equipment_ids' | 'status'> & { driver_id?: string }) {
   if (j.end_at <= j.start_at) fail('End time must be after start time.');
   if (['Cancelled', 'Rescheduled'].includes(j.status) || isDone(j.status)) return;
   const d = db();
+  if (j.driver_id) {   // one driver per job: someone assigned to it and marked as a driver (two drivers may ride in the van, only one is chosen)
+    const e = d.employees.find((x) => x.id === j.driver_id);
+    if (!e?.is_driver) fail('The driver must be an employee marked as Driver.');
+    if (![...(j.leader_id ? [j.leader_id] : []), ...j.crew_ids].includes(e!.id)) fail(`${e!.full_name} is the driver but is not assigned to this job. Add them to the crew or choose another driver.`);
+  }
   const conflicts = findConflicts(d, j);
   if (conflicts.length) {
     const name = (c: (typeof conflicts)[number]) =>

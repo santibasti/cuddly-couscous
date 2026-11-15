@@ -47,11 +47,14 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
     f.set(k, (cur.includes(val) ? cur.filter((x) => x !== val) : [...cur, val]) as Form[K]);
   };
 
+  const assigned = [...new Set([...(v.leader_id ? [v.leader_id] : []), ...v.crew_ids])];
+  const drivers = field.filter((e) => e.is_driver && assigned.includes(e.id));
+  const driverId = v.driver_id && drivers.some((e) => e.id === v.driver_id) ? v.driver_id : '';
   const save = () => {
     if (!v.client_id || !v.site_id) return attempt(() => { throw new Error('Choose a client and a service site.'); });
     if (!v.service_codes.length) return attempt(() => { throw new Error('Choose at least one service.'); });
     if (v.depart_hq && v.depart_hq >= v.start_at.slice(11, 16)) return attempt(() => { throw new Error('The crew must leave HQ before the job starts — set “Depart HQ at” earlier than the start time.'); });
-    const data = { ...v, checklist: v.checklist.length ? v.checklist : defaultChecklist(db, v.service_codes), branch_id: db.clients.find((c) => c.id === v.client_id)?.branch_id ?? v.branch_id };
+    const data = { ...v, driver_id: driverId || undefined, checklist: v.checklist.length ? v.checklist : defaultChecklist(db, v.service_codes), branch_id: db.clients.find((c) => c.id === v.client_id)?.branch_id ?? v.branch_id };
     const r = attempt(() => saveJob({ ...data, id: initial?.id, number: initial?.number }), initial ? 'Job updated' : 'Job booked') as Job | undefined;
     if (r) { onClose(); onSaved?.(r); }
   };
@@ -75,6 +78,7 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
         <Field label="Status"><select {...f.bind('status')} disabled={!!initial && !['Pending', 'Confirmed', 'Cancelled'].includes(initial.status)}>{(initial && !['Pending', 'Confirmed', 'Cancelled'].includes(initial.status) ? [initial.status] : ['Pending', 'Confirmed', 'Cancelled']).map((s) => <option key={s}>{s}</option>)}</select></Field>
         <Field label="Team leader"><select value={v.leader_id ?? ''} onChange={(e) => f.set('leader_id', e.target.value || undefined)}><option value="">— none —</option>{leaders.map((e) => <option key={e.id} value={e.id}>{e.full_name}{tag('crew', e.id)}</option>)}</select></Field>
         <Field label="Vehicle"><select value={v.vehicle_id ?? ''} onChange={(e) => f.set('vehicle_id', e.target.value || undefined)}><option value="">— none —</option>{vehicles.map((a) => <option key={a.id} value={a.id} disabled={isUnavailable(a.status)}>{a.name}{a.status !== 'Available' && a.status !== 'Reserved' && a.status !== 'In Use' ? ` (${a.status})` : ''}{tag('vehicle', a.id)}</option>)}</select></Field>
+        <Field label="Driver" hint={drivers.length ? 'Only one driver gets the driver incentive, even if two drivers ride in the van. It is used in their pay.' : 'Choose the crew first. Only crew marked as Driver in Employees can be picked.'}><select value={driverId} onChange={(e) => f.set('driver_id', e.target.value || undefined)} disabled={!drivers.length}><option value="">— none —</option>{drivers.map((e) => <option key={e.id} value={e.id}>{e.full_name}{(e.driver_incentive ?? 0) > 0 ? ` · ₱${e.driver_incentive}` : ''}</option>)}</select></Field>
         <div className="full">
           <div className="small muted" style={{ fontWeight: 600, marginBottom: 6 }}>Crew</div>
           <div className="grid g-auto">{field.map((e) => <label key={e.id} className="check" style={{ color: busy.has(`crew:${e.id}`) ? 'var(--red)' : undefined }}><input type="checkbox" checked={v.crew_ids.includes(e.id)} disabled={e.id === v.leader_id} onChange={() => toggle('crew_ids', e.id)} />{e.full_name}<span className="small muted">{tag('crew', e.id)}</span></label>)}</div>

@@ -46,6 +46,15 @@ describe('crew earnings this pay week', () => {
     const open = { ...db, attendance: db.attendance.map((x) => (x.employee_id === a.id ? { ...x, clock_out: undefined } : x)) };
     expect(crewEarnings(open, { ...a, pay_basis: 'daily', daily_rate: 700 }, '2026-03-04T10:00')!.days[2].pending).toBeFalsy();   // still on shift: nothing to approve yet
   });
+  it('adds the driver incentive on the job day for the one chosen driver', () => {
+    const { db, a } = world('2026-03-03T16:30');
+    db.employees = db.employees.map((e) => (e.id === a.id ? { ...e, is_driver: true, driver_incentive: 300 } : e)) as never;
+    db.jobs = db.jobs.map((j) => (j.id === 'jx' ? { ...j, driver_id: a.id } : j)) as never;
+    const w = crewEarnings(db, a, '2026-03-04T10:00')!;
+    expect(w.days[2]).toMatchObject({ rate: 800, bonus: 720, total: 1520 }); expect(w.notes.join(' ')).toContain('driver incentive');
+    db.jobs = db.jobs.map((j) => (j.id === 'jx' ? { ...j, driver_id: undefined } : j)) as never;
+    expect(crewEarnings(db, a, '2026-03-04T10:00')!.days[2].bonus).toBe(420);
+  });
   it('has nothing for people on a monthly salary', () => {
     const { db, a } = world(undefined); expect(crewEarnings(db, { ...a, pay_basis: 'monthly' }, '2026-03-04T10:00')).toBeNull();
   });

@@ -94,6 +94,7 @@ export default function JobDetail() {
           <Card title="Assigned crew">
             <div className="row"><Badge tone="navy">Leader</Badge><b>{emp(j.leader_id)}</b></div>
             <div className="row" style={{ marginTop: 8 }}>{j.crew_ids.map((id) => <Badge key={id} tone="blue">{emp(id)}</Badge>)}{!j.crew_ids.length && <span className="muted">No crew assigned</span>}</div>
+            {j.driver_id && <div className="row" style={{ marginTop: 8 }}><Badge tone="amber">Driver</Badge><b>{emp(j.driver_id)}</b></div>}
           </Card>
           <CrewAvailability job={j} />
           <Card title="Safety requirements / PPE"><div className="row">{j.ppe.map((p) => <Badge key={p} tone="amber">{p}</Badge>)}{!j.ppe.length && <span className="muted">None specified</span>}</div></Card>

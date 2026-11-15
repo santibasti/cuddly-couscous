@@ -1,5 +1,5 @@
 import { quoteShowsAmounts } from './quote-text';
-import { employeeJobPay, jobBonus, jobsAttended } from './jobpay';
+import { employeeJobPay, jobBonus, jobRowBonus, jobsAttended } from './jobpay';
 import type {
   CheckItem,
   JobWorkflow,
@@ -323,8 +323,8 @@ export function computePayrollLine(inp: PayrollInput): { line: PayrollLine; pend
   const applicable = inp.adjustments.filter((a) => a.employee_id === emp.id && a.active && !a.deleted_at && (a.period_id ? a.period_id === period.id : (a.balance === undefined || a.balance > 0)));
   const sumKind = (k: PayrollAdjustment['kind']) => applicable.filter((a) => a.kind === k).reduce((t, a) => t + (a.balance !== undefined && a.period_id == null ? Math.min(a.amount, a.balance) : a.amount), 0);
   // the job bonuses (panel, outside Metro Manila, commercial) are recorded under every assigned employee, whatever their pay basis
-  const jobBonuses = round2(sum(jobRows, (r) => r.panel_bonus + r.outside_bonus + r.commercial_bonus));
-  for (const r of jobRows) laborByJob[r.job_id] = round2((laborByJob[r.job_id] || 0) + r.rate + r.panel_bonus + r.outside_bonus + r.commercial_bonus);
+  const jobBonuses = round2(sum(jobRows, (r) => jobRowBonus(r)));
+  for (const r of jobRows) laborByJob[r.job_id] = round2((laborByJob[r.job_id] || 0) + r.rate + jobRowBonus(r));
   const allowances = sumKind('Allowance'), incentives = round2(sumKind('Incentive') + jobBonuses), reimb = sumKind('Reimbursement');
   const cashAdv = sumKind('Cash Advance'), loan = sumKind('Loan'), otherDed = sumKind('Other Deduction');
 
