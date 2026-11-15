@@ -187,7 +187,7 @@ const persona = () => personaPrompt(env('JARVIS_ADDRESS'), env('JARVIS_SPEAK_NAM
 async function claude(system: string, messages: { role: string; content: unknown }[], tools?: unknown[]) {
   const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({ model: env('JARVIS_MODEL') || 'claude-sonnet-5-5', max_tokens: 700, system, messages, ...(tools ? { tools } : {}) }) });
-  if (!res.ok) throw new Error(`AI ${res.status}`);
+  if (!res.ok) { const detail = (await res.text()).slice(0, 300); console.error('AI', res.status, detail); throw new Error(`AI ${res.status}: ${detail}`); }
   return await res.json() as { content: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[]; stop_reason: string };
 }
 const textOf = (c: { type: string; text?: string }[]) => c.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
@@ -258,7 +258,9 @@ async function ask(sb: Db, b: AskBody, owners: number[]) {
     if (!q) return;
     if (q.length > 2000) q = q.slice(0, 2000);
     await deliver(b.chat_id, await answer(sb, b.chat_id, q));
-  } catch (e) { console.error('ask', String(e)); await tgText(b.chat_id, 'Sorry, something went wrong on my side. Please try again in a moment.'); }
+  } catch (e) {   // only the owner's private chat reaches here, so the reason is shown to help fix it
+    console.error('ask', String(e)); await tgText(b.chat_id, `Sorry, something went wrong on my side. Please try again in a moment.\n\n(Reason: ${String((e as Error)?.message ?? e).slice(0, 400)})`);
+  }
 }
 
 /* ---------------- the screen in the app ---------------- */
@@ -308,7 +310,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
   const secret = env('WEBHOOK_SECRET');
-  if (!req.headers.get('x-webhook-secret') && req.headers.get('authorization')) { try { return await webRequest(req); } catch (e) { console.error('web', String(e)); return json({ error: 'Something went wrong.' }, 500); } }
+  if (!req.headers.get('x-webhook-secret') && req.headers.get('authorization')) { try { return await webRequest(req); } catch (e) { console.error('web', String(e)); return json({ error: `Something went wrong: ${String((e as Error)?.message ?? e).slice(0, 300)}` }, 500); } }
   if (!secret || !safeEq(req.headers.get('x-webhook-secret') ?? '', secret)) return json({ error: 'Unauthorized' }, 401);
   const owners = ownerIds(env('JARVIS_OWNER_TELEGRAM_ID'));
   if (!owners.length || !env('TELEGRAM_BOT_TOKEN') || !env('ANTHROPIC_API_KEY')) return json({ ok: true, configured: false });
