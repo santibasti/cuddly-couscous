@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO_PANEL, ago, summarize, type JarvisPanel } from './jarvisview';
+import { DEMO_PANEL, ago, dialAngle, summarize, type JarvisPanel } from './jarvisview';
 
 describe('jarvis screen figures', () => {
   it('summarises the panel and counts what needs the owner', () => {
@@ -20,5 +20,18 @@ describe('jarvis screen figures', () => {
     const now = Date.parse('2026-11-14T08:00:00Z');
     expect(ago('2026-11-14T07:59:40Z', now)).toBe('now'); expect(ago('2026-11-14T07:38:00Z', now)).toBe('22 min ago');
     expect(ago('2026-11-14T03:00:00Z', now)).toBe('5 h ago'); expect(ago('2026-11-12T08:00:00Z', now)).toBe('2 d ago');
+  });
+});
+
+describe('console figures', () => {
+  it('places a job on a 12-hour dial (12 at the top, clockwise)', () => {
+    expect(dialAngle('12:00')).toBeCloseTo(-Math.PI / 2); expect(dialAngle('03:00')).toBeCloseTo(0); expect(dialAngle('15:00')).toBeCloseTo(0); expect(dialAngle('06:30')).toBeCloseTo(Math.PI / 2 + (Math.PI / 12) / 1);
+  });
+  it('builds the radar, the status bars and the log from the panel', () => {
+    const s = summarize(DEMO_PANEL);
+    expect(s.radar).toHaveLength(3); expect(s.radar.map((r) => r.warn)).toEqual([false, false, true]);
+    expect(s.health.map((h) => h.label)).toEqual(['DATA LINK', 'VOICE', 'AI', 'ALERTS', 'WEB SEARCH']); expect(s.health[3].pct).toBe(100);
+    expect(s.events[0].text).toBe('Morning brief delivered'); expect(s.events.length).toBe(6);
+    expect(summarize({ ...DEMO_PANEL, health: undefined, events: undefined }).health).toEqual([]);
   });
 });

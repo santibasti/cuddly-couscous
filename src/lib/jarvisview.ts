@@ -1,7 +1,9 @@
 // What the Jarvis screen shows, from the figures the jarvis function sends (all read-only). Missing parts arrive as { unavailable } and show as empty.
 export interface JarvisJob { number: string; client: string; day: string; start: string; status: string; leader: string; crew: number }
+export interface JarvisEvent { kind: string; text: string; at: string }
+export interface JarvisHealth { data: number; voice: boolean; ai: boolean; alerts: number | null; web: boolean }
 export interface JarvisPanel {
-  at: string; today: string; voice: boolean; ai: boolean;
+  at: string; today: string; voice: boolean; ai: boolean; health?: JarvisHealth; events?: unknown;
   jobsToday: unknown; jobsTomorrow: unknown; attendanceToday: unknown; attendanceYesterday: unknown; pending: unknown; leads: unknown;
   receivables: unknown; moneyToday: unknown; quotes: unknown; handovers: unknown; alerts: unknown;
 }
@@ -18,8 +20,14 @@ export interface Summary {
   alerts: { when: string; title: string }[];
   tomorrowJobs: { time: string; number: string; note: string }[];
   handovers: { job: string; client: string; day: string }[];
+  events: JarvisEvent[];
+  health: { label: string; pct: number | null }[];
+  radar: { angle: number; warn: boolean; label: string }[];
   attention: number;                                   // how many things need the owner
 }
+
+/** Angle on a 12-hour dial for a time like "13:30" (12 at the top, clockwise), in radians. */
+export const dialAngle = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return (((h % 12) + (m || 0) / 60) / 12) * Math.PI * 2 - Math.PI / 2; };
 
 export function summarize(p: JarvisPanel): Summary {
   const pend = obj(p.pending); const disc = arr(pend.discount_requests_waiting); const old = arr(pend.quotations_sent_over_3_days_ago_without_answer);
@@ -45,6 +53,9 @@ export function summarize(p: JarvisPanel): Summary {
     alerts: arr<{ title: string; created_at: string }>(p.alerts).map((a) => ({ when: a.created_at, title: a.title })),
     tomorrowJobs: arr<JarvisJob>(p.jobsTomorrow).filter((j) => j && j.number).map((j) => ({ time: j.start, number: j.number, note: j.leader === 'NOT ASSIGNED' ? 'No leader' : j.status })),
     handovers: waitingHand.map((w) => ({ job: String(w.job ?? ''), client: String(w.client ?? ''), day: String(w.day ?? '') })),
+    events: arr<JarvisEvent>(p.events).filter((e) => e && e.text),
+    health: p.health ? [{ label: 'DATA LINK', pct: p.health.data }, { label: 'VOICE', pct: p.health.voice ? 100 : 0 }, { label: 'AI', pct: p.health.ai ? 100 : 0 }, { label: 'ALERTS', pct: p.health.alerts }, { label: 'WEB SEARCH', pct: p.health.web ? 100 : 0 }] : [],
+    radar: jobs.filter((j) => /^\d{1,2}:\d{2}/.test(j.start)).map((j) => ({ angle: dialAngle(j.start), warn: j.leader === 'NOT ASSIGNED', label: j.number })),
     attention: disc.length + waitingHand.length + noLeader,
   };
 }
@@ -64,5 +75,7 @@ export const DEMO_PANEL: JarvisPanel = {
   pending: { discount_requests_waiting: [{ number: 'DR-0031', amount_off: 500 }], expenses_awaiting_approval: 1, payments_awaiting_verification: 2, quotations_sent_over_3_days_ago_without_answer: [{}] },
   leads: { total: 5, by_stage: { Inquiry: 4, Quotation: 1 } }, receivables: { outstanding_total: 62000, overdue_total: 38000, overdue_count: 2 }, moneyToday: { received: 18400 },
   quotes: { approved: 2, approved_value: 41000 }, handovers: { waiting: [{ job: 'JOB-0139' }] },
+  health: { data: 100, voice: false, ai: false, alerts: 100, web: true },
+  events: [{ kind: 'brief', text: 'Morning brief delivered', at: new Date(Date.now() - 3 * 60000).toISOString() }, { kind: 'alert', text: 'Discount requested', at: new Date(Date.now() - 22 * 60000).toISOString() }, { kind: 'search', text: 'Web search used', at: new Date(Date.now() - 41 * 60000).toISOString() }, { kind: 'answer', text: 'Question answered · screen', at: new Date(Date.now() - 41 * 60000).toISOString() }, { kind: 'inquiry', text: 'New inquiry · Facebook', at: new Date(Date.now() - 95 * 60000).toISOString() }, { kind: 'alert', text: 'Quotation approved', at: new Date(Date.now() - 5 * 3600000).toISOString() }],
   alerts: [{ title: 'Discount requested', created_at: new Date(Date.now() - 22 * 60000).toISOString() }, { title: 'Quotation approved', created_at: new Date(Date.now() - 5 * 3600000).toISOString() }],
 };

@@ -77,6 +77,8 @@ async function once(sb: Db, key: string): Promise<boolean> {
   if (error) console.error('jarvis_log', error.message);
   return true;
 }
+/** One line in the activity log shown on the Jarvis screen (kind of event only, never the question or the answer). */
+async function logEvent(sb: Db, kind: string, text: string) { try { await sb.from('jarvis_events').insert({ kind, text: text.slice(0, 120) }); } catch (e) { console.error('event', String(e)); } }
 type Turn = { role: 'user' | 'assistant'; content: string };
 async function remember(sb: Db, chat: number): Promise<Turn[]> {
   const { data } = await sb.from('jarvis_memory').select('turns, updated_at').eq('chat_id', chat).maybeSingle();
@@ -196,14 +198,14 @@ async function claude(system: string, messages: { role: string; content: unknown
 const textOf = (c: { type: string; text?: string }[]) => c.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
 
 /** One conversation turn: the AI looks things up with its read-only tools and answers. Used by Telegram (with stored memory) and by the screen in the app (history sent by the page). */
-async function converse(sb: Db, history: Turn[], question: string): Promise<string> {
+async function converse(sb: Db, history: Turn[], question: string, src = 'screen'): Promise<string> {
   const system = `${persona()}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. ${webOn() ? 'If the question is not about the business, answer it helpfully, searching the web when you need current or outside facts.' : 'If the question is not about the business, answer briefly or say it is outside what you do.'}`;
   const tools = webOn() ? [...TOOLS, WEB_SEARCH] : TOOLS;
   const messages: { role: string; content: unknown }[] = [...history, { role: 'user', content: question }];
-  let reply = '';
+  let reply = ''; let searched = false;
   for (let round = 0; round < 6; round++) {
     const out = await claude(system, messages, tools);
-    reply = textOf(out.content);
+    reply = textOf(out.content); if (out.content.some((b) => b.type === 'server_tool_use')) searched = true;
     const uses = out.content.filter((b) => b.type === 'tool_use');
     if (!uses.length && out.stop_reason === 'pause_turn') { messages.push({ role: 'assistant', content: out.content }); continue; }   // a long web search: let it carry on
     if (!uses.length) break;
@@ -212,11 +214,13 @@ async function converse(sb: Db, history: Turn[], question: string): Promise<stri
     for (const u of uses) results.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(await safe(runTool(sb, u.name ?? '', u.input ?? {}))).slice(0, 9000) });
     messages.push({ role: 'user', content: results });
   }
+  if (searched) await logEvent(sb, 'search', 'Web search used');
+  await logEvent(sb, 'answer', `Question answered · ${src}`);
   return reply || 'I could not put an answer together. Please ask again.';
 }
 async function answer(sb: Db, chat: number, question: string): Promise<string> {
   const history = await remember(sb, chat);
-  const reply = await converse(sb, history, question);
+  const reply = await converse(sb, history, question, 'Telegram');
   await store(sb, chat, [...history, { role: 'user', content: question }, { role: 'assistant', content: reply }]);
   return reply;
 }
@@ -233,12 +237,15 @@ async function morningBrief(sb: Db, owners: number[]) {
     [{ role: 'user', content: `Data (JSON):\n${JSON.stringify(data).slice(0, 14000)}` }]);
   const text = textOf(out.content) || 'Good morning. I could not prepare the brief today.';
   for (const c of owners) await deliver(c, text);
+  await logEvent(sb, 'brief', 'Morning brief delivered');
+  try { await sb.from('jarvis_events').delete().lt('at', new Date(Date.now() - 45 * 86400_000).toISOString()); } catch { /* old lines stay a little longer */ }
 }
 async function instantAlert(sb: Db, id: number, owners: number[]) {
   const { data: a } = await sb.from('alert_outbox').select('id, kind, title, body').eq('id', id).maybeSingle();
   if (!a || !alertIsInstant(a.kind)) return;
   if (!(await once(sb, `alert:${a.id}`))) return;
   const text = alertLine(a); for (const c of owners) await deliver(c, text);
+  await logEvent(sb, 'alert', String(a.title ?? 'Alert').slice(0, 80));
 }
 async function newInquiry(sb: Db, id: string, owners: number[]) {
   if (!(await once(sb, `inquiry:${id}`))) return;
@@ -247,6 +254,7 @@ async function newInquiry(sb: Db, id: string, owners: number[]) {
   const who = env('JARVIS_SPEAK_NAMES') === '0' ? 'a new contact' : (c?.name ?? 'someone');
   const text = speakable(`New inquiry${q.source ? ` from ${q.source}` : ''}. ${who}${q.details ? `: ${String(q.details).slice(0, 160)}` : ''}.`, 400);
   for (const c2 of owners) await deliver(c2, text);
+  await logEvent(sb, 'inquiry', `New inquiry${q.source ? ` · ${q.source}` : ''}`);
 }
 interface AskBody { chat_id: number; message_id: number; text?: string; voice?: { file_id: string; duration?: number } }
 async function ask(sb: Db, b: AskBody, owners: number[]) {
@@ -282,8 +290,13 @@ async function panel(sb: Db) {
     safe(getJobs(sb, t, t)), safe(getJobs(sb, addDays(t, 1), addDays(t, 1))), safe(getAttendance(sb, t)), safe(getAttendance(sb, addDays(t, -1))), safe(getPending(sb)), safe(getLeads(sb, 1)),
     safe(getReceivables(sb)), safe(getMoneyIn(sb, 1)), safe(getQuotes(sb, 7)), safe(getHandovers(sb)),
     safe((async () => { const { data } = await sb.from('alert_outbox').select('kind, title, body, created_at').order('created_at', { ascending: false }).limit(8); return data ?? []; })())]);
+  const parts = [jobsToday, jobsTomorrow, attendanceToday, attendanceYesterday, pending, leads, receivables, moneyToday, quotes, handovers, alerts];
+  const okParts = parts.filter((x) => !(x && typeof x === 'object' && !Array.isArray(x) && 'unavailable' in (x as object))).length;
+  const events = await safe((async () => { const { data } = await sb.from('jarvis_events').select('kind, text, at').order('at', { ascending: false }).limit(16); return data ?? []; })());
+  const delivered = await safe((async () => { const { data } = await sb.from('alert_outbox').select('sent_at').order('created_at', { ascending: false }).limit(20); const rows = data ?? []; return rows.length ? Math.round(rows.filter((r: Db) => r.sent_at).length / rows.length * 100) : null; })());
   return { at: new Date().toISOString(), today: t, voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'),
-    jobsToday, jobsTomorrow, attendanceToday, attendanceYesterday, pending, leads, receivables, moneyToday, quotes, handovers, alerts };
+    health: { data: Math.round(okParts / parts.length * 100), voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'), alerts: typeof delivered === 'number' ? delivered : null, web: webOn() },
+    events, jobsToday, jobsTomorrow, attendanceToday, attendanceYesterday, pending, leads, receivables, moneyToday, quotes, handovers, alerts };
 }
 async function webRequest(req: Request): Promise<Response> {
   const sb = db();
@@ -300,7 +313,7 @@ async function webRequest(req: Request): Promise<Response> {
     if (!env('ANTHROPIC_API_KEY')) return json({ error: 'The AI key is not set yet.' }, 400);
     const q = String(b.text ?? '').trim().slice(0, 2000); if (!q) return json({ error: 'Say or type something first.' }, 400);
     const history: Turn[] = (Array.isArray(b.history) ? b.history : []).filter((h) => (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string').slice(-8).map((h) => ({ role: h.role as Turn['role'], content: h.content.slice(0, 1500) }));
-    return json({ text: await converse(sb, history, q) });
+    return json({ text: await converse(sb, history, q, 'screen') });
   }
   if (b.action === 'speak') {
     if (!env('ELEVENLABS_API_KEY') || !env('ELEVENLABS_VOICE_ID')) return json({ error: 'No voice is connected yet.' }, 400);

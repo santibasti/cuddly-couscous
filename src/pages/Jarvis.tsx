@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CLOUD, fnFetch } from '@/lib/cloud';
 import { JarvisBackdrop, JarvisCore, type CoreMode } from '@/components/JarvisCore';
+import { JarvisConsole, type ConsoleTheme } from '@/components/JarvisConsole';
 import { DEMO_PANEL, ago, manilaClock, summarize, type JarvisPanel } from '@/lib/jarvisview';
 import { fmtDate } from '@/lib/util';
 
@@ -43,6 +44,8 @@ function useTypewriter(text: string, cps = 70) {
 }
 
 const BOOT_KEY = 'topmop-jarvis-booted';
+const pref = <T extends string>(k: string, d: T, ok: T[]): T => { try { const v = localStorage.getItem(k) as T | null; return v && ok.includes(v) ? v : d; } catch { return d; } };
+const savePref = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* fine */ } };
 function Boot({ voice, live, done }: { voice: boolean | null; live: boolean; done: () => void }) {
   const lines = ['INITIALIZING J.A.R.V.I.S.', 'LINKING OPERATIONS DATA ........ ' + (live ? 'OK' : 'DEMO'), 'VOICE CHANNEL ................... ' + (voice === null ? '…' : voice ? 'ONLINE' : 'TEXT ONLY'), 'ALL SYSTEMS NOMINAL'];
   const [n, setN] = useState(0);
@@ -55,6 +58,8 @@ export default function Jarvis() {
   const [err, setErr] = useState(''); const [mode, setMode] = useState<Mode>('idle');
   const [say, setSay] = useState(''); const [text, setText] = useState(''); const [history, setHistory] = useState<Turn[]>([]);
   const [full, setFull] = useState(false); const [muted, setMuted] = useState(false);
+  const [view, setView] = useState<'console' | 'panels'>(() => pref('topmop-jarvis-view', 'console', ['console', 'panels']));
+  const [theme, setTheme] = useState<ConsoleTheme>(() => pref('topmop-jarvis-theme', 'blue', ['blue', 'cyan']));
   const [booted, setBooted] = useState(() => { try { return sessionStorage.getItem(BOOT_KEY) === '1'; } catch { return false; } });
   const finishBoot = useCallback(() => { setBooted(true); try { sessionStorage.setItem(BOOT_KEY, '1'); } catch { /* fine */ } }, []);
   const root = useRef<HTMLDivElement>(null); const stage = useRef<HTMLDivElement>(null);
@@ -65,7 +70,7 @@ export default function Jarvis() {
     if (!CLOUD) return;
     try { setPanel(await call<JarvisPanel>({ action: 'panel' })); setErr(''); } catch (e) { setErr(e instanceof Error ? e.message : 'Could not reach Jarvis.'); }
   }, []);
-  useEffect(() => { void load(); const i = setInterval(() => void load(), 60_000); return () => clearInterval(i); }, [load]);
+  useEffect(() => { void load(); const i = setInterval(() => void load(), 30_000); return () => clearInterval(i); }, [load]);
   useEffect(() => { const f = () => setFull(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f); }, []);
 
   useEffect(() => () => { stream.current?.getTracks().forEach((t) => t.stop()); audio.current?.pause(); void ctx.current?.close(); }, []);
@@ -127,14 +132,17 @@ export default function Jarvis() {
   const clock = new Date().toLocaleString('en-PH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' });
 
   return (
-    <div className={`jv ${full ? 'full' : ''}`} ref={root}>
+    <div className={`jv ${full ? 'full' : ''} ${view === 'console' ? `is-console ${theme}` : ''}`} ref={root}>
       <style>{CSS}</style>
       <JarvisBackdrop /><div className="jv-scan" />
       {!booted && <Boot voice={panel ? panel.voice : null} live={CLOUD} done={finishBoot} />}
       <div className="jv-top"><span>J.A.R.V.I.S. · TOPMOP OPERATIONS</span><span className="jv-clock">{clock.toUpperCase()}</span>
-        <span className="jv-acts"><button onClick={() => void load()} title="Refresh">⟳</button><button onClick={() => setMuted((m) => !m)} title={muted ? 'Unmute voice' : 'Mute voice'}>{muted ? '🔇' : '🔊'}</button><button onClick={toggleFull} title="Full screen">{full ? '⤡' : '⤢'}</button></span></div>
+        <span className="jv-acts"><button className={view === 'console' ? 'on' : ''} onClick={() => { setView('console'); savePref('topmop-jarvis-view', 'console'); }} title="Console view">Console</button><button className={view === 'panels' ? 'on' : ''} onClick={() => { setView('panels'); savePref('topmop-jarvis-view', 'panels'); }} title="Panels view">Panels</button>{view === 'console' && <button onClick={() => { const n = theme === 'blue' ? 'cyan' : 'blue'; setTheme(n); savePref('topmop-jarvis-theme', n); }} title="Change colour">◐</button>}<button onClick={() => void load()} title="Refresh">⟳</button><button onClick={() => setMuted((m) => !m)} title={muted ? 'Unmute voice' : 'Mute voice'}>{muted ? '🔇' : '🔊'}</button><button onClick={toggleFull} title="Full screen">{full ? '⤡' : '⤢'}</button></span></div>
       {!CLOUD && <div className="jv-note">Demo data. On the live system Jarvis shows your real figures and talks.</div>}
       {err && <div className="jv-note err">{err}</div>}
+      {view === 'console' && S && panel ? (
+        <JarvisConsole S={S} panel={panel} mode={mode} analyser={analyser} theme={theme} typed={typed} say={say} idleHint={CLOUD ? 'Tap the core to talk, or type below.' : 'Tap the core to preview its states.'} text={text} setText={setText} submit={submit} onCore={() => void listen()} onBrief={() => void ask('Give me my brief for right now.')} busy={mode === 'thinking'} live={CLOUD} money={money} />
+      ) : view === 'console' ? <div className="jv-note">Loading Jarvis…</div> : (
       <div className={`jv-grid ${booted ? 'in' : ''}`}>
         <div className="jv-col">
           <Panel title="NEEDS YOUR DECISION" tag={S ? (S.attention ? `${S.attention} ITEM${S.attention > 1 ? 'S' : ''}` : 'CLEAR') : ''}>
@@ -190,7 +198,8 @@ export default function Jarvis() {
           </Panel>
         </div>
       </div>
-      {panel && <div className="jv-foot">Updated {manilaClock(panel.at)} · {panel.voice ? 'voice connected' : 'text only (no voice connected)'}</div>}
+      )}
+      {panel && view === 'panels' && <div className="jv-foot">Updated {manilaClock(panel.at)} · {panel.voice ? 'voice connected' : 'text only (no voice connected)'}</div>}
     </div>
   );
 }
@@ -203,6 +212,7 @@ const CSS = `
 .jv{--c:#35e0ff;position:relative;display:flex;flex-direction:column;min-height:calc(100vh - 60px);padding:18px 20px 22px;color:#bfefff;background:radial-gradient(ellipse at 50% 38%,#07334b 0,#04182a 48%,#010a12 100%);font-size:clamp(13px,calc(.35vw + .5vh + 6px),17px);line-height:1.45;overflow:hidden;isolation:isolate}
 .jv:before{content:"";position:absolute;inset:0;z-index:-2;background-image:linear-gradient(rgba(0,200,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(0,200,255,.045) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(ellipse at 50% 45%,#000 30%,transparent 80%)}
 .jv:after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%)}
+.jv.is-console.blue{background:radial-gradient(ellipse at 50% 46%,#1a22d8 0,#0c0f9a 42%,#050760 100%)}.jv.is-console.blue:before{background-image:linear-gradient(rgba(160,190,255,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(160,190,255,.09) 1px,transparent 1px);background-size:48px 48px}.jv-acts button.on{background:rgba(120,150,255,.35);box-shadow:0 0 10px rgba(150,180,255,.5)}
 .jv.full{position:fixed;inset:0;z-index:50;min-height:100vh}
 .jv-backdrop{position:absolute;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none}
 .jv-scan{position:absolute;left:0;right:0;height:140px;top:-140px;z-index:0;pointer-events:none;background:linear-gradient(to bottom,transparent,rgba(80,220,255,.07),transparent);animation:jvscan 9s linear infinite}
