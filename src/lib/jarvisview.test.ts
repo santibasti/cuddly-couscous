@@ -8,6 +8,7 @@ describe('jarvis screen figures', () => {
     expect(s.decisions[0]).toMatchObject({ label: 'Discount request DR-0031', tone: 'warn' });
     expect(s.jobs.map((j) => j.note)).toEqual(['Confirmed', 'Confirmed', 'No leader']); expect(s.tomorrow).toBe(3);
     expect(s.cash).toMatchObject({ outstanding: 62000, overdue: 38000, overdueCount: 2, today: 18400 });
+    expect(s.handovers).toEqual([{ job: 'JOB-0139', client: '', day: '' }]); expect(s.tomorrowJobs.map((j) => j.note)).toEqual(['Confirmed', 'Confirmed', 'No leader']);
     expect(s.pipeline.total).toBe(5); expect(s.pipeline.stages).toEqual([['Inquiry', 4], ['Quotation', 1]]); expect(s.crew.present).toBe(11);
   });
   it('shows empty parts instead of failing when a figure is unavailable', () => {

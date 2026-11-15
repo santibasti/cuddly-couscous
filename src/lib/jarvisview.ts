@@ -16,6 +16,8 @@ export interface Summary {
   cash: { outstanding: number; overdue: number; overdueCount: number; today: number };
   pipeline: { total: number; stages: [string, number][]; approvedWeek: number; approvedValue: number };
   alerts: { when: string; title: string }[];
+  tomorrowJobs: { time: string; number: string; note: string }[];
+  handovers: { job: string; client: string; day: string }[];
   attention: number;                                   // how many things need the owner
 }
 
@@ -41,6 +43,8 @@ export function summarize(p: JarvisPanel): Summary {
     cash: { outstanding: num(rec.outstanding_total), overdue: num(rec.overdue_total), overdueCount: num(rec.overdue_count), today: num(money.received) },
     pipeline: { total: num(leads.total), stages: Object.entries(obj(leads.by_stage)).map(([k, v]) => [k, num(v)] as [string, number]), approvedWeek: num(qs.approved), approvedValue: num(qs.approved_value) },
     alerts: arr<{ title: string; created_at: string }>(p.alerts).map((a) => ({ when: a.created_at, title: a.title })),
+    tomorrowJobs: arr<JarvisJob>(p.jobsTomorrow).filter((j) => j && j.number).map((j) => ({ time: j.start, number: j.number, note: j.leader === 'NOT ASSIGNED' ? 'No leader' : j.status })),
+    handovers: waitingHand.map((w) => ({ job: String(w.job ?? ''), client: String(w.client ?? ''), day: String(w.day ?? '') })),
     attention: disc.length + waitingHand.length + noLeader,
   };
 }
@@ -56,7 +60,7 @@ export function ago(iso: string, now = Date.now()): string {
 export const DEMO_PANEL: JarvisPanel = {
   at: new Date().toISOString(), today: '', voice: false, ai: false,
   jobsToday: [{ number: 'JOB-0142', client: 'Sample Client A', day: '', start: '08:00', status: 'Confirmed', leader: 'Team Leader', crew: 3 }, { number: 'JOB-0143', client: 'Sample Client B', day: '', start: '09:30', status: 'Confirmed', leader: 'Team Leader', crew: 2 }, { number: 'JOB-0144', client: 'Sample Client C', day: '', start: '13:00', status: 'Confirmed', leader: 'NOT ASSIGNED', crew: 0 }],
-  jobsTomorrow: [{}, {}, {}], attendanceToday: { present: 11, late: [{ name: 'Sample Crew', minutes: 12 }], absent: [] }, attendanceYesterday: {},
+  jobsTomorrow: [{ number: 'JOB-0145', client: 'Sample Client D', day: '', start: '08:00', status: 'Confirmed', leader: 'Team Leader', crew: 3 }, { number: 'JOB-0146', client: 'Sample Client E', day: '', start: '10:30', status: 'Confirmed', leader: 'Team Leader', crew: 2 }, { number: 'JOB-0147', client: 'Sample Client F', day: '', start: '14:00', status: 'Pending', leader: 'NOT ASSIGNED', crew: 0 }], attendanceToday: { present: 11, late: [{ name: 'Sample Crew', minutes: 12 }], absent: [] }, attendanceYesterday: {},
   pending: { discount_requests_waiting: [{ number: 'DR-0031', amount_off: 500 }], expenses_awaiting_approval: 1, payments_awaiting_verification: 2, quotations_sent_over_3_days_ago_without_answer: [{}] },
   leads: { total: 5, by_stage: { Inquiry: 4, Quotation: 1 } }, receivables: { outstanding_total: 62000, overdue_total: 38000, overdue_count: 2 }, moneyToday: { received: 18400 },
   quotes: { approved: 2, approved_value: 41000 }, handovers: { waiting: [{ job: 'JOB-0139' }] },
