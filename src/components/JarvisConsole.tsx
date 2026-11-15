@@ -100,9 +100,23 @@ function Clock() {
   return <div className="jc-clk">{t.toLocaleTimeString('en-GB', { hour12: false, timeZone: 'Asia/Manila' })}</div>;
 }
 
+/** The company knowledge base: upload or paste a document; Jarvis looks up the right section when asked. Stored only in the database. */
+function KnowledgeBox({ k, save }: { k: { num: number; title: string; chars: number }[]; save: (text: string | null) => Promise<string> }) {
+  const [open, setOpen] = useState(false); const [text, setText] = useState(''); const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false);
+  const total = k.reduce((a, x) => a + x.chars, 0);
+  const run = async (t: string | null) => { setBusy(true); setMsg(''); try { setMsg(await save(t)); if (t) { setText(''); setOpen(false); } } finally { setBusy(false); } };
+  const pick = (f?: File | null) => { if (!f) return; if (f.size > 400_000) { setMsg('That file is too big (limit about 250,000 characters).'); return; } void f.text().then(setText); };
+  return <section className="jc-box"><h6>KNOWLEDGE <em>{k.length ? `${k.length} SECTIONS · ${Math.max(1, Math.round(total / 1000))} KB` : 'EMPTY'}</em></h6>
+    {!open && <div className="jc-mut">{k.length ? 'Jarvis reads the right section when you ask about the company.' : 'Add your company document so Jarvis knows the business.'}</div>}
+    {open && <div className="jc-kn"><textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Paste the document here (use # headings), or choose a .md / .txt file" rows={5} />
+      <input type="file" accept=".md,.txt,.markdown,text/plain,text/markdown" onChange={(e) => pick(e.target.files?.[0])} /></div>}
+    <div className="jc-kb">{open ? <><button type="button" disabled={busy || text.trim().length < 200} onClick={() => void run(text)}>{busy ? 'Saving…' : 'Save (replaces old)'}</button><button type="button" onClick={() => { setOpen(false); setText(''); }}>Cancel</button></> : <><button type="button" onClick={() => setOpen(true)}>{k.length ? 'Replace document' : 'Add document'}</button>{k.length > 0 && <button type="button" disabled={busy} onClick={() => { if (window.confirm('Remove the knowledge document from Jarvis?')) void run(null); }}>Remove</button>}</>}</div>
+    {msg && <div className="jc-mut">{msg}</div>}</section>;
+}
+
 export interface ConsoleProps {
   S: Summary; panel: JarvisPanel; mode: CoreMode; analyser: React.MutableRefObject<AnalyserNode | null>; theme: ConsoleTheme;
-  sub: string; say: string; idleHint: string; text: string; setText: (v: string) => void; submit: (e: React.FormEvent) => void; onCore: () => void; onBrief: () => void; onForget: (id: number) => void; busy: boolean; live: boolean;
+  sub: string; say: string; idleHint: string; text: string; setText: (v: string) => void; submit: (e: React.FormEvent) => void; onCore: () => void; onBrief: () => void; onForget: (id: number) => void; onKnowledge: (text: string | null) => Promise<string>; busy: boolean; live: boolean;
   money: (n: number) => string;
 }
 const KIND: Record<string, string> = { brief: 'BRIEF', alert: 'ALERT', inquiry: 'LEAD', search: 'WEB', answer: 'ANSWER', memory: 'LEARN' };
@@ -122,6 +136,7 @@ export function JarvisConsole(p: ConsoleProps) {
           <section className="jc-box"><h6>MEMORY <em>{S.memory.length} LEARNED</em></h6>
             <div className="jc-mem">{!S.memory.length && <div className="jc-mut">Nothing yet. Tell Jarvis how you like things (for example "keep briefs short") and he will remember.</div>}
               {S.memory.slice(-5).reverse().map((n) => <div key={n.id} className="mn"><span>{n.text}</span><button type="button" title="Forget this" aria-label="Forget this note" onClick={() => p.onForget(n.id)}>×</button></div>)}</div></section>
+          <KnowledgeBox k={S.knowledge} save={p.onKnowledge} />
           <section className="jc-box"><h6>NEEDS YOU <em>{S.attention || 'CLEAR'}</em></h6>
             {S.decisions.slice(0, 4).map((d, i) => <div className="row" key={i}><span className={d.tone === 'warn' ? 'am' : ''}>{d.label}</span><b>{d.value}</b></div>)}</section>
         </aside>
@@ -196,6 +211,7 @@ const CSS = `
 .jc-wave{display:block;width:100%;height:56px}
 .jc-foot{text-align:center;margin-top:10px;font-size:.78em;letter-spacing:.15em;opacity:.55}
 .jc-mem .mn{display:flex;gap:8px;justify-content:space-between;align-items:flex-start;font-size:.88em;line-height:1.4;padding:3px 0;color:#d9e6ff;border-bottom:1px dashed rgba(150,180,255,.18)}.jc-mem .mn button{background:none;border:0;color:#7f9cf5;cursor:pointer;font-size:1.1em;line-height:1;padding:0 2px}.jc-mem .mn button:hover{color:#fff}
+.jc-kn textarea{width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);color:#e8eeff;border:1px solid rgba(150,180,255,.3);border-radius:6px;padding:6px;font:inherit;font-size:.85em;resize:vertical}.jc-kn input{margin-top:6px;font-size:.8em;color:#bcd0ff;max-width:100%}.jc-kb{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.jc-kb button{background:rgba(110,140,255,.15);border:1px solid rgba(150,180,255,.4);color:#e8eeff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.82em}.jc-kb button:disabled{opacity:.45;cursor:default}
 @media (max-width:1000px){.jc-grid{grid-template-columns:1fr}.jc-center{order:-1}.jc-core{width:min(420px,86vw)}.jc-log{max-height:260px}}
 @media (prefers-reduced-motion:reduce){.jc-core:before,.jc-radar .sweep,.jc .cur,.jc-radar .dot.warn,.jc-log .ln{animation:none}}
 `;

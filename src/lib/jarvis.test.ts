@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanNote, memoryBlock, addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, speakable } from '../../supabase/functions/jarvis/logic';
+import { knowledgeBlock, pickSections, splitKnowledge, cleanNote, memoryBlock, addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, speakable } from '../../supabase/functions/jarvis/logic';
 
 describe('jarvis helpers', () => {
   it('works in Manila time', () => {
@@ -56,5 +56,25 @@ describe('Jarvis long-term memory', () => {
     expect(memoryBlock([], [])).toBe('');
     const b = memoryBlock([{ id: 7, kind: 'preference', text: 'Keep it short' }], [{ topic: 'unpaid invoices', n: 9 }, { topic: 'quotations', n: 1 }, { topic: 'crew attendance', n: 4 }]);
     expect(b).toContain('[#7] Keep it short'); expect(b).toContain('unpaid invoices, crew attendance'); expect(b).not.toContain('quotations');
+  });
+});
+
+describe('Jarvis company knowledge base', () => {
+  const doc = '# TOPMOP KNOWLEDGE BASE\n**Company:** Top Mop\n\n---\n\n# 1. COMPANY OVERVIEW\nSEC-registered.\n\n## History\nFounded 2024.\n\n# 5. CORE SERVICES\n## Solar Panel Cleaning\nPurified water.\n```\n# not a heading\n```\n\n# 24. RULES FOR JARVIS\nNever invent prices.\n';
+  it('cuts a document at top-level headings and ignores code fences and rules', () => {
+    const s = splitKnowledge(doc);
+    expect(s.map((x) => x.title)).toEqual(['TOPMOP KNOWLEDGE BASE', 'COMPANY OVERVIEW', 'CORE SERVICES', 'RULES FOR JARVIS']);
+    expect(s[1].body).toContain('## History'); expect(s[2].body).toContain('# not a heading'); expect(s.map((x) => x.num)).toEqual([0, 1, 2, 3]);
+    expect(splitKnowledge('')).toEqual([]);
+  });
+  it('picks the best sections for a question or a number', () => {
+    const s = splitKnowledge(doc);
+    expect(pickSections('solar panel', s)[0].title).toBe('CORE SERVICES');
+    expect(pickSections('section 1', s)[0].title).toBe('COMPANY OVERVIEW');
+    expect(pickSections('zzzzz', s)).toEqual([]); expect(pickSections('', s)).toEqual([]);
+  });
+  it('lists the sections and always includes the rules', () => {
+    const b = knowledgeBlock(splitKnowledge(doc));
+    expect(b).toContain('2 CORE SERVICES'); expect(b).toContain('Never invent prices.'); expect(knowledgeBlock([])).toBe('');
   });
 });

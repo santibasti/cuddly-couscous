@@ -11,7 +11,7 @@
 //          ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID. Optional: JARVIS_MODEL (default claude-sonnet-5-5), JARVIS_ADDRESS (how it addresses you), JARVIS_SPEAK_NAMES=0 (do not say client names),
 //          JARVIS_WEB=0 (turn off the web search; on by default), ELEVENLABS_TTS_MODEL (default eleven_multilingual_v2), ELEVENLABS_STT_MODEL (default scribe_v1; scribe_v2 is tried if that one is refused). Deploy with --no-verify-jwt.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { addDays, alertIsInstant, alertLine, chunks, cleanNote, invoiceBalance, invoiceTotal, LEARN_RULES, manilaDay, MAX_NOTES, memoryBlock, NOTE_KINDS, ownerIds, personaPrompt, round2, speakable, TOOL_TOPIC } from './logic.ts';
+import { addDays, alertIsInstant, alertLine, chunks, cleanNote, invoiceBalance, knowledgeBlock, MAX_KNOWLEDGE_CHARS, pickSections, splitKnowledge, invoiceTotal, LEARN_RULES, manilaDay, MAX_NOTES, memoryBlock, NOTE_KINDS, ownerIds, personaPrompt, round2, speakable, TOOL_TOPIC } from './logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-jarvis-action', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -113,6 +113,20 @@ async function countTopics(sb: Db, used: string[]) {
   }
 }
 
+/* ---------------- company knowledge base ---------------- */
+type KRow = { num: number; title: string; body: string };
+async function loadKnowledge(sb: Db): Promise<KRow[]> { try { const { data } = await sb.from('jarvis_knowledge').select('num, title, body').order('num', { ascending: true }); return (data ?? []) as KRow[]; } catch { return []; } }
+async function saveKnowledge(sb: Db, text: string) {
+  const t = String(text ?? '').trim(); if (t.length < 200) return { error: 'That looks too short to be a knowledge document.' };
+  if (t.length > MAX_KNOWLEDGE_CHARS) return { error: 'The document is too long (the limit is about 250,000 characters).' };
+  const secs = splitKnowledge(t); if (!secs.length) return { error: 'I could not find any sections. Use "# " headings to separate them.' };
+  const del = await sb.from('jarvis_knowledge').delete().gte('num', 0); if (del.error) return { error: 'Could not replace the old document.' };
+  const ins = await sb.from('jarvis_knowledge').insert(secs.map((x) => ({ num: x.num, title: x.title.slice(0, 160), body: x.body, chars: x.body.length, updated_at: new Date().toISOString() })));
+  if (ins.error) return { error: 'Could not save the document.' };
+  await logEvent(sb, 'memory', `Knowledge base updated · ${secs.length} sections`); return { ok: true, sections: secs.length, chars: t.length };
+}
+const knowledgeList = async (sb: Db) => { try { const { data } = await sb.from('jarvis_knowledge').select('num, title, chars').order('num', { ascending: true }); return data ?? []; } catch { return []; } };
+
 /* ---------------- business data (read-only) ---------------- */
 const names = async (sb: Db, table: string, col: string, ids: string[]): Promise<Record<string, string>> => {
   const u = [...new Set(ids.filter(Boolean))]; if (!u.length) return {};
@@ -196,6 +210,7 @@ const TOOLS = [
   { name: 'get_receivables', description: 'Unpaid invoices: total outstanding, overdue amount and count, biggest balances.', input_schema: { type: 'object', properties: {} } },
   { name: 'get_money_in', description: 'Payments received (verified) in the last N days.', input_schema: { type: 'object', properties: { days: { type: 'number' } }, required: ['days'] } },
   { name: 'get_quotations_summary', description: 'Quotations approved or rejected in the last N days with the approved value.', input_schema: { type: 'object', properties: { days: { type: 'number' } }, required: ['days'] } },
+  { name: 'lookup_knowledge', description: 'Read the owner-uploaded company knowledge base (services, methods, reference prices, safety limits, clients, policies, plans, rules). Pass a topic or keywords, or a section number from the list in your instructions. Returns the best matching sections.', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'remember_note', description: 'Save one short lasting note about how the owner wants you to work (preference, correction, routine, or business fact they told you). Only what the owner said themselves in this conversation.', input_schema: { type: 'object', properties: { text: { type: 'string' }, kind: { type: 'string', enum: ['preference', 'fact', 'routine', 'correction'] } }, required: ['text'] } },
   { name: 'forget_note', description: 'Delete one saved note by its id (shown as [#id] in your notes) when the owner asks you to forget it.', input_schema: { type: 'object', properties: { id: { type: 'number' } }, required: ['id'] } },
   { name: 'get_handovers_waiting', description: 'Finished jobs whose client has not yet signed the handover (their bonus and billing wait for it).', input_schema: { type: 'object', properties: {} } }];
@@ -210,6 +225,7 @@ async function runTool(sb: Db, name: string, a: Record<string, unknown>) {
     case 'get_money_in': return await getMoneyIn(sb, clampDays(a.days));
     case 'get_quotations_summary': return await getQuotes(sb, clampDays(a.days, 30));
     case 'get_handovers_waiting': return await getHandovers(sb);
+    case 'lookup_knowledge': { const hits = pickSections(String(a.query ?? ''), await loadKnowledge(sb)); return hits.length ? { sections: hits.map((h) => ({ section: h.num, title: h.title, text: h.body.slice(0, 8000) })) } : { found: false }; }
     case 'remember_note': return await saveNote(sb, a.kind, a.text);
     case 'forget_note': return await forgetNote(sb, a.id);
     default: return { error: 'unknown tool' };
@@ -229,7 +245,7 @@ const textOf = (c: { type: string; text?: string }[]) => c.filter((b) => b.type 
 
 /** One conversation turn: the AI looks things up with its read-only tools and answers. Used by Telegram (with stored memory) and by the screen in the app (history sent by the page). */
 async function converse(sb: Db, history: Turn[], question: string, src = 'screen'): Promise<string> {
-  const system = `${persona()}\n${LEARN_RULES}${await memory(sb)}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. ${webOn() ? 'If the question is not about the business, answer it helpfully, searching the web when you need current or outside facts.' : 'If the question is not about the business, answer briefly or say it is outside what you do.'}`;
+  const system = `${persona()}\n${LEARN_RULES}${await memory(sb)}${knowledgeBlock(await loadKnowledge(sb))}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. ${webOn() ? 'If the question is not about the business, answer it helpfully, searching the web when you need current or outside facts.' : 'If the question is not about the business, answer briefly or say it is outside what you do.'}`;
   const tools = webOn() ? [...TOOLS, WEB_SEARCH] : TOOLS;
   const messages: { role: string; content: unknown }[] = [...history, { role: 'user', content: question }];
   let reply = ''; let searched = false; const used: string[] = [];
@@ -265,7 +281,7 @@ async function morningBrief(sb: Db, owners: number[]) {
     safe(getJobs(sb, t, t)), safe(getJobs(sb, addDays(t, 1), addDays(t, 1))), safe(getAttendance(sb, y)), safe(getPending(sb)), safe(getLeads(sb, 1)),
     safe(getReceivables(sb)), safe(getMoneyIn(sb, 1)), safe(getHandovers(sb))]);
   const data = { today: t, weekday: new Date(t + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }), jobsToday, jobsTomorrow, attendanceYesterday, waitingForYou: pending, newInquiriesLast24h: leads, receivables, moneyReceivedYesterday: moneyYesterday, handoversWaitingForClientSignature: handovers };
-  const out = await claude(`${persona()}${await memory(sb)}\nWrite the owner's MORNING BRIEF to be listened to. Open with a short greeting and the day. Put what needs the owner's attention or a decision first (waiting approvals, unassigned jobs, absent crew, overdue money, handovers waiting), then today's jobs in time order, then tomorrow in one line. Skip empty sections. Roughly 100 to 160 words.`,
+  const out = await claude(`${persona()}${await memory(sb)}${knowledgeBlock(await loadKnowledge(sb))}\nWrite the owner's MORNING BRIEF to be listened to. Open with a short greeting and the day. Put what needs the owner's attention or a decision first (waiting approvals, unassigned jobs, absent crew, overdue money, handovers waiting), then today's jobs in time order, then tomorrow in one line. Skip empty sections. Roughly 100 to 160 words.`,
     [{ role: 'user', content: `Data (JSON):\n${JSON.stringify(data).slice(0, 14000)}` }]);
   const text = textOf(out.content) || 'Good morning. I could not prepare the brief today.';
   for (const c of owners) await deliver(c, text);
@@ -327,7 +343,7 @@ async function panel(sb: Db) {
   const events = await safe((async () => { const { data } = await sb.from('jarvis_events').select('kind, text, at').order('at', { ascending: false }).limit(16); return data ?? []; })());
   const delivered = await safe((async () => { const { data } = await sb.from('alert_outbox').select('sent_at').order('created_at', { ascending: false }).limit(20); const rows = data ?? []; return rows.length ? Math.round(rows.filter((r: Db) => r.sent_at).length / rows.length * 100) : null; })());
   const memoryNotes = await loadNotes(sb);
-  return { at: new Date().toISOString(), today: t, memory: memoryNotes, voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'),
+  return { at: new Date().toISOString(), today: t, memory: memoryNotes, knowledge: await knowledgeList(sb), voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'),
     health: { data: Math.round(okParts / parts.length * 100), voice: !!(env('ELEVENLABS_API_KEY') && env('ELEVENLABS_VOICE_ID')), ai: !!env('ANTHROPIC_API_KEY'), alerts: typeof delivered === 'number' ? delivered : null, web: webOn() },
     events, jobsToday, jobsTomorrow, attendanceToday, attendanceYesterday, pending, leads, receivables, moneyToday, quotes, handovers, alerts };
 }
@@ -340,7 +356,7 @@ async function webRequest(req: Request): Promise<Response> {
     const type = (req.headers.get('content-type') ?? 'audio/webm').split(';')[0] || 'audio/webm';
     return json({ text: await transcribe(bytes, type, type.includes('mp4') ? 'voice.m4a' : 'voice.webm') });
   }
-  const b = await req.json().catch(() => ({})) as { action?: string; text?: string; history?: { role: string; content: string }[] };
+  const b = await req.json().catch(() => ({})) as { action?: string; text?: string; id?: unknown; history?: { role: string; content: string }[] };
   if (b.action === 'panel') return json(await panel(sb));
   if (b.action === 'chat') {
     if (!env('ANTHROPIC_API_KEY')) return json({ error: 'The AI key is not set yet.' }, 400);
@@ -348,6 +364,8 @@ async function webRequest(req: Request): Promise<Response> {
     const history: Turn[] = (Array.isArray(b.history) ? b.history : []).filter((h) => (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string').slice(-8).map((h) => ({ role: h.role as Turn['role'], content: h.content.slice(0, 1500) }));
     return json({ text: await converse(sb, history, q, 'screen') });
   }
+  if (b.action === 'knowledge_save') return json(await saveKnowledge(sb, String(b.text ?? '')));
+  if (b.action === 'knowledge_clear') { const r = await sb.from('jarvis_knowledge').delete().gte('num', 0); return json({ ok: !r.error }); }
   if (b.action === 'forget') return json(await forgetNote(sb, (b as { id?: unknown }).id));
   if (b.action === 'speak') {
     if (!env('ELEVENLABS_API_KEY') || !env('ELEVENLABS_VOICE_ID')) return json({ error: 'No voice is connected yet.' }, 400);

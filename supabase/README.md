@@ -212,3 +212,6 @@ Only the Telegram ids in `JARVIS_OWNER_TELEGRAM_ID`, writing in a private chat w
 
 ## Jarvis memory (migration 0112)
 Jarvis keeps short notes about how the owner likes to work (`jarvis_notes`) and counts what the owner asks about most (`jarvis_topics`). The notes are put into his instructions on every answer and in the morning brief, so he adapts. He saves a note only when the owner says something lasting ("keep briefs short", "call them team leaders") and forgets one when asked. The owner can see and delete notes in the MEMORY box on the Jarvis screen. Telegram follow-up memory now lasts 3 hours (last 10 messages). After `git pull` run `supabase.cmd db push` (answer Y) and `supabase.cmd functions deploy jarvis --no-verify-jwt`.
+
+## Jarvis company knowledge base (migration 0113)
+The owner uploads (or pastes) the company document in the KNOWLEDGE box on the Jarvis screen. It is cut into sections at its `# ` headings and stored in `jarvis_knowledge`; Jarvis sees the list of sections and any "rules" section on every answer, and reads the right section with `lookup_knowledge`. The document is confidential and the repository is public, so it is never committed: it lives only in the database. Uploading again replaces the old one. Deploy: `supabase.cmd db push` then `supabase.cmd functions deploy jarvis --no-verify-jwt`.
