@@ -247,6 +247,27 @@ describe('business rules enforced by the store', () => {
     expect(m.A.saveJob({ ...base, driver_id: x.id } as never).driver_id).toBe(x.id);
   });
 
+  it('lead flow buttons: draft a quotation from the price list, send, client says yes, book with a free team, and refuse a double booking', async () => {
+    await as('owner@topmop.ph');
+    const F = await import('./flowactions'); const { flowCards, suggestDays, proposeTeam } = await import('./leadflow');
+    const client = db().clients.find((c) => !c.deleted_at)!; m.store.update('clients', client.id, { address: 'Poblacion, Makati City' } as never);
+    const inq = m.store.insert('inquiries', { client_id: client.id, service_codes: ['GLASS_EXT'], stage: 'Inquiry', source: 'Facebook', details: 'flow test' } as never) as { id: string };
+    expect(flowCards(db()).find((c) => c.inquiryId === inq.id)!.step).toBe('new');
+    const q = F.draftQuoteForInquiry(inq.id);
+    expect(q).toMatchObject({ status: 'Draft', inquiry_id: inq.id }); expect(q.items.length).toBeGreaterThan(0);
+    expect(db().inquiries.find((i) => i.id === inq.id)!.stage).toBe('Quotation'); expect(flowCards(db()).find((c) => c.inquiryId === inq.id)!.step).toBe('quote');
+    expect(() => F.bookFromQuote(q.id, '2031-05-04', '08:00')).toThrow(/approved by the client/);                                   // cannot skip the client's yes
+    F.sendQuote(q.id); expect(flowCards(db()).find((c) => c.inquiryId === inq.id)!.step).toBe('sent');
+    F.recordClientDecision(q.id, true); expect(flowCards(db()).find((c) => c.inquiryId === inq.id)!.step).toBe('confirm');
+    const need = 2; const slot = suggestDays(db(), { from: '2031-05-04', days: 5, need }).find((x) => x.ok)!; const team = proposeTeam(slot, need);
+    const job = F.bookFromQuote(q.id, slot.date, '08:00', { leader: team.leader?.id, crew: team.crew.map((e) => e.id), vehicle: team.vehicle?.id });
+    expect(job).toMatchObject({ quotation_id: q.id, status: 'Confirmed', leader_id: team.leader?.id }); expect(['order', 'book']).toContain(flowCards(db()).find((c) => c.jobId === job.id)!.step);
+    expect(() => F.bookFromQuote(q.id, slot.date, '08:00')).toThrow(/already booked/);
+    const second = F.draftQuoteForInquiry((m.store.insert('inquiries', { client_id: client.id, service_codes: ['GLASS_EXT'], stage: 'Inquiry', source: 'Facebook', details: 'second' } as never) as { id: string }).id);
+    F.sendQuote(second.id); F.recordClientDecision(second.id, true);
+    expect(() => F.bookFromQuote(second.id, slot.date, '08:00', { leader: team.leader?.id, crew: [], vehicle: team.vehicle?.id })).toThrow(/Double-booking blocked/);   // the same leader and van are already on that day
+  });
+
   it('writes an audit entry for every mutation with before/after', async () => {
     await as('owner@topmop.ph');
     const n = db().audit.length;

@@ -147,6 +147,7 @@ export const ROUTE_ACCESS: Record<string, string[]> = {
   telegram: ['admin.settings'],
   clients: ['clients.view'],
   sales: ['sales.view'],
+  leadflow: ['sales.view'],
   inbox: ['inbox.manage'],
   marketing: ['marketing.manage'],
   photos: ['photos.manage', 'jobs.mine'],

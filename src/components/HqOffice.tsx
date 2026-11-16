@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AGENTS, DEPTS, STATE_LABEL, agentPos, agentState, cafeLine, deskPos, hash, inCafe, type AgentDef, type AgentState, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
 
 const EYE: Partial<Record<AgentState, string>> = { error: '#ff5a5a', blocked: '#ff5a5a', awaiting: '#ffc233', done: '#5dff9c', working: '#7fe7ff', received: '#7fe7ff', coordinating: '#a98bff' };
-function Avatar({ a, state, moving }: { a: AgentDef; state: AgentState; moving: boolean }) {
+export function RobotAvatar({ a, state, moving }: { a: AgentDef; state: AgentState; moving: boolean }) {
   const eye = EYE[state] ?? a.shirt;
   return (
     <svg className={`av ${moving ? 'walk' : ''}`} viewBox="0 0 40 58" width="100%" aria-hidden>
@@ -40,7 +40,7 @@ function Agent({ a, view, now, selected, onPick, still }: { a: AgentDef; view: A
       {BADGE[state] ? <span className={`bdg b-${state}`}>{BADGE[state]}</span> : null}
       {talk && <span className="bub">{cafeLine(a.key, now)}</span>}
       {view.state === 'coordinating' && <span className="bub dots">…</span>}
-      <span className="av-wrap"><Avatar a={a} state={state} moving={mv && !still} /></span>
+      <span className="av-wrap"><RobotAvatar a={a} state={state} moving={mv && !still} /></span>
       <span className="nm">{a.name}</span>
     </button>
   );
