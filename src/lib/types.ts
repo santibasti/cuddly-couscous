@@ -972,6 +972,8 @@ export interface Settings {
   /** with auto approval on: still wait for the Owner when someone is late by more than this many minutes (after the grace period). Default 15. */
   auto_approve_late_min?: number;
   fb_ai?: { mode: 'off' | 'suggest' | 'auto'; notes: string };
+  /** Messenger / ManyChat "is that date free?" answer: earliest day (days from today), closed weekdays (0 = Sunday), most jobs a day, how far ahead to look, how many alternative dates to offer, crew needed */
+  chat_booking?: { lead_days: number; closed_weekdays: number[]; max_jobs_per_day: number; horizon_days: number; alternatives: number; crew_needed: number };
   /** Marketing AI: writes and posts to the Facebook Page. approve = I approve each post, auto = posts go out on schedule. */
   /** BIR compliance tab: how a sale is classified on the SLS when it is not plain VATable, and rows left out of the lists (by record id) */
   bir?: { sls_class?: Record<string, 'vatable' | 'zero' | 'exempt'>; sls_skip?: string[]; slp_skip?: string[]; rdo?: string; fiscal_month?: number };

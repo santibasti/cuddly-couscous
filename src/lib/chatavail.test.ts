@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_RULES, checkAvailability, dayCheck, normalizeRules, parseWanted, type Facts } from '../../supabase/functions/chat-availability/logic';
+
+const today = '2026-11-16';                                       // a Monday
+const people = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `e${i}`, tier: i === 0 ? 'Team Leader' : 'Technician' }));
+const facts = (o: Partial<Facts> = {}): Facts => ({ jobs: [], field: people(8), vehicles: [{ id: 'v1' }, { id: 'v2' }], holidays: [], ...o });
+const job = (date: string, ids: string[], vehicle = 'v1', end = date) => ({ start_at: `${date}T08:00`, end_at: `${end}T17:00`, status: 'Scheduled', leader_id: ids[0], crew_ids: ids.slice(1), vehicle_id: vehicle });
+
+describe('understanding the date', () => {
+  it('reads ISO dates, tomorrow, weekdays, month names and Tagalog', () => {
+    expect(parseWanted('2026-11-21', today)).toBe('2026-11-21'); expect(parseWanted('bukas', today)).toBe('2026-11-17'); expect(parseWanted('Saturday', today)).toBe('2026-11-21');
+    expect(parseWanted('sa sabado', today)).toBe('2026-11-21'); expect(parseWanted('next Saturday', today)).toBe('2026-11-28'); expect(parseWanted('Nov 21', today)).toBe('2026-11-21');
+    expect(parseWanted('21 November', today)).toBe('2026-11-21'); expect(parseWanted('11/21', today)).toBe('2026-11-21'); expect(parseWanted('Jan 5', today)).toBe('2027-01-05');
+  });
+  it('says so when it cannot understand', () => { expect(parseWanted('whenever', today)).toBeNull(); expect(parseWanted('', today)).toBeNull(); expect(checkAvailability(null, today, DEFAULT_RULES, facts()).status).toBe('unclear'); });
+});
+
+describe('is the day open', () => {
+  it('open with a leader, crew and a vehicle free', () => expect(dayCheck('2026-11-21', today, DEFAULT_RULES, facts()).status).toBe('available'));
+  it('closed on a closed weekday (Sunday by default) and on a regular holiday', () => {
+    expect(dayCheck('2026-11-22', today, DEFAULT_RULES, facts()).status).toBe('closed'); expect(dayCheck('2026-11-24', today, DEFAULT_RULES, facts({ holidays: ['2026-11-24'] })).status).toBe('closed');
+  });
+  it('too soon inside the lead time', () => { expect(dayCheck('2026-11-17', today, DEFAULT_RULES, facts()).status).toBe('too_soon'); expect(dayCheck('2026-11-18', today, DEFAULT_RULES, facts()).status).toBe('available'); });
+  it('full when the daily limit, the people or the vehicles run out, also for a multi-day job', () => {
+    const three = [job('2026-11-21', ['e0', 'e1']), job('2026-11-21', ['e2', 'e3'], 'v2'), job('2026-11-21', ['e4', 'e5'], 'v1')]; expect(dayCheck('2026-11-21', today, DEFAULT_RULES, facts({ jobs: three })).status).toBe('full');
+    expect(dayCheck('2026-11-21', today, DEFAULT_RULES, facts({ field: people(8), jobs: [job('2026-11-21', ['e0', 'e1', 'e2', 'e3', 'e4', 'e5'], 'v1')] })).status).toBe('full');   // only 2 people left
+    expect(dayCheck('2026-11-21', today, DEFAULT_RULES, facts({ jobs: [job('2026-11-20', ['e0', 'e1'], 'v1', '2026-11-23')], field: people(3) })).status).toBe('full');   // the leader is busy on the 3-day job
+    expect(dayCheck('2026-11-21', today, DEFAULT_RULES, facts({ jobs: [job('2026-11-21', ['e1'], 'v1'), job('2026-11-21', ['e2'], 'v2')] })).status).toBe('full');   // no vehicle left
+  });
+  it('a cancelled or finished job does not block the day', () => expect(dayCheck('2026-11-21', today, DEFAULT_RULES, facts({ jobs: [{ ...job('2026-11-21', ['e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6']), status: 'Cancelled' }] })).status).toBe('available'));
+});
+
+describe('the reply', () => {
+  const full = facts({ jobs: [job('2026-11-21', ['e0', 'e1']), job('2026-11-21', ['e2', 'e3'], 'v2'), job('2026-11-21', ['e4', 'e5'])] });
+  it('confirms nothing, only says the day looks open', () => { const r = checkAvailability('2026-11-21', today, DEFAULT_RULES, facts()); expect(r.ok).toBe(true); expect(r.reply_en).toMatch(/review your details and confirm/); expect(r.alternatives).toHaveLength(0); });
+  it('offers the nearest open days, in date order, when the day is full', () => {
+    const r = checkAvailability('2026-11-21', today, DEFAULT_RULES, full); expect(r.status).toBe('full'); expect(r.alternatives.map((a) => a.date)).toEqual(['2026-11-19', '2026-11-20', '2026-11-23']);
+    expect(r.reply_en).toContain('fully booked'); expect(r.reply_tl).toContain('puno'); expect(r.reply_en).toContain('Which one suits you');
+  });
+  it('never offers a closed, too-soon or full day as an alternative', () => {
+    const r = checkAvailability('2026-11-21', today, { ...DEFAULT_RULES, alternatives: 5 }, full); for (const a of r.alternatives) { expect(dayCheck(a.date, today, DEFAULT_RULES, full).status).toBe('available'); expect(a.date).not.toBe('2026-11-22'); }
+  });
+  it('asks for another date when nothing is free', () => { const r = checkAvailability('2026-11-21', today, DEFAULT_RULES, facts({ vehicles: [] })); expect(r.alternatives).toHaveLength(0); expect(r.reply_en).toContain('another date'); });
+});
+
+describe('rules from the settings', () => {
+  it('uses the defaults and keeps odd values inside a safe range', () => {
+    expect(normalizeRules(undefined)).toEqual(DEFAULT_RULES); expect(normalizeRules({ lead_days: -5, max_jobs_per_day: 999, closed_weekdays: [0, 6, 9, 'x'], alternatives: 'abc' })).toEqual({ ...DEFAULT_RULES, lead_days: 0, max_jobs_per_day: 20, closed_weekdays: [0, 6] });
+  });
+});

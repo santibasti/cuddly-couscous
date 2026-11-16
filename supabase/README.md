@@ -260,3 +260,20 @@ Today's services live in the **Booking & Scheduling** room: a "Services today" p
 
 ## AI Headquarters: everyday life in the office (Rooms view)
 Decorative touches that never read or change a business status: a **wall clock** in every room and a digital Manila clock and date in the JARVIS atrium; **day and night lighting** that follows the Manila clock (dawn, day, dusk, night: sky colour, stars, a soft tint, a warmer café), with a button to preview day or night; a **cleaning robot** that patrols every corridor and connector with a mop; and a **water cooler** in the six work rooms where an idle agent now and then walks over, drinks for a few seconds and walks back (never while the agent has a task, and never when a hand-over is in progress). Screen only: no migration or deploy.
+
+## ManyChat: Messenger leads and "is that date free?" (functions `lead-intake` + `chat-availability`)
+ManyChat runs the conversation in Messenger and replies to the customer. TopMop supplies the facts and keeps the records. ManyChat is already an approved Meta partner, so this works without the Messenger App Review that the direct Page assistant above needs.
+
+**What the chat does:** greets, asks the service, place, property type, a date and the mobile number; asks TopMop whether the date is free (`chat-availability`); offers the nearest open dates when it is not; at the end sends the lead (`lead-intake`), which creates the client and the inquiry (source "Facebook") and alerts the owner. The chat never gives a price or confirms a booking: it says a person reviews the details and confirms. (Prices stay with the approved quotation in Lead Flow.)
+
+**Rules** (Admin → Settings → *Messenger booking rules*): earliest day (default 2 days from today), closed weekdays (default Sunday), most jobs in a day (3), people needed for a normal job (3), how far ahead to look (21 days), alternative dates offered (3). A day is open when a team leader, enough free crew and a free vehicle exist and the daily limit is not reached; regular holidays are closed. It checks the same calendar as the booking form, does not book or hold anything, and a customer's date is only ever a request.
+
+**Setup**
+1. Use the same secret as the lead address (`supabase secrets set LEAD_INTAKE_KEY=your_long_random_key`) and deploy both: `supabase.cmd functions deploy lead-intake --no-verify-jwt` and `supabase.cmd functions deploy chat-availability --no-verify-jwt`. No `db push` is needed.
+2. In ManyChat (an **External Request** step needs the Pro plan; check ManyChat's current pricing and Messenger rules on their site): after the customer types the date, add an External Request, method **POST**, URL `https://<project-ref>.supabase.co/functions/v1/chat-availability?key=your_long_random_key`, body `{"when": "{{preferred_date}}"}` (your date field; a real date such as `2026-11-21` also works; the words "Saturday", "bukas", "Nov 21" are understood).
+3. Map the answer to fields: `status`, `reply_en`, `reply_tl`, `alt1_label`, `alt1_date`, `alt2_label`, `alt2_date`, `alt3_label`, `alt3_date`. Send `reply_en` (or `reply_tl` for a Tagalog chat) as the next message, and add quick-reply buttons from the `alt*_label` fields. `status` is `available`, `full`, `closed`, `too_soon` or `unclear`.
+4. At the end of the chat, call `lead-intake` as in the section above, with the chosen date in `preferred_date`.
+
+Quick test from PowerShell: `Invoke-RestMethod -Method Post -Uri "https://<project-ref>.supabase.co/functions/v1/chat-availability?key=your_long_random_key" -ContentType "application/json" -Body '{"when":"next Saturday"}'`
+
+Not built (decide later): a soft hold on a date while the customer decides, an instant price estimate in the chat, photos from the customer, and replying from an AI inside ManyChat.
