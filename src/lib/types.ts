@@ -389,7 +389,7 @@ export interface PayrollLine {
   job_pay?: JobPayRow[];
 }
 /** One job order worked by one employee: what it paid and which bonuses came with it. */
-export interface JobPayRow { job_id: string; number: string; date: string; client?: string; rate: number; panel_bonus: number; outside_bonus: number; commercial_bonus: number; /** more job bonuses, each only when it applies */ second_site_bonus?: number; night_bonus?: number; manlift_bonus?: number; /** the driver incentive of the job, only for the one person who drove */ driver_bonus?: number; total: number; final: boolean }
+export interface JobPayRow { job_id: string; number: string; date: string; client?: string; rate: number; panel_bonus: number; outside_bonus: number; commercial_bonus: number; /** more job bonuses, each only when it applies */ second_site_bonus?: number; night_bonus?: number; manlift_bonus?: number; /** the driver incentive of the job, only for the one person who drove */ driver_bonus?: number; /** pay-per-job staff are paid for each day they worked the job: the pay dates that earn the rate (several for a multi-day job) */ days?: string[]; total: number; final: boolean }
 export interface PayrollRun extends Base { period_id: string; lines: PayrollLine[] }
 
 /* ---------- Inventory ---------- */

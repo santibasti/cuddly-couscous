@@ -25,7 +25,8 @@ export function dayInfo(db: Pick<DB, 'attendance' | 'workflows'>, job: Job, date
   const ids = [...new Set([...(job.leader_id ? [job.leader_id] : []), ...(job.crew_ids ?? [])])];
   const wf = (db.workflows ?? []).find((w) => w.job_id === job.id && !w.deleted_at); const absent = new Set((wf?.arr_crew_absent ?? []).map((a) => a.id));
   const crew = ids.filter((id) => !absent.has(id));
-  const att = (db.attendance ?? []).filter((a) => !a.deleted_at && a.date === date && crew.includes(a.employee_id) && a.kind === 'Present' && !!a.clock_in);
+  // a shift that runs past midnight still counts for the next day while it lasts
+  const att = (db.attendance ?? []).filter((a) => !a.deleted_at && crew.includes(a.employee_id) && a.kind === 'Present' && !!a.clock_in && (a.date === date || (a.date < date && (a.clock_out ? a.clock_out.slice(0, 10) >= date : date === addDays(a.date, 1) && date <= now))));
   const clockedIn = att.length, open = att.filter((a) => !a.clock_out).length, clockedOut = clockedIn - open;
   const base = { n, of: dates.length, date, first: n === 1, last: n === dates.length, crew: crew.length, clockedIn, open, clockedOut };
   if (['Cancelled', 'Rescheduled'].includes(job.status)) return { ...base, kind: 'off', label: job.status };

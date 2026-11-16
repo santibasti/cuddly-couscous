@@ -413,17 +413,17 @@ export function jobCost(db: DB, j: Job): JobCost {
   const att = db.attendance.filter((a) => a.job_id === j.id && a.approval !== 'Rejected' && !a.deleted_at && a.clock_in && a.clock_out);
   let labor = 0, laborEstimated = false;
   if (att.length) {
-    const perJobIds = new Set<string>();   // paid per job order: one job rate each, not per day
+    const perJobDays = new Map<string, Set<string>>();   // paid per job order: the job rate for each day worked on it
     labor = sum(att, (a) => {
       const e = db.employees.find((x) => x.id === a.employee_id);
-      if (e?.pay_basis === 'per_job') { perJobIds.add(e.id); return 0; }
+      if (e?.pay_basis === 'per_job') { perJobDays.set(e.id, (perJobDays.get(e.id) ?? new Set()).add(a.date)); return 0; }
       return e ? dailyEquivalent(e, s) * Math.min(1, a.worked_hours / s.std_hours_per_day) + (a.ot_min / 60) * hourlyRate(e, s) * s.multipliers.overtime : 0;
     });
-    labor += sum([...perJobIds], (id) => db.employees.find((x) => x.id === id)?.job_rate ?? 0);
+    labor += sum([...perJobDays], ([id, ds]) => (db.employees.find((x) => x.id === id)?.job_rate ?? 0) * ds.size);
   } else {
     laborEstimated = true;
     const crew = new Set([...j.crew_ids, ...(j.leader_id ? [j.leader_id] : [])]);
-    labor = sum([...crew], (id) => { const e = db.employees.find((x) => x.id === id); return e ? (e.pay_basis === 'per_job' ? e.job_rate ?? 0 : dailyEquivalent(e, s) * jobDays(j)) : 0; });
+    labor = sum([...crew], (id) => { const e = db.employees.find((x) => x.id === id); return e ? (e.pay_basis === 'per_job' ? (e.job_rate ?? 0) * jobDays(j) : dailyEquivalent(e, s) * jobDays(j)) : 0; });
   }
   { const jb = jobBonus(db, j); if (jb.final) labor += jb.total; }   // the crew's job bonuses are a real labor cost of the job
   const tx = activeStock(db).filter((t) => t.job_id === j.id);

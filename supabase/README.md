@@ -233,3 +233,6 @@ Beyond the panel bonus, Outside Metro Manila (₱250) and Commercial, the Owner 
 
 ## Multi-day jobs (migration 0118)
 A job over several days is followed day by day: the calendar chip, the Happening Today board and a "Day by day" card on the job show each day's own state (scheduled, working, day done, no clock-in) from that day's attendance, not the job-wide status. The Attendance page lists the job every day it runs, and the "missing clock-in" alert checks every day. The Site Check-In (once, on the first day) now also approves the crew's attendance on the following days of the same job. Deploy: `supabase.cmd db push` (answer Y).
+
+## Per-day pay on multi-day jobs
+Staff paid **per job order** earn their job rate for each day they worked on a multi-day job (a day = an approved, clocked-in attendance dated that day; a shift past midnight is still one day). Each day is paid in the pay week it falls in; the weekly payroll table shows each day's pay, and "My earnings this week" adds the rate on each day worked. Job costing uses the same rule. No database change.

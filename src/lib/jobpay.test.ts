@@ -140,6 +140,24 @@ describe('pay per job order', () => {
     expect(nightShiftHint({ start_at: '2026-03-03T22:00', end_at: '2026-03-04T05:00' })).toBeTruthy(); expect(nightShiftHint({ start_at: '2026-03-03T09:00', end_at: '2026-03-04T03:00' })).toBeTruthy();
     expect(nightShiftHint({ start_at: '2026-03-03T08:00', end_at: '2026-03-03T17:00' })).toBeUndefined(); expect(nightShiftHint({ start_at: '2026-03-03T08:00', end_at: '2026-03-05T17:00' })).toBeUndefined();
   });
+  it('pays the job rate for each day worked on a multi-day job, in the pay week each day falls in', () => {
+    const w = world(); (w.job as { end_at: string }).end_at = '2026-03-09T17:00';                 // Tue 03-03 to Mon 03-09: 7 days, crossing the Saturday payday
+    const emp = { ...w.a, pay_basis: 'per_job' as const, job_rate: 800, rest_day: 0 };
+    for (const d of ['2026-03-04', '2026-03-05', '2026-03-08', '2026-03-09']) w.db.attendance.push(w.att(w.a.id, d, { job_id: 'jx' }) as never);   // worked 03-03, 04, 05, 08, 09 (not 06, 07)
+    const rate = (from: string, to: string) => employeeJobPay(w.db, emp as never, from, to).reduce((t, r) => t + r.rate, 0);
+    expect(rate('2026-03-01', '2026-03-07')).toBe(2400);                                      // Tue, Wed, Thu
+    expect(rate('2026-03-08', '2026-03-14')).toBe(1600);                                      // Sun, Mon: the job started last week but these days are paid in this one
+    const next = employeeJobPay(w.db, emp as never, '2026-03-08', '2026-03-14'); expect(next).toHaveLength(1); expect(next[0].days).toEqual(['2026-03-08', '2026-03-09']);
+    const grid = weeklyGrid(w.db, { start: '2026-03-01', end: '2026-03-07' }, [{ employee_id: w.a.id, gross: 2400 + 420, job_pay: employeeJobPay(w.db, emp as never, '2026-03-01', '2026-03-07') } as never]).rows[0];
+    expect([grid.days['2026-03-03'].base, grid.days['2026-03-04'].base, grid.days['2026-03-05'].base, grid.days['2026-03-06'].base]).toEqual([800, 800, 800, 0]);   // each day shows its own pay
+    const l = computePayrollLine({ emp, period: w.period, attendance: w.db.attendance, holidays: [], adjustments: [], settings: w.db.settings, asOf: '2026-03-07', jobPay: employeeJobPay(w.db, emp as never, '2026-03-01', '2026-03-07') }).line;
+    expect(l.regular_pay).toBe(2400);
+  });
+  it('a shift that runs past midnight is still one day of pay', () => {
+    const w = world(); (w.job as { start_at: string; end_at: string }).start_at = '2026-03-03T21:00'; (w.job as { end_at: string }).end_at = '2026-03-04T03:00';
+    const emp = { ...w.a, pay_basis: 'per_job' as const, job_rate: 800 };
+    expect(employeeJobPay(w.db, emp as never, '2026-03-01', '2026-03-07').reduce((t, r) => t + r.rate, 0)).toBe(800);
+  });
   it('pays two job orders at the rate each', () => {
     const { db, a, period, att } = world(); const emp = { ...a, pay_basis: 'per_job' as const, job_rate: 800, rest_day: 0 };
     db.jobs.push({ ...clone(db.jobs.find((j) => j.id === 'jx')!), id: 'jy', number: 'JOB-Y', start_at: '2026-03-05T08:00', end_at: '2026-03-05T17:00' } as never);

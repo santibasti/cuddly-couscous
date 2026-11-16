@@ -2,7 +2,8 @@
 // The bonus of a job shows as an estimate until the client signs the handover; work after Saturday's cutoff counts in the next week.
 import { eachDay, money, nowLocal, round2, sum } from './util';
 import { payDateOf, weekOf } from './payrollweek';
-import { driverDays, jobBonus, jobBonusDate, jobPayDate, jobPaySettings, jobsAttended } from './jobpay';
+import { jobDates } from './jobdays';
+import { driverDays, jobBonus, jobBonusDate, jobPayDate, jobPayDays, jobPaySettings, jobsAttended } from './jobpay';
 import type { DB, Employee } from './types';
 
 export interface EarnDay { date: string; rate: number; bonus: number; total: number; /** the bonus of this day is not final yet */ estimate: boolean; /** the day was worked and finished but the attendance is not approved yet, so no pay shows for it */ pending?: boolean }
@@ -18,11 +19,12 @@ export function crewEarnings(db: DB, emp: Employee, now: string = nowLocal()): C
   const days: EarnDay[] = eachDay(week.start, week.end).map((date) => ({ date, rate: 0, bonus: 0, total: 0, estimate: false }));
   const day = (d: string) => days.find((x) => x.date === d); const notes = new Set<string>();
   const inWeek = (d?: string) => !!d && d >= week.start && d <= week.end;
+  // pay per job order: the job rate for each day worked (a job over three days pays three times)
+  if (emp.pay_basis === 'per_job') for (const dates of jobPayDays(db, emp.id, week.start, week.end, now.slice(0, 10)).values()) for (const d of dates) day(d)!.rate += emp.job_rate ?? 0;
   for (const j of jobsAttended(db, emp.id, week.start, week.end, false, now.slice(0, 10))) {
     const b = jobBonus(db, j); const rd = jobPayDate(db, j), bd = jobBonusDate(db, j, b);
     const each = b.each + (b.manlift_ids.includes(emp.id) ? b.manlift_each : 0);   // the manlift bonus is only for the crew who may use the manlift
     if (inWeek(rd)) {
-      if (emp.pay_basis === 'per_job') day(rd)!.rate += emp.job_rate ?? 0;
       if (rd !== j.start_at.slice(0, 10)) notes.add(`${j.number} started after Saturday ${cfg.payday_cutoff ?? '21:00'}, so it counts in this week.`);
       if (b.final && inWeek(bd)) day(bd!)!.bonus += each;
       else if (!b.final && each > 0) { day(rd)!.bonus += each; day(rd)!.estimate = true; notes.add(`${j.number}: the bonus is an estimate until the client signs the handover.`); }
@@ -37,9 +39,12 @@ export function crewEarnings(db: DB, emp: Employee, now: string = nowLocal()): C
   // worked and finished days whose attendance still waits for approval: show "waiting for approval" instead of nothing
   const markPending = (date: string | undefined) => { const d = date && inWeek(date) ? day(date) : undefined; if (d && !d.rate && !d.bonus) d.pending = true; };
   if (emp.pay_basis === 'daily') for (const a of db.attendance) { if (a.employee_id === emp.id && !a.deleted_at && a.approval === 'Pending' && a.kind === 'Present' && a.clock_in && a.clock_out) markPending(a.date); }
-  else if (emp.pay_basis === 'per_job') {
-    const ok = new Set(jobsAttended(db, emp.id, week.start, week.end, false, now.slice(0, 10)).map((j) => j.id));
-    for (const j of jobsAttended(db, emp.id, week.start, week.end, true, now.slice(0, 10))) if (!ok.has(j.id)) markPending(jobPayDate(db, j));
+  else if (emp.pay_basis === 'per_job') {   // each day of a job order they are assigned to whose attendance is finished but not approved yet
+    for (const j of db.jobs ?? []) {
+      if (j.deleted_at || ['Cancelled', 'Rescheduled', 'Pending'].includes(j.status) || ![...(j.leader_id ? [j.leader_id] : []), ...(j.crew_ids ?? [])].includes(emp.id)) continue;
+      const jd = jobDates(j);
+      for (const a of db.attendance) if (a.employee_id === emp.id && !a.deleted_at && a.approval === 'Pending' && a.kind === 'Present' && a.clock_in && a.clock_out && jd.includes(a.date)) markPending(a.date);
+    }
   }
   const waiting = days.filter((d) => d.pending).length; if (waiting) notes.add(`${waiting} day${waiting === 1 ? ' is' : 's are'} waiting for approval. ${waiting === 1 ? 'It' : 'They'} will be added once approved.`);
   for (const d of days) { d.rate = round2(d.rate); d.bonus = round2(d.bonus); d.total = round2(d.rate + d.bonus); }

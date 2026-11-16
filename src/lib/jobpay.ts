@@ -4,6 +4,7 @@
 // screen and the employee record all show the same numbers.
 import { packagePanels, panelBreakdown } from './business';
 import { addDays, today } from './util';
+import { jobDates } from './jobdays';
 import { PAYDAY_CUTOFF, payDateOf } from './payrollweek';
 import type { DB, Employee, Job, JobPayRow, Settings } from './types';
 
@@ -133,23 +134,51 @@ export function jobsAttended(db: DB, empId: string, start: string, end: string, 
   }).sort((a, b) => a.start_at.localeCompare(b.start_at));
 }
 
+/**
+ * Pay per job order is paid for each DAY a person worked the job: a job over three days pays the job rate three times (one per day with approved, clocked-in attendance that day).
+ * Returns job id → the pay dates in [start, end] that earn the rate. The first day follows the Saturday cutoff rule of the job's pay day; later days count on their own date.
+ */
+export function jobPayDays(db: DB, empId: string, start: string, end: string, asOf: string = today()): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const att = db.attendance.filter((a) => a.employee_id === empId && !a.deleted_at && a.approval === 'Approved' && !!a.clock_in && !(a.date === asOf && !a.clock_out));
+  if (!att.length) return out;
+  const near = (d: string) => d >= addDays(start, -45) && d <= addDays(end, 2);
+  for (const j of db.jobs ?? []) {
+    if (j.deleted_at || ['Cancelled', 'Rescheduled', 'Pending'].includes(j.status) || !jobCrewIds(j).includes(empId) || !near(j.start_at.slice(0, 10))) continue;
+    const wf = (db.workflows ?? []).find((w) => w.job_id === j.id && !w.deleted_at);
+    if (wf?.arr_crew_absent?.some((a) => a.id === empId)) continue;
+    const pays: string[] = [];
+    for (const [i, d] of jobDates(j).entries()) {
+      // a day worked is an attendance record dated that day (a shift that runs past midnight is still one day)
+      const worked = att.some((a) => a.date === d && (!a.job_id || a.job_id === j.id || !!wf?.arr_crew_present?.includes(empId)));
+      const pd = i === 0 ? jobPayDate(db, j) : d;
+      if (worked && pd >= start && pd <= end) pays.push(pd);
+    }
+    if (pays.length) out.set(j.id, pays);
+  }
+  return out;
+}
+
 /** Job pay and bonuses for one employee over a date range: one row per job order paid in the range (the rate on its pay day, the bonus once the client has signed the handover). */
 export function employeeJobPay(db: DB, emp: Employee, start: string, end: string, asOf?: string): JobPayRow[] {
-  const days = driverDays(db, emp.id, start, end, asOf); const amount = Math.max(0, emp.driver_incentive ?? 0);
-  const driven = new Map<string, string[]>(); for (const [d, id] of days) driven.set(id, [...(driven.get(id) ?? []), d]);   // job id → days driven in this range
+  const dd = driverDays(db, emp.id, start, end, asOf); const amount = Math.max(0, emp.driver_incentive ?? 0);
+  const driven = new Map<string, string[]>(); for (const [d, id] of dd) driven.set(id, [...(driven.get(id) ?? []), d]);   // job id → days driven in this range
+  const perJob = emp.pay_basis === 'per_job'; const rateOf = emp.job_rate ?? 0;
+  const worked = perJob ? jobPayDays(db, emp.id, start, end, asOf) : new Map<string, string[]>();                          // job id → pay dates (one rate each)
+  const r2 = (n: number) => Math.round(n * 100) / 100;
   const rows: JobPayRow[] = jobsAttended(db, emp.id, start, end, false, asOf).map((j) => {
     const b = jobBonus(db, j); const rd = jobPayDate(db, j), bd = jobBonusDate(db, j, b);
     const inRate = rd >= start && rd <= end, inBonus = !!bd && bd >= start && bd <= end;
-    const rate = inRate && emp.pay_basis === 'per_job' ? emp.job_rate ?? 0 : 0;
-    const row = { panel_bonus: inBonus ? b.panel_each : 0, outside_bonus: inBonus ? b.outside_each : 0, commercial_bonus: inBonus ? b.commercial_each : 0, driver_bonus: Math.round((driven.get(j.id)?.length ?? 0) * amount * 100) / 100,
+    const days = worked.get(j.id); const rate = r2((days?.length ?? 0) * rateOf);
+    const row = { panel_bonus: inBonus ? b.panel_each : 0, outside_bonus: inBonus ? b.outside_each : 0, commercial_bonus: inBonus ? b.commercial_each : 0, driver_bonus: r2((driven.get(j.id)?.length ?? 0) * amount),
       second_site_bonus: inBonus ? b.second_site_each : 0, night_bonus: inBonus ? b.night_each : 0, manlift_bonus: inBonus && b.manlift_ids.includes(emp.id) ? b.manlift_each : 0 };
-    driven.delete(j.id);
-    return { job_id: j.id, number: j.number, date: inRate ? rd : bd!, client: (db.clients ?? []).find((c) => c.id === j.client_id)?.name, rate, ...row, total: Math.round((rate + jobRowBonus(row)) * 100) / 100, final: b.final };
+    driven.delete(j.id); worked.delete(j.id);
+    return { job_id: j.id, number: j.number, date: inRate ? rd : bd ?? [...(days ?? [rd])].sort()[0], client: (db.clients ?? []).find((c) => c.id === j.client_id)?.name, rate, ...(days ? { days } : {}), ...row, total: r2(rate + jobRowBonus(row)), final: b.final };
   });
-  // days driven on a job whose rate day or bonus day falls in another pay period still count in the period they were driven
-  for (const [id, ds] of driven) {
-    const j = (db.jobs ?? []).find((x) => x.id === id)!; const bonus = Math.round(ds.length * amount * 100) / 100;
-    rows.push({ job_id: id, number: j.number, date: [...ds].sort()[0], client: (db.clients ?? []).find((c) => c.id === j.client_id)?.name, rate: 0, panel_bonus: 0, outside_bonus: 0, commercial_bonus: 0, driver_bonus: bonus, total: bonus, final: true });
+  // days worked or driven on a job whose rate day or bonus day falls in another pay period still count in the period they were worked
+  for (const id of new Set([...worked.keys(), ...driven.keys()])) {
+    const j = (db.jobs ?? []).find((x) => x.id === id)!; const days = worked.get(id); const rate = r2((days?.length ?? 0) * rateOf); const drv = r2((driven.get(id)?.length ?? 0) * amount);
+    rows.push({ job_id: id, number: j.number, date: [...(days ?? driven.get(id) ?? [])].sort()[0], client: (db.clients ?? []).find((c) => c.id === j.client_id)?.name, rate, ...(days ? { days } : {}), panel_bonus: 0, outside_bonus: 0, commercial_bonus: 0, driver_bonus: drv, second_site_bonus: 0, night_bonus: 0, manlift_bonus: 0, total: r2(rate + drv), final: jobBonus(db, j).final });
   }
   return rows.sort((a, b) => a.date.localeCompare(b.date));
 }

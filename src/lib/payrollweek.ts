@@ -20,7 +20,14 @@ export function weeklyGrid(db: DB, per: Pick<PayrollPeriod, 'start' | 'end'>, li
   const rows = lines.map((l) => {
     const emp = db.employees.find((e) => e.id === l.employee_id)!;
     const cells: Record<string, WeekCell> = Object.fromEntries(days.map((d) => [d, { base: 0, bonus: 0, jobs: [] as string[] }]));
-    for (const r of l.job_pay ?? []) { const c = cells[r.date]; if (!c) continue; c.base = round2(c.base + r.rate); c.bonus = round2(c.bonus + jobRowBonus(r)); c.jobs.push(r.number); }
+    for (const r of l.job_pay ?? []) {
+      const c = cells[r.date]; const ds = (r.days ?? []).filter((d) => cells[d]);
+      if (ds.length > 1) {   // a job over several days: the rate is paid for each day worked
+        const each = round2(r.rate / ds.length); ds.forEach((d, i) => { cells[d].base = round2(cells[d].base + (i === 0 ? round2(r.rate - each * (ds.length - 1)) : each)); cells[d].jobs.push(r.number); });
+        if (c) c.bonus = round2(c.bonus + jobRowBonus(r)); continue;
+      }
+      if (!c) continue; c.base = round2(c.base + r.rate); c.bonus = round2(c.bonus + jobRowBonus(r)); c.jobs.push(r.number);
+    }
     if (emp?.pay_basis === 'daily') {
       for (const a of db.attendance) {
         if (a.employee_id !== emp.id || a.deleted_at || a.approval !== 'Approved' || !a.clock_in || a.kind === 'Leave' || (a.date === asOf && !a.clock_out)) continue;
