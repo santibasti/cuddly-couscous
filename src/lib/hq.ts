@@ -86,15 +86,16 @@ export const inCafe = (key: string, now: number) => { const period = 40_000 + (h
 export function deskPos(key: string): { x: number; y: number } {
   const a = agentByKey(key); if (!a) return { x: 50, y: 50 };
   const d = deptByKey(a.dept)!; const mates = AGENTS.filter((x) => x.dept === a.dept); const i = mates.findIndex((x) => x.key === key);
-  if (a.dept === 'hub') return { x: d.x + d.w / 2, y: d.y + d.h * 0.7 };
+  if (a.dept === 'hub') return { x: d.x + d.w / 2, y: d.y + d.h * 0.93 };
+  if (a.dept === 'board') { const seat = [[0.24, 0.72], [0.76, 0.72], [0.32, 0.97], [0.68, 0.97]][i % 4]; return { x: d.x + d.w * seat[0], y: d.y + d.h * seat[1] }; }   // around the oval table
   const rows = Math.ceil(mates.length / 2), col = i % 2, row = Math.floor(i / 2);
-  return { x: d.x + d.w * (mates.length === 1 ? 0.5 : 0.28 + 0.44 * col), y: d.y + d.h * (rows === 1 ? 0.76 : 0.57 + 0.37 * row) };
+  return { x: d.x + d.w * (mates.length === 1 ? 0.5 : 0.28 + 0.44 * col), y: d.y + d.h * (rows === 1 ? 0.8 : 0.67 + 0.29 * row) };
 }
 export function cafePos(key: string): { x: number; y: number } {
   // every agent has its own place around the café table, so nobody stands on anybody else
   const c = deptByKey('cafe')!; const list = AGENTS.filter((a) => a.key !== 'jarvis'); const i = Math.max(0, list.findIndex((a) => a.key === key));
   const inner = i < 9; const n = inner ? 9 : list.length - 9; const k = inner ? i : i - 9; const ang = (k / n) * Math.PI * 2 + (inner ? 0 : 0.3);
-  return { x: c.x + c.w / 2 + Math.cos(ang) * c.w * (inner ? 0.17 : 0.37), y: c.y + c.h * 0.7 + Math.sin(ang) * c.h * (inner ? 0.12 : 0.2) };
+  return { x: c.x + c.w / 2 + Math.cos(ang) * c.w * (inner ? 0.17 : 0.37), y: c.y + c.h * 0.72 + Math.sin(ang) * c.h * (inner ? 0.12 : 0.2) };
 }
 export function agentPos(key: string, view: AgentView, now: number): { x: number; y: number } {
   const desk = deskPos(key);
@@ -123,4 +124,19 @@ const DEMO: { agent: string; kind: EventKind; title: string; to?: string; ref?: 
 export function demoStep(n: number, now: number): HqEvent[] {
   const script = DEMO[n % DEMO.length];
   return script.map((e, i) => ({ id: `demo-${n}-${i}`, at: new Date(now + i * 2500).toISOString(), agent: e.agent, dept: agentByKey(e.agent)?.dept ?? 'hub', kind: e.kind, title: e.title, ref: e.ref ?? null, to_agent: e.to ?? null }));
+}
+
+/** The numbers on a room's wall screen: REAL figures from the app's own records (null = no real data for this room yet, the screen says so). */
+export interface Kpi { label: string; value: string }
+export function roomKpis(db: { jobs: { created_at: string; start_at: string; deleted_at?: string | null }[]; quotations: { status: string; deleted_at?: string | null }[]; inquiries: { created_at: string; deleted_at?: string | null }[]; employees: { status: string; deleted_at?: string | null }[]; attendance: { date: string; kind: string; clock_in?: string; deleted_at?: string | null }[] }, events: HqEvent[], now: number): Partial<Record<DeptKey, Kpi[]>> {
+  const day = new Date(now + 8 * 3_600_000).toISOString().slice(0, 10); const month = day.slice(0, 7); const since = (ms: number) => new Date(now - ms).toISOString();
+  const live = <T extends { deleted_at?: string | null }>(l: T[]) => l.filter((x) => !x.deleted_at);
+  const todayEv = events.filter((e) => e.at.slice(0, 10) === new Date(now).toISOString().slice(0, 10) && Date.parse(e.at) <= now);
+  return {
+    desk: [{ label: 'Inquiries · 24 h', value: String(live(db.inquiries).filter((i) => i.created_at >= since(86_400_000)).length) }, { label: 'This week', value: String(live(db.inquiries).filter((i) => i.created_at >= since(7 * 86_400_000)).length) }],
+    booking: [{ label: 'Bookings · month', value: String(live(db.jobs).filter((j) => j.created_at.slice(0, 7) === month).length) }, { label: 'Quotes out', value: String(live(db.quotations).filter((q) => q.status === 'Sent').length) }, { label: 'Jobs today', value: String(live(db.jobs).filter((j) => j.start_at.slice(0, 10) === day).length) }],
+    hr: [{ label: 'Active staff', value: String(live(db.employees).filter((e) => e.status !== 'inactive').length) }, { label: 'Present today', value: String(live(db.attendance).filter((a) => a.date === day && a.kind === 'Present' && !!a.clock_in).length) }],
+    creative: [{ label: 'Post events today', value: String(todayEv.filter((e) => e.dept === 'creative').length) }, { label: 'Published today', value: String(todayEv.filter((e) => e.dept === 'creative' && e.kind === 'done').length) }],
+    hub: [{ label: 'Events today', value: String(todayEv.length) }, { label: 'Jarvis actions', value: String(todayEv.filter((e) => e.agent === 'jarvis').length) }],
+  };
 }

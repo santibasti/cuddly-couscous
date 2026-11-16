@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { CLOUD, supabase } from '@/lib/cloud';
 import { PageHead } from '@/components/ui';
 import { HqOffice } from '@/components/HqOffice';
-import { AGENTS, DEPTS, STATE_LABEL, agentByKey, agentState, deptByKey, demoStep, type HqEvent } from '@/lib/hq';
+import { useAuth } from '@/lib/store';
+import { AGENTS, DEPTS, STATE_LABEL, agentByKey, agentState, deptByKey, demoStep, roomKpis, type HqEvent } from '@/lib/hq';
 import { ago } from '@/lib/jarvisview';
 
 type Tab = 'office' | 'agents' | 'activity';
@@ -12,6 +13,7 @@ const KIND_ICON: Record<string, string> = { start: '▶', done: '✓', fail: '�
 const HOUR = 3_600_000;
 
 export default function Headquarters() {
+  const { db } = useAuth();
   const [live, setLive] = useState<HqEvent[]>([]); const [loaded, setLoaded] = useState(!CLOUD); const [err, setErr] = useState('');
   const [demo, setDemo] = useState(!CLOUD); const [demoEvents, setDemoEvents] = useState<HqEvent[]>([]);
   const [now, setNow] = useState(Date.now()); const [tab, setTab] = useState<Tab>('office'); const [sel, setSel] = useState<string | null>(null); const [dept, setDept] = useState<string>('');
@@ -36,6 +38,7 @@ export default function Headquarters() {
 
   const events = useMemo(() => (demo ? demoEvents : live).filter((e) => Date.parse(e.at) <= now + 100), [demo, demoEvents, live, now]);
   const views = useMemo(() => Object.fromEntries(AGENTS.map((a) => [a.key, agentState(a.key, events, now)])), [events, now]);
+  const kpis = useMemo(() => roomKpis(db as never, events, now), [db, events, Math.floor(now / 5000)]); // eslint-disable-line react-hooks/exhaustive-deps
   const today = new Date(now).toISOString().slice(0, 10);
   const stats = {
     liveAgents: AGENTS.filter((a) => a.live).length, total: AGENTS.length,
@@ -64,7 +67,7 @@ export default function Headquarters() {
 
       {tab === 'office' && (
         <div className="hq-grid">
-          <HqOffice events={events} now={now} selected={sel} onPick={(k) => setSel(sel === k ? null : k)} still={still} onRoom={(d) => { if (d !== 'cafe') setDept(dept === d ? '' : d); }} />
+          <HqOffice kpis={kpis} events={events} now={now} selected={sel} onPick={(k) => setSel(sel === k ? null : k)} still={still} onRoom={(d) => { if (d !== 'cafe') setDept(dept === d ? '' : d); }} />
           <aside className="hq-side">
             {who && whoView ? (
               <div className="card hq-card">
@@ -108,10 +111,10 @@ const PAGE_CSS = `
 .hq-mode{font-weight:700;font-size:.8em;letter-spacing:.06em;padding:4px 10px;border-radius:999px}.hq-mode.live{background:rgba(40,190,110,.16);color:#1d8a52}.hq-mode.demo{background:rgba(240,170,30,.2);color:#9a6a00}
 .hq-tabs{margin-left:auto;display:flex;gap:4px}.hq-tabs button{border:1px solid var(--line,#cfd8e6);background:transparent;border-radius:8px;padding:5px 10px;cursor:pointer;color:inherit}.hq-tabs button.on{background:var(--navy,#1b3a73);color:#fff;border-color:transparent}
 .hq-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}.hq-stats div{background:rgba(120,150,220,.12);border:1px solid rgba(120,150,220,.28);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;color:inherit}.hq-stats b{font-size:1.4em}.hq-stats span{font-size:.78em;opacity:.7}.hq-stats .warn b{color:#c98a00}.hq-stats .bad b{color:#c0392b}
-.hq-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:12px;align-items:start}
-.hq-side{display:grid;gap:10px}.hq-card{padding:12px}
+.hq-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-items:start}
+.hq-side{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}.hq-card{padding:12px}
 .hq-feed{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}.hq-feed li{display:flex;gap:8px;font-size:.88em;align-items:flex-start}.hq-feed li>span{width:16px;text-align:center;opacity:.8}.hq-feed small{display:block;opacity:.6;font-size:.82em}
 .hq-feed .k-done{color:#1d8a52}.hq-feed .k-fail{color:#c0392b}.hq-feed .k-approval{color:#c98a00}.hq-feed .k-message{color:#2f6df6}.hq-feed.wide li{font-size:.95em}
 .hq-tag{font-size:.78em;padding:2px 8px;border-radius:999px;background:rgba(150,160,180,.2)}.hq-tag.on{background:rgba(40,190,110,.16);color:#1d8a52}
-@media (max-width:1000px){.hq-grid{grid-template-columns:1fr}.hq-stats{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:1000px){.hq-side{grid-template-columns:1fr}.hq-stats{grid-template-columns:repeat(3,1fr)}}
 `;
