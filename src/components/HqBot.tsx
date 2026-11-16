@@ -3,13 +3,13 @@
 import type { AgentDef, AgentState } from '@/lib/hq';
 import { STATE_LABEL, hash } from '@/lib/hq';
 
-export type Pose = 'idle' | 'typing' | 'review' | 'notify' | 'handoff' | 'waiting' | 'cheer' | 'blocked' | 'rest';
+export type Pose = 'idle' | 'typing' | 'review' | 'notify' | 'handoff' | 'waiting' | 'cheer' | 'blocked' | 'rest' | 'social';
 /** The single place where an operational state becomes a pose. A planned (not connected) agent can only rest. */
 export function poseOf(state: AgentState, planned: boolean, key: string, dept: string): Pose {
   if (planned) return 'rest';
   switch (state) {
     case 'received': return 'notify';
-    case 'working': return dept === 'booking' && hash(key) % 2 === 0 ? 'review' : 'typing';
+    case 'working': return dept === 'booking' ? (hash(key) % 2 === 0 ? 'review' : 'typing') : dept === 'creative' || dept === 'ads' || dept === 'board' ? 'review' : 'typing';
     case 'coordinating': return 'handoff';
     case 'awaiting': return 'waiting';
     case 'done': return 'cheer';
@@ -18,13 +18,17 @@ export function poseOf(state: AgentState, planned: boolean, key: string, dept: s
   }
 }
 
-export type ScreenKind = 'chat' | 'calendar' | 'core';
+export type ScreenKind = 'chat' | 'calendar' | 'core' | 'mail' | 'photo' | 'chart' | 'list';
 function Screen({ kind, on }: { kind: ScreenKind; on: boolean }) {
   return (
     <g className={`scr ${on ? 'on' : ''}`}>
       <rect x="-23" y="-17" width="46" height="34" rx="3" fill="#06122e" />
       {kind === 'chat' && <><rect className="m m1" x="-19" y="-13" width="22" height="6" rx="3" fill="#3fa9ff" /><rect className="m m2" x="-3" y="-4" width="21" height="6" rx="3" fill="#7be3ff" /><rect className="m m3" x="-19" y="5" width="16" height="6" rx="3" fill="#3fa9ff" /><g className="dots"><circle cx="9" cy="8" r="1.3" /><circle cx="13" cy="8" r="1.3" /><circle cx="17" cy="8" r="1.3" /></g></>}
       {kind === 'calendar' && <>{[0, 1, 2].flatMap((r) => [0, 1, 2, 3].map((c) => <rect key={`${r}${c}`} className={r === 1 && c === 2 ? 'cell hot' : 'cell'} x={-19 + c * 10} y={-12 + r * 9.5} width="8" height="7.5" rx="1.6" />))}</>}
+      {kind === 'mail' && <>{[0, 1, 2].map((i) => <g key={i}><rect className="m" x="-19" y={-13 + i * 10} width="6" height="6" rx="1.5" fill="#3fa9ff" /><rect className={`m m${i + 1}`} x="-10" y={-12 + i * 10} width={26 - i * 4} height="4" rx="2" fill="#7be3ff" /></g>)}</>}
+      {kind === 'photo' && <><rect x="-19" y="-13" width="18" height="26" rx="2" fill="#2a3f78" /><rect className="m m2" x="1" y="-13" width="18" height="26" rx="2" fill="#7be3ff" /><circle cx="-10" cy="-3" r="4" fill="#4a5f98" /><circle cx="10" cy="-3" r="4" fill="#ffe28a" /></>}
+      {kind === 'chart' && <>{[8, 15, 11, 22, 17].map((h, i) => <rect key={i} className={`m m${(i % 3) + 1}`} x={-18 + i * 8} y={14 - h} width="5.5" height={h} rx="1.2" fill="#7be3ff" />)}</>}
+      {kind === 'list' && <>{[0, 1, 2].map((i) => <g key={i}><rect className={`cell ${i === 1 ? 'hot' : ''}`} x="-19" y={-12 + i * 9.5} width="7" height="7" rx="1.5" /><rect className={`m m${i + 1}`} x="-9" y={-10.5 + i * 9.5} width={24 - i * 5} height="4" rx="2" fill="#3fa9ff" /></g>)}</>}
       {kind === 'core' && <><circle cx="0" cy="0" r="10" fill="none" stroke="#7be3ff" strokeWidth="1.4" /><circle className="spin" cx="0" cy="0" r="6" fill="none" stroke="#ffd86b" strokeWidth="1.2" strokeDasharray="5 4" /></>}
       <rect className="sweep" x="-23" y="-17" width="46" height="4" fill="rgba(180,240,255,.35)" />
       <rect x="-23" y="-17" width="46" height="34" rx="3" fill="none" stroke="#5fd0ff" strokeWidth="1.2" opacity={on ? 1 : 0.45} />
@@ -32,20 +36,20 @@ function Screen({ kind, on }: { kind: ScreenKind; on: boolean }) {
   );
 }
 
-export interface BotProps { a: AgentDef; x: number; y: number; side: 1 | -1; state: AgentState; dept: string; planned: boolean; screen: ScreenKind; selected: boolean; away?: boolean; onPick: () => void }
-export function HqBot({ a, x, y, side, state, dept, planned, screen, selected, away, onPick }: BotProps) {
-  const pose = poseOf(state, planned, a.key, dept); const h = hash(a.key);
+export interface BotProps { scale?: number; desk?: boolean; social?: boolean; bubble?: string | null; a: AgentDef; x: number; y: number; side: 1 | -1; state: AgentState; dept: string; planned: boolean; screen: ScreenKind; selected: boolean; away?: boolean; onPick: () => void }
+export function HqBot({ scale = 0.74, desk = true, social = false, bubble, a, x, y, side, state, dept, planned, screen, selected, away, onPick }: BotProps) {
+  const pose: Pose = social ? 'social' : poseOf(state, planned, a.key, dept); const h = hash(a.key);
   const sty = { ['--d' as string]: `${-(h % 70) / 10}s`, ['--p' as string]: `${4 + (h % 30) / 10}s`, ['--tp' as string]: `${0.24 + (h % 17) / 100}s`, ['--side' as string]: side };
   const label = `${a.name}, ${a.role}: ${planned ? 'planned, not connected yet' : STATE_LABEL[state]}`;
   const on = !planned && (state === 'working' || state === 'received' || state === 'coordinating');
   const badge = planned ? '' : state === 'received' ? '🔔' : state === 'awaiting' ? '⏸' : state === 'done' ? '✔' : state === 'error' || state === 'blocked' ? '!' : '';
   return (
-    <g className={`bot pose-${pose} dept-${dept} ${selected ? 'sel' : ''} ${planned ? 'planned' : ''}`} data-agent={a.key} data-pose={pose} data-side={side} style={sty} transform={`translate(${x} ${y}) scale(.86)`} role="button" tabIndex={0} aria-label={label}
+    <g className={`bot pose-${pose} dept-${dept} ${selected ? 'sel' : ''} ${planned ? 'planned' : ''}`} data-agent={a.key} data-pose={pose} data-side={side} style={sty} transform={`translate(${x} ${y}) scale(${scale})`} role="button" tabIndex={0} aria-label={label}
       onClick={(e) => { e.stopPropagation(); onPick(); }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onPick(); } }}>
       <title>{label}</title>
       <ellipse className="focusring" cx="0" cy="-30" rx="56" ry="66" fill="none" stroke="#ffd86b" strokeWidth="2" strokeDasharray="5 4" />
       <ellipse cx="0" cy="34" rx="64" ry="9" fill="rgba(0,0,0,.35)" />
-      <rect x="-21" y="-64" width="42" height="66" rx="12" fill="#101c46" stroke="#2a4a9a" strokeWidth="1" />
+      {desk && <rect x="-21" y="-64" width="42" height="66" rx="12" fill="#101c46" stroke="#2a4a9a" strokeWidth="1" />}
       <g className="body" style={away ? { display: 'none' } : undefined}>
         <g transform="translate(-20 -44)"><g className="arm armL"><rect x="-4.5" y="0" width="9" height="20" rx="4.5" fill="url(#botg)" /><g transform="translate(0 19)"><g className="fore"><rect x="-4" y="0" width="8" height="18" rx="4" fill="url(#botg)" /><circle cx="0" cy="18" r="4.6" fill="#9fb4de" /></g></g></g></g>
         <g transform="translate(20 -44)"><g className="arm armR"><rect x="-4.5" y="0" width="9" height="20" rx="4.5" fill="url(#botg)" /><g transform="translate(0 19)"><g className="fore"><rect x="-4" y="0" width="8" height="18" rx="4" fill="url(#botg)" /><circle cx="0" cy="18" r="4.6" fill="#9fb4de" /></g></g></g></g>
@@ -62,12 +66,14 @@ export function HqBot({ a, x, y, side, state, dept, planned, screen, selected, a
           <path className="mouth" d="M-3.5 -9.4q3.5 2.3 7 0" fill="none" strokeWidth="1.1" />
         </g></g>
       </g>
+      {bubble && <g className="bub" transform="translate(0 -118)"><rect x="-62" y="-12" width="124" height="22" rx="11" fill="#f4f7ff" /><text y="3" textAnchor="middle" fontSize="9" fontWeight="700" fill="#10204f">{bubble}</text></g>}
       {badge && !away && <g className="badge" transform="translate(30 -92)"><circle r="9" /><text y="3.6" textAnchor="middle" fontSize="10" fontWeight="800">{badge}</text></g>}
-      <rect x="-66" y="0" width="132" height="9" rx="3" fill="url(#desktop)" stroke="#5fd0ff" strokeWidth=".8" />
+      {desk && <><rect x="-66" y="0" width="132" height="9" rx="3" fill="url(#desktop)" stroke="#5fd0ff" strokeWidth=".8" />
       <rect x="-66" y="9" width="132" height="22" rx="3" fill="#0a1740" stroke="#2a4a9a" strokeWidth=".8" opacity=".94" />
       <g className="kb"><rect x="-22" y="1.5" width="44" height="6" rx="2" fill="#12295f" />{[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <rect key={i} className={`key k${i % 4}`} x={-20 + i * 5} y="3" width="3.6" height="3" rx=".8" />)}</g>
-      <g transform={`translate(${side * 50} -22)`}><rect x="-3" y="14" width="6" height="8" fill="#2a4a9a" /><Screen kind={screen} on={on} /></g>
-      <text className="nm" x="0" y="25" textAnchor="middle" fontSize="11" fontWeight="700">{a.name}{planned ? ' · PLANNED' : ''}</text>
+      <g transform={`translate(${side * 50} -22)`}><rect x="-3" y="14" width="6" height="8" fill="#2a4a9a" /><Screen kind={screen} on={on} /></g></>}
+      {social && <g className="cup" transform={`translate(${side * -22} -46)`}><rect x="-5" y="-6" width="10" height="11" rx="2" fill="#f4f7ff" /><path d="M5 -3q5 1 0 6" fill="none" stroke="#f4f7ff" strokeWidth="1.6" /><path className="steam" d="M-2 -9q-3 -4 0 -7" fill="none" stroke="rgba(220,240,255,.7)" strokeWidth="1.2" /></g>}
+      <text className="nm" x="0" y="25" textAnchor="middle" fontSize="11" fontWeight="700">{a.name}{planned && !social ? ' · PLANNED' : ''}</text>
     </g>
   );
 }
@@ -120,6 +126,10 @@ export const BOT_CSS = `
 /* problem */
 .bot.pose-blocked{--eye:#ff6b6b}.bot.pose-blocked .head{animation:shake .48s ease-in-out infinite}.bot.pose-blocked .arm{transform:rotate(36deg)}.bot.pose-blocked .armR{transform:rotate(-36deg)}
 @keyframes shake{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
+/* café: relaxed, a cup in one hand, turning toward the neighbour; a sip now and then */
+.bot.pose-social{--eye:#9fe7ff}.bot.pose-social .head{animation:h-chat calc(var(--p) * 1.6) ease-in-out infinite;animation-delay:var(--d)}.bot.pose-social .armR{transform:rotate(-24deg)}.bot.pose-social .armR .fore{transform:rotate(-96deg);animation:sip 8s ease-in-out infinite;animation-delay:var(--d)}.bot.pose-social .armL{animation:gest 5s ease-in-out infinite;animation-delay:var(--d)}.bot .steam{animation:blink-a 2s infinite}.bot .bub text{font-family:system-ui,sans-serif}
+@keyframes h-chat{0%,100%{transform:rotate(calc(var(--side) * -6deg))}35%{transform:rotate(calc(var(--side) * -10deg)) translateY(.6px)}70%{transform:rotate(calc(var(--side) * 4deg))}}
+@keyframes sip{0%,70%,100%{transform:rotate(-96deg)}80%,88%{transform:rotate(-128deg)}}@keyframes gest{0%,60%,100%{transform:rotate(8deg)}72%{transform:rotate(-40deg)}84%{transform:rotate(-30deg)}}
 /* planned = resting, nothing connected */
 .bot.pose-rest{--eye:#5a6d99}.bot.pose-rest .eyes{animation:none;transform:scaleY(.16)}.bot.pose-rest .head{animation:none;transform:rotate(6deg)}.bot.pose-rest .body{animation:none}
 @media (prefers-reduced-motion:reduce){.bot *{animation:none!important}}
@@ -127,14 +137,14 @@ export const BOT_CSS = `
 `;
 
 /** A standing robot that walks. Seen from the side when it walks along the corridor (real stepping legs), from the front or back when it walks toward or away from the viewer. */
-export function HqWalker({ a, x, y, dir, moving, carrying, give }: { a: AgentDef; x: number; y: number; dir: { x: number; y: number }; moving: boolean; carrying: boolean; give: boolean }) {
+export function HqWalker({ a, x, y, dir, moving, carrying, give, scale = 0.74 }: { scale?: number; a: AgentDef; x: number; y: number; dir: { x: number; y: number }; moving: boolean; carrying: boolean; give: boolean }) {
   const view: 'side' | 'front' | 'back' = Math.abs(dir.x) > 0 ? 'side' : dir.y < 0 ? 'back' : 'front'; const f = dir.x < 0 ? -1 : 1; const h = hash(a.key);
   const card = <g className="wk-card" transform="translate(0 -4)"><rect x="-12" y="-8" width="24" height="16" rx="4" /><path d="M-6 -3l6 4.5l6 -4.5" fill="none" stroke="#06122e" strokeWidth="1.3" /></g>;
   const leg = (cls: string, x0: number) => <g transform={`translate(${x0} -36)`}><g className={`wk-leg ${cls}`}><rect x="-4.5" y="0" width="9" height="19" rx="4.5" fill="#8fa2c8" /><g transform="translate(0 18)"><g className="wk-shin"><rect x="-4" y="0" width="8" height="17" rx="4" fill="#8fa2c8" /><rect x={view === 'side' ? -4 : -6} y="14" width={view === 'side' ? 13 : 12} height="6" rx="3" fill="#586a9a" /></g></g></g></g>;
   const arm = (cls: string, x0: number) => <g transform={`translate(${x0} -78)`}><g className={`wk-arm ${cls}`}><rect x="-4.2" y="0" width="8.4" height="19" rx="4.2" fill="url(#botg)" /><g transform="translate(0 18)"><g className="wk-fore"><rect x="-3.8" y="0" width="7.6" height="16" rx="3.8" fill="url(#botg)" /><circle cy="16" r="4.3" fill="#9fb4de" /></g></g></g></g>;
   const lift = give && !moving;
   return (
-    <g className={`walker v-${view} ${moving ? 'go' : 'stand'} ${lift ? 'give' : ''}`} transform={`translate(${x} ${y}) scale(.86)`} style={{ ['--wd' as string]: `${-(h % 5) / 10}s` }} pointerEvents="none" aria-hidden>
+    <g className={`walker v-${view} ${moving ? 'go' : 'stand'} ${lift ? 'give' : ''}`} transform={`translate(${x} ${y}) scale(${scale})`} style={{ ['--wd' as string]: `${-(h % 5) / 10}s` }} pointerEvents="none" aria-hidden>
       <ellipse cx="0" cy="1" rx="22" ry="5.5" fill="rgba(0,0,0,.38)" />
       <g transform={`scale(${view === 'side' ? f : 1} 1)`}>
         <g className="wk-bob">

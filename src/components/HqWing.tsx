@@ -1,15 +1,20 @@
-// LIVING OFFICE V2, step 1+2: three real rooms (Messenger Desk, JARVIS Atrium, Booking) joined by a visible corridor with automatic sliding doors.
-// Doors, packets and pulses come only from events (see lib/hqwing.ts). Decorative motion (breathing, blinking, looking around, café-style idle) never changes a status.
-import { useEffect, useRef, useState } from 'react';
+// LIVING OFFICE V2: the whole headquarters. Nine rooms in three rows joined by corridors, connectors and automatic sliding doors.
+// Doors, walkers and pulses come only from events (lib/hqwing.ts). The café is decorative: an idle agent may take a break there and walks back the moment a real task arrives.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { AGENTS, STATE_LABEL, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
-import { AISLE, DOOR_Y, FLOOR_Y, HALL_Y, ROOM_BOX, ROOM_NAME, STATION, WING_ROOMS, along, describeFlight, doors, flights, pulses, route, type DoorLight, type Room } from '@/lib/hqwing';
+import { AGENTS, DEPTS, deptByKey, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
+import { BOT_SCALE, CAFE_SEATS, ROOMS, ROW_Y, SPINES, STATION, WORLD, alongFrac, box, cafeBubble, cafeWanted, describeTrip, doors, handoverTrips, hallPath, inTransit, pulses, stepLoc, tripState, type DoorLight, type Loc, type Room, type TripState } from '@/lib/hqwing';
 import { BOT_CSS, HqBot, HqWalker, WALK_CSS, type ScreenKind } from './HqBot';
 
-const SCREEN: Record<Room, ScreenKind> = { desk: 'chat', booking: 'calendar', hub: 'core' };
+const SCREEN: Record<Room, ScreenKind> = { email: 'mail', creative: 'photo', ads: 'chart', desk: 'chat', hub: 'core', booking: 'calendar', hr: 'list', cafe: 'core', board: 'chart' };
+const ART: Record<Room, string> = { email: '✉️', creative: '🎞️', ads: '📊', desk: '💬', hub: '✦', booking: '📅', hr: '✅', cafe: '☕', board: '🏛️' };
 const LIGHT: Record<DoorLight, string> = { idle: '#2f6dff', open: '#7be3ff', amber: '#ffb020', green: '#4dffa0', red: '#ff5d5d' };
-const VB: Record<string, string> = { all: '0 0 1200 620', desk: '0 150 620 320', hub: '290 150 620 320', booking: '580 150 620 320' };
-const VB_M: Record<string, string> = { all: '0 0 1200 620', desk: '0 90 460 520', hub: '370 90 460 520', booking: '740 90 460 520' };
+const clampN = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+function viewBoxFor(focus: string, mobile: boolean): string {
+  if (!ROOMS.includes(focus as Room)) return `0 0 ${WORLD.w} ${WORLD.h}`;
+  const b = box(focus as Room), w = mobile ? 460 : 520, h = mobile ? 520 : (520 * WORLD.h) / WORLD.w * 0.95;
+  return `${clampN(b.cx - w / 2, 0, WORLD.w - w)} ${clampN(b.top + 140 - h / 2, 0, WORLD.h - h)} ${w} ${h}`;
+}
 
 /** A clock that runs smoothly between the (slower) real or demo clock updates. It stops when paused, hidden or when reduced motion is asked for. */
 function useSmooth(now: number, run: boolean) {
@@ -22,42 +27,63 @@ function useSmooth(now: number, run: boolean) {
   }, [run]);
   return t;
 }
-
 function beep(ctx: AudioContext, up: boolean) {
   const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime; o.type = 'sine'; o.frequency.setValueAtTime(up ? 520 : 760, t); o.frequency.exponentialRampToValueAtTime(up ? 760 : 520, t + 0.18);
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26); o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.3);
 }
 
-function Door({ cx, open, light }: { cx: number; open: boolean; light: DoorLight }) {
-  const c = LIGHT[light]; const slide = open ? 42 : 0;
+function Door({ r, open, light }: { r: Room; open: boolean; light: DoorLight }) {
+  const b = box(r), cx = b.cx, y = b.doorY, c = LIGHT[light], slide = open ? 40 : 0, tr = 'transform .75s cubic-bezier(.65,0,.3,1)';
   return (
-    <g className="door" data-open={open} data-light={light}>
-      <rect x={cx - 52} y={DOOR_Y - 22} width="104" height="6" rx="2" fill="#0d1d4d" stroke="#5fd0ff" strokeWidth=".8" />
-      <circle cx={cx} cy={DOOR_Y - 30} r="5.5" fill={c} style={{ filter: `drop-shadow(0 0 ${open ? 9 : 4}px ${c})`, transition: 'fill .4s' }} />
-      <rect x={cx - 50} y={DOOR_Y - 16} width="100" height="34" fill="#02081d" />
-      <g style={{ transform: `translateX(${-slide}px)`, transition: 'transform .75s cubic-bezier(.65,0,.3,1)' }}><rect x={cx - 50} y={DOOR_Y - 16} width="50" height="34" fill="rgba(110,190,255,.28)" stroke="#8fe0ff" strokeWidth="1" /><rect x={cx - 4} y={DOOR_Y - 14} width="3" height="30" fill={c} opacity=".9" /></g>
-      <g style={{ transform: `translateX(${slide}px)`, transition: 'transform .75s cubic-bezier(.65,0,.3,1)' }}><rect x={cx} y={DOOR_Y - 16} width="50" height="34" fill="rgba(110,190,255,.28)" stroke="#8fe0ff" strokeWidth="1" /><rect x={cx + 1} y={DOOR_Y - 14} width="3" height="30" fill={c} opacity=".9" /></g>
-      <polygon points={`${cx - 46},${DOOR_Y + 18} ${cx + 46},${DOOR_Y + 18} ${cx + 92},${HALL_Y + 52} ${cx - 92},${HALL_Y + 52}`} fill="url(#spill)" style={{ opacity: open ? 0.9 : 0.12, transition: 'opacity .6s' }} />
+    <g className="door" data-room={r} data-open={open} data-light={light}>
+      <rect x={cx - 50} y={y - 18} width="100" height="5" rx="2" fill="#0d1d4d" stroke="#5fd0ff" strokeWidth=".8" />
+      <circle cx={cx} cy={y - 25} r="5" fill={c} style={{ filter: `drop-shadow(0 0 ${open ? 9 : 4}px ${c})`, transition: 'fill .4s' }} />
+      <rect x={cx - 48} y={y - 13} width="96" height="30" fill="#02081d" />
+      <g style={{ transform: `translateX(${-slide}px)`, transition: tr }}><rect x={cx - 48} y={y - 13} width="48" height="30" fill="rgba(110,190,255,.28)" stroke="#8fe0ff" strokeWidth="1" /><rect x={cx - 4} y={y - 11} width="3" height="26" fill={c} opacity=".9" /></g>
+      <g style={{ transform: `translateX(${slide}px)`, transition: tr }}><rect x={cx} y={y - 13} width="48" height="30" fill="rgba(110,190,255,.28)" stroke="#8fe0ff" strokeWidth="1" /><rect x={cx + 1} y={y - 11} width="3" height="26" fill={c} opacity=".9" /></g>
+      <polygon points={`${cx - 44},${y + 17} ${cx + 44},${y + 17} ${cx + 84},${y + 62} ${cx - 84},${y + 62}`} fill="url(#spill)" style={{ opacity: open ? 0.9 : 0.1, transition: 'opacity .6s' }} />
     </g>
   );
 }
 
+function Furniture({ r }: { r: Room }) {
+  const b = box(r), cx = b.cx, T = b.top;
+  if (r === 'cafe') return (
+    <g className="furn">
+      <rect x={cx - 168} y={T + 150} width="112" height="26" rx="9" fill="#3a2a6b" stroke="#7a62d8" /><rect x={cx - 168} y={T + 132} width="112" height="26" rx="9" fill="#4b377f" stroke="#7a62d8" />
+      <ellipse cx={cx + 34} cy={T + 196} rx="46" ry="9" fill="#14306f" stroke="#7be3ff" strokeWidth="1.2" /><rect x={cx + 32} y={T + 190} width="4" height="9" fill="#7be3ff" />
+      <rect x={cx + 104} y={T + 104} width="76" height="42" rx="6" fill="#1b2f6a" stroke="#ffc94d" strokeWidth="1.2" /><rect x={cx + 112} y={T + 86} width="26" height="20" rx="3" fill="#9fb4de" /><circle cx={cx + 125} cy={T + 96} r="4" fill="#ff7b54" />
+      {[0, 1, 2].map((i) => <path key={i} className="steam" d={`M${cx + 150 + i * 9} ${T + 100}q-4 -7 0 -13`} fill="none" stroke="rgba(220,240,255,.6)" strokeWidth="1.4" style={{ animationDelay: `${i * 0.5}s` }} />)}
+      <rect x={cx - 52} y={T + 70} width="104" height="20" rx="10" fill="rgba(255,120,200,.14)" stroke="#ff7bd0" /><text x={cx} y={T + 84} textAnchor="middle" fontSize="11" fontWeight="800" fill="#ffb3e6" letterSpacing=".2em">AI CAFÉ</text>
+      <text x={cx - 190 + 0} y={T + 150} fontSize="20">🪴</text>
+    </g>
+  );
+  if (r === 'board') return (
+    <g className="furn">
+      <polygon points={`${cx - 40},${T + 76} ${cx + 40},${T + 76} ${cx + 96},${T + 128} ${cx - 96},${T + 128}`} fill="url(#cone)" /><g className="holo">{[16, 28, 20, 34, 26].map((h, i) => <rect key={i} x={cx - 40 + i * 17} y={T + 126 - h} width="11" height={h} rx="2" fill="#7be3ff" opacity=".85" />)}</g>
+      <ellipse cx={cx} cy={b.deskY + 20} rx="160" ry="26" fill="#102a63" stroke="#7be3ff" strokeWidth="1.6" /><ellipse cx={cx} cy={b.deskY + 17} rx="146" ry="20" fill="none" stroke="#ffc94d" opacity=".6" />
+      {[-90, 0, 90].map((dx, i) => <rect key={i} x={cx + dx - 18} y={b.deskY + 12} width="36" height="14" rx="3" fill="rgba(255,201,77,.22)" stroke="#ffc94d" strokeWidth=".8" />)}
+    </g>
+  );
+  return <g className="furn"><text x={b.x + 8} y={T + 214} fontSize="18" opacity=".8">🪴</text><text x={b.x + b.w - 30} y={T + 214} fontSize="18" opacity=".8">🪴</text></g>;
+}
+
 function RoomShell({ r, live, kpis, demo, count, onOpen }: { r: Room; live: boolean; kpis?: Kpi[]; demo: boolean; count: number; onOpen: () => void }) {
-  const b = ROOM_BOX[r]; const cx = AISLE[r];
+  const b = box(r), name = deptByKey(r)?.name ?? r;
   return (
-    <g className={`room room-${r}`} role="button" tabIndex={0} aria-label={`Open the ${ROOM_NAME[r]} work queue`} onClick={onOpen} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}>
-      <rect x={b.x} y="30" width={b.w} height="422" rx="10" fill="#060f2c" />
-      <rect x={b.x} y="30" width={b.w} height="86" fill="url(#wallg)" />
-      {[0, 1, 2, 3, 4].map((i) => <rect key={i} x={b.x + 14 + i * ((b.w - 28) / 5)} y="38" width={(b.w - 28) / 5 - 6} height="50" rx="3" fill="url(#glassg)" opacity=".55" />)}
-      <path d={`M${b.x + 14} 88 l14 -16 l10 8 l16 -22 l12 20 l20 -12 l14 22 l22 -26 l16 24 l22 -10 l14 14 H${b.x + b.w - 14} V88 Z`} fill="#0a1a4d" opacity=".7" />
-      <rect x={b.x} y="116" width={b.w} height={FLOOR_Y + 8 - 116} fill="url(#floorg)" />
-      {[-4, -3, -2, -1, 0, 1, 2, 3, 4].map((i) => <line key={i} x1={cx + i * 34} y1="116" x2={cx + i * 66} y2={FLOOR_Y + 8} stroke="rgba(120,180,255,.1)" />)}
-      {[0, 1, 2, 3, 4].map((i) => <line key={i} x1={b.x} x2={b.x + b.w} y1={140 + i * i * 14 + i * 20} y2={140 + i * i * 14 + i * 20} stroke="rgba(120,180,255,.08)" />)}
-      <rect x={b.x + b.w / 2 - 130} y="40" width="260" height="22" rx="11" fill="rgba(8,20,62,.85)" stroke="rgba(120,200,255,.5)" />
-      <text x={cx} y="55" textAnchor="middle" fontSize="12.5" fontWeight="800" letterSpacing=".08em" fill="#dff1ff">{ROOM_NAME[r].toUpperCase()}</text>
-      <g transform={`translate(${b.x + b.w - 14} 72)`}><rect x="-76" y="-11" width="76" height="17" rx="8.5" fill={live ? 'rgba(60,220,140,.22)' : 'rgba(150,170,210,.2)'} /><text x="-38" y="1.5" textAnchor="middle" fontSize="9.5" fontWeight="800" fill={live ? '#7ff0b4' : '#9fb3d9'}>{live ? `LIVE${count ? ` · ${count} today` : ''}` : 'PLANNED'}</text></g>
-      {kpis?.slice(0, 2).map((k, i) => <g key={k.label} transform={`translate(${b.x + 22 + i * 125} 78)`}><text fontSize="21" fontWeight="800" fill="#7be3ff">{k.value}</text><text y="12" fontSize="8" fill="#a9c2ee">{k.label}{demo ? ' · sample' : ''}</text></g>)}
-      <rect className="rim" x={b.x} y="30" width={b.w} height="422" rx="10" fill="none" stroke="rgba(110,170,255,.45)" strokeWidth="1.5" />
+    <g className={`room room-${r}`} role="button" tabIndex={0} aria-label={`Open the ${name} work queue`} onClick={onOpen} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}>
+      <rect x={b.x} y={b.top} width={b.w} height="244" rx="10" fill="#060f2c" />
+      <rect x={b.x} y={b.top} width={b.w} height="64" fill="url(#wallg)" />
+      <path d={`M${b.x + 12} ${b.top + 64} l12 -12 l9 6 l14 -16 l10 14 l18 -9 l12 16 l20 -20 l14 18 l20 -8 l12 10 H${b.x + b.w - 12} V${b.top + 64} Z`} fill="#0a1a4d" opacity=".7" />
+      <rect x={b.x} y={b.top + 64} width={b.w} height="148" fill="url(#floorg)" />
+      {[-4, -3, -2, -1, 0, 1, 2, 3, 4].map((i) => <line key={i} x1={b.cx + i * 30} y1={b.top + 64} x2={b.cx + i * 58} y2={b.top + 212} stroke="rgba(120,180,255,.1)" />)}
+      {[0, 1, 2, 3].map((i) => <line key={i} x1={b.x} x2={b.x + b.w} y1={b.top + 84 + i * i * 9 + i * 14} y2={b.top + 84 + i * i * 9 + i * 14} stroke="rgba(120,180,255,.08)" />)}
+      <rect x={b.cx - 120} y={b.top + 7} width="240" height="21" rx="10.5" fill="rgba(8,20,62,.85)" stroke="rgba(120,200,255,.5)" />
+      <text x={b.cx} y={b.top + 21.5} textAnchor="middle" fontSize="11.5" fontWeight="800" letterSpacing=".06em" fill="#dff1ff">{name.toUpperCase()}</text>
+      <text x={b.cx} y={b.top + 56} textAnchor="middle" fontSize="20" opacity={live ? 0.95 : 0.4}>{ART[r]}</text>
+      {r !== 'cafe' && <g transform={`translate(${b.x + b.w - 10} ${b.top + 48})`}><rect x="-84" y="-10" width="84" height="16" rx="8" fill={live ? 'rgba(60,220,140,.22)' : 'rgba(150,170,210,.2)'} /><text x="-42" y="1.5" textAnchor="middle" fontSize="9" fontWeight="800" fill={live ? '#7ff0b4' : '#9fb3d9'}>{live ? `LIVE${count ? ` · ${count} today` : ''}` : 'NOT CONNECTED'}</text></g>}
+      {kpis?.slice(0, 2).map((k, i) => <g key={k.label} transform={`translate(${b.x + 14 + i * 74} ${b.top + 50})`}><text fontSize="17" fontWeight="800" fill="#7be3ff">{k.value}</text><text y="9" fontSize="7" fill="#a9c2ee">{k.label.slice(0, 16)}{demo ? '*' : ''}</text></g>)}
+      <rect className="rim" x={b.x} y={b.top} width={b.w} height="244" rx="10" fill="none" stroke="rgba(110,170,255,.45)" strokeWidth="1.5" />
     </g>
   );
 }
@@ -67,102 +93,114 @@ export interface HqWingProps { demo: boolean; events: HqEvent[]; views: Record<s
 export function HqWing({ demo, events, views, kpis, now, still, hold, focus, selectedAgent, mobile, onPickDept, onPickAgent }: HqWingProps) {
   const reduce = useReducedMotion(); const frozen = still || hold || !!reduce;
   const t = useSmooth(now, !frozen); const [sound, setSound] = useState(false); const ctx = useRef<AudioContext | null>(null);
-  const fl = flights(events, t), dr = doors(events, views, t), pu = pulses(events, t), today = new Date(now).toISOString().slice(0, 10);
-  const vbKey = WING_ROOMS.includes(focus as Room) ? focus : mobile ? 'desk' : 'all'; const vb = (mobile ? VB_M : VB)[vbKey];
+  const [locs, setLocs] = useState<Record<string, Loc>>({});
+  // where each agent is: at the desk or in the café. Re-evaluated four times a second; a change starts a walking trip.
+  const tick = Math.floor(t / 250);
+  useEffect(() => {
+    setLocs((cur) => {
+      let changed = false; const next = { ...cur }; const used = () => Object.values(next).filter((l) => l.at === 'cafe').map((l) => l.seat!);
+      for (const a of AGENTS) { if (!STATION[a.key]) continue; const l = stepLoc(cur[a.key], a.key, cafeWanted(a.key, views[a.key], t), t, used()); if (l !== cur[a.key]) { next[a.key] = l; changed = true; } }
+      return changed ? next : cur;
+    });
+  }, [tick]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const trips: TripState[] = useMemo(() => { // eslint-disable-line react-hooks/exhaustive-deps
+    const hs = handoverTrips(events, t).map((x) => tripState(x, t)); const ls = Object.values(locs).map((l) => (l.trip ? tripState(l.trip, t) : null));
+    return [...hs, ...ls].filter((x): x is TripState => !!x);
+  }, [events, locs, Math.floor(t / 33)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dr = doors(events, views, trips, t), pu = pulses(events, t), today = new Date(now).toISOString().slice(0, 10);
+  const vb = viewBoxFor(focus, mobile);
   const prev = useRef<Record<string, boolean>>({});
-  useEffect(() => { // an optional, quiet chime on every door change. Off until the person turns it on.
-    for (const r of WING_ROOMS) { if (prev.current[r] !== undefined && prev.current[r] !== dr[r].open && sound && ctx.current) beep(ctx.current, dr[r].open); prev.current[r] = dr[r].open; }
-  }); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { for (const r of ROOMS) { if (prev.current[r] !== undefined && prev.current[r] !== dr[r].open && sound && ctx.current) beep(ctx.current, dr[r].open); prev.current[r] = dr[r].open; } }); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleSound = () => { if (!sound) { try { ctx.current = ctx.current ?? new AudioContext(); void ctx.current.resume(); } catch { /* no audio */ } } setSound(!sound); };
-  const waiting = AGENTS.filter((a) => STATION[a.key] && views[a.key]?.state === 'awaiting').length, busy = AGENTS.filter((a) => STATION[a.key] && ['working', 'received', 'coordinating'].includes(views[a.key]?.state)).length;
-  const active = fl[0];
+  const withStation = AGENTS.filter((a) => STATION[a.key]);
+  const waiting = withStation.filter((a) => views[a.key]?.state === 'awaiting').length, busy = withStation.filter((a) => ['working', 'received', 'coordinating'].includes(views[a.key]?.state)).length;
+  const gone = (k: string) => { const l = locs[k]; return inTransit(l, t) || l?.at === 'cafe' || trips.some((s) => s.trip.agent === k && s.trip.kind === 'handover' && s.away); };
+  const cafeGuests = withStation.filter((a) => locs[a.key]?.at === 'cafe' && !inTransit(locs[a.key], t));
+  const active = trips[0];
 
   return (
     <div className={`wing ${frozen ? 'still' : ''}`}>
       <style>{BOT_CSS}{WALK_CSS}{CSS}</style>
-      <div className="wing-tag" data-mode={demo ? 'demo' : 'live'}>{demo ? 'SAMPLE · DEMO MODE · nothing is sent or saved' : 'LIVE · doors and packets follow real events'}</div>
-      <button type="button" className="wing-snd" onClick={toggleSound} aria-pressed={sound}>{sound ? '🔊 Door sounds on' : '🔇 Door sounds off'}</button>
-      <div className="wing-cam" style={{ aspectRatio: mobile ? '460 / 520' : '1200 / 620' }}>
-        <motion.svg viewBox={vb} animate={{ viewBox: vb }} transition={{ duration: reduce ? 0 : 0.9, ease: [0.65, 0, 0.3, 1] }} preserveAspectRatio="xMidYMid slice" role="group" aria-label="Living office: Messenger desk, JARVIS atrium and Booking joined by a corridor">
+      <div className="wing-bar"><div className="wing-tag" data-mode={demo ? 'demo' : 'live'}>{demo ? 'SAMPLE · DEMO MODE · nothing is sent or saved' : 'LIVE · doors and walks follow real events'}</div>
+      <button type="button" className="wing-snd" onClick={() => toggleSound()} aria-pressed={sound}>{sound ? '🔊 Door sounds on' : '🔇 Door sounds off'}</button></div>
+      <div className="wing-cam" style={{ aspectRatio: mobile ? '460 / 520' : `${WORLD.w} / ${WORLD.h}` }}>
+        <motion.svg viewBox={vb} animate={{ viewBox: vb }} transition={{ duration: reduce ? 0 : 0.9, ease: [0.65, 0, 0.3, 1] }} preserveAspectRatio="xMidYMid meet" role="group" aria-label="Living office: nine rooms joined by corridors">
           <defs>
             <linearGradient id="botg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#b3c4e6" /></linearGradient>
             <linearGradient id="desktop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#19a4d6" /><stop offset="1" stopColor="#0f4f94" /></linearGradient>
             <linearGradient id="wallg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#12307a" /><stop offset="1" stopColor="#0a1c52" /></linearGradient>
-            <linearGradient id="glassg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#5fa8ff" stopOpacity=".5" /><stop offset="1" stopColor="#1b3f9a" stopOpacity=".1" /></linearGradient>
             <linearGradient id="floorg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#0c2159" /><stop offset="1" stopColor="#081541" /></linearGradient>
             <linearGradient id="hallg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#0a1a4a" /><stop offset="1" stopColor="#050e2c" /></linearGradient>
             <linearGradient id="spill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#7be3ff" stopOpacity=".55" /><stop offset="1" stopColor="#7be3ff" stopOpacity="0" /></linearGradient>
-            <linearGradient id="trail" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#7be3ff" stopOpacity="0" /><stop offset="1" stopColor="#bdf3ff" /></linearGradient>
             <radialGradient id="coreg" cx=".5" cy=".4" r=".6"><stop offset="0" stopColor="#e6fbff" /><stop offset=".35" stopColor="#4fc4ff" /><stop offset="1" stopColor="#0d3aa8" stopOpacity=".85" /></radialGradient>
             <linearGradient id="cone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#6fd8ff" stopOpacity=".38" /><stop offset="1" stopColor="#6fd8ff" stopOpacity="0" /></linearGradient>
           </defs>
-          <rect x="-40" y="-20" width="1280" height="680" fill="#040a20" />
-          {/* the corridor: a real architectural space, not the gap between cards */}
+          <rect x="-40" y="-20" width={WORLD.w + 80} height={WORLD.h + 60} fill="#040a20" />
+          {/* corridors: one under each row, joined by two connectors */}
           <g className="hall">
-            <rect x="0" y={FLOOR_Y + 40} width="1200" height="180" fill="url(#hallg)" />
-            <rect x="0" y={DOOR_Y + 12} width="1200" height="6" fill="#0b1c52" /><rect x="0" y={DOOR_Y + 14} width="1200" height="2" fill="#5fd0ff" opacity=".55" />
-            {Array.from({ length: 13 }, (_, i) => <line key={i} x1={i * 100} y1={DOOR_Y + 18} x2={600 + (i - 6) * 230} y2="620" stroke="rgba(120,180,255,.09)" />)}
-            <line className="flow" x1="20" y1={HALL_Y} x2="1180" y2={HALL_Y} stroke="rgba(123,227,255,.35)" strokeWidth="2" strokeDasharray="3 16" />
-            <rect x="0" y="596" width="1200" height="4" fill="#ffc94d" opacity=".4" />
-            <text x="600" y="590" textAnchor="middle" fontSize="10" fontWeight="700" letterSpacing=".4em" fill="rgba(160,200,255,.45)">MAIN CORRIDOR</text>
-            {(['desk', 'booking'] as Room[]).map((r) => <path key={r} className="link" d={`M600 ${DOOR_Y + 18}V${HALL_Y}H${AISLE[r]}V${DOOR_Y + 18}`} fill="none" stroke="rgba(123,227,255,.28)" strokeWidth="2.5" />)}
+            {ROW_Y.map((y) => <g key={y}><rect x="0" y={y + 244} width={WORLD.w} height="100" fill="url(#hallg)" /><rect x="0" y={y + 244} width={WORLD.w} height="2" fill="#5fd0ff" opacity=".5" /><line className="flow" x1="20" y1={y + 294} x2={WORLD.w - 20} y2={y + 294} stroke="rgba(123,227,255,.3)" strokeWidth="2" strokeDasharray="3 16" /></g>)}
+            {SPINES.map((x) => <g key={x}><rect x={x - 22} y={ROW_Y[0] + 244} width="44" height={ROW_Y[2] - ROW_Y[0]} fill="url(#hallg)" /><line className="flow" x1={x} y1={ROW_Y[0] + 294} x2={x} y2={ROW_Y[2] + 294} stroke="rgba(123,227,255,.3)" strokeWidth="2" strokeDasharray="3 16" /></g>)}
+            <rect x="0" y={WORLD.h - 6} width={WORLD.w} height="3" fill="#ffc94d" opacity=".4" />
+            {ROOMS.filter((r) => r !== 'hub').map((r) => <polyline key={r} className="link" points={hallPath('hub', r).map((q) => `${q.x},${q.y}`).join(' ')} fill="none" stroke="rgba(123,227,255,.2)" strokeWidth="2" />)}
           </g>
-          {WING_ROOMS.map((r) => <RoomShell key={r} r={r} live={r === 'hub' || AGENTS.some((a) => STATION[a.key]?.room === r && a.live)} kpis={kpis?.[r]} demo={demo} count={events.filter((e) => (e.dept === r) && e.at.slice(0, 10) === today).length} onOpen={() => onPickDept(r)} />)}
+          {ROOMS.map((r) => <RoomShell key={r} r={r} live={r === 'hub' || r === 'cafe' ? true : AGENTS.some((a) => a.dept === r && a.live)} kpis={kpis?.[r]} demo={demo} count={events.filter((e) => e.dept === r && e.at.slice(0, 10) === today).length} onOpen={() => onPickDept(r)} />)}
+          {ROOMS.map((r) => <Furniture key={r} r={r} />)}
 
           {/* JARVIS core */}
-          <g className={`core ${busy ? 'busy' : ''} ${waiting ? 'wait' : ''}`} transform="translate(600 205)">
-            <polygon points="-34,-18 34,-18 80,110 -80,110" fill="url(#cone)" />
-            <ellipse cx="0" cy="112" rx="92" ry="18" fill="#0b2a75" stroke="#5fd0ff" strokeWidth="1.5" /><ellipse cx="0" cy="110" rx="62" ry="11" fill="none" stroke="#ffc94d" strokeWidth="1.2" opacity=".8" />
+          <g className={`core ${busy ? 'busy' : ''} ${waiting ? 'wait' : ''}`} transform={`translate(${box('hub').cx} ${box('hub').top + 112}) scale(.78)`}>
+            <polygon points="-34,-12 34,-12 80,84 -80,84" fill="url(#cone)" />
+            <ellipse cx="0" cy="88" rx="92" ry="16" fill="#0b2a75" stroke="#5fd0ff" strokeWidth="1.5" /><ellipse cx="0" cy="86" rx="62" ry="10" fill="none" stroke="#ffc94d" strokeWidth="1.2" opacity=".8" />
             <circle className="orb" cx="0" cy="0" r="46" fill="url(#coreg)" />
             <ellipse className="ring r1" cx="0" cy="0" rx="72" ry="19" fill="none" stroke="#7be3ff" strokeWidth="2" /><ellipse className="ring r2" cx="0" cy="0" rx="62" ry="15" fill="none" stroke="#ffc94d" strokeWidth="1.6" /><ellipse className="ring r3" cx="0" cy="0" rx="54" ry="48" fill="none" stroke="#7be3ff" strokeWidth="1.2" strokeDasharray="4 6" />
             <text y="9" textAnchor="middle" fontSize="26" fontWeight="900" fill="#fff" style={{ filter: 'drop-shadow(0 0 6px #4fc4ff)' }}>AI</text>
-            <text y="86" textAnchor="middle" fontSize="10" fontWeight="800" letterSpacing=".25em" fill="#ffd98a">JARVIS CORE</text>
-            {waiting > 0 && <g className="amber" transform="translate(0 -66)"><rect x="-70" y="-11" width="140" height="21" rx="10.5" fill="rgba(255,176,32,.2)" stroke="#ffb020" /><text y="4" textAnchor="middle" fontSize="10.5" fontWeight="800" fill="#ffcf70">{waiting} WAITING FOR YOU</text></g>}
+            {waiting > 0 && <g className="amber" transform="translate(0 -64)"><rect x="-76" y="-11" width="152" height="21" rx="10.5" fill="rgba(255,176,32,.2)" stroke="#ffb020" /><text y="4" textAnchor="middle" fontSize="11" fontWeight="800" fill="#ffcf70">{waiting} WAITING FOR YOU</text></g>}
           </g>
 
-          {/* desks, robots */}
-          {AGENTS.filter((a) => STATION[a.key]).map((a) => { const s = STATION[a.key]; return <HqBot key={a.key} a={a} x={s.x} y={s.y} side={s.side} state={views[a.key]?.state ?? 'idle'} dept={s.room} planned={!a.live} screen={SCREEN[s.room]} selected={selectedAgent === a.key} away={fl.some((f) => f.from === a.key && f.away)} onPick={() => onPickAgent(a.key)} />; })}
+          {/* people at their desks, in the café, and walking */}
+          {withStation.map((a) => { const s = STATION[a.key]; if (gone(a.key)) return null; return <HqBot key={a.key} a={a} x={s.x} y={s.y} side={s.side} state={views[a.key]?.state ?? 'idle'} dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
+          {withStation.map((a) => { const s = STATION[a.key]; return gone(a.key) && trips.some((x) => x.trip.agent === a.key && x.away) ? <HqBot key={`e${a.key}`} a={a} x={s.x} y={s.y} side={s.side} state="idle" dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} away selected={false} onPick={() => onPickAgent(a.key)} /> : null; })}
+          {cafeGuests.map((a, i) => { const seat = CAFE_SEATS[locs[a.key].seat ?? 0]; return <HqBot key={`c${a.key}`} a={a} x={seat.x} y={seat.y + 22} side={seat.x < box('cafe').cx ? 1 : -1} state="idle" dept="cafe" planned={!a.live} screen="core" desk={false} social bubble={cafeBubble(a.key, t + i * 3000)} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
 
-          {/* walking agents and routing pulses, under the front glass wall so the doors really occlude them */}
           <g className="flights" pointerEvents="none">
-            {pu.map((p) => { const pts = [{ x: 600, y: DOOR_Y + 18 }, { x: 600, y: HALL_Y }, { x: AISLE[p.room], y: HALL_Y }, { x: AISLE[p.room], y: DOOR_Y + 14 }]; const q = along(pts, p.p * 1000); return <circle key={`p${p.id}`} className="pulse" cx={q.x} cy={q.y} r="5" />; })}
-            {fl.filter((f) => f.away).map((f) => <HqWalker key={f.id} a={AGENTS.find((q) => q.key === f.from)!} x={f.pos!.x} y={f.pos!.y + 30} dir={f.dir} moving={f.moving} carrying={f.carrying} give={f.phase === 'handover'} />)}
+            {pu.map((p) => { const q = alongFrac(p.pts, p.p); return <circle key={`p${p.id}`} className="pulse" cx={q.x} cy={q.y} r="5" />; })}
+            {trips.map((s) => <HqWalker key={s.trip.id} a={AGENTS.find((q) => q.key === s.trip.agent)!} x={s.pos.x} y={s.pos.y} dir={s.dir} moving={s.moving} carrying={s.carrying} give={s.phase === 'handover'} scale={BOT_SCALE} />)}
           </g>
 
           {/* front glass walls with the automatic doors */}
-          {WING_ROOMS.map((r) => { const b = ROOM_BOX[r], cx = AISLE[r]; return (
+          {ROOMS.map((r) => { const b = box(r); return (
             <g key={r} className="front">
-              <rect x={b.x} y={FLOOR_Y + 8} width={cx - 52 - b.x} height="42" fill="rgba(70,130,255,.2)" stroke="#5fd0ff" strokeWidth="1" /><rect x={cx + 52} y={FLOOR_Y + 8} width={b.x + b.w - cx - 52} height="42" fill="rgba(70,130,255,.2)" stroke="#5fd0ff" strokeWidth="1" />
-              <rect x={b.x} y={FLOOR_Y + 8} width={b.w} height="3" fill="#ffc94d" opacity=".8" />
-              <Door cx={cx} open={dr[r].open} light={dr[r].light} />
-              <text x={cx} y={DOOR_Y + 40} textAnchor="middle" fontSize="9" fontWeight="700" letterSpacing=".2em" fill="rgba(190,220,255,.65)">{dr[r].open ? 'OPEN' : dr[r].light === 'amber' ? 'WAITING' : 'ENTRANCE'}</text>
+              <rect x={b.x} y={b.wallY} width={b.cx - 50 - b.x} height="32" fill="rgba(70,130,255,.2)" stroke="#5fd0ff" strokeWidth="1" /><rect x={b.cx + 50} y={b.wallY} width={b.x + b.w - b.cx - 50} height="32" fill="rgba(70,130,255,.2)" stroke="#5fd0ff" strokeWidth="1" />
+              <rect x={b.x} y={b.wallY} width={b.w} height="3" fill="#ffc94d" opacity=".8" />
+              <Door r={r} open={dr[r].open} light={dr[r].light} />
+              <text x={b.cx} y={b.doorY + 42} textAnchor="middle" fontSize="8" fontWeight="700" letterSpacing=".2em" fill="rgba(190,220,255,.6)">{dr[r].open ? 'OPEN' : dr[r].light === 'amber' ? 'WAITING' : 'ENTRANCE'}</text>
             </g>); })}
-          {active && <g transform="translate(600 568)"><rect x="-190" y="-13" width="380" height="24" rx="12" fill="rgba(6,16,48,.88)" stroke="rgba(123,227,255,.6)" /><text y="3.5" textAnchor="middle" fontSize="11.5" fontWeight="700" fill="#dff6ff">{describeFlight(active)}</text></g>}
+          {active && <g transform={`translate(600 ${ROW_Y[1] + 330})`}><rect x="-190" y="-12" width="380" height="22" rx="11" fill="rgba(6,16,48,.9)" stroke="rgba(123,227,255,.6)" /><text y="3" textAnchor="middle" fontSize="11" fontWeight="700" fill="#dff6ff">{describeTrip(active)}</text></g>}
         </motion.svg>
       </div>
-      <p className="sr" aria-live="polite">{active ? describeFlight(active) : `${busy} busy, ${waiting} waiting for approval`}</p>
-      <div className="wing-legend"><span><i className="d idle" /> Door idle</span><span><i className="d open" /> Opens only for a hand-over</span><span><i className="d amber" /> Waiting for you</span><span><i className="d green" /> Just finished</span><span><i className="d red" /> Problem</span><span className="grow">{demo ? 'Sample scenario: press Start above.' : `${busy} agent(s) busy · ${waiting} waiting`}</span></div>
+      <p className="sr" aria-live="polite">{active ? describeTrip(active) : `${busy} busy, ${waiting} waiting for approval`}</p>
+      <div className="wing-legend"><span><i className="d idle" /> Door idle</span><span><i className="d open" /> Opens only when someone walks through</span><span><i className="d amber" /> Waiting for you</span><span><i className="d green" /> Just finished</span><span><i className="d red" /> Problem</span><span className="grow">{demo ? 'Sample scenario: press Start above. ' : `${busy} busy · ${waiting} waiting · `}Café chat is scripted, not AI.</span></div>
+      <p className="wing-note">{DEPTS.filter((d) => d.key !== 'cafe' && d.key !== 'hub' && !AGENTS.some((a) => a.dept === d.key && a.live)).map((d) => d.name).join(' · ')} are planned: their agents rest and can take café breaks, but never show work.</p>
     </div>
   );
 }
 
 const CSS = `
-.wing{position:relative}.wing-cam{width:100%;border-radius:16px;overflow:hidden;border:1px solid rgba(120,170,255,.3);box-shadow:0 0 50px rgba(40,110,255,.18) inset,0 14px 40px rgba(0,0,0,.35);background:#040a20}
+.wing{position:relative}.wing-cam{width:min(100%,calc((100vh - 260px) * ${(WORLD.w / WORLD.h).toFixed(3)}));min-width:min(100%,520px);margin:0 auto;border-radius:16px;overflow:hidden;border:1px solid rgba(120,170,255,.3);box-shadow:0 0 50px rgba(40,110,255,.18) inset,0 14px 40px rgba(0,0,0,.35);background:#040a20}
 .wing-cam svg{width:100%;height:100%;display:block}
-.wing-tag{position:absolute;z-index:3;left:12px;top:10px;font:800 11px/1 system-ui,sans-serif;letter-spacing:.06em;padding:6px 10px;border-radius:999px;pointer-events:none}
+.wing-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.wing-tag{font:800 11px/1 system-ui,sans-serif;letter-spacing:.06em;padding:6px 10px;border-radius:999px}
 .wing-tag[data-mode=demo]{background:rgba(255,176,32,.18);border:1px solid #ffb020;color:#ffd07a}.wing-tag[data-mode=live]{background:rgba(60,220,140,.16);border:1px solid #3fdc94;color:#8bf3bd}
-.wing-snd{position:absolute;z-index:3;right:12px;top:8px;font:600 11px system-ui,sans-serif;padding:6px 10px;border-radius:999px;background:rgba(8,20,62,.8);color:#cfe0ff;border:1px solid rgba(120,170,255,.4);cursor:pointer}
-.room{cursor:pointer;outline:none}
-@media (max-width:760px){.wing-tag{font-size:9px;padding:5px 8px;left:8px;top:8px;max-width:calc(100% - 16px)}.wing-snd{top:auto;bottom:8px;right:8px}}.room:hover .rim,.room:focus-visible .rim{stroke:#9fe7ff;stroke-width:2.5}
-.wing .flow{animation:flow 2.4s linear infinite}@keyframes flow{to{stroke-dashoffset:-38}}
-.wing .link{stroke-dasharray:2 7}
-.wing .card rect{fill:#bdf3ff;stroke:#fff;stroke-width:1.2;filter:drop-shadow(0 0 7px #4fc4ff)}.wing .pulse{fill:#ffe28a;filter:drop-shadow(0 0 7px #ffc94d)}.wing .trail{filter:drop-shadow(0 0 5px #4fc4ff)}
+.wing-snd{font:600 11px system-ui,sans-serif;padding:6px 10px;border-radius:999px;background:rgba(8,20,62,.8);color:#cfe0ff;border:1px solid rgba(120,170,255,.4);cursor:pointer}
+@media (max-width:760px){.wing-tag{font-size:9px;padding:5px 8px}.wing-cam{width:100%}}
+.room{cursor:pointer;outline:none}.room:hover .rim,.room:focus-visible .rim{stroke:#9fe7ff;stroke-width:2.5}
+.wing .flow{animation:flow 2.4s linear infinite}@keyframes flow{to{stroke-dashoffset:-38}}.wing .link{stroke-dasharray:2 7}
+.wing .pulse{fill:#ffe28a;filter:drop-shadow(0 0 7px #ffc94d)}
 .wing .core .orb{animation:orbp 4s ease-in-out infinite;transform-box:fill-box;transform-origin:center}@keyframes orbp{50%{transform:scale(1.05)}}
 .wing .core .ring{transform-box:fill-box;transform-origin:center;animation:spin 14s linear infinite}.wing .core .r2{animation-duration:9s;animation-direction:reverse}.wing .core .r3{animation-duration:22s}.wing .core.busy .ring{animation-duration:4s}.wing .core.wait .orb{filter:drop-shadow(0 0 16px #ffb020)}
-.wing .amber{animation:blink-a 1.4s infinite}
-.wing.still .flow,.wing.still .core *{animation-play-state:paused}
-@media (prefers-reduced-motion:reduce){.wing .flow,.wing .core *,.wing .amber{animation:none!important}}
+.wing .amber{animation:blink-a 1.4s infinite}.wing .furn .steam{animation:blink-a 2s infinite}.wing .holo rect{animation:holo 3s ease-in-out infinite;transform-box:fill-box;transform-origin:bottom}.wing .holo rect:nth-child(2n){animation-delay:.6s}@keyframes holo{50%{transform:scaleY(.7)}}
+.wing.still .flow,.wing.still .core *,.wing.still .holo rect{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){.wing .flow,.wing .core *,.wing .amber,.wing .holo rect{animation:none!important}}
 .wing .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .wing-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:#9fb3d9;margin-top:8px}.wing-legend .grow{margin-left:auto}.wing-legend .d{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
-.wing-legend .idle{background:#2f6dff}.wing-legend .open{background:#7be3ff}.wing-legend .amber{background:#ffb020}.wing-legend .green{background:#4dffa0}.wing-legend .red{background:#ff5d5d}
+.wing-legend .idle{background:#2f6dff}.wing-legend .open{background:#7be3ff}.wing-legend .amber{background:#ffb020}.wing-legend .green{background:#4dffa0}.wing-legend .red{background:#ff5d5d}.wing-note{font-size:11.5px;color:#8197c4;margin:4px 0 0}
 `;
