@@ -140,7 +140,8 @@ export const ROUTE_ACCESS: Record<string, string[]> = {
   dashboard: ['dashboard.view', 'dashboard.finance'],
   today: ['dashboard.view', 'dashboard.finance'],
   executive: ['executive.view'],
-  jarvis: ['admin.users'],                 // the owner's command center (the function itself only answers the owner)
+  jarvis: ['admin.users'],
+  hq: ['admin.users'],                     // the AI Headquarters: the owner's view of the automated desks (the event log itself is readable only with the same permission)                 // the owner's command center (the function itself only answers the owner)
   announcements: ['announce.view', 'announce.manage'],
   sms: ['admin.settings'],
   telegram: ['admin.settings'],
