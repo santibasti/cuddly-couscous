@@ -145,3 +145,49 @@ export function describeTrip(s: TripState): string {
   if (s.trip.kind === 'toDesk') return `${a} walks back to the desk for a new task`;
   return s.phase === 'prepare' ? `${a} picks up the task card for ${b}` : s.phase === 'out' ? `${a} walks the task to ${b}` : s.phase === 'handover' ? `${a} hands the task to ${b}` : `${a} walks back to the desk`;
 }
+
+// ── everyday life in the office: wall clock, day and night, a cleaning robot and the water cooler. All decorative: none of it reads or writes a business status.
+export function manilaParts(ms: number): { h: number; m: number; s: number; label: string; date: string } {
+  const f = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Manila', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false, weekday: 'short', day: 'numeric', month: 'short' });
+  const p = Object.fromEntries(f.formatToParts(new Date(ms)).map((x) => [x.type, x.value])) as Record<string, string>; const h = Number(p.hour) % 24, m = Number(p.minute), s = Number(p.second);
+  return { h, m, s, label: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, date: `${p.weekday} ${p.day} ${p.month}` };
+}
+export type Phase = 'dawn' | 'day' | 'dusk' | 'night';
+export const lightPhase = (h: number, m = 0): Phase => { const x = h + m / 60; return x >= 5 && x < 7 ? 'dawn' : x >= 7 && x < 17.5 ? 'day' : x >= 17.5 && x < 19 ? 'dusk' : 'night'; };
+export const LOOK: Record<Phase, { overlay: string; alpha: number; sky: string; skyA: number; stars: boolean; warm: number }> = {
+  dawn: { overlay: '#ff9d57', alpha: 0.09, sky: '#ffb27a', skyA: 0.4, stars: false, warm: 0.1 },
+  day: { overlay: '#000000', alpha: 0, sky: '#6cc0ff', skyA: 0.32, stars: false, warm: 0 },
+  dusk: { overlay: '#ff7a2a', alpha: 0.11, sky: '#ff8a4a', skyA: 0.5, stars: false, warm: 0.16 },
+  night: { overlay: '#020718', alpha: 0.36, sky: '#050a2c', skyA: 0.85, stars: true, warm: 0.26 },
+};
+
+/** The cleaning robot patrols every corridor and connector in one long loop at a calm pace. */
+export const CLEANER = { key: 'cleaner', name: 'Cleaner', role: 'Cleaning robot', dept: 'hub' as const, hair: '#fff', skin: '#fff', shirt: '#ffd34d', live: false, skills: [] };
+export function cleanerLoop(): Pt[] {
+  const H = ROW_Y.map((y) => y + 294), W = WORLD.w, a = SPINES[0], b = SPINES[1];
+  return [{ x: 40, y: H[0] }, { x: W - 40, y: H[0] }, { x: b, y: H[0] }, { x: b, y: H[1] }, { x: 40, y: H[1] }, { x: a, y: H[1] }, { x: a, y: H[2] }, { x: W - 40, y: H[2] }, { x: b, y: H[2] }, { x: b, y: H[1] }, { x: W - 40, y: H[1] }, { x: a, y: H[1] }, { x: a, y: H[0] }, { x: 40, y: H[0] }];
+}
+export function cleanerState(now: number): { pos: Pt; dir: Pt; trail: Pt[] } {
+  const loop = cleanerLoop(), c = lens(loop), total = c[c.length - 1], d = (now * WALK) % total, pos = along(loop, d), ahead = along(loop, (d + 6) % total), behind = along(loop, (d - 6 + total) % total);
+  const sg = (v: number) => Math.sign(Math.round(v * 10) / 10); const dir = { x: sg(ahead.x - behind.x), y: sg(ahead.y - behind.y) };
+  return { pos, dir, trail: [1, 2, 3].map((i) => along(loop, (d - i * 26 + total) % total)) };
+}
+
+/** The water cooler stands in the front corner of the six work rooms. An idle agent now and then walks over, drinks for a few seconds and walks back. Never while busy. */
+export const COOLER_ROOMS: Room[] = ['email', 'creative', 'ads', 'desk', 'booking', 'hr'];
+export const coolerAt = (r: Room): Pt => ({ x: box(r).x + 14, y: box(r).top + 209 });
+export const coolerSpot = (r: Room): Spot => ({ room: r, x: box(r).x + 40, y: box(r).walkY });
+export const DRINK = 6000;
+export interface CoolerState { pos: Pt; dir: Pt; moving: boolean; phase: 'out' | 'drink' | 'back'; cup: boolean }
+export function coolerState(key: string, view: AgentView | undefined, now: number): CoolerState | null {
+  const s = STATION[key]; if (!s || !COOLER_ROOMS.includes(s.room) || (view?.state ?? 'idle') !== 'idle') return null;
+  const period = 70_000 + (hash(key) % 50_000), slot = Math.floor(now / period); if (hash(`${key}:w${slot}`) % 100 >= 30) return null;
+  const start = slot * period + (hash(`${key}:o${slot}`) % (period - 45_000)), dt = now - start; if (dt < 0) return null;
+  const trip: Trip = { id: 'cool', agent: key, kind: 'toCafe', start, from: deskSpot(key), to: coolerSpot(s.room), round: false }, { pts, total, T } = geo(trip);
+  const t1 = 300 + T, t2 = t1 + DRINK, t3 = t2 + T; if (dt > t3) return null;
+  const d = dt < 300 ? 0 : dt < t1 ? walked(dt - 300, T) : dt < t2 ? total : total - walked(dt - t2, T);
+  const pos = along(pts, d), ahead = along(pts, Math.min(total, d + 6)), behind = along(pts, Math.max(0, d - 6)), sg = dt >= t2 ? -1 : 1, q = (v: number) => Math.sign(Math.round(v * 10) / 10) * sg;
+  const phase: CoolerState['phase'] = dt < t1 ? 'out' : dt < t2 ? 'drink' : 'back';
+  const dir = phase === 'drink' ? { x: -1, y: 0 } : { x: q(ahead.x - behind.x), y: q(ahead.y - behind.y) };
+  return { pos, dir, moving: (phase === 'out' && dt > 330 && dt < t1 - 30) || (phase === 'back' && dt > t2 + 30 && dt < t3 - 30), phase, cup: phase !== 'out' };
+}

@@ -137,7 +137,7 @@ export const BOT_CSS = `
 `;
 
 /** A standing robot that walks. Seen from the side when it walks along the corridor (real stepping legs), from the front or back when it walks toward or away from the viewer. */
-export function HqWalker({ a, x, y, dir, moving, carrying, give, scale = 0.74 }: { scale?: number; a: AgentDef; x: number; y: number; dir: { x: number; y: number }; moving: boolean; carrying: boolean; give: boolean }) {
+export function HqWalker({ a, x, y, dir, moving, carrying, give, prop, scale = 0.74 }: { scale?: number; prop?: 'card' | 'cup' | 'mop'; a: AgentDef; x: number; y: number; dir: { x: number; y: number }; moving: boolean; carrying: boolean; give: boolean }) {
   const view: 'side' | 'front' | 'back' = Math.abs(dir.x) > 0 ? 'side' : dir.y < 0 ? 'back' : 'front'; const f = dir.x < 0 ? -1 : 1; const h = hash(a.key);
   const card = <g className="wk-card" transform="translate(0 -4)"><rect x="-12" y="-8" width="24" height="16" rx="4" /><path d="M-6 -3l6 4.5l6 -4.5" fill="none" stroke="#06122e" strokeWidth="1.3" /></g>;
   const leg = (cls: string, x0: number) => <g transform={`translate(${x0} -36)`}><g className={`wk-leg ${cls}`}><rect x="-4.5" y="0" width="9" height="19" rx="4.5" fill="#8fa2c8" /><g transform="translate(0 18)"><g className="wk-shin"><rect x="-4" y="0" width="8" height="17" rx="4" fill="#8fa2c8" /><rect x={view === 'side' ? -4 : -6} y="14" width={view === 'side' ? 13 : 12} height="6" rx="3" fill="#586a9a" /></g></g></g></g>;
@@ -160,7 +160,10 @@ export function HqWalker({ a, x, y, dir, moving, carrying, give, scale = 0.74 }:
             {arm('far', 20)}{arm('near', -20)}
             <g transform="translate(0 -86)"><g className="wk-head"><rect x="-3.5" y="-4" width="7" height="6" fill="#8fa8d8" /><line x1="0" y1="-38" x2="0" y2="-45" stroke="#8fa8d8" strokeWidth="1.5" /><circle cx="0" cy="-46" r="2.7" fill="#7fe4ff" /><rect x="-18" y="-38" width="36" height="36" rx="13" fill="url(#botg)" stroke="#8fa8d8" strokeWidth=".8" />{view === 'front' ? <><rect x="-14.5" y="-31" width="29" height="19" rx="8" fill="#08153a" /><circle cx="-6.2" cy="-21.5" r="3.1" fill="#7fe4ff" /><circle cx="6.2" cy="-21.5" r="3.1" fill="#7fe4ff" /></> : <rect x="-9" y="-28" width="18" height="10" rx="5" fill="#b3c4e6" opacity=".7" />}</g></g>
           </>}
-          {carrying && <g className="wk-held" transform={view === 'side' ? 'translate(16 -50)' : 'translate(0 -52)'}>{card}</g>}
+          {(carrying || prop) && (() => { const what = prop ?? 'card'; const at = view === 'side' ? 'translate(18 -46)' : view === 'front' ? 'translate(-24 -46)' : 'translate(24 -46)';
+            return what === 'card' ? <g className="wk-held" transform={view === 'side' ? 'translate(16 -50)' : 'translate(0 -52)'}>{card}</g>
+              : what === 'cup' ? <g className="wk-held" transform={at}><rect x="-4.5" y="-6" width="9" height="10" rx="2" fill="#f4f7ff" /><path d="M4.5 -3q4 1 0 5" fill="none" stroke="#f4f7ff" strokeWidth="1.4" /></g>
+              : <g className="wk-held" transform={view === 'side' ? 'translate(16 -46)' : view === 'front' ? 'translate(-26 -48)' : 'translate(26 -48)'}><line x1="0" y1="-6" x2={view === 'side' ? 22 : 0} y2="46" stroke="#b78a4a" strokeWidth="3" strokeLinecap="round" /><rect x={view === 'side' ? 14 : -9} y="42" width="20" height="7" rx="3" fill="#7fe4ff" /></g>; })()}
         </g>
       </g>
     </g>

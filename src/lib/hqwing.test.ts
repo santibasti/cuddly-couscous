@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { agentState, type HqEvent } from './hq';
 import { SCENARIO, scenarioEvents } from './hqscenario';
-import { CAFE_SEATS, ROOMS, STATION, box, cafeSpot, cafeWanted, deskSpot, doors, handoverTrips, hallPath, inTransit, pickSeat, pulses, routeBetween, stepLoc, tripLength, tripState } from './hqwing';
+import { cleanerState, coolerState, lightPhase, manilaParts, CAFE_SEATS, ROOMS, STATION, box, cafeSpot, cafeWanted, deskSpot, doors, handoverTrips, hallPath, inTransit, pickSeat, pulses, routeBetween, stepLoc, tripLength, tripState } from './hqwing';
 
 const base = Date.parse('2026-05-04T08:00:00Z');
 const ev = (o: Partial<HqEvent>): HqEvent => ({ id: 'e', at: new Date(base).toISOString(), agent: 'messenger', dept: 'desk', kind: 'message', title: 't', ...o });
@@ -93,5 +93,20 @@ describe('real backend events', () => {
     const w = [row(9, 'attendance', 'hr', 'approval', null)]; expect(STATION.attendance.room).toBe('hr'); expect(doors(w, views(w, base + 5000), [], base + 5000).hr.light).toBe('amber');
     const done = [...w, row(10, 'attendance', 'hr', 'done', null, 4000)]; expect(doors(done, views(done, base + 4500), [], base + 4500).hr.light).toBe('green');
     const more = [...done, row(11, 'attendance', 'hr', 'approval', null, 4000)]; expect(doors(more, views(more, base + 9000), [], base + 9000).hr.light).toBe('amber');   // more items still wait
+  });
+});
+
+describe('everyday life', () => {
+  it('knows the Manila time and the light of the day', () => {
+    expect(manilaParts(Date.parse('2026-05-04T00:30:15Z'))).toMatchObject({ h: 8, m: 30, s: 15, label: '08:30' });
+    expect([lightPhase(6), lightPhase(12), lightPhase(18), lightPhase(23), lightPhase(3)]).toEqual(['dawn', 'day', 'dusk', 'night', 'night']);
+  });
+  it('the cleaning robot keeps patrolling the corridors, facing the way it goes', () => {
+    const a = cleanerState(1000), b = cleanerState(9000); expect(a.pos).not.toEqual(b.pos); expect(Math.abs(a.dir.x) + Math.abs(a.dir.y)).toBeGreaterThan(0);
+  });
+  it('a water break only happens to an idle agent, ends at the desk, and never while busy', () => {
+    let drank = 0, busyBreak = 0; const busy = { state: 'working' } as never;
+    for (let t = 0; t < 1_200_000; t += 500) { const c = coolerState('messenger', { state: 'idle' }, base + t); if (c?.phase === 'drink') drank++; if (coolerState('messenger', busy, base + t)) busyBreak++; }
+    expect(drank).toBeGreaterThan(0); expect(busyBreak).toBe(0); expect(coolerState('jarvis', { state: 'idle' }, base)).toBeNull();
   });
 });
