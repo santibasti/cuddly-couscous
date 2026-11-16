@@ -22,15 +22,15 @@ describe('hallway hand-over', () => {
     const inside = [ev({ agent: 'booking', dept: 'booking', to_agent: 'scheduler' })]; const d = doors(inside, views(inside, base + 700), base + 700); expect(d.booking.open).toBe(false); expect(flights(inside, base + 700)[0].same).toBe(true);
   });
   it('shows the packet only while the flight lasts, and moves it forward', () => {
-    const e = [ev({ to_agent: 'booking' })]; expect(flights(e, base - 1)).toHaveLength(0); const a = flights(e, base + 1200)[0].pos!, b = flights(e, base + 1800)[0].pos!; expect(a).not.toEqual(b); expect(flights(e, base + 60_000)).toHaveLength(0);
+    const e = [ev({ to_agent: 'booking' })]; expect(flights(e, base - 1)).toHaveLength(0); const a = flights(e, base + 2500)[0].pos!, b = flights(e, base + 3500)[0].pos!; expect(a).not.toEqual(b); expect(flights(e, base + 60_000)).toHaveLength(0);
   });
   it('amber light waits for approval, and a start event pulses JARVIS to that room', () => {
     const e = [ev({ agent: 'quote', dept: 'booking', kind: 'approval' })]; expect(doors(e, views(e, base + 50_000), base + 50_000).booking.light).toBe('amber');
     expect(pulses([ev({ agent: 'booking', dept: 'booking', kind: 'start' })], base + 300)[0].room).toBe('booking'); expect(pulses([ev({ agent: 'booking', dept: 'booking', kind: 'start' })], base + 5000)).toHaveLength(0);
   });
   it('the sample inquiry opens each door only for its hand-over', () => {
-    const last = SCENARIO[SCENARIO.length - 1].at + 4000; let opens = 0, was = { desk: false, booking: false };
+    const last = SCENARIO[SCENARIO.length - 1].at + 4000 + 20000; let opens = 0, was = { desk: false, booking: false };
     for (let t = 0; t <= last; t += 50) { const e = scenarioEvents(base, t); const d = doors(e, views(e, base + t), base + t); if (d.desk.open && !was.desk) opens++; if (d.booking.open && !was.booking) opens++; was = { desk: d.desk.open, booking: d.booking.open }; }
-    expect(opens).toBe(2);   // the Messenger door once, the Booking door once
+    expect(opens).toBe(4);   // each door opens twice: once when the task is walked over, once when the sender walks back
   });
 });

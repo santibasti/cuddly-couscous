@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { AGENTS, STATE_LABEL, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
 import { AISLE, DOOR_Y, FLOOR_Y, HALL_Y, ROOM_BOX, ROOM_NAME, STATION, WING_ROOMS, along, describeFlight, doors, flights, pulses, route, type DoorLight, type Room } from '@/lib/hqwing';
-import { BOT_CSS, HqBot, type ScreenKind } from './HqBot';
+import { BOT_CSS, HqBot, HqWalker, WALK_CSS, type ScreenKind } from './HqBot';
 
 const SCREEN: Record<Room, ScreenKind> = { desk: 'chat', booking: 'calendar', hub: 'core' };
 const LIGHT: Record<DoorLight, string> = { idle: '#2f6dff', open: '#7be3ff', amber: '#ffb020', green: '#4dffa0', red: '#ff5d5d' };
@@ -79,7 +79,7 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
 
   return (
     <div className={`wing ${frozen ? 'still' : ''}`}>
-      <style>{BOT_CSS}{CSS}</style>
+      <style>{BOT_CSS}{WALK_CSS}{CSS}</style>
       <div className="wing-tag" data-mode={demo ? 'demo' : 'live'}>{demo ? 'SAMPLE · DEMO MODE · nothing is sent or saved' : 'LIVE · doors and packets follow real events'}</div>
       <button type="button" className="wing-snd" onClick={toggleSound} aria-pressed={sound}>{sound ? '🔊 Door sounds on' : '🔇 Door sounds off'}</button>
       <div className="wing-cam" style={{ aspectRatio: mobile ? '460 / 520' : '1200 / 620' }}>
@@ -121,18 +121,12 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
           </g>
 
           {/* desks, robots */}
-          {AGENTS.filter((a) => STATION[a.key]).map((a) => { const s = STATION[a.key]; return <HqBot key={a.key} a={a} x={s.x} y={s.y} side={s.side} state={views[a.key]?.state ?? 'idle'} dept={s.room} planned={!a.live} screen={SCREEN[s.room]} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
+          {AGENTS.filter((a) => STATION[a.key]).map((a) => { const s = STATION[a.key]; return <HqBot key={a.key} a={a} x={s.x} y={s.y} side={s.side} state={views[a.key]?.state ?? 'idle'} dept={s.room} planned={!a.live} screen={SCREEN[s.room]} selected={selectedAgent === a.key} away={fl.some((f) => f.from === a.key && f.away)} onPick={() => onPickAgent(a.key)} />; })}
 
-          {/* task cards and glowing trails, under the front glass wall so the doors really occlude them */}
+          {/* walking agents and routing pulses, under the front glass wall so the doors really occlude them */}
           <g className="flights" pointerEvents="none">
             {pu.map((p) => { const pts = [{ x: 600, y: DOOR_Y + 18 }, { x: 600, y: HALL_Y }, { x: AISLE[p.room], y: HALL_Y }, { x: AISLE[p.room], y: DOOR_Y + 14 }]; const q = along(pts, p.p * 1000); return <circle key={`p${p.id}`} className="pulse" cx={q.x} cy={q.y} r="5" />; })}
-            {fl.map((f) => (
-              <g key={f.id}>
-                {f.trail.length > 1 && <polyline className="trail" points={f.trail.map((q) => `${q.x},${q.y}`).join(' ')} fill="none" stroke="#7be3ff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" opacity=".7" />}
-                {f.phase === 'prepare' && <g className="card" transform={`translate(${route(f.from, f.to)[0].x} ${route(f.from, f.to)[0].y - 6 - Math.min(f.dt, 500) / 25})`} style={{ opacity: Math.min(f.dt / 300, 1) }}><rect x="-17" y="-11" width="34" height="22" rx="5" /><path d="M-9 -4l9 6l9 -6" fill="none" stroke="#06122e" strokeWidth="1.5" /></g>}
-                {f.pos && <g className="card" transform={`translate(${f.pos.x} ${f.pos.y})`}><rect x="-17" y="-11" width="34" height="22" rx="5" /><path d="M-9 -4l9 6l9 -6" fill="none" stroke="#06122e" strokeWidth="1.5" /></g>}
-              </g>
-            ))}
+            {fl.filter((f) => f.away).map((f) => <HqWalker key={f.id} a={AGENTS.find((q) => q.key === f.from)!} x={f.pos!.x} y={f.pos!.y + 30} dir={f.dir} moving={f.moving} carrying={f.carrying} give={f.phase === 'handover'} />)}
           </g>
 
           {/* front glass walls with the automatic doors */}
