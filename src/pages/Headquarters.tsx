@@ -58,7 +58,7 @@ export default function Headquarters() {
         <span className={`hq-mode ${demo ? 'demo' : 'live'}`}>{demo ? 'DEMO MODE · simulated activity' : 'LIVE · real activity'}</span>
         {CLOUD && <button className="btn sm" onClick={() => setDemo((d) => !d)}>{demo ? 'Show real activity' : 'Preview with demo activity'}</button>}
         <div className="hq-look"><button className={look === 'cinematic' ? 'on' : ''} onClick={() => setLook('cinematic')}>🎬 Cinematic</button><button className={look === 'plan' ? 'on' : ''} onClick={() => setLook('plan')}>🗺️ Floor plan</button></div>
-        {look === 'plan' && <button className="btn sm" onClick={() => setStill((s) => !s)}>{still ? 'Resume motion' : 'Pause motion'}</button>}
+        <button className="btn sm" onClick={() => setStill((s) => !s)}>{still ? 'Resume motion' : 'Pause motion'}</button>
         <div className="hq-tabs" role="tablist">{(['office', 'agents', 'activity'] as Tab[]).map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t === 'office' ? '🏢 Office' : t === 'agents' ? '🧑‍💻 Agents' : '📜 Activity'}</button>)}</div>
       </div>
       {err && <div className="alert warn">Could not load activity: {err}. Has the latest database update (migration 0119) been applied?</div>}
@@ -71,7 +71,7 @@ export default function Headquarters() {
       {tab === 'office' && (
         <div className="hq-grid">
           {look === 'cinematic'
-            ? <HqCinematic events={events} views={views} kpis={kpis} now={now} selected={dept} onPick={(d) => { setDept(d); setSel(null); }} />
+            ? <HqCinematic events={events} views={views} kpis={kpis} now={now} selected={dept} onPick={(d) => { setDept(d); setSel(null); }} onPickAgent={(k) => { setSel(sel === k ? null : k); setDept(''); }} still={still} />
             : <HqOffice kpis={kpis} events={events} now={now} selected={sel} onPick={(k) => setSel(sel === k ? null : k)} still={still} onRoom={(d) => { if (d !== 'cafe') setDept(dept === d ? '' : d); }} />}
           <aside className="hq-side">
             {look === 'cinematic' && dept && !who && (

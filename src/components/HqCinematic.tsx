@@ -1,8 +1,8 @@
 // The cinematic headquarters: concept art of the AI headquarters as the stage, with the LIVE layer on top of it. The art is only a picture; everything that moves or shows a number
 // comes from real events and the app's own records: glowing rings on departments that are working or waiting for you, light packets travelling to the AI core when something
 // really happens, and "holographic" screens that replace the painted dashboards with real figures (or say "Not connected yet").
-import { useMemo } from 'react';
-import { AGENTS, DEPTS, agentState, cafeLine, hash, inCafe, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
+import { AGENTS, hash, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
+import { HqRobots } from '@/components/HqRobots';
 
 const W = 1569, H = 882;
 interface Zone { dept: DeptKey; name: string; hot: [number, number, number, number]; scr: [number, number, number, number]; chip: [number, number, 'l' | 'r']; path: string }
@@ -10,8 +10,8 @@ interface Zone { dept: DeptKey; name: string; hot: [number, number, number, numb
 const ZONES: Zone[] = [
   { dept: 'email', name: 'Email Ops', hot: [1.5, 1.5, 34, 31], scr: [2.8, 9.8, 32.6, 17.2], chip: [21.5, 3.7, 'l'], path: 'M 720 250 C 600 240 520 235 430 262' },
   { dept: 'creative', name: 'Creative Studio', hot: [64, 1.5, 35, 31], scr: [67.6, 9.6, 29.8, 17.6], chip: [76.5, 3.7, 'r'], path: 'M 850 250 C 970 240 1050 235 1140 262' },
-  { dept: 'ads', name: 'Ads Manager Team', hot: [0, 33.5, 36, 27], scr: [1.3, 38.8, 33.8, 15.6], chip: [22.5, 34.6, 'l'], path: 'M 700 290 C 560 330 500 380 440 420' },
-  { dept: 'desk', name: 'Messaging Inquiry Desk', hot: [65, 33.5, 35, 27], scr: [66, 38, 33, 18.6], chip: [72.4, 34.8, 'r'], path: 'M 870 290 C 1010 330 1070 380 1130 430' },
+  { dept: 'ads', name: 'Ads Manager Team', hot: [0, 33.5, 36, 27], scr: [1.3, 38.8, 33.8, 14.4], chip: [22.5, 34.6, 'l'], path: 'M 700 290 C 560 330 500 380 440 420' },
+  { dept: 'desk', name: 'Messaging Inquiry Desk', hot: [65, 33.5, 35, 27], scr: [66, 38, 33, 16.6], chip: [72.4, 34.8, 'r'], path: 'M 870 290 C 1010 330 1070 380 1130 430' },
   { dept: 'booking', name: 'Booking, Quotation & Scheduling', hot: [35, 54.5, 41, 28], scr: [36.6, 59, 38.4, 13.4], chip: [67.6, 54.8, 'l'], path: 'M 785 360 C 785 420 785 480 785 560' },
   { dept: 'hr', name: 'HR Team', hot: [0, 61, 37, 37], scr: [1.6, 65.4, 34.4, 16.2], chip: [16.5, 62.8, 'l'], path: 'M 700 330 C 600 450 560 560 470 650' },
   { dept: 'board', name: 'Board Room', hot: [62, 61, 38, 38], scr: [70.6, 71.4, 28.4, 9.4], chip: [78.4, 62.4, 'r'], path: 'M 870 330 C 980 460 1060 580 1120 700' },
@@ -25,13 +25,11 @@ export function deptLive(views: Record<string, AgentView>, dept: string): DeptLi
   return { state: st.includes('error') ? 'error' : awaiting ? 'awaiting' : busy ? 'working' : 'idle', awaiting, busy };
 }
 
-export function HqCinematic({ events, views, kpis, now, selected, onPick }: { events: HqEvent[]; views: Record<string, AgentView>; kpis: Partial<Record<DeptKey, Kpi[]>>; now: number; selected: string; onPick: (d: string) => void }) {
+export function HqCinematic({ events, views, kpis, now, selected, onPick, onPickAgent, still }: { events: HqEvent[]; views: Record<string, AgentView>; kpis: Partial<Record<DeptKey, Kpi[]>>; now: number; selected: string; onPick: (d: string) => void; onPickAgent: (k: string) => void; still: boolean }) {
   const today = new Date(now).toISOString().slice(0, 10);
   const packets = events.filter((e) => now - Date.parse(e.at) >= 0 && now - Date.parse(e.at) < 4200 && ZONES.some((z) => z.dept === e.dept));
   const lastCore = events.filter((e) => e.dept === 'hub' || e.agent === 'jarvis').map((e) => Date.parse(e.at)).filter((t) => t <= now).sort((a, b) => b - a)[0];
   const hubHot = lastCore !== undefined && now - lastCore < 6000;
-  const talkers = useMemo(() => AGENTS.filter((a) => a.key !== 'jarvis' && inCafe(a.key, now)), [Math.floor(now / 15_000)]); // eslint-disable-line react-hooks/exhaustive-deps
-  const talker = talkers.length ? talkers[hash(String(Math.floor(now / 12_000))) % talkers.length] : undefined;
   const zoneOf = (dept: string) => ZONES.find((z) => z.dept === dept);
 
   return (
@@ -67,7 +65,7 @@ export function HqCinematic({ events, views, kpis, now, selected, onPick }: { ev
 
         <div className={`cin-core ${hubHot ? 'hot' : ''}`} style={{ left: `${HUB.x}%`, top: `${HUB.y}%` }} key={`core-${hubHot ? lastCore : 'idle'}`}><i /><i /><i /><span>JARVIS</span></div>
         <div className="cin-steam" style={{ left: '55.5%', top: '47.5%' }}><i /><i /><i /></div>
-        {talker && <div className="cin-bubble" key={talker.key + Math.floor(now / 12_000)} style={{ left: '61%', top: '43.5%' }}><b>{talker.name}</b> {cafeLine(talker.key, now)}</div>}
+        <HqRobots views={views} onPickAgent={onPickAgent} focusDept={selected} still={still} />
         <div className="cin-motes" aria-hidden>{Array.from({ length: 26 }, (_, i) => <i key={i} style={{ left: `${(hash(`m${i}`) % 1000) / 10}%`, top: `${(hash(`n${i}`) % 1000) / 10}%`, animationDelay: `${(i * 0.9) % 12}s`, animationDuration: `${9 + (i % 7)}s`, width: `${2 + (i % 3)}px`, height: `${2 + (i % 3)}px` }} />)}</div>
         <div className="cin-note">Concept art · the glowing panels, rings and light packets are live</div>
       </div>
