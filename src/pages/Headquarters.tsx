@@ -127,7 +127,7 @@ export default function Headquarters() {
       <div className="hqp-body"><div className="hqp-main">
       <div className="hqp-stagebox">
       {look === 'studio' && <HqStudio demo={demo} events={events} views={views} kpis={kpis} now={clock} focus={focus} selectedAgent={sel} still={still} hold={demo && sc.status === 'paused'} mobile={mobile} inset={panel && !mobile ? 400 : 0} onPickDept={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
-      {look === 'rooms' && <HqWing demo={demo} events={events} views={views} kpis={kpis} now={clock} still={still} hold={demo && sc.status === 'paused'} focus={focus} selectedAgent={sel} mobile={mobile} link={rt} onPickDept={(d) => { setFocus(d); setOpenQ(true); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
+      {look === 'rooms' && <HqWing demo={demo} events={events} views={views} kpis={kpis} now={clock} still={still} hold={demo && sc.status === 'paused'} focus={focus} selectedAgent={sel} mobile={mobile} services={{ ...svcN, sample: demo }} link={rt} onPickDept={(d) => { setFocus(d); setOpenQ(true); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
       {look === 'cinematic' && <HqCinematic demo={demo} events={events} views={views} kpis={kpis} now={clock} selected={focus} onPick={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} still={still} />}
       </div>
       {mobile && look !== 'list' && focus && !openQ && !sel && <div className="hqp-back"><button className="b primary" onClick={() => setOpenQ(true)}>Open the {dept?.name} work queue</button></div>}
@@ -142,15 +142,6 @@ export default function Headquarters() {
         </div>
       )}
 
-      <section className="hqp-svc" aria-label="Services today">
-        <div className="svc-h"><b>SERVICES TODAY{demo ? ' · SAMPLE' : ''}</b><span className="svc-n">{svcN.done}/{svcN.total} done</span>
-          <span className="svc-c" title="Working on site">🧽 {svcN.working}</span><span className="svc-c" title="On the road">🚚 {svcN.road}</span><span className="svc-c" title="Not started yet">🕒 {svcN.waiting}</span>{svcN.problem > 0 && <span className="svc-c bad" title="Needs attention">⚠️ {svcN.problem}</span>}
-          {!demo && <Link className="b svc-go" to="/today">Open Happening Today</Link>}</div>
-        <div className="svc-row">{svc.length === 0 ? <p className="muted small">No service is scheduled today.</p> : svc.map((x) => (
-          <Link key={x.id} to={demo ? '#' : '/today'} className={`svc-card t-${x.tone}`} onClick={(e) => { if (demo) e.preventDefault(); }}>
-            <span className="st">{x.icon} {x.label}</span><b>{x.client}{x.vip ? ' ⭐' : ''}</b><small>{x.place || 'No address'}{x.start && !demo ? ` · ${fmtTime(x.start)}` : ''}</small><small>{x.service || '—'}</small><em>{x.present}/{x.crew} crew on site</em>
-          </Link>))}</div>
-      </section>
 
       </div>
       <footer className="hqp-strip">
@@ -172,9 +163,15 @@ export default function Headquarters() {
                 <h4>Recent activity</h4><ul className="feed">{evs.map((e) => <li key={e.id}><span className={`k-${e.kind}`}>{KIND_ICON[e.kind]}</span><div>{e.title}<small>{ago(e.at, clock)}{e.ref ? ` · ${e.ref}` : ''}</small></div></li>)}{!evs.length && <li className="muted small">No activity yet.</li>}</ul>
                 <div className="acts">{!demo && link && can('sales.view') && <Link className="b primary" to={link}>Open the linked record</Link>}{!demo && ['desk', 'booking'].includes(agent.dept) && can('sales.view') && <Link className="b" to="/flow">Open Lead Flow</Link>}{!demo && agent.key === 'jarvis' && <Link className="b" to="/jarvis">Open JARVIS</Link>}{!demo && agent.key === 'creative' && <Link className="b" to="/marketing">Open Marketing AI</Link>}{!demo && agent.key === 'attendance' && <Link className="b" to="/attendance">Open Attendance</Link>}</div>
                 <p className="muted small">Approve, retry or delegate are done in the screens above; they are not simulated here.</p>
-              </>); })() : dept ? (() => { const q = queue(dept.key as DeptKey); const mates = AGENTS.filter((a) => a.dept === dept.key);
+              </>); })() : dept ? (() => { const q = queue(dept.key as DeptKey); const showSvc = dept.key === 'booking'; const mates = AGENTS.filter((a) => a.dept === dept.key);
               return (<>
                 <div className="sh"><div><h3>{dept.icon} {dept.name}</h3><div className="muted small">{dept.blurb}</div></div><button className="x" onClick={() => { setOpenQ(false); if (!mobile) setFocus(''); }} aria-label="Close">✕</button></div>
+                {showSvc && <section className="svc-box" aria-label="Services today"><h4>Services today{demo ? ' · sample' : ''} <span className="svc-n">{svcN.done}/{svcN.total} done</span></h4>
+                  <div className="svc-h"><span className="svc-c" title="Working on site">🧽 {svcN.working}</span><span className="svc-c" title="On the road">🚚 {svcN.road}</span><span className="svc-c" title="Not started yet">🕒 {svcN.waiting}</span>{svcN.problem > 0 && <span className="svc-c bad" title="Needs attention">⚠️ {svcN.problem}</span>}{!demo && <Link className="b svc-go" to="/today">Open Happening Today</Link>}</div>
+                  <div className="svc-col">{svc.length === 0 ? <p className="muted small">No service is scheduled today.</p> : svc.map((x) => (
+                    <Link key={x.id} to={demo ? '#' : '/today'} className={`svc-card t-${x.tone}`} onClick={(e) => { if (demo) e.preventDefault(); }}>
+                      <span className="st">{x.icon} {x.label}</span><b>{x.client}{x.vip ? ' ⭐' : ''}</b><small>{x.place || 'No address'}{x.start && !demo ? ` · ${fmtTime(x.start)}` : ''} · {x.service || '—'}</small><em>{x.present}/{x.crew} crew on site</em>
+                    </Link>))}</div></section>}
                 <h4>Work queue</h4><ul className="queue">{q.items.map((it, i) => <li key={i}>{it.to && can('sales.view') ? <Link to={it.to}><b>{it.text}</b>{it.sub && <small>{it.sub}</small>}</Link> : <div><b>{it.text}</b>{it.sub && <small>{it.sub}</small>}</div>}</li>)}{!q.items.length && <li className="muted small">Nothing in the queue.</li>}</ul>
                 <p className="muted small">{q.note}</p>{q.to && !demo && can('sales.view') && <div className="acts"><Link className="b primary" to={q.to}>{q.toLabel}</Link></div>}
                 <h4>Team</h4><ul className="team">{mates.map((a) => <li key={a.key} onClick={() => setSel(a.key)}><span className="rb"><RobotAvatar a={a} state={views[a.key].state} moving={false} /></span><div><b>{a.name}</b> <span className="muted">· {a.role}</span><div className="small">{STATE_LABEL[views[a.key].state]}</div></div>{a.live ? <span className="tag on">Connected</span> : <span className="tag">Planned</span>}</li>)}</ul>
@@ -207,10 +204,9 @@ const CSS = `
 .queue{list-style:none;margin:0;padding:0;display:grid;gap:6px}.queue li>*{display:block;padding:8px 10px;border:1px solid #2a6b9b;background:#071e39;border-radius:8px;color:inherit;text-decoration:none;font-size:13px}.queue small{display:block;opacity:.65;margin-top:2px}.queue a:hover{border-color:#6ad4ff}
 .team{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:8px}.team li{display:flex;gap:10px;align-items:center;cursor:pointer;font-size:.9em}.team .rb{width:34px;flex:none}
 @keyframes hqpblink{50%{opacity:.4}}
-.hqp-svc{margin-top:10px;padding:10px 12px;border:1px solid rgba(120,160,255,.28);border-radius:12px;background:linear-gradient(180deg,rgba(14,34,90,.55),rgba(8,20,58,.5))}
 .svc-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:#cfe0ff}.svc-h b{letter-spacing:.08em;font-size:11px;color:#9fe7ff}.svc-n{font-weight:800;color:#fff}.svc-c{padding:2px 8px;border-radius:999px;background:rgba(120,160,255,.14);font-weight:700}.svc-c.bad{background:rgba(255,176,32,.2);color:#ffd07a}.svc-go{margin-left:auto}
-.svc-row{display:flex;gap:8px;overflow-x:auto;padding:8px 2px 2px;scrollbar-width:thin}
-.svc-card{flex:0 0 210px;display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:10px;border:1px solid rgba(120,160,255,.25);background:rgba(10,26,70,.7);color:#dbe8ff;text-decoration:none;border-left:4px solid #5a7bd8}
+.svc-col{display:flex;flex-direction:column;gap:6px;padding:6px 0 10px}.svc-box h4{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.svc-card{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:10px;border:1px solid rgba(120,160,255,.25);background:rgba(10,26,70,.7);color:#dbe8ff;text-decoration:none;border-left:4px solid #5a7bd8}
 .svc-card:hover{border-color:#9fe7ff}.svc-card .st{font-size:11px;font-weight:800;letter-spacing:.03em}.svc-card b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.svc-card small{font-size:11px;color:#9fb3d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.svc-card em{font-style:normal;font-size:11px;color:#8bf3bd}
 .svc-card.t-green{border-left-color:#3fdc94}.svc-card.t-teal{border-left-color:#2ec4b6}.svc-card.t-blue{border-left-color:#4f8bff}.svc-card.t-amber{border-left-color:#ffb020}.svc-card.t-red{border-left-color:#ff5d5d}.svc-card.t-grey{border-left-color:#7d8db3}.svc-card.t-navy{border-left-color:#6a7fe0}
 .hqp.full{position:fixed;inset:0;z-index:100;margin:0;border-radius:0;border:0;display:flex;flex-direction:column;overflow:auto;padding:8px 12px 10px}

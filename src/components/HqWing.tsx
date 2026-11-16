@@ -73,7 +73,7 @@ function Furniture({ r }: { r: Room }) {
   return <g className="furn"><text x={b.x + 8} y={T + 214} fontSize="18" opacity=".8">🪴</text><text x={b.x + b.w - 30} y={T + 214} fontSize="18" opacity=".8">🪴</text></g>;
 }
 
-function RoomShell({ r, live, kpis, demo, count, onOpen }: { r: Room; live: boolean; kpis?: Kpi[]; demo: boolean; count: number; onOpen: () => void }) {
+function RoomShell({ r, live, kpis, demo, count, svc, onOpen }: { r: Room; live: boolean; kpis?: Kpi[]; demo: boolean; count: number; svc?: HqWingProps['services']; onOpen: () => void }) {
   const b = box(r), name = deptByKey(r)?.name ?? r;
   return (
     <g className={`room room-${r}`} role="button" tabIndex={0} aria-label={`Open the ${name} work queue`} onClick={onOpen} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}>
@@ -85,7 +85,8 @@ function RoomShell({ r, live, kpis, demo, count, onOpen }: { r: Room; live: bool
       {[0, 1, 2, 3].map((i) => <line key={i} x1={b.x} x2={b.x + b.w} y1={b.top + 84 + i * i * 9 + i * 14} y2={b.top + 84 + i * i * 9 + i * 14} stroke="rgba(120,180,255,.08)" />)}
       <rect x={b.cx - 120} y={b.top + 7} width="240" height="21" rx="10.5" fill="rgba(8,20,62,.85)" stroke="rgba(120,200,255,.5)" />
       <text x={b.cx} y={b.top + 21.5} textAnchor="middle" fontSize="11.5" fontWeight="800" letterSpacing=".06em" fill="#dff1ff">{name.toUpperCase()}</text>
-      <text x={b.cx} y={b.top + 56} textAnchor="middle" fontSize="20" opacity={live ? 0.95 : 0.4}>{ART[r]}</text>
+      {r === 'booking' && svc ? <g className="today-pill" aria-label="Services today"><rect x={b.cx - 74} y={b.top + 33} width="148" height="26" rx="13" fill="rgba(60,220,140,.14)" stroke="#3fdc94" /><text x={b.cx} y={b.top + 44} textAnchor="middle" fontSize="8" fontWeight="800" letterSpacing=".12em" fill="#8bf3bd">SERVICES TODAY{svc.sample ? ' · SAMPLE' : ''}</text><text x={b.cx} y={b.top + 55} textAnchor="middle" fontSize="10" fontWeight="800" fill="#fff">{svc.done}/{svc.total} done · 🧽 {svc.working} · 🚚 {svc.road}</text></g>
+        : <text x={b.cx} y={b.top + 56} textAnchor="middle" fontSize="20" opacity={live ? 0.95 : 0.4}>{ART[r]}</text>}
       {r !== 'cafe' && <g transform={`translate(${b.x + b.w - 10} ${b.top + 48})`}><rect x="-84" y="-10" width="84" height="16" rx="8" fill={live ? 'rgba(60,220,140,.22)' : 'rgba(150,170,210,.2)'} /><text x="-42" y="1.5" textAnchor="middle" fontSize="9" fontWeight="800" fill={live ? '#7ff0b4' : '#9fb3d9'}>{live ? `LIVE${count ? ` · ${count} today` : ''}` : 'NOT CONNECTED'}</text></g>}
       {kpis?.slice(0, 2).map((k, i) => <g key={k.label} transform={`translate(${b.x + 14 + i * 74} ${b.top + 50})`}><text fontSize="17" fontWeight="800" fill="#7be3ff">{k.value}</text><text y="9" fontSize="7" fill="#a9c2ee">{k.label.slice(0, 16)}{demo ? '*' : ''}</text></g>)}
       <rect className="rim" x={b.x} y={b.top} width={b.w} height="244" rx="10" fill="none" stroke="rgba(110,170,255,.45)" strokeWidth="1.5" />
@@ -93,9 +94,9 @@ function RoomShell({ r, live, kpis, demo, count, onOpen }: { r: Room; live: bool
   );
 }
 
-export interface HqWingProps { demo: boolean; events: HqEvent[]; views: Record<string, AgentView>; kpis?: Partial<Record<DeptKey, Kpi[]>>; now: number; still: boolean; hold: boolean; focus: string; selectedAgent: string; mobile: boolean; link?: 'live' | 'connecting' | 'reconnecting' | 'off'; onPickDept: (d: string) => void; onPickAgent: (k: string) => void }
+export interface HqWingProps { demo: boolean; events: HqEvent[]; views: Record<string, AgentView>; kpis?: Partial<Record<DeptKey, Kpi[]>>; now: number; still: boolean; hold: boolean; focus: string; selectedAgent: string; mobile: boolean; services?: { done: number; total: number; working: number; road: number; sample: boolean }; link?: 'live' | 'connecting' | 'reconnecting' | 'off'; onPickDept: (d: string) => void; onPickAgent: (k: string) => void }
 
-export function HqWing({ demo, events, views, kpis, now, still, hold, focus, selectedAgent, mobile, link, onPickDept, onPickAgent }: HqWingProps) {
+export function HqWing({ demo, events, views, kpis, now, still, hold, focus, selectedAgent, mobile, link, services, onPickDept, onPickAgent }: HqWingProps) {
   const [vw, setVw] = useState(typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6); useEffect(() => { const f = () => setVw(window.innerWidth / window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   const wide = !mobile && vw > 1.25; applyLayout(wide);                    // the building takes the shape of the screen: wide screens get a wide building, no empty sides
   const reduce = useReducedMotion(); const frozen = still || hold || !!reduce;
@@ -152,7 +153,7 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
             <rect x="0" y={WORLD.h - 6} width={WORLD.w} height="3" fill="#ffc94d" opacity=".4" />
             {ROOMS.filter((r) => r !== 'hub').map((r) => <polyline key={r} className="link" points={hallPath('hub', r).map((q) => `${q.x},${q.y}`).join(' ')} fill="none" stroke="rgba(123,227,255,.2)" strokeWidth="2" />)}
           </g>
-          {ROOMS.map((r) => <RoomShell key={r} r={r} live={r === 'hub' || r === 'cafe' ? true : AGENTS.some((a) => a.dept === r && a.live)} kpis={kpis?.[r]} demo={demo} count={events.filter((e) => e.dept === r && e.at.slice(0, 10) === today).length} onOpen={() => onPickDept(r)} />)}
+          {ROOMS.map((r) => <RoomShell key={r} r={r} live={r === 'hub' || r === 'cafe' ? true : AGENTS.some((a) => a.dept === r && a.live)} kpis={kpis?.[r]} demo={demo} count={events.filter((e) => e.dept === r && e.at.slice(0, 10) === today).length} svc={services} onOpen={() => onPickDept(r)} />)}
           {ROOMS.map((r) => <Furniture key={r} r={r} />)}
 
           {/* JARVIS core */}
@@ -208,7 +209,7 @@ const CSS = `
 .wing .amber{animation:blink-a 1.4s infinite}.wing .furn .steam{animation:blink-a 2s infinite}.wing .holo rect{animation:holo 3s ease-in-out infinite;transform-box:fill-box;transform-origin:bottom}.wing .holo rect:nth-child(2n){animation-delay:.6s}@keyframes holo{50%{transform:scaleY(.7)}}
 .wing.still .flow,.wing.still .core *,.wing.still .holo rect{animation-play-state:paused}
 @media (prefers-reduced-motion:reduce){.wing .flow,.wing .core *,.wing .amber,.wing .holo rect{animation:none!important}}
-.hqp.full .wing-cam{width:min(100%,calc((100vh - 400px) * var(--wa)))}
+.hqp.full .wing-cam{width:min(100%,calc((100vh - 235px) * var(--wa)))}
 .wing .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .wing-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:#9fb3d9;margin-top:8px}.wing-legend .grow{margin-left:auto}.wing-legend .d{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .wing-legend .idle{background:#2f6dff}.wing-legend .open{background:#7be3ff}.wing-legend .amber{background:#ffb020}.wing-legend .green{background:#4dffa0}.wing-legend .red{background:#ff5d5d}.wing-note{font-size:11.5px;color:#8197c4;margin:4px 0 0}
