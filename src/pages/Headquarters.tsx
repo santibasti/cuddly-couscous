@@ -126,9 +126,9 @@ export default function Headquarters() {
 
       <div className="hqp-body"><div className="hqp-main">
       <div className="hqp-stagebox">
-      {look === 'studio' && <HqStudio demo={demo} events={events} views={views} kpis={kpis} now={clock} focus={focus} selectedAgent={sel} still={still} hold={demo && sc.status === 'paused'} mobile={mobile} inset={panel && !mobile ? 400 : 0} onPickDept={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
+      {look === 'studio' && <HqStudio services={{ ...svcN, sample: demo }} demo={demo} events={events} views={views} kpis={kpis} now={clock} focus={focus} selectedAgent={sel} still={still} hold={demo && sc.status === 'paused'} mobile={mobile} inset={panel && !mobile ? 400 : 0} onPickDept={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
       {look === 'rooms' && <HqWing demo={demo} events={events} views={views} kpis={kpis} now={clock} still={still} hold={demo && sc.status === 'paused'} focus={focus} selectedAgent={sel} mobile={mobile} services={{ ...svcN, sample: demo }} link={rt} onPickDept={(d) => { setFocus(d); setOpenQ(true); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
-      {look === 'cinematic' && <HqCinematic demo={demo} events={events} views={views} kpis={kpis} now={clock} selected={focus} onPick={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} still={still} />}
+      {look === 'cinematic' && <HqCinematic services={{ ...svcN, sample: demo }} demo={demo} events={events} views={views} kpis={kpis} now={clock} selected={focus} onPick={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} still={still} />}
       </div>
       {mobile && look !== 'list' && focus && !openQ && !sel && <div className="hqp-back"><button className="b primary" onClick={() => setOpenQ(true)}>Open the {dept?.name} work queue</button></div>}
       {(look === 'studio' || look === 'rooms') && focus && !mobile && <div className="hqp-back"><button className="b" onClick={() => { setFocus(''); setOpenQ(false); }}>← Back to the whole office</button></div>}

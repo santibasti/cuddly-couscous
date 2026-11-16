@@ -3,6 +3,7 @@
 // The camera (Motion) can zoom into a room; everything else is CSS/SVG, so it stays light.
 import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
+import { ServicesPill, SVC_PILL_CSS, type ServicesSummary } from './HqServicesPill';
 import { AGENTS, DEPTS, agentByKey, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
 import { STUDIO, routeBetween } from '@/lib/hqsim';
 import { HqRobots } from '@/components/HqRobots';
@@ -12,9 +13,9 @@ const MON: Partial<Record<string, string>> = { email: 'inbox', creative: 'photo'
 const WIN: Record<string, string> = { email: 'INBOX · DRAFTS', creative: 'PHOTO · VIDEO', ads: 'CAMPAIGNS', desk: 'MESSAGES', booking: 'BOOKINGS · QUOTES', hr: 'PEOPLE', board: 'BOARD MEETINGS' };
 const CAMERA_ASPECT = 16 / 12; const DESIGN_W = 1200, DESIGN_H = 900;
 
-export interface StudioProps { demo: boolean; events: HqEvent[]; views: Record<string, AgentView>; kpis: Partial<Record<DeptKey, Kpi[]>>; now: number; focus: string; selectedAgent: string; still: boolean; hold: boolean; mobile: boolean; inset?: number; onPickDept: (d: string) => void; onPickAgent: (k: string) => void }
+export interface StudioProps { services?: ServicesSummary; demo: boolean; events: HqEvent[]; views: Record<string, AgentView>; kpis: Partial<Record<DeptKey, Kpi[]>>; now: number; focus: string; selectedAgent: string; still: boolean; hold: boolean; mobile: boolean; inset?: number; onPickDept: (d: string) => void; onPickAgent: (k: string) => void }
 
-export function HqStudio({ demo, events, views, kpis, now, focus, selectedAgent, still, hold, mobile, inset = 0, onPickDept, onPickAgent }: StudioProps) {
+export function HqStudio({ services, demo, events, views, kpis, now, focus, selectedAgent, still, hold, mobile, inset = 0, onPickDept, onPickAgent }: StudioProps) {
   const box = useRef<HTMLDivElement>(null); const [size, setSize] = useState({ w: 1200, h: 900 }); const reduce = useReducedMotion();
   useEffect(() => { const el = box.current; if (!el) return; const ro = new ResizeObserver(() => setSize({ w: el.clientWidth, h: el.clientHeight })); ro.observe(el); setSize({ w: el.clientWidth, h: el.clientHeight }); return () => ro.disconnect(); }, []);
   const fd = DEPTS.find((d) => d.key === focus);
@@ -30,7 +31,7 @@ export function HqStudio({ demo, events, views, kpis, now, focus, selectedAgent,
 
   return (
     <div className="stu" ref={box} style={{ aspectRatio: String(aspect) }} role="group" aria-label="TOPMOP AI Headquarters office">
-      <style>{CSS}</style>
+      <style>{CSS}{SVC_PILL_CSS}{'.rm-hd .svcpill{margin-left:auto;margin-right:6px;align-self:center}.rm-hd:has(.svcpill) small{display:none}.rm-hd:has(.svcpill) h2{white-space:nowrap}'}</style>
       <motion.div className="stu-cam" initial={false} animate={{ scale: cam.s, x: cam.x, y: cam.y }} transition={reduce || still ? { duration: 0 } : { type: 'spring', stiffness: 80, damping: 22 }} style={{ transformOrigin: '0 0' }}>
         <div className="stu-floor" />
         {[33.5, 66.5].map((x) => <i key={`v${x}`} className="stu-cor v" style={{ left: `${x}%` }} />)}{[33, 66].map((y) => <i key={`h${y}`} className="stu-cor h" style={{ top: `${y}%` }} />)}
@@ -40,6 +41,7 @@ export function HqStudio({ demo, events, views, kpis, now, focus, selectedAgent,
           const room = (
             <div className="rm-in">
               <div className="rm-hd"><span className="ic">{d.icon}</span><div><h2>{d.name}</h2><small>{d.blurb}</small></div>
+                {d.key === 'booking' && services && <ServicesPill compact s={services} onOpen={() => onPickDept(d.key)} />}
                 {d.key !== 'cafe' && <span className={`pill ${live ? 'live' : 'plan'} ${L.state}`}>{!live ? 'PLANNED' : L.state === 'awaiting' ? `WAITING ${L.awaiting}` : L.state === 'working' ? 'WORKING' : L.state === 'error' ? 'PROBLEM' : `LIVE${n ? ` · ${n}` : ''}`}</span>}
                 {d.key === 'cafe' && <span className="pill ambient">AMBIENT</span>}</div>
               {d.key === 'hub' ? (

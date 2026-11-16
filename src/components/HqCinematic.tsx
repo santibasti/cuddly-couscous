@@ -1,6 +1,7 @@
 // The cinematic headquarters: concept art of the AI headquarters as the stage, with the LIVE layer on top of it. The art is only a picture; everything that moves or shows a number
 // comes from real events and the app's own records: glowing rings on departments that are working or waiting for you, light packets travelling to the AI core when something
 // really happens, and "holographic" screens that replace the painted dashboards with real figures (or say "Not connected yet").
+import { ServicesPill, SVC_PILL_CSS, type ServicesSummary } from './HqServicesPill';
 import { AGENTS, hash, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
 import { HqRobots } from '@/components/HqRobots';
 
@@ -25,7 +26,7 @@ export function deptLive(views: Record<string, AgentView>, dept: string): DeptLi
   return { state: st.includes('error') ? 'error' : awaiting ? 'awaiting' : busy ? 'working' : 'idle', awaiting, busy };
 }
 
-export function HqCinematic({ demo = false, events, views, kpis, now, selected, onPick, onPickAgent, still }: { events: HqEvent[]; views: Record<string, AgentView>; kpis: Partial<Record<DeptKey, Kpi[]>>; now: number; selected: string; onPick: (d: string) => void; onPickAgent: (k: string) => void; still: boolean; demo?: boolean }) {
+export function HqCinematic({ services, demo = false, events, views, kpis, now, selected, onPick, onPickAgent, still }: { services?: ServicesSummary; events: HqEvent[]; views: Record<string, AgentView>; kpis: Partial<Record<DeptKey, Kpi[]>>; now: number; selected: string; onPick: (d: string) => void; onPickAgent: (k: string) => void; still: boolean; demo?: boolean }) {
   const today = new Date(now).toISOString().slice(0, 10);
   const packets = events.filter((e) => now - Date.parse(e.at) >= 0 && now - Date.parse(e.at) < 4200 && ZONES.some((z) => z.dept === e.dept));
   const lastCore = events.filter((e) => e.dept === 'hub' || e.agent === 'jarvis').map((e) => Date.parse(e.at)).filter((t) => t <= now).sort((a, b) => b - a)[0];
@@ -34,14 +35,15 @@ export function HqCinematic({ demo = false, events, views, kpis, now, selected, 
 
   return (
     <div className="cin" role="img" aria-label="TOPMOP AI Headquarters: departments with live activity">
-      <style>{CSS}</style>
+      <style>{CSS}{SVC_PILL_CSS}{'.cin-scr .hd{display:flex;align-items:center;gap:6px}.cin-scr .hd .svcpill{margin-left:auto;padding:1px 8px}'}</style>
       <div className="cin-stage">
         <img className="cin-art" src="/hq/headquarters.webp" alt="" draggable={false} />
         <div className="cin-grade" />
         {ZONES.map((z) => { const k = kpis[z.dept]; return (
           <div key={`s-${z.dept}`} className="cin-scr" style={{ left: `${z.scr[0]}%`, top: `${z.scr[1]}%`, width: `${z.scr[2]}%`, height: `${z.scr[3]}%` }}>
-            <div className="hd"><i />{k ? (demo ? 'SAMPLE DATA' : 'LIVE DATA') : 'PLANNED'}</div>
+            <div className="hd"><i />{k ? (demo ? 'SAMPLE DATA' : 'LIVE DATA') : 'PLANNED'}{z.dept === 'booking' && services && <ServicesPill compact s={services} onOpen={() => onPick('booking')} />}</div>
             <div className="kp">{k ? k.map((x) => <div key={x.label}><b>{x.value}</b><span>{x.label}</span></div>) : <div className="off"><span>Not connected yet</span></div>}</div>
+
           </div>); })}
 
         <svg className="cin-streams" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden>
