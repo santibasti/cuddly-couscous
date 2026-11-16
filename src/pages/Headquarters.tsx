@@ -1,6 +1,6 @@
 // TOPMOP AI Headquarters: the owner's view of the automated desks of the business as a living office. LIVE = real events written by the database as things happen (and restored on load).
 // DEMO MODE = a clearly labelled sample scenario with Start / Pause / Reset; it sends, books and saves nothing. Departments with no real feed yet are marked PLANNED.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { CLOUD, supabase } from '@/lib/cloud';
@@ -27,12 +27,21 @@ export default function Headquarters() {
   const { db, can } = useAuth(); const reduce = useReducedMotion();
   const [live, setLive] = useState<HqEvent[]>([]); const [loaded, setLoaded] = useState(!CLOUD); const [err, setErr] = useState(''); const [rt, setRt] = useState<Rt>(CLOUD ? 'connecting' : 'off');
   const [demo, setDemo] = useState(!CLOUD); const [sc, setSc] = useState({ status: 'idle' as 'idle' | 'running' | 'paused' | 'done', base: Date.now(), elapsed: 0 });
+  const root = useRef<HTMLDivElement>(null); const [full, setFull] = useState(false);
   const [now, setNow] = useState(Date.now()); const [look, setLook] = useState<Look>('studio'); const [still, setStill] = useState(false);
   const [sel, setSel] = useState(''); const [focus, setFocus] = useState(''); const [openQ, setOpenQ] = useState(false); const [mobile, setMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 760);
   useEffect(() => { const f = () => setMobile(window.innerWidth < 760); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i); }, []);
+  // full view: the real browser full screen when it is available, otherwise the page itself covers the whole window
+  useEffect(() => { const f = () => setFull(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f); }, []);
+  const toggleFull = async () => {
+    if (document.fullscreenElement) { await document.exitFullscreen().catch(() => undefined); return; }
+    if (full) { setFull(false); return; }
+    try { if (root.current?.requestFullscreen) { await root.current.requestFullscreen(); return; } } catch { /* fall back to covering the window */ }
+    setFull(true);
+  };
   useEffect(() => { if (mobile && !focus) setFocus('desk'); }, [mobile]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { setSel(''); setOpenQ(false); if (!mobile) setFocus(''); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [mobile, focus]);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { if (full && !document.fullscreenElement) { setFull(false); return; } setSel(''); setOpenQ(false); if (!mobile) setFocus(''); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [mobile, focus, full]);
 
   // real events: the last 24 hours restored on load, then live inserts. After any reconnect the last 24 hours are fetched again, so nothing missed stays missing; events keep their own time.
   useEffect(() => {
@@ -75,7 +84,7 @@ export default function Headquarters() {
   };
 
   return (
-    <div className="hqp">
+    <div className={`hqp ${full ? 'full' : ''}`} ref={root}>
       <style>{CSS}</style>
       <header className="hqp-top">
         <div className="hqp-brand"><div className="mark">AI</div><div className="ttl">TOPMOP <b>AI AGENT</b><small>HEADQUARTERS · VIRTUAL OPERATIONS</small></div></div>
@@ -85,6 +94,7 @@ export default function Headquarters() {
           {CLOUD && <button className="b" onClick={() => setDemo((d) => !d)}>{demo ? 'Show live' : 'Demo mode'}</button>}
           <div className="seg" role="tablist" aria-label="View">{(['studio', 'cinematic', 'list'] as Look[]).map((l) => <button key={l} role="tab" aria-selected={look === l} className={look === l ? 'on' : ''} onClick={() => setLook(l)}>{l === 'studio' ? '🏢 Studio' : l === 'cinematic' ? '🎬 Cinematic' : '📋 List'}</button>)}</div>
           <button className="b" onClick={() => setStill((s) => !s)} aria-pressed={still}>{still ? '▶ Resume motion' : '⏸ Pause motion'}</button>
+          <button className="b" onClick={() => void toggleFull()} aria-pressed={full} title="Show the headquarters on the whole screen">{full ? '⤡ Exit full view' : '⤢ Full view'}</button>
         </div>
       </header>
 
@@ -102,8 +112,11 @@ export default function Headquarters() {
 
       {mobile && look !== 'list' && <div className="hqp-sel" role="tablist" aria-label="Department">{DEPTS.map((d) => <button key={d.key} role="tab" aria-selected={focus === d.key} className={focus === d.key ? 'on' : ''} onClick={() => { setFocus(d.key); setOpenQ(false); setSel(''); }}>{d.icon} {d.name.split(' ')[0]}</button>)}</div>}
 
+      <div className="hqp-body"><div className="hqp-main">
+      <div className="hqp-stagebox">
       {look === 'studio' && <HqStudio demo={demo} events={events} views={views} kpis={kpis} now={clock} focus={focus} selectedAgent={sel} still={still} hold={demo && sc.status === 'paused'} mobile={mobile} inset={panel && !mobile ? 400 : 0} onPickDept={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
       {look === 'cinematic' && <HqCinematic demo={demo} events={events} views={views} kpis={kpis} now={clock} selected={focus} onPick={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} still={still} />}
+      </div>
       {mobile && look !== 'list' && focus && !openQ && !sel && <div className="hqp-back"><button className="b primary" onClick={() => setOpenQ(true)}>Open the {dept?.name} work queue</button></div>}
       {look === 'studio' && focus && !mobile && <div className="hqp-back"><button className="b" onClick={() => { setFocus(''); setOpenQ(false); }}>← Back to the whole office</button></div>}
 
@@ -116,11 +129,12 @@ export default function Headquarters() {
         </div>
       )}
 
+      </div>
       <footer className="hqp-strip">
         <div className="blk grow"><span className="lbl">ACTIVITY{demo ? ' · SAMPLE' : ''}</span><div className="ticker">{feed.slice(0, 3).map((e) => <div key={e.id}><span className={`k-${e.kind}`}>{KIND_ICON[e.kind]}</span> <b>{agentByKey(e.agent)?.name}</b> {e.title} <small>{ago(e.at, clock)}</small></div>)}{!feed.length && <div className="muted">Nothing yet.</div>}</div></div>
         <div className="blk"><span className="lbl">WAITING FOR YOU · {waiting.length}</span><div className="ticker">{waiting.slice(0, 3).map((w) => w.to && can('sales.view') ? <Link key={w.key} to={w.to} className="wi">⏸ {w.text}</Link> : <div key={w.key} className="wi">⏸ {w.text}</div>)}{!waiting.length && <div className="muted">Nothing is waiting for you.</div>}</div></div>
         <div className="blk"><span className="lbl">STATUS</span><div className="ticker"><div><b>{stats.busy}</b> busy · <b>{stats.awaiting}</b> waiting · <b className={stats.problems ? 'bad' : ''}>{stats.problems}</b> problems</div><div><b>{stats.connected}/{AGENTS.length}</b> agents connected · <b>{stats.today}</b> events today</div></div></div>
-      </footer>
+      </footer></div>
 
       <AnimatePresence>
         {panel && (
@@ -170,5 +184,11 @@ const CSS = `
 .queue{list-style:none;margin:0;padding:0;display:grid;gap:6px}.queue li>*{display:block;padding:8px 10px;border:1px solid #2a6b9b;background:#071e39;border-radius:8px;color:inherit;text-decoration:none;font-size:13px}.queue small{display:block;opacity:.65;margin-top:2px}.queue a:hover{border-color:#6ad4ff}
 .team{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:8px}.team li{display:flex;gap:10px;align-items:center;cursor:pointer;font-size:.9em}.team .rb{width:34px;flex:none}
 @keyframes hqpblink{50%{opacity:.4}}
-@media (max-width:900px){.hqp-strip{grid-template-columns:1fr}.hqp-slide{top:auto;height:62vh;bottom:8px;right:8px;left:8px;width:auto}}
+.hqp.full{position:fixed;inset:0;z-index:100;margin:0;border-radius:0;border:0;display:flex;flex-direction:column;overflow:auto;padding:8px 12px 10px}
+.hqp.full .hqp-top{padding-bottom:6px;margin-bottom:6px}.hqp.full .hqp-brand .mark{width:34px;height:34px;font-size:17px}.hqp.full .hqp-brand small{display:none}.hqp.full .hqp-demo{margin-bottom:6px;padding:5px 8px}
+.hqp.full .hqp-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:10px}.hqp.full .hqp-main{display:flex;flex-direction:column;min-height:0;min-width:0}.hqp.full .hqp-stagebox{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}.hqp.full .hqp-list{overflow:auto}.hqp.full .hqp-strip{grid-template-columns:1fr;margin-top:0;align-content:start;overflow:auto}
+.hqp.full .stu{width:auto;height:100%;max-width:100%}
+.hqp.full .cin{height:100%;display:grid;place-items:center;overflow:hidden}.hqp.full .cin-stage{height:100%;width:auto;min-width:0;max-width:100%;aspect-ratio:1569/882}
+.hqp.full .hqp-slide{top:64px}
+@media (max-width:900px){.hqp.full .hqp-body{grid-template-columns:1fr}.hqp-strip{grid-template-columns:1fr}.hqp-slide{top:auto;height:62vh;bottom:8px;right:8px;left:8px;width:auto}}
 `;
