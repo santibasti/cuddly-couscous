@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { AGENTS, DEPTS, deptByKey, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
-import { BOT_SCALE, CAFE_SEATS, ROOMS, ROW_Y, SPINES, STATION, WORLD, alongFrac, box, cafeBubble, cafeWanted, describeTrip, doors, handoverTrips, hallPath, inTransit, pulses, stepLoc, tripState, type DoorLight, type Loc, type Room, type TripState } from '@/lib/hqwing';
+import { LAYOUT, applyLayout, CAFE_SEATS, ROOMS, ROW_Y, SPINES, STATION, WORLD, alongFrac, box, cafeBubble, cafeWanted, describeTrip, doors, handoverTrips, hallPath, inTransit, pulses, stepLoc, tripState, type DoorLight, type Loc, type Room, type TripState } from '@/lib/hqwing';
 import { BOT_CSS, HqBot, HqWalker, WALK_CSS, type ScreenKind } from './HqBot';
 
 const SCREEN: Record<Room, ScreenKind> = { email: 'mail', creative: 'photo', ads: 'chart', desk: 'chat', hub: 'core', booking: 'calendar', hr: 'list', cafe: 'core', board: 'chart' };
@@ -12,7 +12,7 @@ const LIGHT: Record<DoorLight, string> = { idle: '#2f6dff', open: '#7be3ff', amb
 const clampN = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 function viewBoxFor(focus: string, mobile: boolean): string {
   if (!ROOMS.includes(focus as Room)) return `0 0 ${WORLD.w} ${WORLD.h}`;
-  const b = box(focus as Room), w = mobile ? 460 : 520, h = mobile ? 520 : (520 * WORLD.h) / WORLD.w * 0.95;
+  const b = box(focus as Room), w = mobile ? 460 : b.w + 170, h = mobile ? 520 : (w * WORLD.h) / WORLD.w * 0.95;
   return `${clampN(b.cx - w / 2, 0, WORLD.w - w)} ${clampN(b.top + 140 - h / 2, 0, WORLD.h - h)} ${w} ${h}`;
 }
 
@@ -52,22 +52,22 @@ function Door({ r, open, light }: { r: Room; open: boolean; light: DoorLight }) 
 }
 
 function Furniture({ r }: { r: Room }) {
-  const b = box(r), cx = b.cx, T = b.top;
+  const b = box(r), cx = b.cx, T = b.top, k = LAYOUT.k, X = (dx: number) => cx + dx * k;
   if (r === 'cafe') return (
     <g className="furn">
-      <rect x={cx - 168} y={T + 150} width="112" height="26" rx="9" fill="#3a2a6b" stroke="#7a62d8" /><rect x={cx - 168} y={T + 132} width="112" height="26" rx="9" fill="#4b377f" stroke="#7a62d8" />
-      <ellipse cx={cx + 34} cy={T + 196} rx="46" ry="9" fill="#14306f" stroke="#7be3ff" strokeWidth="1.2" /><rect x={cx + 32} y={T + 190} width="4" height="9" fill="#7be3ff" />
-      <rect x={cx + 104} y={T + 104} width="76" height="42" rx="6" fill="#1b2f6a" stroke="#ffc94d" strokeWidth="1.2" /><rect x={cx + 112} y={T + 86} width="26" height="20" rx="3" fill="#9fb4de" /><circle cx={cx + 125} cy={T + 96} r="4" fill="#ff7b54" />
-      {[0, 1, 2].map((i) => <path key={i} className="steam" d={`M${cx + 150 + i * 9} ${T + 100}q-4 -7 0 -13`} fill="none" stroke="rgba(220,240,255,.6)" strokeWidth="1.4" style={{ animationDelay: `${i * 0.5}s` }} />)}
+      <rect x={X(-168)} y={T + 150} width={112 * k} height="26" rx="9" fill="#3a2a6b" stroke="#7a62d8" /><rect x={X(-168)} y={T + 132} width={112 * k} height="26" rx="9" fill="#4b377f" stroke="#7a62d8" />
+      <ellipse cx={X(34)} cy={T + 196} rx={46 * k} ry="9" fill="#14306f" stroke="#7be3ff" strokeWidth="1.2" /><rect x={X(32)} y={T + 190} width="4" height="9" fill="#7be3ff" />
+      <rect x={X(104)} y={T + 104} width={76 * k} height="42" rx="6" fill="#1b2f6a" stroke="#ffc94d" strokeWidth="1.2" /><rect x={X(112)} y={T + 86} width="26" height="20" rx="3" fill="#9fb4de" /><circle cx={X(125)} cy={T + 96} r="4" fill="#ff7b54" />
+      {[0, 1, 2].map((i) => <path key={i} className="steam" d={`M${X(150) + i * 9} ${T + 100}q-4 -7 0 -13`} fill="none" stroke="rgba(220,240,255,.6)" strokeWidth="1.4" style={{ animationDelay: `${i * 0.5}s` }} />)}
       <rect x={cx - 52} y={T + 70} width="104" height="20" rx="10" fill="rgba(255,120,200,.14)" stroke="#ff7bd0" /><text x={cx} y={T + 84} textAnchor="middle" fontSize="11" fontWeight="800" fill="#ffb3e6" letterSpacing=".2em">AI CAFÉ</text>
-      <text x={cx - 190 + 0} y={T + 150} fontSize="20">🪴</text>
+      <text x={X(-190)} y={T + 150} fontSize="20">🪴</text>
     </g>
   );
   if (r === 'board') return (
     <g className="furn">
-      <polygon points={`${cx - 40},${T + 76} ${cx + 40},${T + 76} ${cx + 96},${T + 128} ${cx - 96},${T + 128}`} fill="url(#cone)" /><g className="holo">{[16, 28, 20, 34, 26].map((h, i) => <rect key={i} x={cx - 40 + i * 17} y={T + 126 - h} width="11" height={h} rx="2" fill="#7be3ff" opacity=".85" />)}</g>
-      <ellipse cx={cx} cy={b.deskY + 20} rx="160" ry="26" fill="#102a63" stroke="#7be3ff" strokeWidth="1.6" /><ellipse cx={cx} cy={b.deskY + 17} rx="146" ry="20" fill="none" stroke="#ffc94d" opacity=".6" />
-      {[-90, 0, 90].map((dx, i) => <rect key={i} x={cx + dx - 18} y={b.deskY + 12} width="36" height="14" rx="3" fill="rgba(255,201,77,.22)" stroke="#ffc94d" strokeWidth=".8" />)}
+      <polygon points={`${cx - 40 * k},${T + 76} ${cx + 40 * k},${T + 76} ${cx + 96 * k},${T + 128} ${cx - 96 * k},${T + 128}`} fill="url(#cone)" /><g className="holo">{[16, 28, 20, 34, 26].map((h, i) => <rect key={i} x={cx - 40 * k + i * 17 * k} y={T + 126 - h} width={11 * k} height={h} rx="2" fill="#7be3ff" opacity=".85" />)}</g>
+      <ellipse cx={cx} cy={b.deskY + 20} rx={160 * k} ry="26" fill="#102a63" stroke="#7be3ff" strokeWidth="1.6" /><ellipse cx={cx} cy={b.deskY + 17} rx={146 * k} ry="20" fill="none" stroke="#ffc94d" opacity=".6" />
+      {[-90, 0, 90].map((dx, i) => <rect key={i} x={cx + dx * k - 18} y={b.deskY + 12} width="36" height="14" rx="3" fill="rgba(255,201,77,.22)" stroke="#ffc94d" strokeWidth=".8" />)}
     </g>
   );
   return <g className="furn"><text x={b.x + 8} y={T + 214} fontSize="18" opacity=".8">🪴</text><text x={b.x + b.w - 30} y={T + 214} fontSize="18" opacity=".8">🪴</text></g>;
@@ -96,10 +96,13 @@ function RoomShell({ r, live, kpis, demo, count, onOpen }: { r: Room; live: bool
 export interface HqWingProps { demo: boolean; events: HqEvent[]; views: Record<string, AgentView>; kpis?: Partial<Record<DeptKey, Kpi[]>>; now: number; still: boolean; hold: boolean; focus: string; selectedAgent: string; mobile: boolean; link?: 'live' | 'connecting' | 'reconnecting' | 'off'; onPickDept: (d: string) => void; onPickAgent: (k: string) => void }
 
 export function HqWing({ demo, events, views, kpis, now, still, hold, focus, selectedAgent, mobile, link, onPickDept, onPickAgent }: HqWingProps) {
+  const [vw, setVw] = useState(typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6); useEffect(() => { const f = () => setVw(window.innerWidth / window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
+  const wide = !mobile && vw > 1.25; applyLayout(wide);                    // the building takes the shape of the screen: wide screens get a wide building, no empty sides
   const reduce = useReducedMotion(); const frozen = still || hold || !!reduce;
   const host = useRef<HTMLDivElement>(null); const t = useSmooth(now, !frozen, host); const [sound, setSound] = useState(false); const ctx = useRef<AudioContext | null>(null);
   const [locs, setLocs] = useState<Record<string, Loc>>({});
   // where each agent is: at the desk or in the café. Re-evaluated four times a second; a change starts a walking trip.
+  useEffect(() => { setLocs({}); }, [wide]);
   const tick = Math.floor(t / 250);
   useEffect(() => {
     setLocs((cur) => {
@@ -125,7 +128,7 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
   const active = trips[0];
 
   return (
-    <div className={`wing ${frozen ? 'still' : ''}`} ref={host}>
+    <div className={`wing ${frozen ? 'still' : ''}`} ref={host} style={{ ['--wa' as string]: (WORLD.w / WORLD.h).toFixed(3) }}>
       <style>{BOT_CSS}{WALK_CSS}{CSS}</style>
       <div className="wing-bar"><div className="wing-tag" data-mode={demo ? 'demo' : link === 'live' || link === 'off' ? 'live' : 'wait'}>{demo ? 'SAMPLE · DEMO MODE · nothing is sent or saved' : link === 'live' ? 'LIVE · doors and walks follow real events' : link === 'off' ? 'LOCAL DATA · this browser only' : 'RECONNECTING · showing the last 24 h, nothing is lost'}</div>
       <button type="button" className="wing-snd" onClick={() => toggleSound()} aria-pressed={sound}>{sound ? '🔊 Door sounds on' : '🔇 Door sounds off'}</button></div>
@@ -153,7 +156,7 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
           {ROOMS.map((r) => <Furniture key={r} r={r} />)}
 
           {/* JARVIS core */}
-          <g className={`core ${busy ? 'busy' : ''} ${waiting ? 'wait' : ''}`} transform={`translate(${box('hub').cx} ${box('hub').top + 112}) scale(.78)`}>
+          <g className={`core ${busy ? 'busy' : ''} ${waiting ? 'wait' : ''}`} transform={`translate(${box('hub').cx} ${box('hub').top + 112}) scale(${0.78 * (1 + (LAYOUT.k - 1) * 0.45)})`}>
             <polygon points="-34,-12 34,-12 80,84 -80,84" fill="url(#cone)" />
             <ellipse cx="0" cy="88" rx="92" ry="16" fill="#0b2a75" stroke="#5fd0ff" strokeWidth="1.5" /><ellipse cx="0" cy="86" rx="62" ry="10" fill="none" stroke="#ffc94d" strokeWidth="1.2" opacity=".8" />
             <circle className="orb" cx="0" cy="0" r="46" fill="url(#coreg)" />
@@ -163,13 +166,13 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
           </g>
 
           {/* people at their desks, in the café, and walking */}
-          {withStation.map((a) => { const s = STATION[a.key]; if (gone(a.key)) return null; return <HqBot key={a.key} a={a} x={s.x} y={s.y} side={s.side} state={views[a.key]?.state ?? 'idle'} dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
-          {withStation.map((a) => { const s = STATION[a.key]; return gone(a.key) && trips.some((x) => x.trip.agent === a.key && x.away) ? <HqBot key={`e${a.key}`} a={a} x={s.x} y={s.y} side={s.side} state="idle" dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} away selected={false} onPick={() => onPickAgent(a.key)} /> : null; })}
-          {cafeGuests.map((a, i) => { const seat = CAFE_SEATS[locs[a.key].seat ?? 0]; return <HqBot key={`c${a.key}`} a={a} x={seat.x} y={seat.y + 22} side={seat.x < box('cafe').cx ? 1 : -1} state="idle" dept="cafe" planned={!a.live} screen="core" desk={false} social bubble={cafeBubble(a.key, t + i * 3000)} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
+          {withStation.map((a) => { const s = STATION[a.key]; if (gone(a.key)) return null; return <HqBot scale={LAYOUT.scale} key={a.key} a={a} x={s.x} y={s.y} side={s.side} state={views[a.key]?.state ?? 'idle'} dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
+          {withStation.map((a) => { const s = STATION[a.key]; return gone(a.key) && trips.some((x) => x.trip.agent === a.key && x.away) ? <HqBot scale={LAYOUT.scale} key={`e${a.key}`} a={a} x={s.x} y={s.y} side={s.side} state="idle" dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} away selected={false} onPick={() => onPickAgent(a.key)} /> : null; })}
+          {cafeGuests.map((a, i) => { const seat = CAFE_SEATS[locs[a.key].seat ?? 0]; return <HqBot scale={LAYOUT.scale} key={`c${a.key}`} a={a} x={seat.x} y={seat.y + 22} side={seat.x < box('cafe').cx ? 1 : -1} state="idle" dept="cafe" planned={!a.live} screen="core" desk={false} social bubble={cafeBubble(a.key, t + i * 3000)} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
 
           <g className="flights" pointerEvents="none">
             {pu.map((p) => { const q = alongFrac(p.pts, p.p); return <circle key={`p${p.id}`} className="pulse" cx={q.x} cy={q.y} r="5" />; })}
-            {trips.map((s) => <HqWalker key={s.trip.id} a={AGENTS.find((q) => q.key === s.trip.agent)!} x={s.pos.x} y={s.pos.y} dir={s.dir} moving={s.moving} carrying={s.carrying} give={s.phase === 'handover'} scale={BOT_SCALE} />)}
+            {trips.map((s) => <HqWalker key={s.trip.id} a={AGENTS.find((q) => q.key === s.trip.agent)!} x={s.pos.x} y={s.pos.y} dir={s.dir} moving={s.moving} carrying={s.carrying} give={s.phase === 'handover'} scale={LAYOUT.scale} />)}
           </g>
 
           {/* front glass walls with the automatic doors */}
@@ -180,7 +183,7 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
               <Door r={r} open={dr[r].open} light={dr[r].light} />
               <text x={b.cx} y={b.doorY + 42} textAnchor="middle" fontSize="8" fontWeight="700" letterSpacing=".2em" fill="rgba(190,220,255,.6)">{dr[r].open ? 'OPEN' : dr[r].light === 'amber' ? 'WAITING' : 'ENTRANCE'}</text>
             </g>); })}
-          {active && <g transform={`translate(600 ${ROW_Y[1] + 330})`}><rect x="-190" y="-12" width="380" height="22" rx="11" fill="rgba(6,16,48,.9)" stroke="rgba(123,227,255,.6)" /><text y="3" textAnchor="middle" fontSize="11" fontWeight="700" fill="#dff6ff">{describeTrip(active)}</text></g>}
+          {active && <g transform={`translate(${WORLD.w / 2} ${ROW_Y[1] + 330})`}><rect x="-190" y="-12" width="380" height="22" rx="11" fill="rgba(6,16,48,.9)" stroke="rgba(123,227,255,.6)" /><text y="3" textAnchor="middle" fontSize="11" fontWeight="700" fill="#dff6ff">{describeTrip(active)}</text></g>}
         </motion.svg>
       </div>
       <p className="sr" aria-live="polite">{active ? describeTrip(active) : `${busy} busy, ${waiting} waiting for approval`}</p>
@@ -191,7 +194,7 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
 }
 
 const CSS = `
-.wing{position:relative}.wing-cam{width:min(100%,calc((100vh - 260px) * ${(WORLD.w / WORLD.h).toFixed(3)}));min-width:min(100%,520px);margin:0 auto;border-radius:16px;overflow:hidden;border:1px solid rgba(120,170,255,.3);box-shadow:0 0 50px rgba(40,110,255,.18) inset,0 14px 40px rgba(0,0,0,.35);background:#040a20}
+.wing{position:relative;width:100%}.wing-cam{width:min(100%,calc((100vh - 270px) * var(--wa)));min-width:min(100%,520px);margin:0 auto;border-radius:16px;overflow:hidden;border:1px solid rgba(120,170,255,.3);box-shadow:0 0 50px rgba(40,110,255,.18) inset,0 14px 40px rgba(0,0,0,.35);background:#040a20}
 .wing-cam svg{width:100%;height:100%;display:block}
 .wing-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.wing-tag{font:800 11px/1 system-ui,sans-serif;letter-spacing:.06em;padding:6px 10px;border-radius:999px}
 .wing-tag[data-mode=demo]{background:rgba(255,176,32,.18);border:1px solid #ffb020;color:#ffd07a}.wing-tag[data-mode=wait]{background:rgba(255,176,32,.18);border:1px solid #ffb020;color:#ffd07a}.wing-tag[data-mode=live]{background:rgba(60,220,140,.16);border:1px solid #3fdc94;color:#8bf3bd}
@@ -205,6 +208,7 @@ const CSS = `
 .wing .amber{animation:blink-a 1.4s infinite}.wing .furn .steam{animation:blink-a 2s infinite}.wing .holo rect{animation:holo 3s ease-in-out infinite;transform-box:fill-box;transform-origin:bottom}.wing .holo rect:nth-child(2n){animation-delay:.6s}@keyframes holo{50%{transform:scaleY(.7)}}
 .wing.still .flow,.wing.still .core *,.wing.still .holo rect{animation-play-state:paused}
 @media (prefers-reduced-motion:reduce){.wing .flow,.wing .core *,.wing .amber,.wing .holo rect{animation:none!important}}
+.hqp.full .wing-cam{width:min(100%,calc((100vh - 215px) * var(--wa)))}
 .wing .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .wing-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:#9fb3d9;margin-top:8px}.wing-legend .grow{margin-left:auto}.wing-legend .d{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .wing-legend .idle{background:#2f6dff}.wing-legend .open{background:#7be3ff}.wing-legend .amber{background:#ffb020}.wing-legend .green{background:#4dffa0}.wing-legend .red{background:#ff5d5d}.wing-note{font-size:11.5px;color:#8197c4;margin:4px 0 0}

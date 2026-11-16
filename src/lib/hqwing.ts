@@ -6,21 +6,35 @@ import { AGENTS, agentByKey, hash, inCafe, type AgentState, type AgentView, type
 export type Room = DeptKey;
 export const ROOMS: Room[] = ['email', 'creative', 'ads', 'desk', 'hub', 'booking', 'hr', 'cafe', 'board'];
 const COLROW: Record<Room, [number, number]> = { email: [0, 0], creative: [1, 0], ads: [2, 0], desk: [0, 1], hub: [1, 1], booking: [2, 1], hr: [0, 2], cafe: [1, 2], board: [2, 2] };
-export const COL_X = [30, 425, 820], ROOM_W = 350, ROW_Y = [30, 374, 718], SPINES = [402.5, 797.5];
+export const ROW_Y = [30, 374, 718];
 export const WORLD = { w: 1200, h: 1070 };
-export const BOT_SCALE = 0.74;
+/** The building comes in two shapes: a tall one for narrow windows and phones, and a wide one that fills a wide screen (bigger rooms, bigger people). */
+export const LAYOUT = { wide: false, scale: 0.74, k: 1, roomW: 350, colX: [30, 425, 820] };
+export const SPINES: number[] = [402.5, 797.5];
 export interface Box { x: number; w: number; top: number; cx: number; wallY: number; doorY: number; hallY: number; walkY: number; deskY: number }
 const boxes = {} as Record<Room, Box>;
-for (const r of ROOMS) { const [c, rw] = COLROW[r]; const top = ROW_Y[rw], x = COL_X[c]; boxes[r] = { x, w: ROOM_W, top, cx: x + ROOM_W / 2, wallY: top + 212, doorY: top + 228, hallY: top + 294, walkY: top + 198, deskY: top + 150 }; }
 export const box = (r: Room): Box => boxes[r];
-
 export const STATION: Record<string, { room: Room; x: number; y: number; side: 1 | -1 }> = {};
-for (const r of ROOMS) {
-  if (r === 'cafe') continue; const list = AGENTS.filter((a) => a.dept === r), b = box(r);
-  list.forEach((a, i) => { STATION[a.key] = { room: r, x: r === 'hub' ? b.cx - 120 : b.x + (b.w * (i + 0.5)) / list.length, y: b.deskY, side: i % 2 ? -1 : 1 }; });
+export const CAFE_SEATS: { x: number; y: number }[] = [];
+const geoCache = new Map<string, { pts: Pt[]; doors: Passage[]; c: number[]; total: number; T: number }>();
+function build() {
+  for (const r of ROOMS) { const [c, rw] = COLROW[r]; const top = ROW_Y[rw], x = LAYOUT.colX[c]; boxes[r] = { x, w: LAYOUT.roomW, top, cx: x + LAYOUT.roomW / 2, wallY: top + 212, doorY: top + 228, hallY: top + 294, walkY: top + 198, deskY: top + 150 }; }
+  for (const k of Object.keys(STATION)) delete STATION[k];
+  for (const r of ROOMS) {
+    if (r === 'cafe') continue; const list = AGENTS.filter((a) => a.dept === r), b = box(r);
+    list.forEach((a, i) => { STATION[a.key] = { room: r, x: r === 'hub' ? b.cx - 120 * LAYOUT.k : b.x + (b.w * (i + 0.5)) / list.length, y: b.deskY, side: i % 2 ? -1 : 1 }; });
+  }
+  const cb = box('cafe'); CAFE_SEATS.length = 0;
+  for (const [dx, dy] of [[-140, 170], [-76, 170], [-8, 186], [56, 186], [128, 170]] as [number, number][]) CAFE_SEATS.push({ x: cb.cx + dx * LAYOUT.k, y: cb.top + dy });
+  geoCache.clear();
 }
-const cb = box('cafe');
-export const CAFE_SEATS = ([[-140, 170], [-76, 170], [-8, 186], [56, 186], [128, 170]] as [number, number][]).map(([dx, dy]) => ({ x: cb.cx + dx, y: cb.top + dy }));
+/** Switch the building shape. Returns true when it changed (people already walking must then be reset). */
+export function applyLayout(wide: boolean): boolean {
+  if (LAYOUT.wide === wide) return false;
+  LAYOUT.wide = wide; LAYOUT.scale = wide ? 0.88 : 0.74; LAYOUT.k = wide ? 1.54 : 1; LAYOUT.roomW = wide ? 540 : 350; LAYOUT.colX = wide ? [30, 630, 1230] : [30, 425, 820];
+  WORLD.w = wide ? 1800 : 1200; SPINES.splice(0, 2, ...(wide ? [600, 1200] : [402.5, 797.5])); build(); return true;
+}
+build();
 export const roomOf = (agent: string): Room | null => { const d = agentByKey(agent)?.dept; return d ?? null; };
 
 type Pt = { x: number; y: number };
@@ -58,7 +72,6 @@ const timeAt = (d: number, T: number) => { const S = WALK, R = RAMP, tot = S * (
 
 export interface Trip { id: string; agent: string; kind: 'handover' | 'toCafe' | 'toDesk'; start: number; from: Spot; to: Spot; round: boolean; partner?: string }
 export interface TripState { trip: Trip; dt: number; pos: Pt; dir: Pt; moving: boolean; phase: 'prepare' | 'out' | 'handover' | 'back' | 'arrive'; carrying: boolean; away: boolean; open: Partial<Record<Room, boolean>> }
-const geoCache = new Map<string, { pts: Pt[]; doors: Passage[]; c: number[]; total: number; T: number }>();
 const geo = (t: Trip) => { const k = `${t.from.room}:${t.from.x}:${t.from.y}>${t.to.room}:${t.to.x}:${t.to.y}`; let g = geoCache.get(k); if (!g) { const { pts, doors } = routeBetween(t.from, t.to), c = lens(pts), total = c[c.length - 1]; g = { pts, doors, c, total, T: total / WALK + RAMP }; geoCache.set(k, g); } return g; };
 export const tripLength = (t: Trip) => { const { T } = geo(t); return t.round ? STAND + T + HAND + T + SETTLE : 350 + T + SETTLE; };
 
