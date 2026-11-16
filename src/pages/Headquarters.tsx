@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { CLOUD, supabase } from '@/lib/cloud';
 import { PageHead } from '@/components/ui';
 import { HqOffice } from '@/components/HqOffice';
+import { HqCinematic } from '@/components/HqCinematic';
+import { RobotAvatar } from '@/components/HqOffice';
 import { useAuth } from '@/lib/store';
 import { AGENTS, DEPTS, STATE_LABEL, agentByKey, agentState, deptByKey, demoStep, roomKpis, type HqEvent } from '@/lib/hq';
 import { ago } from '@/lib/jarvisview';
@@ -17,7 +19,7 @@ export default function Headquarters() {
   const [live, setLive] = useState<HqEvent[]>([]); const [loaded, setLoaded] = useState(!CLOUD); const [err, setErr] = useState('');
   const [demo, setDemo] = useState(!CLOUD); const [demoEvents, setDemoEvents] = useState<HqEvent[]>([]);
   const [now, setNow] = useState(Date.now()); const [tab, setTab] = useState<Tab>('office'); const [sel, setSel] = useState<string | null>(null); const [dept, setDept] = useState<string>('');
-  const [still, setStill] = useState(false);
+  const [still, setStill] = useState(false); const [look, setLook] = useState<'cinematic' | 'plan'>('cinematic');
 
   useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i); }, []);
   // real events: the last 24 hours, then live inserts (Realtime), with a slow refresh as a safety net
@@ -55,7 +57,8 @@ export default function Headquarters() {
       <div className="hq-bar">
         <span className={`hq-mode ${demo ? 'demo' : 'live'}`}>{demo ? 'DEMO MODE · simulated activity' : 'LIVE · real activity'}</span>
         {CLOUD && <button className="btn sm" onClick={() => setDemo((d) => !d)}>{demo ? 'Show real activity' : 'Preview with demo activity'}</button>}
-        <button className="btn sm" onClick={() => setStill((s) => !s)}>{still ? 'Resume motion' : 'Pause motion'}</button>
+        <div className="hq-look"><button className={look === 'cinematic' ? 'on' : ''} onClick={() => setLook('cinematic')}>🎬 Cinematic</button><button className={look === 'plan' ? 'on' : ''} onClick={() => setLook('plan')}>🗺️ Floor plan</button></div>
+        {look === 'plan' && <button className="btn sm" onClick={() => setStill((s) => !s)}>{still ? 'Resume motion' : 'Pause motion'}</button>}
         <div className="hq-tabs" role="tablist">{(['office', 'agents', 'activity'] as Tab[]).map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t === 'office' ? '🏢 Office' : t === 'agents' ? '🧑‍💻 Agents' : '📜 Activity'}</button>)}</div>
       </div>
       {err && <div className="alert warn">Could not load activity: {err}. Has the latest database update (migration 0119) been applied?</div>}
@@ -67,8 +70,17 @@ export default function Headquarters() {
 
       {tab === 'office' && (
         <div className="hq-grid">
-          <HqOffice kpis={kpis} events={events} now={now} selected={sel} onPick={(k) => setSel(sel === k ? null : k)} still={still} onRoom={(d) => { if (d !== 'cafe') setDept(dept === d ? '' : d); }} />
+          {look === 'cinematic'
+            ? <HqCinematic events={events} views={views} kpis={kpis} now={now} selected={dept} onPick={(d) => { setDept(d); setSel(null); }} />
+            : <HqOffice kpis={kpis} events={events} now={now} selected={sel} onPick={(k) => setSel(sel === k ? null : k)} still={still} onRoom={(d) => { if (d !== 'cafe') setDept(dept === d ? '' : d); }} />}
           <aside className="hq-side">
+            {look === 'cinematic' && dept && !who && (
+              <div className="card hq-card">
+                <div className="row" style={{ justifyContent: 'space-between' }}><h3 style={{ margin: 0 }}>{deptByKey(dept)?.name}</h3><button className="btn sm" onClick={() => setDept('')}>Close</button></div>
+                <div className="small muted">{deptByKey(dept)?.blurb}</div>
+                <ul className="hq-team">{AGENTS.filter((a) => a.dept === dept).map((a) => <li key={a.key} onClick={() => setSel(a.key)}><span className="rb"><RobotAvatar a={a} state={views[a.key].state} moving={false} /></span><div><b>{a.name}</b> <span className="muted">· {a.role}</span><div className="small">{STATE_LABEL[views[a.key].state]}{views[a.key].event ? ` — ${views[a.key].event!.title}` : ''}</div></div>{a.live ? <span className="hq-tag on">Connected</span> : <span className="hq-tag">Planned</span>}</li>)}</ul>
+              </div>
+            )}
             {who && whoView ? (
               <div className="card hq-card">
                 <div className="row" style={{ justifyContent: 'space-between' }}><h3 style={{ margin: 0 }}>{who.name}</h3><button className="btn sm" onClick={() => setSel(null)}>Close</button></div>
@@ -115,6 +127,8 @@ const PAGE_CSS = `
 .hq-side{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}.hq-card{padding:12px}
 .hq-feed{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}.hq-feed li{display:flex;gap:8px;font-size:.88em;align-items:flex-start}.hq-feed li>span{width:16px;text-align:center;opacity:.8}.hq-feed small{display:block;opacity:.6;font-size:.82em}
 .hq-feed .k-done{color:#1d8a52}.hq-feed .k-fail{color:#c0392b}.hq-feed .k-approval{color:#c98a00}.hq-feed .k-message{color:#2f6df6}.hq-feed.wide li{font-size:.95em}
+.hq-look{display:flex;gap:4px}.hq-look button{border:1px solid var(--line,#cfd8e6);background:transparent;border-radius:8px;padding:5px 10px;cursor:pointer;color:inherit}.hq-look button.on{background:var(--navy,#1b3a73);color:#fff;border-color:transparent}
+.hq-team{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}.hq-team li{display:flex;gap:10px;align-items:center;cursor:pointer;font-size:.9em}.hq-team .rb{width:34px;flex:none}
 .hq-tag{font-size:.78em;padding:2px 8px;border-radius:999px;background:rgba(150,160,180,.2)}.hq-tag.on{background:rgba(40,190,110,.16);color:#1d8a52}
 @media (max-width:1000px){.hq-side{grid-template-columns:1fr}.hq-stats{grid-template-columns:repeat(3,1fr)}}
 `;
