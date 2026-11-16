@@ -58,7 +58,8 @@ const timeAt = (d: number, T: number) => { const S = WALK, R = RAMP, tot = S * (
 
 export interface Trip { id: string; agent: string; kind: 'handover' | 'toCafe' | 'toDesk'; start: number; from: Spot; to: Spot; round: boolean; partner?: string }
 export interface TripState { trip: Trip; dt: number; pos: Pt; dir: Pt; moving: boolean; phase: 'prepare' | 'out' | 'handover' | 'back' | 'arrive'; carrying: boolean; away: boolean; open: Partial<Record<Room, boolean>> }
-const geo = (t: Trip) => { const { pts, doors } = routeBetween(t.from, t.to), c = lens(pts), total = c[c.length - 1]; return { pts, doors, c, total, T: total / WALK + RAMP }; };
+const geoCache = new Map<string, { pts: Pt[]; doors: Passage[]; c: number[]; total: number; T: number }>();
+const geo = (t: Trip) => { const k = `${t.from.room}:${t.from.x}:${t.from.y}>${t.to.room}:${t.to.x}:${t.to.y}`; let g = geoCache.get(k); if (!g) { const { pts, doors } = routeBetween(t.from, t.to), c = lens(pts), total = c[c.length - 1]; g = { pts, doors, c, total, T: total / WALK + RAMP }; geoCache.set(k, g); } return g; };
 export const tripLength = (t: Trip) => { const { T } = geo(t); return t.round ? STAND + T + HAND + T + SETTLE : 350 + T + SETTLE; };
 
 export function tripState(trip: Trip, now: number): TripState | null {
@@ -74,13 +75,15 @@ export function tripState(trip: Trip, now: number): TripState | null {
   return { trip, dt, pos, dir, moving, phase, carrying: trip.kind === 'handover' && dt >= t0 && dt < t2 + HAND * 0.45, away: trip.round && dt >= t0 - 150 && dt < t3, open };
 }
 
-/** Task hand-overs from the events: the sender picks the card up, walks it to the receiver, hands it over and walks back. */
+/** Task hand-overs from the real events. One person walks one task at a time: when several hand-overs of the same agent arrive together, each waits for the one before it (at most a minute). */
+export const QUEUE_MAX = 60_000;
 export function handoverTrips(events: HqEvent[], now: number): Trip[] {
-  const out: Trip[] = [];
-  for (const e of events) {
-    if (!e.to_agent || !STATION[e.agent] || !STATION[e.to_agent]) continue;
-    const t: Trip = { id: String(e.id), agent: e.agent, kind: 'handover', start: Date.parse(e.at), from: deskSpot(e.agent), to: deskSpot(e.to_agent), round: true, partner: e.to_agent };
-    if (now - t.start >= 0 && now - t.start <= tripLength(t)) out.push(t);
+  const out: Trip[] = [], free: Record<string, number> = {};
+  const list = events.filter((e) => e.to_agent && STATION[e.agent] && STATION[e.to_agent] && now - Date.parse(e.at) >= 0 && now - Date.parse(e.at) < 180_000).sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || String(a.id).localeCompare(String(b.id)));
+  for (const e of list) {
+    const at = Date.parse(e.at), start = Math.max(at, free[e.agent] ?? 0); if (start - at > QUEUE_MAX) continue;
+    const t: Trip = { id: String(e.id), agent: e.agent, kind: 'handover', start, from: deskSpot(e.agent), to: deskSpot(e.to_agent!), round: true, partner: e.to_agent! };
+    free[e.agent] = start + tripLength(t); if (now >= t.start && now <= free[e.agent]) out.push(t);
   }
   return out;
 }

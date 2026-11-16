@@ -32,7 +32,8 @@ export default function Headquarters() {
   const [now, setNow] = useState(Date.now()); const [look, setLook] = useState<Look>('studio'); const [still, setStill] = useState(false);
   const [sel, setSel] = useState(''); const [focus, setFocus] = useState(''); const [openQ, setOpenQ] = useState(false); const [mobile, setMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 760);
   useEffect(() => { const f = () => setMobile(window.innerWidth < 760); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
-  useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i); }, []);
+  const skew = useRef(0); // server time minus this computer's time: a fresh live event shows how far this clock is off, so a hand-over is never missed or shown early
+  useEffect(() => { const i = setInterval(() => setNow(Date.now() - skew.current), 1000); return () => clearInterval(i); }, []);
   // full view: the real browser full screen when it is available, otherwise the page itself covers the whole window
   useEffect(() => { const f = () => setFull(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f); }, []);
   const toggleFull = async () => {
@@ -52,7 +53,7 @@ export default function Headquarters() {
       if (!on) return; if (error) setErr(error.message); else { setErr(''); setLive((cur) => mergeEvents(cur, data as HqEvent[])); } setLoaded(true);
     };
     void load(); const i = setInterval(() => void load(), 60_000);
-    const ch = supabase().channel('hq-events').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agent_events' }, (p) => { setLive((cur) => mergeEvents(cur, [p.new as HqEvent])); })
+    const ch = supabase().channel('hq-events').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agent_events' }, (p) => { const ev = p.new as HqEvent; const sk = Date.now() - Date.parse(ev.at); if (Number.isFinite(sk) && Math.abs(sk) < 1_800_000 && Math.abs(sk - skew.current) > 400) { skew.current = sk; setNow(Date.now() - sk); } setLive((cur) => mergeEvents(cur, [ev])); })
       .subscribe((status) => { if (!on) return; if (status === 'SUBSCRIBED') { setRt('live'); void load(); } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRt('reconnecting'); else if (status === 'CLOSED') setRt('reconnecting'); });
     return () => { on = false; clearInterval(i); void supabase().removeChannel(ch); };
   }, []);
@@ -116,7 +117,7 @@ export default function Headquarters() {
       <div className="hqp-body"><div className="hqp-main">
       <div className="hqp-stagebox">
       {look === 'studio' && <HqStudio demo={demo} events={events} views={views} kpis={kpis} now={clock} focus={focus} selectedAgent={sel} still={still} hold={demo && sc.status === 'paused'} mobile={mobile} inset={panel && !mobile ? 400 : 0} onPickDept={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
-      {look === 'rooms' && <HqWing demo={demo} events={events} views={views} kpis={kpis} now={clock} still={still} hold={demo && sc.status === 'paused'} focus={focus} selectedAgent={sel} mobile={mobile} onPickDept={(d) => { setFocus(d); setOpenQ(true); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
+      {look === 'rooms' && <HqWing demo={demo} events={events} views={views} kpis={kpis} now={clock} still={still} hold={demo && sc.status === 'paused'} focus={focus} selectedAgent={sel} mobile={mobile} link={rt} onPickDept={(d) => { setFocus(d); setOpenQ(true); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
       {look === 'cinematic' && <HqCinematic demo={demo} events={events} views={views} kpis={kpis} now={clock} selected={focus} onPick={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} still={still} />}
       </div>
       {mobile && look !== 'list' && focus && !openQ && !sel && <div className="hqp-back"><button className="b primary" onClick={() => setOpenQ(true)}>Open the {dept?.name} work queue</button></div>}

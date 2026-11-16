@@ -17,8 +17,13 @@ function viewBoxFor(focus: string, mobile: boolean): string {
 }
 
 /** A clock that runs smoothly between the (slower) real or demo clock updates. It stops when paused, hidden or when reduced motion is asked for. */
-function useSmooth(now: number, run: boolean) {
-  const ref = useRef({ now, at: performance.now() }); const [t, setT] = useState(now);
+function useSmooth(now: number, run: boolean, host: React.RefObject<HTMLElement | null>) {
+  const ref = useRef({ now, at: performance.now() }); const [t, setT] = useState(now); const [seen, setSeen] = useState(true);
+  useEffect(() => { // do no work while the page is scrolled away or the tab is hidden
+    const el = host.current; const io = typeof IntersectionObserver !== 'undefined' && el ? new IntersectionObserver((en) => setSeen(en[0]?.isIntersecting ?? true), { threshold: 0.01 }) : null; if (io && el) io.observe(el);
+    const vis = () => setSeen(!document.hidden); document.addEventListener('visibilitychange', vis); return () => { io?.disconnect(); document.removeEventListener('visibilitychange', vis); };
+  }, [host]);
+  run = run && seen;
   useEffect(() => { ref.current = { now, at: performance.now() }; setT(now); }, [now]);
   useEffect(() => {
     if (!run) return; let id = 0, last = 0;
@@ -88,11 +93,11 @@ function RoomShell({ r, live, kpis, demo, count, onOpen }: { r: Room; live: bool
   );
 }
 
-export interface HqWingProps { demo: boolean; events: HqEvent[]; views: Record<string, AgentView>; kpis?: Partial<Record<DeptKey, Kpi[]>>; now: number; still: boolean; hold: boolean; focus: string; selectedAgent: string; mobile: boolean; onPickDept: (d: string) => void; onPickAgent: (k: string) => void }
+export interface HqWingProps { demo: boolean; events: HqEvent[]; views: Record<string, AgentView>; kpis?: Partial<Record<DeptKey, Kpi[]>>; now: number; still: boolean; hold: boolean; focus: string; selectedAgent: string; mobile: boolean; link?: 'live' | 'connecting' | 'reconnecting' | 'off'; onPickDept: (d: string) => void; onPickAgent: (k: string) => void }
 
-export function HqWing({ demo, events, views, kpis, now, still, hold, focus, selectedAgent, mobile, onPickDept, onPickAgent }: HqWingProps) {
+export function HqWing({ demo, events, views, kpis, now, still, hold, focus, selectedAgent, mobile, link, onPickDept, onPickAgent }: HqWingProps) {
   const reduce = useReducedMotion(); const frozen = still || hold || !!reduce;
-  const t = useSmooth(now, !frozen); const [sound, setSound] = useState(false); const ctx = useRef<AudioContext | null>(null);
+  const host = useRef<HTMLDivElement>(null); const t = useSmooth(now, !frozen, host); const [sound, setSound] = useState(false); const ctx = useRef<AudioContext | null>(null);
   const [locs, setLocs] = useState<Record<string, Loc>>({});
   // where each agent is: at the desk or in the café. Re-evaluated four times a second; a change starts a walking trip.
   const tick = Math.floor(t / 250);
@@ -120,9 +125,9 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
   const active = trips[0];
 
   return (
-    <div className={`wing ${frozen ? 'still' : ''}`}>
+    <div className={`wing ${frozen ? 'still' : ''}`} ref={host}>
       <style>{BOT_CSS}{WALK_CSS}{CSS}</style>
-      <div className="wing-bar"><div className="wing-tag" data-mode={demo ? 'demo' : 'live'}>{demo ? 'SAMPLE · DEMO MODE · nothing is sent or saved' : 'LIVE · doors and walks follow real events'}</div>
+      <div className="wing-bar"><div className="wing-tag" data-mode={demo ? 'demo' : link === 'live' || link === 'off' ? 'live' : 'wait'}>{demo ? 'SAMPLE · DEMO MODE · nothing is sent or saved' : link === 'live' ? 'LIVE · doors and walks follow real events' : link === 'off' ? 'LOCAL DATA · this browser only' : 'RECONNECTING · showing the last 24 h, nothing is lost'}</div>
       <button type="button" className="wing-snd" onClick={() => toggleSound()} aria-pressed={sound}>{sound ? '🔊 Door sounds on' : '🔇 Door sounds off'}</button></div>
       <div className="wing-cam" style={{ aspectRatio: mobile ? '460 / 520' : `${WORLD.w} / ${WORLD.h}` }}>
         <motion.svg viewBox={vb} animate={{ viewBox: vb }} transition={{ duration: reduce ? 0 : 0.9, ease: [0.65, 0, 0.3, 1] }} preserveAspectRatio="xMidYMid meet" role="group" aria-label="Living office: nine rooms joined by corridors">
@@ -189,7 +194,7 @@ const CSS = `
 .wing{position:relative}.wing-cam{width:min(100%,calc((100vh - 260px) * ${(WORLD.w / WORLD.h).toFixed(3)}));min-width:min(100%,520px);margin:0 auto;border-radius:16px;overflow:hidden;border:1px solid rgba(120,170,255,.3);box-shadow:0 0 50px rgba(40,110,255,.18) inset,0 14px 40px rgba(0,0,0,.35);background:#040a20}
 .wing-cam svg{width:100%;height:100%;display:block}
 .wing-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.wing-tag{font:800 11px/1 system-ui,sans-serif;letter-spacing:.06em;padding:6px 10px;border-radius:999px}
-.wing-tag[data-mode=demo]{background:rgba(255,176,32,.18);border:1px solid #ffb020;color:#ffd07a}.wing-tag[data-mode=live]{background:rgba(60,220,140,.16);border:1px solid #3fdc94;color:#8bf3bd}
+.wing-tag[data-mode=demo]{background:rgba(255,176,32,.18);border:1px solid #ffb020;color:#ffd07a}.wing-tag[data-mode=wait]{background:rgba(255,176,32,.18);border:1px solid #ffb020;color:#ffd07a}.wing-tag[data-mode=live]{background:rgba(60,220,140,.16);border:1px solid #3fdc94;color:#8bf3bd}
 .wing-snd{font:600 11px system-ui,sans-serif;padding:6px 10px;border-radius:999px;background:rgba(8,20,62,.8);color:#cfe0ff;border:1px solid rgba(120,170,255,.4);cursor:pointer}
 @media (max-width:760px){.wing-tag{font-size:9px;padding:5px 8px}.wing-cam{width:100%}}
 .room{cursor:pointer;outline:none}.room:hover .rim,.room:focus-visible .rim{stroke:#9fe7ff;stroke-width:2.5}

@@ -67,3 +67,26 @@ describe('the café', () => {
     expect(pickSeat([0, 1])).toBe(2); expect(pickSeat(CAFE_SEATS.map((_, i) => i))).toBe(-1); expect(stepLoc({ at: 'desk' }, 'sam', true, base, CAFE_SEATS.map((_, i) => i)).at).toBe('desk');
   });
 });
+
+describe('real backend events', () => {
+  // rows exactly as the agent_events table returns them (numeric id, microsecond timestamp with an offset), for a Facebook inquiry that becomes a quotation
+  const row = (id: number, agent: string, dept: string, kind: HqEvent['kind'], to: string | null, off = 0): HqEvent => ({ id, at: new Date(base + off).toISOString().replace('Z', '123+00:00').replace('.000123', '.000123'), agent, dept, kind, title: 'x', ref: null, to_agent: to });
+  it('turns the inquiry trigger events into one walk from the qualifier to the quotation desk', () => {
+    const e = [row(1, 'messenger', 'desk', 'start', null), row(2, 'qualifier', 'desk', 'message', 'quote')];
+    const trips = handoverTrips(e, base + 3000); expect(trips).toHaveLength(1); expect(trips[0].agent).toBe('qualifier'); expect(trips[0].to.room).toBe('booking');
+    expect(pulses(e, base + 300)[0].room).toBe('desk'); expect(agentState('messenger', e, base + 3000).state).toBe('received'); expect(agentState('messenger', e, base + 20_000).state).toBe('working');
+  });
+  it('one person walks one task at a time; a burst waits its turn, a stale one is dropped', () => {
+    const e = [row(1, 'qualifier', 'desk', 'message', 'quote', 0), row(2, 'qualifier', 'desk', 'message', 'booking', 100)];
+    const len = tripLength(handoverTrips(e, base + 10)[0]); expect(handoverTrips(e, base + 3000).map((t) => t.id)).toEqual(['1']);
+    const second = handoverTrips(e, base + len + 1500); expect(second.map((t) => t.id)).toEqual(['2']); expect(second[0].start).toBeGreaterThanOrEqual(base + len);
+    expect(handoverTrips([row(3, 'qualifier', 'desk', 'message', 'quote', -200_000)], base)).toHaveLength(0);
+  });
+  it('ignores events of agents that have no desk in the building, and never opens a door for them', () => {
+    const e = [row(5, 'nobody', 'desk', 'message', 'quote'), row(6, 'qualifier', 'desk', 'message', 'ghost')]; expect(handoverTrips(e, base + 1000)).toHaveLength(0);
+  });
+  it('a problem or an approval turns the door light, without any walk', () => {
+    const f = [row(7, 'creative', 'creative', 'fail', null)]; expect(doors(f, views(f, base + 1000), [], base + 1000).creative.light).toBe('red');
+    const a = [row(8, 'creative', 'creative', 'approval', null)]; expect(doors(a, views(a, base + 1000), [], base + 1000).creative.light).toBe('amber');
+  });
+});
