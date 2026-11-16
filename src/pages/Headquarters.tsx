@@ -7,6 +7,8 @@ import { CLOUD, supabase } from '@/lib/cloud';
 import { useAuth } from '@/lib/store';
 import { HqStudio } from '@/components/HqStudio';
 import { HqWing } from '@/components/HqWing';
+import { SAMPLE_SERVICES, countServices, servicesToday } from '@/lib/hqtoday';
+import { fmtTime, nowLocal } from '@/lib/util';
 import { HqCinematic } from '@/components/HqCinematic';
 import { RobotAvatar } from '@/components/HqOffice';
 import { AGENTS, DEPTS, STATE_LABEL, agentByKey, agentState, deptByKey, mergeEvents, roomKpis, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
@@ -67,6 +69,8 @@ export default function Headquarters() {
   const views = useMemo(() => Object.fromEntries(AGENTS.map((a) => [a.key, agentState(a.key, events, clock)])), [events, clock]);
   const kpis = useMemo(() => (demo ? SAMPLE : roomKpis(db as never, events, clock)), [demo, db, events, Math.floor(clock / 5000)]); // eslint-disable-line react-hooks/exhaustive-deps
   const flow = useMemo(() => (demo ? [] : flowCards(db, now).filter((c) => !c.stale && stepDef(c.step).gate)), [demo, db, Math.floor(now / 30000)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const svc = useMemo(() => (demo ? SAMPLE_SERVICES : servicesToday(db, nowLocal())), [demo, db, Math.floor(now / 30000)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const svcN = countServices(svc);
   const today = new Date(clock).toISOString().slice(0, 10);
   const stats = { busy: AGENTS.filter((a) => ['working', 'received', 'coordinating'].includes(views[a.key].state)).length, awaiting: AGENTS.filter((a) => views[a.key].state === 'awaiting').length, problems: AGENTS.filter((a) => views[a.key].state === 'error').length, today: events.filter((e) => e.at.slice(0, 10) === today).length, connected: AGENTS.filter((a) => a.live).length };
   const feed = events.slice().sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
@@ -138,6 +142,16 @@ export default function Headquarters() {
         </div>
       )}
 
+      <section className="hqp-svc" aria-label="Services today">
+        <div className="svc-h"><b>SERVICES TODAY{demo ? ' · SAMPLE' : ''}</b><span className="svc-n">{svcN.done}/{svcN.total} done</span>
+          <span className="svc-c" title="Working on site">🧽 {svcN.working}</span><span className="svc-c" title="On the road">🚚 {svcN.road}</span><span className="svc-c" title="Not started yet">🕒 {svcN.waiting}</span>{svcN.problem > 0 && <span className="svc-c bad" title="Needs attention">⚠️ {svcN.problem}</span>}
+          {!demo && <Link className="b svc-go" to="/today">Open Happening Today</Link>}</div>
+        <div className="svc-row">{svc.length === 0 ? <p className="muted small">No service is scheduled today.</p> : svc.map((x) => (
+          <Link key={x.id} to={demo ? '#' : '/today'} className={`svc-card t-${x.tone}`} onClick={(e) => { if (demo) e.preventDefault(); }}>
+            <span className="st">{x.icon} {x.label}</span><b>{x.client}{x.vip ? ' ⭐' : ''}</b><small>{x.place || 'No address'}{x.start && !demo ? ` · ${fmtTime(x.start)}` : ''}</small><small>{x.service || '—'}</small><em>{x.present}/{x.crew} crew on site</em>
+          </Link>))}</div>
+      </section>
+
       </div>
       <footer className="hqp-strip">
         <div className="blk grow"><span className="lbl">ACTIVITY{demo ? ' · SAMPLE' : ''}</span><div className="ticker">{feed.slice(0, 3).map((e) => <div key={e.id}><span className={`k-${e.kind}`}>{KIND_ICON[e.kind]}</span> <b>{agentByKey(e.agent)?.name}</b> {e.title} <small>{ago(e.at, clock)}</small></div>)}{!feed.length && <div className="muted">Nothing yet.</div>}</div></div>
@@ -193,6 +207,12 @@ const CSS = `
 .queue{list-style:none;margin:0;padding:0;display:grid;gap:6px}.queue li>*{display:block;padding:8px 10px;border:1px solid #2a6b9b;background:#071e39;border-radius:8px;color:inherit;text-decoration:none;font-size:13px}.queue small{display:block;opacity:.65;margin-top:2px}.queue a:hover{border-color:#6ad4ff}
 .team{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:8px}.team li{display:flex;gap:10px;align-items:center;cursor:pointer;font-size:.9em}.team .rb{width:34px;flex:none}
 @keyframes hqpblink{50%{opacity:.4}}
+.hqp-svc{margin-top:10px;padding:10px 12px;border:1px solid rgba(120,160,255,.28);border-radius:12px;background:linear-gradient(180deg,rgba(14,34,90,.55),rgba(8,20,58,.5))}
+.svc-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:#cfe0ff}.svc-h b{letter-spacing:.08em;font-size:11px;color:#9fe7ff}.svc-n{font-weight:800;color:#fff}.svc-c{padding:2px 8px;border-radius:999px;background:rgba(120,160,255,.14);font-weight:700}.svc-c.bad{background:rgba(255,176,32,.2);color:#ffd07a}.svc-go{margin-left:auto}
+.svc-row{display:flex;gap:8px;overflow-x:auto;padding:8px 2px 2px;scrollbar-width:thin}
+.svc-card{flex:0 0 210px;display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:10px;border:1px solid rgba(120,160,255,.25);background:rgba(10,26,70,.7);color:#dbe8ff;text-decoration:none;border-left:4px solid #5a7bd8}
+.svc-card:hover{border-color:#9fe7ff}.svc-card .st{font-size:11px;font-weight:800;letter-spacing:.03em}.svc-card b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.svc-card small{font-size:11px;color:#9fb3d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.svc-card em{font-style:normal;font-size:11px;color:#8bf3bd}
+.svc-card.t-green{border-left-color:#3fdc94}.svc-card.t-teal{border-left-color:#2ec4b6}.svc-card.t-blue{border-left-color:#4f8bff}.svc-card.t-amber{border-left-color:#ffb020}.svc-card.t-red{border-left-color:#ff5d5d}.svc-card.t-grey{border-left-color:#7d8db3}.svc-card.t-navy{border-left-color:#6a7fe0}
 .hqp.full{position:fixed;inset:0;z-index:100;margin:0;border-radius:0;border:0;display:flex;flex-direction:column;overflow:auto;padding:8px 12px 10px}
 .hqp.full .hqp-top{padding-bottom:6px;margin-bottom:6px}.hqp.full .hqp-brand .mark{width:34px;height:34px;font-size:17px}.hqp.full .hqp-brand small{display:none}.hqp.full .hqp-demo{margin-bottom:6px;padding:5px 8px}
 .hqp.full .hqp-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:10px}.hqp.full .hqp-main{display:flex;flex-direction:column;min-height:0;min-width:0}.hqp.full .hqp-stagebox{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}.hqp.full .hqp-list{overflow:auto}.hqp.full .hqp-strip{grid-template-columns:1fr;margin-top:0;align-content:start;overflow:auto}

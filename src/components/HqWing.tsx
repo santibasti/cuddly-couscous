@@ -208,7 +208,7 @@ const CSS = `
 .wing .amber{animation:blink-a 1.4s infinite}.wing .furn .steam{animation:blink-a 2s infinite}.wing .holo rect{animation:holo 3s ease-in-out infinite;transform-box:fill-box;transform-origin:bottom}.wing .holo rect:nth-child(2n){animation-delay:.6s}@keyframes holo{50%{transform:scaleY(.7)}}
 .wing.still .flow,.wing.still .core *,.wing.still .holo rect{animation-play-state:paused}
 @media (prefers-reduced-motion:reduce){.wing .flow,.wing .core *,.wing .amber,.wing .holo rect{animation:none!important}}
-.hqp.full .wing-cam{width:min(100%,calc((100vh - 215px) * var(--wa)))}
+.hqp.full .wing-cam{width:min(100%,calc((100vh - 400px) * var(--wa)))}
 .wing .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .wing-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:#9fb3d9;margin-top:8px}.wing-legend .grow{margin-left:auto}.wing-legend .d{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .wing-legend .idle{background:#2f6dff}.wing-legend .open{background:#7be3ff}.wing-legend .amber{background:#ffb020}.wing-legend .green{background:#4dffa0}.wing-legend .red{background:#ff5d5d}.wing-note{font-size:11.5px;color:#8197c4;margin:4px 0 0}
