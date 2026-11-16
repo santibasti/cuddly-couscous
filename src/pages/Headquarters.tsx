@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { CLOUD, supabase } from '@/lib/cloud';
 import { useAuth } from '@/lib/store';
 import { HqStudio } from '@/components/HqStudio';
+import { HqWing } from '@/components/HqWing';
 import { HqCinematic } from '@/components/HqCinematic';
 import { RobotAvatar } from '@/components/HqOffice';
 import { AGENTS, DEPTS, STATE_LABEL, agentByKey, agentState, deptByKey, mergeEvents, roomKpis, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
@@ -13,7 +14,7 @@ import { SCENARIO_LENGTH, scenarioCaption, scenarioEvents } from '@/lib/hqscenar
 import { STEPS, flowCards, stepDef } from '@/lib/leadflow';
 import { ago } from '@/lib/jarvisview';
 
-type Look = 'studio' | 'cinematic' | 'list';
+type Look = 'studio' | 'rooms' | 'cinematic' | 'list';
 type Rt = 'connecting' | 'live' | 'reconnecting' | 'off';
 const KIND_ICON: Record<string, string> = { start: '▶', done: '✓', fail: '✖', approval: '⏸', message: '⇄', info: '•' };
 const HOUR = 3_600_000;
@@ -92,7 +93,7 @@ export default function Headquarters() {
           <span className={`mode ${demo ? 'demo' : 'live'}`} role="status">{demo ? 'DEMO MODE · sample data, nothing is sent' : 'LIVE · real activity'}</span>
           {CLOUD && <span className={`rt ${rt}`} title="Connection for live updates"><i />{rt === 'live' ? 'Realtime' : rt === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}</span>}
           {CLOUD && <button className="b" onClick={() => setDemo((d) => !d)}>{demo ? 'Show live' : 'Demo mode'}</button>}
-          <div className="seg" role="tablist" aria-label="View">{(['studio', 'cinematic', 'list'] as Look[]).map((l) => <button key={l} role="tab" aria-selected={look === l} className={look === l ? 'on' : ''} onClick={() => setLook(l)}>{l === 'studio' ? '🏢 Studio' : l === 'cinematic' ? '🎬 Cinematic' : '📋 List'}</button>)}</div>
+          <div className="seg" role="tablist" aria-label="View">{(['studio', 'rooms', 'cinematic', 'list'] as Look[]).map((l) => <button key={l} role="tab" aria-selected={look === l} className={look === l ? 'on' : ''} onClick={() => setLook(l)}>{l === 'studio' ? '🏢 Studio' : l === 'rooms' ? '🚪 Rooms · V2' : l === 'cinematic' ? '🎬 Cinematic' : '📋 List'}</button>)}</div>
           <button className="b" onClick={() => setStill((s) => !s)} aria-pressed={still}>{still ? '▶ Resume motion' : '⏸ Pause motion'}</button>
           <button className="b" onClick={() => void toggleFull()} aria-pressed={full} title="Show the headquarters on the whole screen">{full ? '⤡ Exit full view' : '⤢ Full view'}</button>
         </div>
@@ -115,10 +116,11 @@ export default function Headquarters() {
       <div className="hqp-body"><div className="hqp-main">
       <div className="hqp-stagebox">
       {look === 'studio' && <HqStudio demo={demo} events={events} views={views} kpis={kpis} now={clock} focus={focus} selectedAgent={sel} still={still} hold={demo && sc.status === 'paused'} mobile={mobile} inset={panel && !mobile ? 400 : 0} onPickDept={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
+      {look === 'rooms' && <HqWing demo={demo} events={events} views={views} kpis={kpis} now={clock} still={still} hold={demo && sc.status === 'paused'} focus={focus} selectedAgent={sel} mobile={mobile} onPickDept={(d) => { setFocus(d); setOpenQ(true); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
       {look === 'cinematic' && <HqCinematic demo={demo} events={events} views={views} kpis={kpis} now={clock} selected={focus} onPick={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} still={still} />}
       </div>
       {mobile && look !== 'list' && focus && !openQ && !sel && <div className="hqp-back"><button className="b primary" onClick={() => setOpenQ(true)}>Open the {dept?.name} work queue</button></div>}
-      {look === 'studio' && focus && !mobile && <div className="hqp-back"><button className="b" onClick={() => { setFocus(''); setOpenQ(false); }}>← Back to the whole office</button></div>}
+      {(look === 'studio' || look === 'rooms') && focus && !mobile && <div className="hqp-back"><button className="b" onClick={() => { setFocus(''); setOpenQ(false); }}>← Back to the whole office</button></div>}
 
       {look === 'list' && (
         <div className="hqp-list">
