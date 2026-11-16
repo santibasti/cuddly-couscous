@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AGENTS, DEPTS } from './hq';
-import { EXIT, NODES, SEATS, advance, cafeSpot, nextWander, routeBetween, walkNodes, wantFor } from './hqsim';
+import { EXIT, NODES, SEATS, STUDIO, advance, cafeSpot, nextWander, routeBetween, walkNodes, wantFor } from './hqsim';
 
 describe('headquarters robots: seats, walkways and motion', () => {
   it('every agent has a seat on the picture and a department exit', () => {
@@ -31,5 +31,12 @@ describe('headquarters robots: seats, walkways and motion', () => {
     let s = { pos: { x: 0, y: 0 }, route: [{ x: 10, y: 0 }, { x: 10, y: 10 }], moving: true, dir: 0 };
     s = advance(s.pos, s.route, 1, 5); expect(s.pos).toEqual({ x: 5, y: 0 }); expect(s.moving).toBe(true); expect(s.dir).toBe(1);
     s = advance(s.pos, s.route, 1, 8); expect(s.pos.x).toBeCloseTo(10); expect(s.pos.y).toBeCloseTo(3); s = advance(s.pos, s.route, 5, 5); expect(s.pos).toEqual({ x: 10, y: 10 }); expect(s.moving).toBe(false);
+  });
+  it('the Studio layout: every agent has a seat, every room an exit, and the glass corridors connect all rooms', () => {
+    for (const a of AGENTS) expect(STUDIO.seats[a.key], a.key).toBeTruthy();
+    for (const d of DEPTS.filter((x) => x.key !== 'cafe')) expect(STUDIO.nodes[STUDIO.exit[d.key]], d.key).toBeTruthy();
+    const ex = [...new Set(Object.values(STUDIO.exit))]; for (const a of ex) for (const b of ex) { const w = walkNodes(a, b, STUDIO); expect(w[0]).toBe(a); expect(w[w.length - 1]).toBe(b); }
+    const r = routeBetween('inbox', STUDIO.seats.inbox, STUDIO.seats.quote, 'quote', STUDIO); expect(r[0]).toEqual(STUDIO.seats.inbox); expect(r[r.length - 1]).toEqual(STUDIO.seats.quote); expect(r.length).toBeGreaterThan(3);
+    expect(wantFor({ state: 'idle' }, 'quote', 'cafe', STUDIO).spot).toEqual(STUDIO.cafe('quote')); expect(wantFor({ state: 'working' }, 'quote', 'cafe', STUDIO).spot).toEqual(STUDIO.seats.quote);
   });
 });

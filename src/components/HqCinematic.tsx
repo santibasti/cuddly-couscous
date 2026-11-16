@@ -25,7 +25,7 @@ export function deptLive(views: Record<string, AgentView>, dept: string): DeptLi
   return { state: st.includes('error') ? 'error' : awaiting ? 'awaiting' : busy ? 'working' : 'idle', awaiting, busy };
 }
 
-export function HqCinematic({ events, views, kpis, now, selected, onPick, onPickAgent, still }: { events: HqEvent[]; views: Record<string, AgentView>; kpis: Partial<Record<DeptKey, Kpi[]>>; now: number; selected: string; onPick: (d: string) => void; onPickAgent: (k: string) => void; still: boolean }) {
+export function HqCinematic({ demo = false, events, views, kpis, now, selected, onPick, onPickAgent, still }: { events: HqEvent[]; views: Record<string, AgentView>; kpis: Partial<Record<DeptKey, Kpi[]>>; now: number; selected: string; onPick: (d: string) => void; onPickAgent: (k: string) => void; still: boolean; demo?: boolean }) {
   const today = new Date(now).toISOString().slice(0, 10);
   const packets = events.filter((e) => now - Date.parse(e.at) >= 0 && now - Date.parse(e.at) < 4200 && ZONES.some((z) => z.dept === e.dept));
   const lastCore = events.filter((e) => e.dept === 'hub' || e.agent === 'jarvis').map((e) => Date.parse(e.at)).filter((t) => t <= now).sort((a, b) => b - a)[0];
@@ -40,7 +40,7 @@ export function HqCinematic({ events, views, kpis, now, selected, onPick, onPick
         <div className="cin-grade" />
         {ZONES.map((z) => { const k = kpis[z.dept]; return (
           <div key={`s-${z.dept}`} className="cin-scr" style={{ left: `${z.scr[0]}%`, top: `${z.scr[1]}%`, width: `${z.scr[2]}%`, height: `${z.scr[3]}%` }}>
-            <div className="hd"><i />{k ? 'LIVE DATA' : 'PLANNED'}</div>
+            <div className="hd"><i />{k ? (demo ? 'SAMPLE DATA' : 'LIVE DATA') : 'PLANNED'}</div>
             <div className="kp">{k ? k.map((x) => <div key={x.label}><b>{x.value}</b><span>{x.label}</span></div>) : <div className="off"><span>Not connected yet</span></div>}</div>
           </div>); })}
 

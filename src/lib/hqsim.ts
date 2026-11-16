@@ -1,6 +1,6 @@
 // The motion of the miniature robots in the cinematic headquarters: where each one sits, which paths they walk, and when they wander.
 // Positions are percentages of the picture. Real events decide WHAT an agent does (work, wait, hand over); this file decides HOW it moves around the picture.
-import { AGENTS, hash, type AgentState, type AgentView } from './hq';
+import { AGENTS, DEPTS, cafePos, deskPos, hash, type AgentState, type AgentView } from './hq';
 
 export type P = { x: number; y: number };
 /** Where each agent sits at work (on the painted floor beside its department's desks). */
@@ -25,25 +25,27 @@ const EDGES: [string, string][] = [['emailX', 'hubL'], ['creativeX', 'hubR'], ['
 /** Each department's exit onto the walkways. */
 export const EXIT: Record<string, string> = { hub: 'hub', email: 'emailX', creative: 'creativeX', ads: 'adsX', desk: 'deskX', booking: 'bookX', hr: 'hrX', board: 'boardX' };
 const dist = (a: P, b: P) => Math.hypot(a.x - b.x, a.y - b.y);
-const neighbours = (n: string) => EDGES.flatMap(([a, b]) => (a === n ? [b] : b === n ? [a] : []));
+/** Where the robots sit, how they walk and where they relax. The picture view and the Studio view each have their own. */
+export interface Layout { seats: Record<string, P>; nodes: Record<string, P>; edges: [string, string][]; exit: Record<string, string>; cafe: (key: string) => P; plaza: (key: string) => P }
 
 /** The shortest walk between two waypoints (Dijkstra over the walkway graph). */
-export function walkNodes(from: string, to: string): string[] {
+export function walkNodes(from: string, to: string, L: Layout = PICTURE): string[] {
   if (from === to) return [from];
-  const d: Record<string, number> = { [from]: 0 }; const prev: Record<string, string> = {}; const todo = new Set(Object.keys(NODES));
+  const neighbours = (n: string) => L.edges.flatMap(([a, b]) => (a === n ? [b] : b === n ? [a] : []));
+  const d: Record<string, number> = { [from]: 0 }; const prev: Record<string, string> = {}; const todo = new Set(Object.keys(L.nodes));
   while (todo.size) {
     let u: string | undefined; for (const n of todo) if (d[n] !== undefined && (u === undefined || d[n] < d[u])) u = n;
     if (u === undefined) break; todo.delete(u); if (u === to) break;
-    for (const v of neighbours(u)) { const alt = d[u] + dist(NODES[u], NODES[v]); if (d[v] === undefined || alt < d[v]) { d[v] = alt; prev[v] = u; } }
+    for (const v of neighbours(u)) { const alt = d[u] + dist(L.nodes[u], L.nodes[v]); if (d[v] === undefined || alt < d[v]) { d[v] = alt; prev[v] = u; } }
   }
   const out = [to]; while (out[0] !== from && prev[out[0]]) out.unshift(prev[out[0]]); return out[0] === from ? out : [from, to];
 }
 const deptOf = (key: string) => AGENTS.find((a) => a.key === key)?.dept ?? 'hub';
 /** The full route from one spot to another: seat → department exit → walkways → exit → seat. `at` can be an agent's seat key (a1) or a waypoint name. */
-export function routeBetween(fromKey: string | null, fromPos: P, toPos: P, toKey: string | null): P[] {
-  const nearest = (p: P) => Object.entries(NODES).sort((a, b) => dist(a[1], p) - dist(b[1], p))[0][0];
-  const a = fromKey ? EXIT[deptOf(fromKey)] : nearest(fromPos), b = toKey ? EXIT[deptOf(toKey)] : nearest(toPos);
-  const mid = walkNodes(a, b).map((n) => NODES[n]);
+export function routeBetween(fromKey: string | null, fromPos: P, toPos: P, toKey: string | null, L: Layout = PICTURE): P[] {
+  const nearest = (p: P) => Object.entries(L.nodes).sort((a, b) => dist(a[1], p) - dist(b[1], p))[0][0];
+  const a = fromKey ? L.exit[deptOf(fromKey)] : nearest(fromPos), b = toKey ? L.exit[deptOf(toKey)] : nearest(toPos);
+  const mid = walkNodes(a, b, L).map((n) => L.nodes[n]);
   return [fromPos, ...mid, toPos].filter((p, i, l) => i === 0 || dist(p, l[i - 1]) > 0.05);
 }
 /** Each agent's own spot in the café (a ring in front of the counter, nobody on anybody else). */
@@ -57,13 +59,13 @@ export function plazaSpot(key: string): P { const a = (hash(key) % 628) / 100; r
 export type Pose = 'walk' | 'type' | 'wait' | 'cheer' | 'shake' | 'chat' | 'idle';
 export type Where = 'seat' | 'cafe' | 'plaza' | 'visit';
 /** What an agent wants to do now, from its real state. Real work always wins over wandering. */
-export function wantFor(view: AgentView, key: string, wander: Where): { spot: P; at: Where | 'partner'; pose: Pose; partnerKey?: string } {
-  const seat = SEATS[key];
-  if (view.state === 'coordinating' && view.partner && SEATS[view.partner]) { const p = SEATS[view.partner]; return { spot: { x: p.x + (key < view.partner ? -2.2 : 2.2), y: p.y + 1.2 }, at: 'partner', pose: 'chat', partnerKey: view.partner }; }
+export function wantFor(view: AgentView, key: string, wander: Where, L: Layout = PICTURE): { spot: P; at: Where | 'partner'; pose: Pose; partnerKey?: string } {
+  const seat = L.seats[key];
+  if (view.state === 'coordinating' && view.partner && L.seats[view.partner]) { const p = L.seats[view.partner]; return { spot: { x: p.x + (key < view.partner ? -2.2 : 2.2), y: p.y + 1.2 }, at: 'partner', pose: 'chat', partnerKey: view.partner }; }
   const poseAtSeat: Record<AgentState, Pose> = { idle: 'idle', received: 'type', working: 'type', coordinating: 'chat', awaiting: 'wait', done: 'cheer', blocked: 'shake', error: 'shake', social: 'idle' };
   if (view.state !== 'idle') return { spot: seat, at: 'seat', pose: poseAtSeat[view.state] };
-  if (key !== 'jarvis' && wander === 'cafe') return { spot: cafeSpot(key), at: 'cafe', pose: 'chat' };
-  if (wander === 'plaza') return { spot: plazaSpot(key), at: 'plaza', pose: 'idle' };
+  if (key !== 'jarvis' && wander === 'cafe') return { spot: L.cafe(key), at: 'cafe', pose: 'chat' };
+  if (wander === 'plaza') return { spot: L.plaza(key), at: 'plaza', pose: 'idle' };
   return { spot: seat, at: 'seat', pose: 'idle' };
 }
 /** How long an idle agent stays where it is before it decides again (seconds), and where it goes next. Live desks stay at work longer; planned ones roam more. */
@@ -81,3 +83,20 @@ export function advance(pos: P, route: P[], dt: number, speed: number): { pos: P
   }
   return { pos: p, route: r, moving: r.length > 0, dir };
 }
+
+export const PICTURE: Layout = { seats: SEATS, nodes: NODES, edges: EDGES, exit: EXIT, cafe: cafeSpot, plaza: plazaSpot };
+
+/** The Studio view: the rooms are laid out in a 3 x 3 grid (see DEPTS in hq.ts) and the robots walk along the glass corridors between them. */
+const STUDIO_NODES: Record<string, P> = {
+  v1a: { x: 33.5, y: 16 }, v1b: { x: 33.5, y: 33 }, v1c: { x: 33.5, y: 50 }, v1d: { x: 33.5, y: 66 }, v1e: { x: 33.5, y: 83 },
+  v2a: { x: 66.5, y: 16 }, v2b: { x: 66.5, y: 33 }, v2c: { x: 66.5, y: 50 }, v2d: { x: 66.5, y: 66 }, v2e: { x: 66.5, y: 83 },
+  ht: { x: 50, y: 33 }, hb: { x: 50, y: 66 },
+};
+const STUDIO_EDGES: [string, string][] = [['v1a', 'v1b'], ['v1b', 'v1c'], ['v1c', 'v1d'], ['v1d', 'v1e'], ['v2a', 'v2b'], ['v2b', 'v2c'], ['v2c', 'v2d'], ['v2d', 'v2e'], ['v1b', 'ht'], ['ht', 'v2b'], ['v1d', 'hb'], ['hb', 'v2d']];
+export const STUDIO: Layout = {
+  seats: Object.fromEntries(AGENTS.map((a) => [a.key, deskPos(a.key)])),
+  nodes: STUDIO_NODES, edges: STUDIO_EDGES,
+  exit: { email: 'v1a', creative: 'ht', ads: 'v2a', desk: 'v1c', hub: 'ht', booking: 'v2c', hr: 'v1e', board: 'v2e' },
+  cafe: cafePos,
+  plaza: (key) => { const h = DEPTS.find((d) => d.key === 'hub')!; const a = (hash(key) % 628) / 100; return { x: h.x + h.w / 2 + Math.cos(a) * h.w * 0.26, y: h.y + h.h * 0.8 + Math.sin(a) * h.h * 0.05 }; },
+};

@@ -60,3 +60,35 @@ describe('headquarters: demo mode', () => {
     for (let n = 0; n < 8; n++) for (const e of demoStep(n, NOW)) { expect(AGENTS.some((a) => a.key === e.agent)).toBe(true); expect(String(e.id)).toMatch(/^demo-/); if (e.to_agent) expect(AGENTS.some((a) => a.key === e.to_agent)).toBe(true); }
   });
 });
+
+import { mergeEvents } from './hq';
+import { SCENARIO, SCENARIO_LENGTH, scenarioCaption, scenarioEvents } from './hqscenario';
+
+describe('headquarters: events arriving twice or late', () => {
+  const e = (id: string, agoSec: number): HqEvent => ({ id, at: new Date(NOW - agoSec * 1000).toISOString(), agent: 'quote', dept: 'booking', kind: 'info', title: id });
+  it('does not duplicate an event that arrives again after a reconnect, and keeps newest first', () => {
+    const merged = mergeEvents([e('a', 10), e('b', 30)], [e('b', 30), e('c', 5), e('a', 10)]); expect(merged.map((x) => x.id)).toEqual(['c', 'a', 'b']);
+  });
+  it('a late event keeps its own time, so it cannot replay an old animation', () => {
+    const merged = mergeEvents([e('new', 2)], [e('old-done', 3600)]); expect(merged[0].id).toBe('new');
+    expect(agentState('quote', [{ ...e('old', 3600), kind: 'done' }], NOW).state).toBe('idle');
+  });
+  it('caps the list', () => { expect(mergeEvents([], Array.from({ length: 50 }, (_, i) => e(`x${i}`, i)), 20)).toHaveLength(20); });
+});
+
+describe('headquarters: the demo scenario', () => {
+  it('runs the lead from Messenger to Booking to an approval, in order, with known agents only', () => {
+    const all = scenarioEvents(NOW, SCENARIO_LENGTH); expect(all).toHaveLength(SCENARIO.length);
+    const order = all.map((x) => x.agent); expect(order[0]).toBe('messenger'); expect(order.indexOf('booking')).toBeGreaterThan(order.indexOf('messenger')); expect(all[all.length - 2].kind).toBe('approval'); expect(order[order.length - 1]).toBe('jarvis');
+    for (const x of all) { expect(AGENTS.some((a) => a.key === x.agent)).toBe(true); expect(String(x.id)).toMatch(/^demo-/); }
+    for (let i = 1; i < SCENARIO.length; i++) expect(SCENARIO[i].at).toBeGreaterThanOrEqual(SCENARIO[i - 1].at);
+  });
+  it('shows only what has happened so far, and ends waiting for approval', () => {
+    expect(scenarioEvents(NOW, 0)).toHaveLength(1); expect(scenarioEvents(NOW, 4000)).toHaveLength(3);
+    const end = scenarioEvents(NOW, SCENARIO_LENGTH); expect(agentState('quote', end, NOW + SCENARIO_LENGTH).state).toBe('awaiting');
+    expect(scenarioCaption(0)).toContain('Mara'); expect(scenarioCaption(-1)).toContain('Press Start');
+  });
+  it('the sample inquiry does not make planned departments work', () => {
+    const end = scenarioEvents(NOW, SCENARIO_LENGTH); for (const k of ['inbox', 'campaign', 'records', 'growth']) expect(agentState(k, end, NOW + 3000).state).toBe('idle');
+  });
+});

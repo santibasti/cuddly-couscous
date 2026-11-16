@@ -140,3 +140,9 @@ export function roomKpis(db: { jobs: { created_at: string; start_at: string; del
     hub: [{ label: 'Events today', value: String(todayEv.length) }, { label: 'Jarvis actions', value: String(todayEv.filter((e) => e.agent === 'jarvis').length) }],
   };
 }
+
+/** Adds incoming events to the list: no duplicates (the same event can arrive twice after a reconnect), newest first, and a cap. Events are never changed, so a late event cannot replay an old animation. */
+export function mergeEvents(current: HqEvent[], incoming: HqEvent[], cap = 300): HqEvent[] {
+  const byId = new Map<string, HqEvent>(); for (const e of [...incoming, ...current]) if (!byId.has(String(e.id))) byId.set(String(e.id), e);
+  return [...byId.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || String(b.id).localeCompare(String(a.id))).slice(0, cap);
+}

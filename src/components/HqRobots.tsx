@@ -3,7 +3,7 @@
 // shakes when something failed, and otherwise strolls to the AI café or the plaza. What they DO comes from real events (lib/hq.ts); how they MOVE is lib/hqsim.ts.
 import { memo, useEffect, useRef } from 'react';
 import { AGENTS, cafeLine, hash, type AgentDef, type AgentView } from '@/lib/hq';
-import { SEATS, advance, nextWander, routeBetween, wantFor, type P, type Pose, type Where } from '@/lib/hqsim';
+import { PICTURE, advance, nextWander, routeBetween, wantFor, type Layout, type P, type Pose, type Where } from '@/lib/hqsim';
 
 const BADGE: Record<string, string> = { awaiting: '⏸', error: '⚠', done: '✓', received: '!' };
 
@@ -37,12 +37,13 @@ const Sprite = memo(function Sprite({ a }: { a: AgentDef }) {
 
 interface Sim { pos: P; route: P[]; moving: boolean; dir: number; wander: Where; until: number; n: number; atSeat: boolean; target: P | null; pose: Pose; doneAt: number }
 
-export function HqRobots({ views, onPickAgent, focusDept, still }: { views: Record<string, AgentView>; onPickAgent: (k: string) => void; focusDept: string; still: boolean }) {
+export function HqRobots({ views, onPickAgent, focusDept, still, layout = PICTURE, hold = false, selectedAgent = '' }: { views: Record<string, AgentView>; onPickAgent: (k: string) => void; focusDept: string; still: boolean; layout?: Layout; hold?: boolean; selectedAgent?: string }) {
   const layer = useRef<HTMLDivElement>(null); const els = useRef<Record<string, HTMLDivElement | null>>({});
-  const viewsRef = useRef(views); viewsRef.current = views; const focusRef = useRef(focusDept); focusRef.current = focusDept;
+  const viewsRef = useRef(views); viewsRef.current = views; const focusRef = useRef(focusDept); focusRef.current = focusDept; const holdRef = useRef(hold); holdRef.current = hold; const selRef = useRef(selectedAgent); selRef.current = selectedAgent; const visible = useRef(true);
 
   useEffect(() => {
-    const L = layer.current; if (!L) return;
+    const L = layer.current; if (!L) return; const SEATS = layout.seats;
+    const io = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver((en) => { visible.current = en.some((x) => x.isIntersecting); }) : null; io?.observe(L);
     const reduce = still || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const size = { w: L.clientWidth, h: L.clientHeight }; const ro = new ResizeObserver(() => { size.w = L.clientWidth; size.h = L.clientHeight; }); ro.observe(L);
     const sim: Record<string, Sim> = {}; const t0 = performance.now();
@@ -55,23 +56,25 @@ export function HqRobots({ views, onPickAgent, focusDept, still }: { views: Reco
       e.style.width = `${wS}px`; e.style.height = `${hS}px`;
       const flip = e.firstElementChild as HTMLElement; flip.style.transform = `scaleX(${s.dir < 0 ? -1 : 1})`;
       const pose: Pose = s.moving ? 'walk' : s.pose; if (e.dataset.pose !== pose) e.dataset.pose = pose; if (e.dataset.state !== v.state) e.dataset.state = v.state;
-      const focus = focusRef.current; const show = v.state !== 'idle' || (focus && a.dept === focus); e.dataset.show = show ? '1' : '';
+      const focus = focusRef.current; const show = v.state !== 'idle' || (focus && a.dept === focus) || selRef.current === a.key; e.dataset.show = show ? '1' : '';
       const bdg = e.querySelector('.rbt-bdg') as HTMLElement; const txt = !s.moving ? BADGE[v.state] ?? '' : ''; if (bdg.textContent !== txt) bdg.textContent = txt;
       const bub = e.querySelector('.rbt-bub') as HTMLElement; const chatting = !s.moving && s.pose === 'chat' && v.state === 'idle' && (hash(a.key + Math.floor(t / 9)) % 4 === 0) && (t % 9) < 4.2;
       const bt = chatting ? cafeLine(a.key, t * 1000) : ''; if (bub.textContent !== bt) bub.textContent = bt; bub.style.display = bt ? 'block' : 'none';
     };
-    if (reduce) { for (const a of AGENTS) { const v = viewsRef.current[a.key]; const w = wantFor(v ?? { state: 'idle' }, a.key, 'seat'); sim[a.key].pos = { ...w.spot }; sim[a.key].pose = w.pose; paint(a, sim[a.key], 0); } return () => ro.disconnect(); }
+    if (reduce) { for (const a of AGENTS) { const v = viewsRef.current[a.key]; const w = wantFor(v ?? { state: 'idle' }, a.key, 'seat', layout); sim[a.key].pos = { ...w.spot }; sim[a.key].pose = w.pose; paint(a, sim[a.key], 0); } return () => { ro.disconnect(); io?.disconnect(); }; }
 
     let last = t0; let raf = 0; let acc = 0;
     const frame = (ts: number) => {
+      if (!visible.current || document.hidden) { last = ts; raf = requestAnimationFrame(frame); return; }   // nothing is drawn while the scene is off screen or the tab is hidden
       const dt = Math.min(0.1, (ts - last) / 1000); last = ts; const t = (ts - t0) / 1000; acc += dt;
       for (const a of AGENTS) {
         const s = sim[a.key]; const v = viewsRef.current[a.key] ?? { state: 'idle' as const };
-        if (v.state === 'idle' && t >= s.until) { const w = nextWander(a.key, a.live, s.n++); s.wander = w.where; s.until = t + w.after; } else if (v.state !== 'idle') { s.wander = 'seat'; s.until = t + 6 + (hash(a.key) % 5); }
-        const want = wantFor(v, a.key, s.wander);
+        if (v.state === 'idle' && !holdRef.current && t >= s.until) { const w = nextWander(a.key, a.live, s.n++); s.wander = w.where; s.until = t + w.after; } else if (v.state !== 'idle') { s.wander = 'seat'; s.until = t + 6 + (hash(a.key) % 5); }
+        if (holdRef.current && v.state === 'idle') s.wander = 'seat';
+        const want = wantFor(v, a.key, s.wander, layout);
         if (!s.target || !near(s.target, want.spot)) {
           s.target = { ...want.spot };
-          s.route = routeBetween(s.atSeat ? a.key : null, s.pos, want.spot, want.at === 'seat' ? a.key : want.at === 'partner' ? want.partnerKey ?? null : null); s.atSeat = false;
+          s.route = routeBetween(s.atSeat ? a.key : null, s.pos, want.spot, want.at === 'seat' ? a.key : want.at === 'partner' ? want.partnerKey ?? null : null, layout); s.atSeat = false;
         }
         if (s.route.length) { const speed = v.state === 'idle' ? 5.2 : 8.5; const r = advance(s.pos, s.route, dt, speed); s.pos = r.pos; s.route = r.route; s.moving = r.moving; if (r.dir) s.dir = r.dir; }
         else s.moving = false;
@@ -81,8 +84,8 @@ export function HqRobots({ views, onPickAgent, focusDept, still }: { views: Reco
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
-  }, [still]);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); io?.disconnect(); };
+  }, [still, layout]);
 
   return (
     <div ref={layer} className="rbt-layer">
