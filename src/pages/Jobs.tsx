@@ -1,3 +1,4 @@
+import { dayInfo } from '@/lib/jobdays';
 import { headOrder } from '@/lib/joborder-core';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -81,9 +82,9 @@ export default function Jobs() {
     const o = headOrder(db, j.id);
     return o?.status === 'Sent to Client' ? <span className="jl3 jo-ok">✉️ Job Order sent</span> : o?.status === 'Revised' ? <span className="jl3 jo-no">✉️ Job Order revised — resend</span> : <span className="jl3 jo-no">✉️ Job Order not sent yet</span>;
   };
-  const chip = (j: Job, d: string) => { const dy = dayOf(j, d); return (
-    <Link key={j.id} to={`/jobs/${j.id}`} className={`jchip k-${kindOf(j.status)}`} draggable={edit && (!dy || dy.first) && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)} onDragStart={(e) => e.dataTransfer.setData('text/job', j.id)} title={`${j.number} · ${cn(j.client_id)} · ${j.status}\nTeam: ${[...(j.leader_id ? [j.leader_id] : []), ...j.crew_ids].map((id) => db.employees.find((e) => e.id === id)?.full_name ?? id).join(', ') || 'none yet'}\nVehicle: ${carName(j) || 'none'}`}>
-      <Glyph k={kindOf(j.status)} /><span className="jt"><span className="jl1"><b>{dy ? (dy.first ? fmtTime(j.start_at) : dy.last ? `until ${fmtTime(j.end_at)}` : 'All day') : fmtTime(j.start_at)}</b>{!dy && <em>{j.back_job_id ? '↩ Back job' : svcShort(j)}</em>}</span><span className="jl2">{cn(j.client_id)}</span>{dy && <span className="jl3">📆 Day {dy.n} of {dy.of}</span>}{where(j) && <span className="jl3">📍 {where(j)}</span>}<span className="jl3">👤 {crewLine(j)}</span>{carName(j) && <span className="jl3">🚚 {carName(j)}</span>}{j.depart_hq && <span className="jl3">🏢 Leave HQ {fmtTime(departAt(j)!)}</span>}{joLine(j)}</span>
+  const chip = (j: Job, d: string) => { const dy = dayOf(j, d); const di = dayInfo(db, j, d); return (
+    <Link key={j.id} to={`/jobs/${j.id}`} className={`jchip k-${di ? di.kind : kindOf(j.status)}`} draggable={edit && (!dy || dy.first) && ['Pending', 'Confirmed', 'Dispatch Checklist Pending'].includes(j.status)} onDragStart={(e) => e.dataTransfer.setData('text/job', j.id)} title={`${j.number} · ${cn(j.client_id)} · ${di ? `Day ${di.n} of ${di.of}: ${di.label}` : j.status}\nTeam: ${[...(j.leader_id ? [j.leader_id] : []), ...j.crew_ids].map((id) => db.employees.find((e) => e.id === id)?.full_name ?? id).join(', ') || 'none yet'}\nVehicle: ${carName(j) || 'none'}`}>
+      <Glyph k={di ? di.kind : kindOf(j.status)} /><span className="jt"><span className="jl1"><b>{dy ? (dy.first ? fmtTime(j.start_at) : dy.last ? `until ${fmtTime(j.end_at)}` : 'All day') : fmtTime(j.start_at)}</b>{!dy && <em>{j.back_job_id ? '↩ Back job' : svcShort(j)}</em>}</span><span className="jl2">{cn(j.client_id)}</span>{dy && <span className="jl3">📆 Day {dy.n} of {dy.of}{di ? ` · ${di.label}` : ''}</span>}{where(j) && <span className="jl3">📍 {where(j)}</span>}<span className="jl3">👤 {crewLine(j)}</span>{carName(j) && <span className="jl3">🚚 {carName(j)}</span>}{j.depart_hq && <span className="jl3">🏢 Leave HQ {fmtTime(departAt(j)!)}</span>}{joLine(j)}</span>
     </Link>
   ); };
   const offCount = jobs.filter(isOff).length;

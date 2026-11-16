@@ -230,3 +230,6 @@ In Employees (payroll access) a person can be marked **Driver: Yes** with a fixe
 
 ## Job extra bonuses (migration 0117)
 Beyond the panel bonus, Outside Metro Manila (₱250) and Commercial, the Owner can switch on per job (Payroll, "Crew bonus per job order"): **2nd site** (₱300 per crew member), **Night shift** (₱500 per crew member; the row hints when the job runs between 10 PM and 6 AM) and **Manlift** (₱500, only for crew marked **Manlift operator** in Employees). Amounts are in Payroll's "Pay per job order & crew bonuses" settings. Like the other job bonuses they are paid once the client signs the handover, show in payroll (columns "2nd site", "Night shift", "Manlift") and in the crew's My earnings. Only the Owner can switch them on (database guard). Deploy: `supabase.cmd db push` (answer Y).
+
+## Multi-day jobs (migration 0118)
+A job over several days is followed day by day: the calendar chip, the Happening Today board and a "Day by day" card on the job show each day's own state (scheduled, working, day done, no clock-in) from that day's attendance, not the job-wide status. The Attendance page lists the job every day it runs, and the "missing clock-in" alert checks every day. The Site Check-In (once, on the first day) now also approves the crew's attendance on the following days of the same job. Deploy: `supabase.cmd db push` (answer Y).

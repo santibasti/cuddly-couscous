@@ -34,7 +34,7 @@ function MyClock({ emp }: { emp: Employee }) {
   const [job, setJob] = useState('');
   const [busy, setBusy] = useState(false);
   const [corr, setCorr] = useState(false);
-  const myJobs = live(db.jobs).filter((j) => j.start_at.startsWith(T) && LIVE_JOB.includes(j.status) && (j.leader_id === emp.id || j.crew_ids.includes(emp.id)));
+  const myJobs = live(db.jobs).filter((j) => j.start_at.slice(0, 10) <= T && j.end_at.slice(0, 10) >= T && LIVE_JOB.includes(j.status) && (j.leader_id === emp.id || j.crew_ids.includes(emp.id)));
   useEffect(() => { if (!job && myJobs[0]) setJob(myJobs[0].id); }, [myJobs.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const recent = live(db.attendance).filter((a) => a.employee_id === emp.id).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
   const state = rec?.clock_out ? 'out' : rec?.clock_in ? 'in' : 'none';

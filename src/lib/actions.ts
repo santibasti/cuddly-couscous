@@ -55,7 +55,7 @@ export function clockIn(employeeId: string, geo: Geo, jobId?: string) {
   if (existing?.clock_in) fail('Already clocked in today.');
   const t = computeTimes(emp, at, undefined, d.settings.grace_minutes);
   // the Team Leader's Site Check-In for today already lists this person as present: approved at once and linked to that job (on the live site the database does this)
-  const site = !CLOUD ? d.workflows.filter((w) => !w.deleted_at && w.arr_at?.slice(0, 10) === date && w.arr_crew_present?.includes(employeeId)).sort((a, b) => (b.arr_at ?? '').localeCompare(a.arr_at ?? ''))[0] : undefined;
+  const site = !CLOUD ? d.workflows.filter((w) => { const wj = d.jobs.find((x) => x.id === w.job_id); return !w.deleted_at && !!w.arr_at && w.arr_crew_present?.includes(employeeId) && (w.arr_at.slice(0, 10) === date || (w.arr_at.slice(0, 10) <= date && !!wj && wj.start_at.slice(0, 10) <= date && wj.end_at.slice(0, 10) >= date)); }).sort((a, b) => (b.arr_at ?? '').localeCompare(a.arr_at ?? ''))[0] : undefined;
   const patch = { kind: 'Present' as const, clock_in: at, job_id: jobId ?? site?.job_id, field_work: !!(jobId ?? site?.job_id), in_lat: geo.lat, in_lng: geo.lng, late_min: t.late_min, ...(site ? { approval: 'Approved' as const, approved_by: 'auto', approved_at: isoNow() } : {}) };
   if (existing) return store.update('attendance', existing.id, patch, 'update', `${emp.full_name} clocked in${site ? ' — approved automatically (site check-in)' : ''}`);
   return store.insert('attendance', { employee_id: employeeId, date, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending', ...patch } as never, `${emp.full_name} clocked in ${at.slice(11)}`);
@@ -933,7 +933,7 @@ export function runAutomations() {
   };
   const ops = ['owner', 'ops'] as const, fin = ['owner', 'finance'] as const;
   // attendance
-  const todaysJobs = d.jobs.filter((j) => !j.deleted_at && j.start_at.startsWith(t) && LIVE_JOB.includes(j.status));
+  const todaysJobs = d.jobs.filter((j) => !j.deleted_at && j.start_at.slice(0, 10) <= t && j.end_at.slice(0, 10) >= t && LIVE_JOB.includes(j.status));   // a multi-day job needs a clock-in every day it runs
   for (const j of todaysJobs) for (const eid of [...j.crew_ids, ...(j.leader_id ? [j.leader_id] : [])]) {
     const emp = d.employees.find((e) => e.id === eid); if (!emp) continue;
     const rec = d.attendance.find((a) => a.employee_id === eid && a.date === t && !a.deleted_at);

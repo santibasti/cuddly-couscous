@@ -1,3 +1,4 @@
+import { dayInfo, isMultiDay, jobDates } from '@/lib/jobdays';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
@@ -21,7 +22,7 @@ import { ReportIncidentModal } from '@/components/workflow/Incidents';
 import { deleteBooking } from '@/lib/deletion';
 import { overrideJobStatus } from '@/lib/workflow';
 import { serviceReportPdf } from '@/lib/export';
-import { departAt, fmtDateTime, fmtStamp, fmtTime, money, nowLocal } from '@/lib/util';
+import { departAt, fmtDate, fmtDateTime, fmtStamp, fmtTime, money, nowLocal } from '@/lib/util';
 import type { Job } from '@/lib/types';
 
 export default function JobDetail() {
@@ -96,6 +97,13 @@ export default function JobDetail() {
             <div className="row" style={{ marginTop: 8 }}>{j.crew_ids.map((id) => <Badge key={id} tone="blue">{emp(id)}</Badge>)}{!j.crew_ids.length && <span className="muted">No crew assigned</span>}</div>
             {j.driver_id && <div className="row" style={{ marginTop: 8 }}><Badge tone="amber">Driver</Badge><b>{emp(j.driver_id)}</b></div>}
           </Card>
+          {isMultiDay(j) && (
+            <Card title="Day by day">
+              <div className="small muted" style={{ marginBottom: 6 }}>Each day has its own clock-in and clock-out. The job's status above is for the job as a whole.</div>
+              <ul className="list">{jobDates(j).map((d) => { const di = dayInfo(db, j, d)!; return (
+                <li key={d}><div><b>Day {di.n} of {di.of}</b> · {fmtDate(d)}<div className="small muted">{di.crew ? `${di.clockedIn} of ${di.crew} clocked in · ${di.clockedOut} clocked out` : 'No crew assigned'}</div></div><Badge tone={di.kind === 'field' ? 'green' : di.kind === 'done' ? 'blue' : di.kind === 'pending' ? 'amber' : undefined}>{di.label}</Badge></li>); })}</ul>
+            </Card>
+          )}
           <CrewAvailability job={j} />
           <Card title="Safety requirements / PPE"><div className="row">{j.ppe.map((p) => <Badge key={p} tone="amber">{p}</Badge>)}{!j.ppe.length && <span className="muted">None specified</span>}</div></Card>
           <Card title="Machines, equipment & vehicle" flush>
