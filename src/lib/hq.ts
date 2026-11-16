@@ -45,7 +45,7 @@ export const AGENTS: AgentDef[] = [
   A('scheduler', 'Sol', 'Scheduling Agent', 'booking', '#1f1f1f', '#d9a679', '#14a3b8', true, ['Crew and vehicle status']),
   A('joborders', 'Jo', 'Job Order Coordinator', 'booking', '#c0392b', '#f2c9a0', '#2f6df6', true, ['Drafts and sends job orders']),
   A('records', 'Ron', 'Employee Records', 'hr', '#2b1b12', '#e8b98f', '#5a7bd8', false, ['Certificates', 'Documents']),
-  A('attendance', 'Alex', 'Attendance Analyst', 'hr', '#7a4b2a', '#f2c9a0', '#2f9e6e', false, ['Attendance exceptions']),
+  A('attendance', 'Alex', 'Attendance Analyst', 'hr', '#7a4b2a', '#f2c9a0', '#2f9e6e', true, ['Approves clean days', 'Flags late and overtime', 'Time corrections']),
   A('training', 'Tess', 'Training Coordinator', 'hr', '#1f1f1f', '#d9a679', '#e07a2f', false, ['Safety training']),
   A('growth', 'Gabi', 'Growth Advisor', 'board', '#3a2a1c', '#f2c9a0', '#8b5cf6', false, ['Expansion ideas']),
   A('industry', 'Ike', 'Cleaning Industry Advisor', 'board', '#2c3e50', '#e8b98f', '#14a3b8', false, ['Methods and equipment']),

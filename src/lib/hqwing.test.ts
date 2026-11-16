@@ -89,4 +89,9 @@ describe('real backend events', () => {
     const f = [row(7, 'creative', 'creative', 'fail', null)]; expect(doors(f, views(f, base + 1000), [], base + 1000).creative.light).toBe('red');
     const a = [row(8, 'creative', 'creative', 'approval', null)]; expect(doors(a, views(a, base + 1000), [], base + 1000).creative.light).toBe('amber');
   });
+  it('the HR desk: a worked day waiting for approval lights the HR door amber, and a decision answers it', () => {
+    const w = [row(9, 'attendance', 'hr', 'approval', null)]; expect(STATION.attendance.room).toBe('hr'); expect(doors(w, views(w, base + 5000), [], base + 5000).hr.light).toBe('amber');
+    const done = [...w, row(10, 'attendance', 'hr', 'done', null, 4000)]; expect(doors(done, views(done, base + 4500), [], base + 4500).hr.light).toBe('green');
+    const more = [...done, row(11, 'attendance', 'hr', 'approval', null, 4000)]; expect(doors(more, views(more, base + 9000), [], base + 9000).hr.light).toBe('amber');   // more items still wait
+  });
 });

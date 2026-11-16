@@ -82,6 +82,12 @@ export default function Headquarters() {
     if (d === 'booking') return { items: cards.filter((c) => ['quote', 'confirm', 'book', 'order'].includes(c.step)).slice(0, 6).map((c) => ({ text: `${c.client} · ${STEPS.find((s) => s.key === c.step)?.short}`, sub: c.number, to: '/flow' })), note: 'Quotations and bookings waiting for you.', to: '/flow', toLabel: 'Open Lead Flow' };
     if (d === 'creative') return { items: events.filter((e) => e.dept === 'creative').slice(0, 5).map((e) => ({ text: e.title, sub: ago(e.at, now) })), note: 'Post drafts and published posts.', to: '/marketing', toLabel: 'Open Marketing AI' };
     if (d === 'hub') return { items: events.filter((e) => e.agent === 'jarvis').slice(0, 6).map((e) => ({ text: e.title, sub: ago(e.at, now) })), note: 'What JARVIS did recently.', to: '/jarvis', toLabel: 'Open Jarvis' };
+    if (d === 'hr') {
+      const nm = (id: string) => db.employees.find((e) => e.id === id)?.full_name ?? 'Employee';
+      const att = db.attendance.filter((a) => !a.deleted_at && a.kind === 'Present' && a.clock_out && a.approval === 'Pending').slice(0, 6).map((a) => ({ text: `${nm(a.employee_id)} · worked day`, sub: a.date, to: '/attendance' }));
+      const cor = db.corrections.filter((c) => !c.deleted_at && c.status === 'Pending').slice(0, 4).map((c) => ({ text: `${nm(c.employee_id)} · time correction`, sub: c.date, to: '/attendance' }));
+      return { items: [...att, ...cor], note: 'Attendance and time corrections waiting for your approval. Records and Training are still planned.', to: '/attendance', toLabel: 'Open Attendance' };
+    }
     return { items: [], note: 'Planned: this department has no real feed yet, so there is nothing to work on.' };
   };
 
@@ -150,7 +156,7 @@ export default function Headquarters() {
                 {!agent.live && <p className="muted small">Planned: this agent has no real data source yet, so it can only wait or relax. Nothing here is simulated as work.</p>}
                 <h4>Can do</h4><p className="muted small">{agent.skills.join(' · ')}</p>
                 <h4>Recent activity</h4><ul className="feed">{evs.map((e) => <li key={e.id}><span className={`k-${e.kind}`}>{KIND_ICON[e.kind]}</span><div>{e.title}<small>{ago(e.at, clock)}{e.ref ? ` · ${e.ref}` : ''}</small></div></li>)}{!evs.length && <li className="muted small">No activity yet.</li>}</ul>
-                <div className="acts">{!demo && link && can('sales.view') && <Link className="b primary" to={link}>Open the linked record</Link>}{!demo && ['desk', 'booking'].includes(agent.dept) && can('sales.view') && <Link className="b" to="/flow">Open Lead Flow</Link>}{!demo && agent.key === 'jarvis' && <Link className="b" to="/jarvis">Open JARVIS</Link>}{!demo && agent.key === 'creative' && <Link className="b" to="/marketing">Open Marketing AI</Link>}</div>
+                <div className="acts">{!demo && link && can('sales.view') && <Link className="b primary" to={link}>Open the linked record</Link>}{!demo && ['desk', 'booking'].includes(agent.dept) && can('sales.view') && <Link className="b" to="/flow">Open Lead Flow</Link>}{!demo && agent.key === 'jarvis' && <Link className="b" to="/jarvis">Open JARVIS</Link>}{!demo && agent.key === 'creative' && <Link className="b" to="/marketing">Open Marketing AI</Link>}{!demo && agent.key === 'attendance' && <Link className="b" to="/attendance">Open Attendance</Link>}</div>
                 <p className="muted small">Approve, retry or delegate are done in the screens above; they are not simulated here.</p>
               </>); })() : dept ? (() => { const q = queue(dept.key as DeptKey); const mates = AGENTS.filter((a) => a.dept === dept.key);
               return (<>
