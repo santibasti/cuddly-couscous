@@ -182,7 +182,7 @@ export const BOT_CSS = `
 .bot .head{animation:b-look calc(var(--p) * 2.2) ease-in-out infinite;animation-delay:var(--d)}
 .bot .arm{transform:rotate(7deg)}.bot .armR{transform:rotate(-7deg)}.bot .fore{transform:rotate(-12deg)}.bot .armR .fore{transform:rotate(12deg)}
 .bot .held{transition:opacity .3s}.bot.pose-typing .held,.bot.pose-review .held{opacity:0}.bot .badge circle{fill:#ffd86b}.bot .badge text{fill:#1b1200}.bot .nm{fill:#dbe8ff;paint-order:stroke;stroke:#050d26;stroke-width:3px}.bot .pl{fill:#9fb3d9;paint-order:stroke;stroke:#050d26;stroke-width:3px;letter-spacing:.1em}
-.bot .key{fill:#2a4f9a}.bot.planned{opacity:.5}
+.bot .key{fill:#2a4f9a}.bot.planned{opacity:1;filter:saturate(.45) brightness(.82)}
 .bot .scr .m,.bot .scr .cell{fill:#1c3a73}.bot .scr .dots circle{fill:#7be3ff;opacity:0}.bot .scr .sweep{opacity:0}.bot .scr .cell.hot{fill:#2a4f9a}.bot .scr .spin{transform-box:fill-box;transform-origin:center}
 .bot .scr.on .m1{animation:s-pop 3.2s infinite}.bot .scr.on .m2{animation:s-pop 3.2s .9s infinite}.bot .scr.on .m3{animation:s-pop 3.2s 1.8s infinite}.bot .scr.on .dots circle{animation:s-dot 1s infinite}.bot .scr.on .dots circle:nth-child(2){animation-delay:.18s}.bot .scr.on .dots circle:nth-child(3){animation-delay:.36s}
 .bot .scr.on .cell{fill:#2c64c4}.bot .scr.on .cell.hot{fill:#ffd86b;animation:s-hot 1.4s infinite}.bot .scr.on .sweep{opacity:1;animation:s-sweep 2.4s linear infinite}.bot .scr.on .spin{animation:spin 3s linear infinite}
