@@ -55,3 +55,11 @@ describe('the run loop and the modes', () => {
   });
   it('the mode defaults to off', () => { expect([parseMode(undefined), parseMode('x'), parseMode('suggest'), parseMode('auto')]).toEqual(['off', 'off', 'suggest', 'auto']); });
 });
+
+describe('greeting', () => {
+  it('uses the customer first name when known, never an AI introduction', () => {
+    const s = buildSystem({ sections: [], version: null, lang: 'en', customerName: 'Remar Jig Narciso' });
+    expect(s).toContain('Hi Mam/Sir Remar! Thanks for messaging TopMop. How can we help?'); expect(s).not.toMatch(/AI customer service/);
+    expect(buildSystem({ sections: [], version: null, lang: 'en' })).toContain('Hi Mam/Sir! Thanks for messaging TopMop.');
+  });
+});

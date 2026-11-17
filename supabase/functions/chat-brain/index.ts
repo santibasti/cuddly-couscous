@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
   for (const m of (hist ?? []).reverse()) { const role = m.direction === 'in' ? 'user' : 'assistant'; if (messages.length && messages[messages.length - 1].role === role) messages[messages.length - 1].content += `\n${m.body}`; else messages.push({ role, content: m.body }); }
   if (!messages.length || messages[0].role !== 'user') messages.unshift({ role: 'user', content: text });
   const model = cfg?.model || env('CHAT_AI_MODEL') || 'claude-haiku-5-5';
-  const system = buildSystem({ sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
+  const system = buildSystem({ sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, customerName: (conv as { name?: string | null }).name, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
   const callModel = async (sys: string, msgs: unknown[], tools: unknown) => {
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 500, system: sys, tools, messages: msgs }) });
     if (!r.ok) throw new Error(`AI error ${r.status}`); return await r.json();
