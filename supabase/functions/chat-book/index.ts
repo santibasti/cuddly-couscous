@@ -6,10 +6,15 @@
 //   - the date is not open (or not understood): nothing is booked, the answer offers the nearest open dates;
 //   - the date is open and Admin switched on "Book open dates automatically": the date is booked as a Confirmed job (no team, vehicle or price yet) and the answer says so;
 //   - the date is open but the switch is off: the answer says our team will confirm (a person books it, as before).
+//   optional: "lang": "en" | "tl" | "taglish" (Taglish customers get Taglish) → the ready-to-send text is also in "reply".
+// When it books, it also makes the INTERNAL pre-approved quotation (never sent to the client: they agreed to the starting rates in the chat). If Admin switched on "Create and send the Job Order automatically",
+// it also creates the Job Order (rates inside, quantities counted on site) and the answer carries its link (job_order_link); otherwise the app drafts the Job Order for you to send.
 // Answer: { ok, status: confirmed | pending_human | full | closed | too_soon | unclear, booked, job_number, ..., reply_en, reply_tl, alt1_label, alt1_date, ... }
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { estimate } from '../_shared/estimate.ts';
-import { addDays, bookedReply, checkAvailability, manilaDay, normalizeRules, parseWanted } from '../chat-availability/logic.ts';
+import { chatQuotation } from '../_shared/chatquote.ts';
+import { buildContent, contentKey } from '../_shared/appcore.mjs';
+import { addDays, bookedReply, checkAvailability, manilaDay, normalizeRules, parseLang, parseWanted, pick } from '../chat-availability/logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type, x-api-key, authorization, apikey', 'Content-Type': 'application/json' };
@@ -34,7 +39,7 @@ Deno.serve(async (req) => {
   if (!name || !mob) return json({ error: 'name and mobile are required' }, 400);
 
   const sb = createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'));
-  const today = manilaDay(Date.now()), wanted = parseWanted(b.date ?? b.when ?? b.preferred_date, today);
+  const lang = parseLang(b.lang ?? b.language); const today = manilaDay(Date.now()), wanted = parseWanted(b.date ?? b.when ?? b.preferred_date, today);
   const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle();
   const rules = normalizeRules((st?.data as Record<string, unknown> | undefined)?.chat_booking);
   const to = addDays(today, rules.horizon_days + rules.lead_days + 14);
@@ -50,8 +55,8 @@ Deno.serve(async (req) => {
   const avail = checkAvailability(wanted, today, rules, facts);
   const est0 = estimate(clip(b.address ?? b.location, 300), clip(b.service, 200), Number(b.panels ?? b.qty));
   // the estimate is added to the reply (never a fixed price): the crew does the final count on site
-  const withEstimate = <T extends { reply_en: string; reply_tl: string }>(r: T) => ({ ...r, reply_en: est0.ok && est0.estimate ? `${r.reply_en} ${est0.estimate_en}` : r.reply_en, reply_tl: est0.ok && est0.estimate ? `${r.reply_tl} ${est0.estimate_tl}` : r.reply_tl, estimate: est0.ok ? est0.estimate ?? null : null, estimate_note_en: est0.ok && est0.estimate ? est0.estimate_en : '' });
-  if (!avail.ok) return json({ ...avail, booked: false, confirmed: false, ...flat(avail.alternatives), alt_count: avail.alternatives.length });       // nothing saved, nothing booked: the chat asks for another date
+  const withEstimate = <T extends { reply_en: string; reply_tl: string; reply_tglish: string }>(r: T) => { const has = est0.ok && !!est0.estimate; const o = { ...r, reply_en: has ? `${r.reply_en} ${est0.estimate_en}` : r.reply_en, reply_tl: has ? `${r.reply_tl} ${est0.estimate_tl}` : r.reply_tl, reply_tglish: has ? `${r.reply_tglish} ${est0.estimate_tglish}` : r.reply_tglish }; return { ...o, reply: pick(o, lang), estimate: has ? est0.estimate ?? null : null, estimate_note_en: has ? est0.estimate_en : '' }; };
+  if (!avail.ok) return json({ ...avail, reply: pick(avail, lang), booked: false, confirmed: false, ...flat(avail.alternatives), alt_count: avail.alternatives.length });       // nothing saved, nothing booked: the chat asks for another date
 
   // the lead: the client (same mobile = same client) and an inquiry
   let clientId: string | undefined; { const { data } = await sb.from('clients').select('id').eq('mobile', mob).is('deleted_at', null).limit(1); if (data?.length) clientId = data[0].id; }
@@ -70,14 +75,32 @@ Deno.serve(async (req) => {
     await sb.from('alert_outbox').insert({ kind: 'lead', title: 'New lead with a date', body: `${name} ${mob}${address ? `, ${address}` : ''}, wants ${avail.requested_label} (${source}). Date looks open: please confirm.`, link: `/clients/${clientId}` });
     return json({ ...avail, status: 'pending_human', booked: false, confirmed: false, client_id: clientId, inquiry_id: inq.id, alt_count: 0, ...withEstimate(avail) });
   }
-  const { data: res, error: be } = await sb.rpc('chat_book', { p: { date: wanted, client_id: clientId, inquiry_id: inq.id, address, service_codes: codes, max_jobs: rules.max_jobs_per_day } });
+  const { data: svcRows } = await sb.from('services').select('*').is('deleted_at', null);
+  const cq = chatQuotation({ services: svcRows ?? [], settings: st?.data, address: address || 'the address given', service: clip(b.service, 200), today, addDays });          // null when the city is not in the rate list: the booking is still made, a person prices it
+  const { data: res, error: be } = await sb.rpc('chat_book', { p: { date: wanted, client_id: clientId, inquiry_id: inq.id, address, service_codes: cq ? [cq.code] : codes, max_jobs: rules.max_jobs_per_day, ...(cq ? { quotation: cq.payload } : {}) } });
   if (be || !res?.ok) {                                                                                                                              // lost the race for the last place, or the booking could not be made: never say "booked"
     const fresh = res?.reason === 'full' ? await sb.from('jobs').select('start_at, end_at, status, leader_id, crew_ids, vehicle_id').is('deleted_at', null).lte('start_at', to + 'T23:59').gte('end_at', today) : null;
     const again = checkAvailability(wanted, today, rules, { ...facts, jobs: fresh?.data ?? facts.jobs });
     await sb.from('alert_outbox').insert({ kind: 'lead', title: 'Chat booking needs a person', body: `${name} ${mob} asked for ${avail.requested_label}. ${res?.reason === 'full' ? 'The date just filled up.' : 'The automatic booking failed.'}`, link: `/clients/${clientId}` });
-    return json({ ...(res?.reason === 'full' ? again : { ...avail, ok: false, status: 'pending_human', reply_en: 'Thank you! Our team will confirm your date shortly.', reply_tl: 'Salamat po! Kukumpirmahin po ng aming team ang inyong petsa.' }), booked: false, confirmed: false, client_id: clientId, inquiry_id: inq.id, ...flat(again.alternatives), alt_count: again.alternatives.length });
+    return json({ ...(res?.reason === 'full' ? again : { ...avail, ok: false, status: 'pending_human', reply_en: 'Thank you! Our team will confirm your date shortly.', reply_tl: 'Salamat po! Kukumpirmahin po ng aming team ang inyong petsa.', reply_tglish: 'Thank you po! Kukumpirmahin po ng team namin ang date ninyo shortly.' }), reply: pick(res?.reason === 'full' ? again : { reply_en: 'Thank you! Our team will confirm your date shortly.', reply_tl: 'Salamat po! Kukumpirmahin po ng aming team ang inyong petsa.', reply_tglish: 'Thank you po! Kukumpirmahin po ng team namin ang date ninyo shortly.' }, lang), booked: false, confirmed: false, client_id: clientId, inquiry_id: inq.id, ...flat(again.alternatives), alt_count: again.alternatives.length });
   }
-  await sb.from('alert_outbox').insert({ kind: 'booking', title: 'Booked automatically', body: `${name}, ${address || 'address to be confirmed'}: ${res.number} on ${avail.requested_label} (booked by the chat). Team, vehicle and price are still to be arranged.`, link: `/jobs/${res.job_id}` });
-  const r = bookedReply(avail.requested_label ?? wanted!, res.number);
-  return json({ ok: true, status: 'confirmed', booked: true, confirmed: true, requested: wanted, requested_label: avail.requested_label, job_number: res.number, job_id: res.job_id, client_id: clientId, inquiry_id: inq.id, alternatives: [], alt_count: 0, ...withEstimate(r) });
+  await sb.from('alert_outbox').insert({ kind: 'booking', title: 'Booked automatically', body: `${name}, ${address || 'address to be confirmed'}: ${res.number} on ${avail.requested_label} (booked by the chat). ${cq ? `Pre-approved at the starting rates (${res.quotation_number}); the Job Order follows.` : 'The city is not in the rate list: please price it.'} Team and vehicle are still to be arranged.`, link: `/jobs/${res.job_id}` });
+  let link = ''; let joNumber = '';
+  if (rules.auto_job_order && cq && res.quotation_id) {                                                                                           // the owner switched on the automatic Job Order
+    try {
+      const [jr, cl, si, qu, ve, em] = await Promise.all([
+        sb.from('jobs').select('*').eq('id', res.job_id).single(), sb.from('clients').select('*').eq('id', clientId).single(), sb.from('sites').select('*').eq('id', res.site_id).single(), sb.from('quotations').select('*').eq('id', res.quotation_id).single(),
+        sb.from('variations').select('*').eq('job_id', res.job_id).is('deleted_at', null), sb.from('employees').select('id, full_name').is('deleted_at', null).limit(1),
+      ]);
+      const job = { ...jr.data, start_at: String(jr.data.start_at).slice(0, 16), end_at: String(jr.data.end_at).slice(0, 16), jo_prices: jr.data.jo_prices ?? undefined };
+      const facts2: Record<string, unknown> = { settings: st?.data ?? {}, clients: [cl.data], sites: [si.data], quotations: [qu.data], variations: ve.data ?? [], employees: em.data ?? [], services: svcRows ?? [], invoices: [], assets: [], discount_requests: [], job_orders: [] };
+      const db2 = new Proxy(facts2, { get: (t, k) => (k in t ? t[k as string] : []) });                                                            // the app's own Job Order code reads this like the app's data
+      const content = buildContent(db2, job);
+      const { data: jo } = await sb.rpc('chat_job_order', { p: { job_id: res.job_id, content, content_key: contentKey(content), send: true } });
+      if (jo?.ok) { link = `${(env('APP_URL') || 'https://ops.topmop.ph').replace(/\/$/, '')}/#/jo/${jo.share_token}`; joNumber = jo.number; }
+    } catch (_e) { /* the booking stands; the app drafts the Job Order and you send it */ }
+    if (!link) await sb.from('alert_outbox').insert({ kind: 'lead', title: 'Job Order not sent', body: `${name}: ${res.number} is booked but the automatic Job Order could not be made. Please open the booking and send it.`, link: `/jobs/${res.job_id}` });
+  }
+  const r = bookedReply(avail.requested_label ?? wanted!, res.number, link || undefined);
+  return json({ ok: true, status: 'confirmed', booked: true, confirmed: true, requested: wanted, requested_label: avail.requested_label, job_number: res.number, job_id: res.job_id, quotation_number: res.quotation_number ?? null, job_order_number: joNumber || null, job_order_link: link || null, client_id: clientId, inquiry_id: inq.id, alternatives: [], alt_count: 0, ...withEstimate(r) });
 });

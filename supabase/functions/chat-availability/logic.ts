@@ -5,14 +5,14 @@ export const manilaDay = (ms: number) => new Date(ms + 8 * 3600_000).toISOString
 const weekday = (d: string) => new Date(d + 'T00:00:00Z').getUTCDay();                       // 0 = Sunday
 
 /** auto_confirm: the chat books an open date by itself (a person still arranges the team, vehicle and the quotation). check_resources: also require a free leader, crew and vehicle (off by default: a day is open while it has fewer than max_jobs_per_day jobs). */
-export interface Rules { lead_days: number; closed_weekdays: number[]; max_jobs_per_day: number; horizon_days: number; alternatives: number; crew_needed: number; auto_confirm: boolean; check_resources: boolean }
-export const DEFAULT_RULES: Rules = { lead_days: 2, closed_weekdays: [0], max_jobs_per_day: 2, horizon_days: 21, alternatives: 3, crew_needed: 3, auto_confirm: false, check_resources: false };
+export interface Rules { lead_days: number; closed_weekdays: number[]; max_jobs_per_day: number; horizon_days: number; alternatives: number; crew_needed: number; auto_confirm: boolean; check_resources: boolean; auto_job_order: boolean }
+export const DEFAULT_RULES: Rules = { lead_days: 2, closed_weekdays: [0], max_jobs_per_day: 2, horizon_days: 21, alternatives: 3, crew_needed: 3, auto_confirm: false, check_resources: false, auto_job_order: false };
 const num = (v: unknown, d: number, lo: number, hi: number) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : d; };
 /** Rules from the Admin settings, every value kept inside a sensible range. */
 export function normalizeRules(x: unknown): Rules {
   const r = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
   const closed = Array.isArray(r.closed_weekdays) ? [...new Set(r.closed_weekdays.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))] : DEFAULT_RULES.closed_weekdays;
-  return { lead_days: num(r.lead_days, DEFAULT_RULES.lead_days, 0, 30), closed_weekdays: closed, max_jobs_per_day: num(r.max_jobs_per_day, DEFAULT_RULES.max_jobs_per_day, 1, 20), horizon_days: num(r.horizon_days, DEFAULT_RULES.horizon_days, 7, 90), alternatives: num(r.alternatives, DEFAULT_RULES.alternatives, 1, 5), crew_needed: num(r.crew_needed, DEFAULT_RULES.crew_needed, 1, 15), auto_confirm: r.auto_confirm === true, check_resources: r.check_resources === true };
+  return { lead_days: num(r.lead_days, DEFAULT_RULES.lead_days, 0, 30), closed_weekdays: closed, max_jobs_per_day: num(r.max_jobs_per_day, DEFAULT_RULES.max_jobs_per_day, 1, 20), horizon_days: num(r.horizon_days, DEFAULT_RULES.horizon_days, 7, 90), alternatives: num(r.alternatives, DEFAULT_RULES.alternatives, 1, 5), crew_needed: num(r.crew_needed, DEFAULT_RULES.crew_needed, 1, 15), auto_confirm: r.auto_confirm === true, check_resources: r.check_resources === true, auto_job_order: r.auto_job_order === true };
 }
 
 const DAYS: Record<string, number> = { sunday: 0, sun: 0, linggo: 0, monday: 1, mon: 1, lunes: 1, tuesday: 2, tue: 2, tues: 2, martes: 2, wednesday: 3, wed: 3, miyerkules: 3, miyerkoles: 3, thursday: 4, thu: 4, thur: 4, thurs: 4, huwebes: 4, friday: 5, fri: 5, biyernes: 5, saturday: 6, sat: 6, sabado: 6 };
@@ -51,25 +51,33 @@ export function dayCheck(date: string, today: string, rules: Rules, f: Facts): D
 
 const label = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-PH', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 export interface Alt { date: string; label: string }
-export interface Result { ok: boolean; status: Status | 'unclear'; requested: string | null; requested_label: string | null; alternatives: Alt[]; reply_en: string; reply_tl: string }
+export type Lang = 'en' | 'tl' | 'taglish';
+/** The customer's language: English, Filipino or Taglish (the default is English). The chat answers in the language the customer writes. */
+export const parseLang = (v: unknown): Lang => { const t = String(v ?? '').toLowerCase().replace(/[^a-z]/g, ''); return t.startsWith('tag') && t.includes('lish') || t === 'taglish' || t === 'tglish' ? 'taglish' : t === 'tl' || t === 'tagalog' || t === 'filipino' || t === 'fil' ? 'tl' : 'en'; };
+export const pick = (r: { reply_en: string; reply_tl: string; reply_tglish: string }, lang: Lang) => (lang === 'tl' ? r.reply_tl : lang === 'taglish' ? r.reply_tglish : r.reply_en);
+export interface Result { ok: boolean; status: Status | 'unclear'; requested: string | null; requested_label: string | null; alternatives: Alt[]; reply_en: string; reply_tl: string; reply_tglish: string }
 /** The answer the chatbot reads out. It never confirms a booking: a person reviews every request. */
 export function checkAvailability(wanted: string | null, today: string, rules: Rules, f: Facts): Result {
-  if (!wanted) return { ok: false, status: 'unclear', requested: null, requested_label: null, alternatives: [], reply_en: 'Which date would you like? You can write it like "Saturday" or "Nov 21".', reply_tl: 'Anong petsa po ang gusto ninyo? Pwede pong isulat tulad ng "Sabado" o "Nov 21".' };
+  if (!wanted) return { ok: false, status: 'unclear', requested: null, requested_label: null, alternatives: [], reply_en: 'Which date would you like? You can write it like "Saturday" or "Nov 21".', reply_tl: 'Anong petsa po ang gusto ninyo? Pwede pong isulat tulad ng "Sabado" o "Nov 21".', reply_tglish: 'Anong date po ang gusto ninyo? Pwede po ninyong i-type like "Saturday" or "Nov 21".' };
   const c = dayCheck(wanted, today, rules, f), first = addDays(today, rules.lead_days);
   const alts: Alt[] = []; if (c.status !== 'available') {
     const cand: { d: string; dist: number }[] = []; for (let k = 0; k <= rules.horizon_days; k++) { const d = addDays(first, k); if (d !== wanted && dayCheck(d, today, rules, f).status === 'available') cand.push({ d, dist: Math.abs(Date.parse(d) - Date.parse(wanted)) }); }
     for (const x of cand.sort((a, b) => a.dist - b.dist || a.d.localeCompare(b.d)).slice(0, rules.alternatives).sort((a, b) => a.d.localeCompare(b.d))) alts.push({ date: x.d, label: label(x.d) });
   }
   const L = label(wanted), list = alts.map((a) => a.label).join(', ');
-  if (c.status === 'available') return { ok: true, status: 'available', requested: wanted, requested_label: L, alternatives: [], reply_en: `${L} looks open. Our team will review your details and confirm the booking with you.`, reply_tl: `Mukhang bukas po ang ${L}. Titingnan po ng aming team ang inyong detalye at ikukumpirma namin sa inyo.` };
-  const why = { full: ['is fully booked', 'ay puno na po'], closed: ['is a day we are closed', 'ay hindi po kami nagseserbisyo'], too_soon: ['is too soon for us to schedule', 'ay masyado pong malapit para ma-schedule'] }[c.status];
+  if (c.status === 'available') return { ok: true, status: 'available', requested: wanted, requested_label: L, alternatives: [], reply_en: `${L} looks open. Our team will review your details and confirm the booking with you.`, reply_tl: `Mukhang bukas po ang ${L}. Titingnan po ng aming team ang inyong detalye at ikukumpirma namin sa inyo.`, reply_tglish: `Mukhang open po ang ${L}. Ire-review po ng team namin ang details ninyo at kukumpirmahin namin sa inyo.` };
+  const why = { full: ['is fully booked', 'ay puno na po', 'puno na po kami sa'], closed: ['is a day we are closed', 'ay hindi po kami nagseserbisyo', 'hindi po kami nagseserbisyo tuwing'], too_soon: ['is too soon for us to schedule', 'ay masyado pong malapit para ma-schedule', 'masyado pong malapit para ma-schedule ang'] }[c.status];
   const en = `Sorry, ${L} ${why[0]}.` + (list ? ` The nearest open dates are: ${list}. Which one suits you?` : ' Please tell us another date and our team will check.');
   const tl = `Paumanhin po, ang ${L} ${why[1]}.` + (list ? ` Ang pinakamalapit na bukas na petsa ay: ${list}. Alin po ang gusto ninyo?` : ' Pakisabi po ang ibang petsa at titingnan ng aming team.');
-  return { ok: false, status: c.status, requested: wanted, requested_label: L, alternatives: alts, reply_en: en, reply_tl: tl };
+  const tg = `Sorry po, ${why[2]} ${L}.` + (list ? ` Ang pinakamalapit na available dates namin ay ${list}. Alin po ang okay sa inyo?` : ' Pakisabi po ang ibang date at titingnan ng team namin.');
+  return { ok: false, status: c.status, requested: wanted, requested_label: L, alternatives: alts, reply_en: en, reply_tl: tl, reply_tglish: tg };
 }
 
-/** What the chat says after it really booked the date. Nothing about the price: that is confirmed in a quotation. */
-export function bookedReply(label: string, number: string): { reply_en: string; reply_tl: string } {
-  return { reply_en: `Your booking is set for ${label} (ref ${number}). Our team will message you the arrival time and the final price after verifying the details. If you need to change the date, just tell us.`,
-    reply_tl: `Naka-book na po kayo sa ${label} (ref ${number}). Ime-message po kayo ng aming team ng oras ng dating at ng final na presyo pagkatapos ma-verify ang detalye. Kung gusto ninyong palitan ang petsa, sabihin lang po.` };
+/** What the chat says after it really booked the date. Nothing about the price (the estimate sentence is added separately). With a Job Order link (automatic Job Order switched on) it also hands over the link. */
+export function bookedReply(label: string, number: string, link?: string): { reply_en: string; reply_tl: string; reply_tglish: string } {
+  const en = `Your booking is set for ${label} (ref ${number}). Our team will message you the arrival time and the final price after verifying the details. If you need to change the date, just tell us.`;
+  const tl = `Naka-book na po kayo sa ${label} (ref ${number}). Ime-message po kayo ng aming team ng oras ng dating at ng final na presyo pagkatapos ma-verify ang detalye. Kung gusto ninyong palitan ang petsa, sabihin lang po.`;
+  const tg = `Noted po! Naka-book na po kayo sa ${label} (ref ${number}). Ime-message po namin kayo ng arrival time at ng final price pagkatapos ma-verify ng team ang details. Kung gusto ninyong ilipat ang date, sabihin lang po.`;
+  if (!link) return { reply_en: en, reply_tl: tl, reply_tglish: tg };
+  return { reply_en: `${en} Here is your Job Order with our rates: ${link}`, reply_tl: `${tl} Narito po ang inyong Job Order kasama ang aming mga rate: ${link}`, reply_tglish: `${tg} Ito po ang Job Order ninyo, kasama ang rates namin: ${link}` };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RULES, bookedReply, checkAvailability, dayCheck, normalizeRules, parseWanted, type Facts } from '../../supabase/functions/chat-availability/logic';
+import { DEFAULT_RULES, bookedReply, parseLang, pick, checkAvailability, dayCheck, normalizeRules, parseWanted, type Facts } from '../../supabase/functions/chat-availability/logic';
 
 const today = '2026-11-16';                                       // a Monday
 const people = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `e${i}`, tier: i === 0 ? 'Team Leader' : 'Technician' }));
@@ -53,5 +53,18 @@ describe('rules from the settings', () => {
   it('uses the defaults and keeps odd values inside a safe range', () => {
     expect(normalizeRules(undefined)).toEqual(DEFAULT_RULES); expect(normalizeRules({ lead_days: -5, max_jobs_per_day: 999, closed_weekdays: [0, 6, 9, 'x'], alternatives: 'abc', auto_confirm: 'yes' })).toEqual({ ...DEFAULT_RULES, lead_days: 0, max_jobs_per_day: 20, closed_weekdays: [0, 6] });   // only a real true switches automatic confirmation on
     expect(normalizeRules({ auto_confirm: true, check_resources: true })).toMatchObject({ auto_confirm: true, check_resources: true });
+  });
+});
+
+describe('Taglish', () => {
+  const full = facts({ jobs: [job('2026-11-21', ['e0']), job('2026-11-21', ['e1'], 'v2')] });
+  it('picks the language of the customer', () => { expect([parseLang('Taglish'), parseLang('tagalog'), parseLang('FIL'), parseLang('english'), parseLang(undefined), parseLang('tglish')]).toEqual(['taglish', 'tl', 'tl', 'en', 'en', 'taglish']); });
+  it('answers a full date and an open date in Taglish with the same dates', () => {
+    const r = checkAvailability('2026-11-21', today, DEFAULT_RULES, full); expect(pick(r, 'taglish')).toContain(`Sorry po, puno na po kami sa ${r.requested_label}.`); expect(pick(r, 'taglish')).toContain('Alin po ang okay sa inyo?'); for (const a of r.alternatives) expect(pick(r, 'taglish')).toContain(a.label);
+    expect(pick(checkAvailability('2026-11-21', today, DEFAULT_RULES, facts()), 'taglish')).toMatch(/Mukhang open po/); expect(pick(checkAvailability(null, today, DEFAULT_RULES, facts()), 'taglish')).toMatch(/Anong date po/);
+  });
+  it('the booked message is Taglish, carries the Job Order link only when given, and no price', () => {
+    const b = bookedReply('Sat, 21 Nov', 'JOB-2026-0007'); expect(b.reply_tglish).toContain('Noted po! Naka-book na po kayo sa Sat, 21 Nov (ref JOB-2026-0007)'); expect(b.reply_tglish).not.toContain('http');
+    const c = bookedReply('Sat, 21 Nov', 'JOB-2026-0007', 'https://x/#/jo/abc'); expect(c.reply_tglish).toContain('Ito po ang Job Order ninyo, kasama ang rates namin: https://x/#/jo/abc'); expect(c.reply_en).toContain('Job Order with our rates'); expect(c.reply_tglish).not.toMatch(/₱/);
   });
 });

@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "build:core": "rolldown src/lib/servercore.ts --format esm --platform neutral -o supabase/functions/_shared/appcore.mjs",
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",

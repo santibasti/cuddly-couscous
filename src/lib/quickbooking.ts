@@ -55,7 +55,7 @@ export function parseBooking(text: string): Booking {
 export interface QuotePlan { rate?: Rate; other?: (typeof OTHER)[number]; items: ReturnType<typeof priceService>['lines']; note: string }
 /** The price for the pasted booking: the glass package of the city, or the minimum of another service. */
 export function planQuote(db: Pick<DB, 'services'>, b: Pick<Booking, 'address' | 'service'>, rate: Rate | undefined = findRate(b.address)): QuotePlan {
-  const other = /glass|window|panel|^\s*$/i.test(b.service) ? undefined : OTHER.find((o) => o.match.test(b.service));
+  const other = /glass|window|panel|^\s*$/i.test(b.service) && !/solar/i.test(b.service) ? undefined : OTHER.find((o) => o.match.test(b.service));   // "Solar panel cleaning" is a solar job, not a glass-panel package
   if (other) {
     const def = db.services.find((s) => s.code === other.code); const base = def ?? { code: other.code, name: other.name, unit: other.unit, rate: other.rate, minimum_qty: other.min, custom_quote: false } as never;
     const r = priceService({ ...(base as object), name: other.name, unit: other.unit, rate: other.rate, minimum_qty: other.min, custom_quote: false, package_price: undefined, package_qty: undefined } as never, other.min);

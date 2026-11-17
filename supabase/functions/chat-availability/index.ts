@@ -1,10 +1,11 @@
 // "Is that date free?" for the chatbot (ManyChat or any tool that can call a web address). Read-only: it checks the calendar, it never books or holds anything.
 // POST JSON, key in the header  x-api-key: <LEAD_INTAKE_KEY>  or in the address  ?key=<LEAD_INTAKE_KEY>   (the same secret as lead-intake)
 //   { "date": "2026-11-21" }   or   { "when": "next Saturday" }   (also "bukas", "Nov 21", "sa sabado" ...)   optional: { "crew_needed": 4 }
+// Optional "lang": "en" | "tl" | "taglish" (the language the customer writes; Taglish customers get Taglish) → the ready-to-send text is also in "reply".
 // Answer: { ok, status: available | full | closed | too_soon | unclear, requested, requested_label, alternatives: [{date,label}], alt1_date, alt1_label, ..., reply_en, reply_tl }
 // The rules (earliest day, closed weekdays, daily job limit, how many alternatives) come from Admin → Settings → Messenger booking rules. A person always confirms the booking.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { addDays, checkAvailability, manilaDay, normalizeRules, parseWanted } from './logic.ts';
+import { addDays, checkAvailability, manilaDay, normalizeRules, parseLang, parseWanted, pick } from './logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'content-type, x-api-key, authorization, apikey', 'Content-Type': 'application/json' };
@@ -35,5 +36,5 @@ Deno.serve(async (req) => {
     jobs: jobs.data ?? [], field: (emps.data ?? []).filter((e: { status?: string }) => e.status !== 'inactive'), vehicles: cars.data ?? [], holidays: (hol.data ?? []).map((h: { date: string }) => h.date),
   });
   const flat: Record<string, string> = {}; r.alternatives.forEach((a, i) => { flat[`alt${i + 1}_date`] = a.date; flat[`alt${i + 1}_label`] = a.label; });
-  return json({ ...r, ...flat, alt_count: r.alternatives.length });
+  return json({ ...r, reply: pick(r, parseLang(b.lang ?? b.language)), ...flat, alt_count: r.alternatives.length });
 });

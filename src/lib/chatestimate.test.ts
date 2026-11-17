@@ -27,3 +27,11 @@ describe('the chat estimate', () => {
   });
   it('the app and the chat use the very same rate table', () => { expect(findRate('Makati')).toBe(RATES.find((r) => r.place === 'Makati')); expect(planQuote({ services: [] } as never, { address: 'Makati', service: '' }).rate?.price).toBe(estimate('Makati', '', 1).package_price); });
 });
+
+describe('Taglish', () => {
+  it('speaks Taglish for a Taglish customer, with the same figures and the same warning', () => {
+    const e = estimate('Makati', '', 40); expect(e.rates_tglish).toContain('nagsisimula sa ₱4,799'); expect(e.estimate_tglish).toContain('₱6,059'); expect(e.estimate_tglish).toMatch(/Estimate lang po/); expect(e.estimate_tglish).toMatch(/crew namin ang magbibilang ng final count/);
+    expect(estimate('Makati', '', 21).estimate_tglish).toMatch(/sakop pa po siya ng package, so ang estimate ay ₱4,799/);
+    expect(estimate('Hong Kong', '', 5).estimate_tglish).toMatch(/Paki-verify/);
+  });
+});
