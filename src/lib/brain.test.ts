@@ -130,6 +130,12 @@ describe('Sir or Ma’am', () => {
   it('uses the gender the chat platform gives, never a guess from the name; the welcome follows', () => {
     expect(honorificFor('male')).toBe('Sir'); expect(honorificFor('Female')).toBe('Ma’am'); expect(honorificFor('')).toBe('Ma’am/Sir'); expect(honorificFor(undefined)).toBe('Ma’am/Sir'); expect(honorificFor('f')).toBe('Ma’am'); expect(honorificFor('other')).toBe('Ma’am/Sir');
     expect(composeFirst('NO_ANSWER', 'Sir')).toContain('Hello po, Sir! Good day.'); expect(composeFirst('NO_ANSWER', 'Sir')).toContain('May we know your location po, Sir?'); expect(composeFirst('NO_ANSWER')).toBe(WELCOME_TEXT);
-    const s = buildSystem({ sections: [], version: null, lang: 'en', honorific: 'Ma’am' }); expect(s).toContain('as "Ma’am" together with "po"'); expect(s).toMatch(/Never guess whether a customer is a man or a woman from their name/);
+    const s = buildSystem({ sections: [], version: null, lang: 'en', honorific: 'Ma’am' }); expect(s).toContain('The customer is a woman: when a title fits, use "Ma’am"'); const u = buildSystem({ sections: [], version: null, lang: 'en' }); expect(u).toMatch(/unmistakable/); expect(u).toMatch(/Never write "Ma’am\/Sir" yourself/); expect(u).toMatch(/never at the start of every message/);
+  });
+});
+
+describe('no repeated services list', () => {
+  it('the welcome already lists the services, so the first reply never lists them again', () => {
+    const f = buildSystem({ sections: [], version: null, lang: 'en', firstMessage: true }); expect(f).toMatch(/never list the services again/); expect(f).toMatch(/only asks what services we offer, write exactly NO_ANSWER/);
   });
 });
