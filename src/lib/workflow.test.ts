@@ -325,8 +325,8 @@ describe('panel counting & variations', () => {
 
   it('several glass packages: the picked package sets the price, the panels it covers and the excess rate', () => {
     const sv = db().services.find((x) => x.code === 'GLASS_EXT')!;
-    expect((sv.packages ?? []).map((p) => [p.price, p.qty])).toEqual([[5700, 41], [6799, 41], [7799, 41], [12799, 51]]);
-    const r = B.priceService(sv, 55, sv.packages![3]);
+    expect((sv.packages ?? []).map((p) => [p.price, p.qty])).toEqual([[5799, 41], [6799, 41], [12799, 51]]);   // the packages match the rate list; there is no 5,700 or 7,799 package
+    const r = B.priceService(sv, 55, sv.packages![2]);
     expect(r.lines.map((l) => [l.unit, l.qty, l.rate])).toEqual([['package', 1, 12799], ['panel', 4, 140]]);
     expect(B.quotedPanels({ services: db().services }, { items: r.lines } as never)).toBe(55);
     expect(B.priceService(sv, 31).lines[0].rate).toBe(4799);
