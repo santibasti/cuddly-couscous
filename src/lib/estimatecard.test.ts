@@ -15,3 +15,26 @@ describe('estimate card', () => {
     expect(cardLines(estimate('Makati', 'window cleaning', 21))!.lines.join(' ')).toContain('No extra panels'); expect(wrapText('a b c d e f', 5).join(' ')).toBe('a b c d e f');
   });
 });
+
+import { cardForLog, cardUrl } from '../../supabase/functions/_shared/estimatecard';
+describe('card address', () => {
+  it('builds a card address from the last estimate the AI asked for, never for a person-needed answer', () => {
+    const u = cardForLog([{ tool: 'check_date', input: {} }, { tool: 'estimate', input: { address: 'Pasay', service: 'window cleaning', qty: 50 } }], 'https://ops.topmop.ph/');
+    expect(u).toBe('https://ops.topmop.ph/api/estimate-card?address=Pasay&qty=50&service=window+cleaning&property=Residential');
+    expect(cardForLog([{ tool: 'estimate', input: { address: 'Atlantis', qty: 40 } }], 'https://x')).toBeNull();
+    expect(cardForLog([{ tool: 'estimate', input: { address: 'Makati', qty: 40, property_type: 'Commercial' } }], 'https://x')).toBeNull();
+    expect(cardForLog([{ tool: 'estimate', input: { address: 'Makati' } }], 'https://x')).toBeNull();
+    expect(cardUrl('https://a.b', { address: 'Las Piñas', qty: 33.4 })).toContain('qty=33');
+  });
+});
+
+import { execSync } from 'node:child_process';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+describe('card server bundle', () => {
+  it('api/_cardcore.mjs is up to date (run: npm run build:card)', () => {
+    const out = join(mkdtempSync(join(tmpdir(), 'card-')), '_cardcore.mjs'); execSync(`npx rolldown src/lib/cardserver.ts --format esm --platform neutral -o ${out}`, { cwd: process.cwd(), stdio: 'pipe' });
+    expect(readFileSync('api/_cardcore.mjs', 'utf8').trim()).toBe(readFileSync(out, 'utf8').trim());
+  }, 60_000);
+});

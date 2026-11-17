@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
   if (!text) return json({ error: 'Nothing to send' }, 400);
   const token = env('MANYCHAT_API_TOKEN');
   if (!token) { await sb.from('chat_messages').update({ status: 'approved', body: text, actions: [], decided_by: who, decided_at: new Date().toISOString() }).eq('id', msg.id); return json({ ok: true, sent: false, text, note: 'MANYCHAT_API_TOKEN is not set: copy this reply into the ManyChat live chat.' }); }
-  const r = await fetch('https://api.manychat.com/fb/sending/sendContent', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: conv.subscriber_id, data: { version: 'v2', content: { messages: [{ type: 'text', text }] } } }) });
+  const r = await fetch('https://api.manychat.com/fb/sending/sendContent', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: conv.subscriber_id, data: { version: 'v2', content: { messages: [{ type: 'text', text }, ...(msg.card_url && b.send_card !== false ? [{ type: 'image', url: msg.card_url }] : [])] } } }) });
   if (!r.ok) { const err = (await r.text()).slice(0, 250); await sb.from('chat_messages').update({ status: 'failed', body: text, actions: [], error: err, decided_by: who, decided_at: new Date().toISOString() }).eq('id', msg.id); return json({ error: `ManyChat did not accept the message: ${err}` }, 502); }
   await sb.from('chat_messages').update({ status: 'sent', body: text, actions: [], error: null, decided_by: who, decided_at: new Date().toISOString() }).eq('id', msg.id);
   await sb.from('chat_conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id);

@@ -3,6 +3,7 @@
 // Mode (Admin → Settings → AI chat): off = nothing happens; suggest = the AI writes a DRAFT for staff, nothing is sent; auto = the reply goes out at once unless a safety check fails.
 // Answer: { ok, status: "reply" | "held" | "handover" | "duplicate" | "off", reply, mode } — put `reply` in the chatbot's next message; when it is empty, send nothing (staff or a draft is handling it).
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { cardForLog } from '../_shared/estimatecard.ts';
 import { buildSystem, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
 import { makeExec } from '../_shared/chatexec.ts';
 import { parseLang } from '../chat-availability/logic.ts';
@@ -51,7 +52,8 @@ Deno.serve(async (req) => {
   const exec = makeExec({ sb, base: env('SUPABASE_URL'), key, conv, lang });
   const brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3 });
   const d = decide(mode, brain, lang); const flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked }).violations;
-  const common = { conversation_id: conv.id, direction: 'out', model, rulebook_version: rb?.version ?? null, tool_log: brain.log, error: brain.error ?? null };
+  const card = d.kind === 'reply' || d.kind === 'draft' ? cardForLog(brain.log, env('APP_URL') || 'https://ops.topmop.ph') : null;
+  const common = { card_url: card, conversation_id: conv.id, direction: 'out', model, rulebook_version: rb?.version ?? null, tool_log: brain.log, error: brain.error ?? null };
 
   if (d.kind === 'draft') {                                                                                                                // suggest: a draft for staff, nothing is sent
     await sb.from('chat_messages').insert({ ...common, body: d.text, status: 'draft', actions: brain.actions, flags });
@@ -66,5 +68,5 @@ Deno.serve(async (req) => {
     return json({ ok: true, status: 'handover', reply: d.text, mode });                                                                         // the customer gets the safe sentence, a person takes over
   }
   await sb.from('chat_messages').insert({ ...common, body: d.text, status: 'sent' });
-  return json({ ok: true, status: 'reply', reply: d.text, mode });
+  return json({ ok: true, status: 'reply', reply: d.text, mode, card_url: card ?? '' });
 });

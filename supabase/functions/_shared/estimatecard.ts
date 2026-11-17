@@ -1,6 +1,6 @@
 // The estimate card: a picture (SVG, 1080 x 1080) with the same figures as the estimate text, in the look of the TopMop free-estimate calculator. Pure: no network, no database.
 // It only ever draws an estimate that the rate table produced; it never invents a number. A person-needed answer (unknown city, commercial) gets no card.
-import type { Estimate } from './estimate.ts';
+import { estimate, type Estimate } from './estimate.ts';
 import { LOGO_DATA_URI } from './logoimg.ts';
 
 const peso = (n: number) => '₱' + Math.round(n).toLocaleString('en-US');
@@ -29,7 +29,7 @@ export function estimateCardSvg(e: Estimate, o: CardOpts = {}): string | null {
   const c = cardLines(e); if (!c || e.estimate == null) return null;
   const where = [e.place, o.property ?? 'Residential'].filter(Boolean).join(' · ');
   const note = wrapText('An estimate is not a booking or final quotation. TopMop confirms panel counts, surface condition, access, travel charges and applicable taxes, and the complete total, before work is agreed.', 78);
-  const f = 'font-family="Segoe UI, Helvetica, Arial, sans-serif"';
+  const f = 'font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif"';
   let y = 470; const body = c.lines.flatMap((l) => wrapText(l, 56)).map((l) => { y += 42; return `<text x="90" y="${y}" ${f} font-size="31" fill="#dff2ea">${esc(l)}</text>`; }).join('');
   const afterBody = y + 62;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img" aria-label="TopMop estimate">
@@ -52,4 +52,20 @@ ${body}
 ${note.map((l, i) => `<text x="90" y="${afterBody + 274 + i * 27}" ${f} font-size="19" fill="#b9d6c8">${esc(l)}</text>`).join('')}
 <text x="540" y="1012" text-anchor="middle" ${f} font-size="22" font-weight="700" fill="#8fd6b0">www.topmop.ph</text>
 </svg>`;
+}
+
+/** The public address of the card for an estimate (the app serves it as a PNG at /api/estimate-card). Only the inputs travel in the address; the figures are always computed from the rate table. */
+export function cardUrl(base: string, a: { address: string; service?: string; qty: number; property?: string }): string {
+  const q = new URLSearchParams({ address: a.address.slice(0, 80), qty: String(Math.round(a.qty)) }); if (a.service) q.set('service', a.service.slice(0, 60)); if (a.property) q.set('property', a.property.slice(0, 20));
+  return `${base.replace(/\/+$/, '')}/api/estimate-card?${q.toString()}`;
+}
+
+/** The card address for the last estimate the AI asked for with a quantity, if that estimate can be drawn (a person-needed answer gets no card). */
+export function cardForLog(log: { tool: string; input: unknown }[], base: string): string | null {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const l = log[i]; if (l.tool !== 'estimate') continue; const x = (l.input ?? {}) as Record<string, unknown>; const qty = Number(x.qty ?? x.panels); const address = String(x.address ?? '').trim(); if (!address || !(qty >= 1)) continue;
+    const property = String(x.property_type ?? 'Residential'); const e = estimate(address, String(x.service ?? '') || 'window cleaning', qty, property, x.with_main === true); if (!cardLines(e)) return null;
+    return cardUrl(base, { address, service: String(x.service ?? '') || undefined, qty, property: /^commercial/i.test(property) ? 'Commercial' : 'Residential' });
+  }
+  return null;
 }

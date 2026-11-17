@@ -8,7 +8,7 @@ import { callFn } from '@/lib/fnclient';
 import { fmtStamp } from '@/lib/util';
 
 interface Conv { id: string; channel: string; subscriber_id: string; name: string | null; lang: string | null; status: 'Open' | 'Needs a person' | 'Lead created' | 'Closed'; human_reason: string | null; last_message_at: string }
-interface Msg { id: string; direction: 'in' | 'out'; body: string; status: 'received' | 'draft' | 'approved' | 'sent' | 'failed' | 'discarded'; actions: { type: string; input: Record<string, unknown> }[]; flags: string[]; rulebook_version: number | null; error: string | null; created_at: string }
+interface Msg { id: string; direction: 'in' | 'out'; body: string; status: 'received' | 'draft' | 'approved' | 'sent' | 'failed' | 'discarded'; actions: { type: string; input: Record<string, unknown> }[]; flags: string[]; rulebook_version: number | null; error: string | null; created_at: string; card_url?: string | null }
 const SAMPLE_CONV: Conv[] = [{ id: 's1', channel: 'messenger', subscriber_id: 'sample', name: 'Sample customer', lang: 'taglish', status: 'Open', human_reason: null, last_message_at: new Date().toISOString() }];
 const SAMPLE_MSG: Msg[] = [
   { id: 'm1', direction: 'in', body: 'Magkano po window cleaning sa Makati? 21 panels lang po', status: 'received', actions: [], flags: [], rulebook_version: null, error: null, created_at: new Date().toISOString() },
@@ -20,7 +20,7 @@ const actionLabel = (a: Msg['actions'][number]) => a.type === 'book_date' ? `Boo
 export default function AiChat() {
   const { can, db } = useAuth(); const allowed = can('inbox.manage'); const mode = (db.settings as { chat_ai?: { mode?: string } }).chat_ai?.mode ?? 'off';
   const [convs, setConvs] = useState<Conv[]>(CLOUD ? [] : SAMPLE_CONV); const [sel, setSel] = useState<string | null>(CLOUD ? null : 's1'); const [msgs, setMsgs] = useState<Msg[]>(CLOUD ? [] : SAMPLE_MSG);
-  const [filter, setFilter] = useState<'attention' | 'all'>('attention'); const [pending, setPending] = useState<Set<string>>(new Set()); const [edit, setEdit] = useState<Record<string, string>>({}); const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState<'attention' | 'all'>('attention'); const [pending, setPending] = useState<Set<string>>(new Set()); const [edit, setEdit] = useState<Record<string, string>>({}); const [noCard, setNoCard] = useState<Record<string, boolean>>({}); const [busy, setBusy] = useState(false);
 
   const loadConvs = useCallback(async () => {
     if (!CLOUD) return;
@@ -51,10 +51,11 @@ export default function AiChat() {
               <small className="muted">{m.direction === 'in' ? 'Customer' : 'AI'} · {fmtStamp(m.created_at)}{m.rulebook_version ? ` · rulebook v${m.rulebook_version}` : ''} · {m.status}</small>
               {m.status === 'draft' || m.status === 'failed' || m.status === 'approved' ? <>
                 <textarea rows={4} value={edit[m.id] ?? m.body} onChange={(e) => setEdit({ ...edit, [m.id]: e.target.value })} style={{ width: '100%' }} />
+                {m.card_url && <div className="aichat-card"><img src={m.card_url} alt="Estimate card that will be sent with this reply" style={{ width: 180, borderRadius: 10, display: 'block' }} /><label className="muted small"><input type="checkbox" checked={noCard[m.id] !== true} onChange={(e) => setNoCard({ ...noCard, [m.id]: !e.target.checked })} /> Send this estimate card with the reply</label></div>}
                 {m.flags.length > 0 && <div className="alert warn">Safety check: {m.flags.join('; ')}. Read it carefully before approving.</div>}
                 {m.actions.length > 0 && <div className="muted small">On approval the system will: {m.actions.map(actionLabel).join(' · ')}. (A booking's wording comes from the system, not from this draft.)</div>}
                 {m.error && <div className="alert err">{m.error}</div>}
-                <div className="row" style={{ gap: 6 }}><button className="b primary" disabled={busy} onClick={() => act({ action: 'approve', message_id: m.id, text: edit[m.id] ?? m.body }, 'Sent')}>Approve & send</button><button className="b" disabled={busy} onClick={() => act({ action: 'discard', message_id: m.id }, 'Discarded')}>Discard</button></div>
+                <div className="row" style={{ gap: 6 }}><button className="b primary" disabled={busy} onClick={() => act({ action: 'approve', message_id: m.id, text: edit[m.id] ?? m.body, send_card: noCard[m.id] !== true }, 'Sent')}>Approve & send</button><button className="b" disabled={busy} onClick={() => act({ action: 'discard', message_id: m.id }, 'Discarded')}>Discard</button></div>
               </> : <div>{m.body}</div>}
             </div>))}</div>
           {!cur && CLOUD && <p className="muted">Pick a conversation on the left.</p>}
