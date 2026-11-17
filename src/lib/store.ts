@@ -6,7 +6,7 @@ import { seedDB } from './demoseed';
 import { geoHooks, geoPatch } from './geo-ph';
 import { syncHub } from './sync';
 import { kvDel, kvGet, kvSet } from './outbox';
-import { fetchProfiles, updateProfile, CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, adminSetPassword, completeSettings, fetchAll, fetchLatest, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
+import { supabase, fetchProfiles, updateProfile, CLOUD, type JournalEntry, applyOutbox, isNetworkError, currentUserId, emptyDB, adminSetPassword, completeSettings, fetchAll, fetchLatest, fetchProfile, fetchTables, isRuleError, pushChanges, reserveNumbers, signIn, signOut, type SyncTable } from './cloud';
 
 type Rows = { [K in TableName]: DB[K] extends (infer R)[] ? R : never };
 type NewRow<T extends TableName> = Omit<Rows[T], keyof Base> & Partial<Base>;
@@ -64,7 +64,7 @@ class Store {
       syncHub.setFlusher(() => this.flushCloud());
       if (typeof window !== 'undefined') {
         // check for other people's changes: every 30 seconds for the Owner (who approves discounts and decisions others are waiting on), every 90 seconds for everyone else
-        setInterval(() => { const gap = this.user?.role === 'owner' ? 30000 : 90000; if (Date.now() - this.lastPoll >= gap - 1000) void this.refreshCloud(); }, 10000);
+        setInterval(() => { this.startNudge(); const gap = this.user?.role === 'owner' ? 30000 : 90000; if (Date.now() - this.lastPoll >= gap - 1000) void this.refreshCloud(); }, 10000);
         // coming back to the app: pull the latest at once if the data is a little old
         document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - this.lastFresh > 30000) void this.refreshCloud(); });
       }
@@ -224,6 +224,14 @@ class Store {
     if (this.flushing || syncHub.getSnapshot().pending > 0 || this._db !== this.baseline) return 'busy';
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline';
     return (await this.refreshCloud(true)) ? 'updated' : 'offline';
+  }
+  /** Changes made on the server (a chat booking, an approval, an AI step) leave an event row; hearing one pulls the newest data within seconds instead of waiting for the next regular refresh. At most once every 8 seconds, and only the changed rows are fetched. */
+  private nudgeOn = false; private nudgedAt = 0;
+  private startNudge() {
+    if (this.nudgeOn || !CLOUD || !this.sessionUser) return; this.nudgeOn = true;
+    try {
+      supabase().channel('store-nudge').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agent_events' }, () => { if (Date.now() - this.nudgedAt < 8000) return; this.nudgedAt = Date.now(); setTimeout(() => void this.refreshCloud(), 1500); }).subscribe();
+    } catch { this.nudgeOn = false; /* the regular refresh still works */ }
   }
   private async refreshCloud(full = false): Promise<boolean> {
     if (!CLOUD || !this.sessionUser || this.flushing || syncHub.getSnapshot().pending > 0 || this._db !== this.baseline || (typeof document !== 'undefined' && document.hidden && !full)) return false;
