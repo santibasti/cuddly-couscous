@@ -55,11 +55,11 @@ Deno.serve(async (req) => {
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 500, system: sys, tools, messages: msgs }) });
     if (!r.ok) throw new Error(`AI error ${r.status}`); return await r.json();
   };
-  const exec = makeExec({ sb, base: env('SUPABASE_URL'), key, conv, lang });
+  const exec = makeExec({ sb, base: env('SUPABASE_URL'), key, conv, lang, context: [...(hist ?? []).filter((m) => m.direction === 'in').map((m) => String(m.body ?? '')), text].join(' ').slice(-600) });
   const brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3 });
   const d0 = decide(mode, brain, lang); const d = first && (d0.kind === 'draft' || d0.kind === 'send') ? { ...d0, text: composeFirst(d0.text) } : d0; const flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked }).violations;
   const appUrl = env('APP_URL') || 'https://ops.topmop.ph'; const card = d.kind === 'send' || d.kind === 'draft' ? (cardForLog(brain.log, appUrl) ?? (explainsPanelCount(text, brain.reply) ? panelGuideUrl(appUrl) : null)) : null;   // one picture per reply: the estimate card, else the panel-counting guide
-  const common = { card_url: card, conversation_id: conv.id, direction: 'out', model, rulebook_version: rb?.version ?? null, tool_log: brain.log, error: brain.error ?? (brain.reply.trim() ? null : `The AI wrote no text: ${brain.note ?? ''}`.slice(0, 240)) };
+  const common = { card_url: card, conversation_id: conv.id, direction: 'out', model, rulebook_version: rb?.version ?? null, tool_log: brain.log, error: brain.error ?? (brain.reply.trim() ? (brain.note ? brain.note.slice(0, 240) : null) : `The AI wrote no text: ${brain.note ?? ''}`.slice(0, 240)) };
 
   const put = async (row: Record<string, unknown>) => { let r = await sb.from('chat_messages').insert(row); if (r.error && /card_url/i.test(r.error.message)) { const { card_url: _c, ...rest } = row; r = await sb.from('chat_messages').insert(rest); } return r.error?.message ?? null; };   // works before migration 0126 too
   if (d.kind === 'draft') {                                                                                                                // suggest: a draft for staff, nothing is sent

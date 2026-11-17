@@ -3,7 +3,7 @@ import type { ToolOutcome } from './brain.ts';
 
 // deno-lint-ignore no-explicit-any
 type Sb = any;
-export interface ExecCtx { sb: Sb; base: string; key: string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null }; lang: string }
+export interface ExecCtx { sb: Sb; base: string; key: string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null }; lang: string; context?: string }
 const post = async (c: ExecCtx, fn: string, body: Record<string, unknown>) => {
   const r = await fetch(`${c.base}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': c.key }, body: JSON.stringify({ ...body, lang: c.lang }) });
   const j = await r.json().catch(() => ({})) as Record<string, unknown>; if (!r.ok) throw new Error(String(j.error ?? `${fn} answered ${r.status}`)); return j;
@@ -13,7 +13,8 @@ export function makeExec(c: ExecCtx) {
   return async (name: string, input: Record<string, unknown>): Promise<ToolOutcome> => {
     try {
       if (name === 'estimate') {
-        const j = await post(c, 'chat-estimate', { address: input.address, service: input.service, qty: input.qty, property_type: input.property_type, with_main: input.with_main });
+        let j = await post(c, 'chat-estimate', { address: input.address, service: input.service, qty: input.qty, property_type: input.property_type, with_main: input.with_main });
+        if (j.ok === false && j.kind === 'unknown' && c.context) j = await post(c, 'chat-estimate', { address: `${String(input.address ?? '')} ${c.context}`.slice(0, 300), service: input.service, qty: input.qty, property_type: input.property_type, with_main: input.with_main });   // the street alone has no city: look for it in what the customer wrote
         return { text: String(j.reply ?? ''), amounts: nums(j.estimate, j.package_price, j.extra_rate) };
       }
       if (name === 'check_date') {

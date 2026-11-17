@@ -92,3 +92,9 @@ describe('panel counting rule', () => {
     expect(s).toMatch(/up to 2 m x 1 m counts as one billable panel/); expect(s).toMatch(/inside and the outside counts as two/); expect(s).toMatch(/over 2 m x 1 m\) counts as two per side/); expect(s).toMatch(/20 standard panels cleaned on both sides = 40 billable panels/); expect(s).toMatch(/crew confirms the final count/); expect(s).toMatch(/never count per window/);
   });
 });
+
+describe('booking flow rules', () => {
+  it('reads pasted answers, never re-asks, and always writes a proper reply', () => {
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/BOOKING FLOW/); expect(s).toMatch(/never ask again for something they already gave/); expect(s).toMatch(/Never answer with only a tool's sentence/);
+  });
+});
