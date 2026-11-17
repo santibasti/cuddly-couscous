@@ -71,7 +71,7 @@ const walked = (t: number, T: number) => { const S = WALK, R = RAMP; if (t <= 0)
 const timeAt = (d: number, T: number) => { const S = WALK, R = RAMP, tot = S * (T - R); if (d <= 0) return 0; if (d >= tot) return T; if (d < (S * R) / 2) return Math.sqrt((2 * d * R) / S); if (d > tot - (S * R) / 2) return T - Math.sqrt((2 * (tot - d) * R) / S); return R / 2 + d / S; };
 
 export interface Trip { id: string; agent: string; kind: 'handover' | 'toCafe' | 'toDesk'; start: number; from: Spot; to: Spot; round: boolean; partner?: string }
-export interface TripState { trip: Trip; dt: number; pos: Pt; dir: Pt; moving: boolean; phase: 'prepare' | 'out' | 'handover' | 'back' | 'arrive'; carrying: boolean; away: boolean; open: Partial<Record<Room, boolean>> }
+export interface TripState { trip: Trip; dt: number; pos: Pt; dir: Pt; moving: boolean; phase: 'prepare' | 'out' | 'handover' | 'back' | 'arrive'; carrying: boolean; away: boolean; open: Partial<Record<Room, boolean>>; f: number }
 const geo = (t: Trip) => { const k = `${t.from.room}:${t.from.x}:${t.from.y}>${t.to.room}:${t.to.x}:${t.to.y}`; let g = geoCache.get(k); if (!g) { const { pts, doors } = routeBetween(t.from, t.to), c = lens(pts), total = c[c.length - 1]; g = { pts, doors, c, total, T: total / WALK + RAMP }; geoCache.set(k, g); } return g; };
 export const tripLength = (t: Trip) => { const { T } = geo(t); return t.round ? STAND + T + HAND + T + SETTLE : 350 + T + SETTLE; };
 
@@ -85,7 +85,7 @@ export function tripState(trip: Trip, now: number): TripState | null {
   const moving = (phase === 'out' && dt > t0 + 30 && dt < t1 - 30) || (phase === 'back' && dt > t2 + 30 && dt < t3 - 30);
   const tOut = (x: number) => t0 + timeAt(x, T), tBack = (x: number) => t2 + (T - timeAt(x, T)); const open: TripState['open'] = {};
   for (const p of doors) { const o = (dt >= tOut(c[p.i]) - LEAD && dt <= tOut(c[p.j]) + LAG) || (trip.round && dt >= tBack(c[p.j]) - LEAD && dt <= tBack(c[p.i]) + LAG); if (o) open[p.room] = true; }
-  return { trip, dt, pos, dir, moving, phase, carrying: trip.kind === 'handover' && dt >= t0 && dt < t2 + HAND * 0.45, away: trip.round && dt >= t0 - 150 && dt < t3, open };
+  return { trip, dt, pos, dir, moving, phase, carrying: trip.kind === 'handover' && dt >= t0 && dt < t2 + HAND * 0.45, away: trip.round && dt >= t0 - 150 && dt < t3, open, f: total > 0 ? d / total : 0 };
 }
 
 /** Task hand-overs from the real events. One person walks one task at a time: when several hand-overs of the same agent arrive together, each waits for the one before it (at most a minute). */

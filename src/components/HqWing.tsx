@@ -27,7 +27,7 @@ function viewBoxFor(focus: string, mobile: boolean): string {
 }
 
 /** A clock that runs smoothly between the (slower) real or demo clock updates. It stops when paused, hidden or when reduced motion is asked for. */
-function useSmooth(now: number, run: boolean, host: React.RefObject<HTMLElement | null>) {
+export function useSmooth(now: number, run: boolean, host: React.RefObject<HTMLElement | null>) {
   const ref = useRef({ now, at: performance.now() }); const [t, setT] = useState(now); const [seen, setSeen] = useState(true);
   useEffect(() => { // do no work while the page is scrolled away or the tab is hidden
     const el = host.current; const io = typeof IntersectionObserver !== 'undefined' && el ? new IntersectionObserver((en) => setSeen(en[0]?.isIntersecting ?? true), { threshold: 0.01 }) : null; if (io && el) io.observe(el);

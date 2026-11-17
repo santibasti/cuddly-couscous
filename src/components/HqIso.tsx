@@ -1,10 +1,11 @@
 // ISOMETRIC OFFICE: every department is a little pixel-art room seen from above at an angle (tile floor, two back walls with windows, desks, monitors, chairs, props).
 // Agents sit at their desks in pixel form; their state comes from the real events (screen lights up, badge shows). No walking in this view yet (walks and doors are in Rooms V2).
-import { Fragment, useMemo } from 'react';
-import { AGENTS, deptByKey, type AgentView } from '@/lib/hq';
-import { ROOMS, STATION, type Room } from '@/lib/hqwing';
+import { Fragment, useMemo, useRef } from 'react';
+import { AGENTS, deptByKey, type AgentView, type HqEvent } from '@/lib/hq';
+import { ROOMS, STATION, doors, handoverTrips, tripState, type Room, type TripState } from '@/lib/hqwing';
+import { useSmooth } from './HqWing';
 import { THEME } from '@/lib/hqtheme';
-import { PixelCtx, PIXEL_CSS, PixelSeated } from './HqPixel';
+import { PixelCtx, PIXEL_CSS, PixelSeated, PixelWalker } from './HqPixel';
 
 const N = 10, M = 7, GAP = 4, TW = 16, TH = 8, Z = 15, WALL = 3.6;
 const iso = (x: number, y: number, z = 0) => ({ x: (x - y) * TW, y: (x + y) * TH - z * Z });
@@ -24,29 +25,66 @@ function Block({ o, x, y, z = 0, w, d, h, c, k }: { o: { x: number; y: number };
 }
 const BADGE: Partial<Record<AgentView['state'], string>> = { received: '🔔', awaiting: '⏸', done: '✔', error: '!', blocked: '!' };
 
-function IsoRoom({ r, o, views, selected, onPickDept, onPickAgent }: { r: Room; o: { x: number; y: number }; views: Record<string, AgentView>; selected: string; onPickDept: (d: Room) => void; onPickAgent: (k: string) => void }) {
+
+/** A sliding glass door in the front wall. It opens only while someone really walks through it. */
+function Door({ o, open, light }: { o: { x: number; y: number }; r: Room; open: boolean; light: string }) {
+  const P = (x: number, z: number) => { const q = iso(x, M, z); return { x: q.x + o.x, y: q.y + o.y }; }; const c = N / 2;
+  return (
+    <g>
+      <polygon points={pts([P(c - 1, 0), P(c + 1, 0), P(c + 1, 2.4), P(c - 1, 2.4)])} fill="rgba(8,20,60,.5)" />
+      <g style={{ transition: 'opacity .25s' }} opacity={open ? 0 : 1}><polygon points={pts([P(c - 1, 0), P(c, 0), P(c, 2.2), P(c - 1, 2.2)])} fill="rgba(160,220,255,.35)" stroke={light} strokeWidth="1" /><polygon points={pts([P(c, 0), P(c + 1, 0), P(c + 1, 2.2), P(c, 2.2)])} fill="rgba(160,220,255,.35)" stroke={light} strokeWidth="1" /></g>
+      <g style={{ transition: 'opacity .25s' }} opacity={open ? 1 : 0}><polygon points={pts([P(c - 1, 0), P(c - 0.7, 0), P(c - 0.7, 2.2), P(c - 1, 2.2)])} fill="rgba(160,220,255,.5)" stroke={light} strokeWidth="1" /><polygon points={pts([P(c + 0.7, 0), P(c + 1, 0), P(c + 1, 2.2), P(c + 0.7, 2.2)])} fill="rgba(160,220,255,.5)" stroke={light} strokeWidth="1" /></g>
+      <polygon points={pts([P(c - 1, 2.4), P(c + 1, 2.4), P(c + 1, 2.6), P(c - 1, 2.6)])} fill={light} />
+    </g>
+  );
+}
+const LIGHT: Record<string, string> = { idle: '#2f6dff', open: '#7be3ff', amber: '#ffb020', green: '#4dffa0', red: '#ff5d5d' };
+type Tile = { x: number; y: number };
+const col = (i: number) => i % 3, rowOf = (i: number) => Math.floor(i / 3);
+/** Where an agent stands to talk: in front of their desk. */
+const standAt = (k: string): Tile => { const r = STATION[k].room, i = ROOMS.indexOf(r), mates = AGENTS.filter((a) => STATION[a.key]?.room === r), j = Math.max(0, mates.findIndex((a) => a.key === k)); return { x: col(i) * (N + GAP) + 0.9 + j * (mates.length > 3 ? 2.35 : 2.9) + 1, y: rowOf(i) * (M + GAP) + 3.3 }; };
+/** The walking route between two desks: out of the door, along the corridors, in at the other door. */
+export function isoRoute(from: string, to: string): Tile[] {
+  const a = ROOMS.indexOf(STATION[from].room), b = ROOMS.indexOf(STATION[to].room); const A = standAt(from), B = standAt(to);
+  const doorX = (i: number) => col(i) * (N + GAP) + N / 2, cy = (i: number) => rowOf(i) * (M + GAP) + M + GAP / 2, front = (i: number) => rowOf(i) * (M + GAP) + M - 0.3;
+  const pts: Tile[] = [A];
+  if (a === b) { pts.push({ x: B.x, y: A.y }, B); }
+  else { const xv = Math.min(col(a), col(b)) * (N + GAP) + N + GAP / 2; pts.push({ x: doorX(a), y: A.y }, { x: doorX(a), y: front(a) }, { x: doorX(a), y: cy(a) }, { x: xv, y: cy(a) }, { x: xv, y: cy(b) }, { x: doorX(b), y: cy(b) }, { x: doorX(b), y: front(b) }, { x: doorX(b), y: B.y }, B); }
+  return pts.filter((q, i) => !i || q.x !== pts[i - 1].x || q.y !== pts[i - 1].y);
+}
+export function alongTiles(pts: Tile[], f: number): { pos: Tile; sx: number; sy: number } {
+  const len = pts.slice(1).map((q, i) => Math.hypot(q.x - pts[i].x, q.y - pts[i].y)), tot = len.reduce((s, v) => s + v, 0) || 1; let d = Math.max(0, Math.min(1, f)) * tot, i = 0;
+  while (i < len.length - 1 && d > len[i]) { d -= len[i]; i++; } const u = len[i] ? Math.min(1, d / len[i]) : 0, p = pts[i], q = pts[i + 1] ?? p;
+  return { pos: { x: p.x + (q.x - p.x) * u, y: p.y + (q.y - p.y) * u }, sx: (q.x - q.y) - (p.x - p.y), sy: (q.x + q.y) - (p.x + p.y) };
+}
+
+function IsoRoom({ r, o, views, selected, away, doorOpen, doorLight, onPickDept, onPickAgent }: { r: Room; o: { x: number; y: number }; views: Record<string, AgentView>; selected: string; away: Set<string>; doorOpen: boolean; doorLight: string; onPickDept: (d: Room) => void; onPickAgent: (k: string) => void }) {
   const t = THEME[r]; const P = (px: number, py: number, pz = 0) => { const q = iso(px, py, pz); return { x: q.x + o.x, y: q.y + o.y }; };
   const agents = AGENTS.filter((a) => STATION[a.key]?.room === r); const live = r === 'hub' || r === 'cafe' ? true : agents.some((a) => a.live);
   const name = deptByKey(r)?.name ?? r;
   const tiles = useMemo(() => { const out: { x: number; y: number }[] = []; for (let y = 0; y < M; y++) for (let x = 0; x < N; x++) out.push({ x, y }); return out; }, []);
-  const win = (wall: 'x' | 'y', a: number, b: number) => { const f = (u: number, z: number) => wall === 'x' ? P(u, 0, z) : P(0, u, z); return <g key={`${wall}${a}`}><polygon points={pts([f(a, 1.7), f(b, 1.7), f(b, 3), f(a, 3)])} fill="#0b1b45" stroke={t.trim} strokeWidth="1" /><polygon points={pts([f(a + 0.2, 1.8), f(b - 0.2, 1.8), f(b - 0.2, 2.9), f(a + 0.2, 2.9)])} fill="#1d4f9a" opacity=".85" /></g>; };
   return (
     <g onClick={() => onPickDept(r)} style={{ cursor: 'pointer' }}>
-      {/* walls */}
-      <polygon points={pts([P(0, 0), P(N, 0), P(N, 0, WALL), P(0, 0, WALL)])} fill={t.wall[0]} />
-      <polygon points={pts([P(0, 0), P(0, M), P(0, M, WALL), P(0, 0, WALL)])} fill={t.wall[1]} />
-      <polygon points={pts([P(0, 0, WALL), P(N, 0, WALL), P(N, 0, WALL + 0.25), P(0, 0, WALL + 0.25)])} fill={t.trim} />
-      <polygon points={pts([P(0, 0, WALL), P(0, M, WALL), P(0, M, WALL + 0.25), P(0, 0, WALL + 0.25)])} fill={shade(t.trim, 0.7)} />
-      {[1, 4, 7].map((u) => win('x', u, u + 2))}{[1.5, 4.5].map((u) => win('y', u, u + 2))}
+      {/* glass walls: a solid kick panel at the bottom, clear glass above with frames, so you can see into the next room */}
+      <polygon points={pts([P(0, 0), P(N, 0), P(N, 0, 1), P(0, 0, 1)])} fill={t.wall[0]} />
+      <polygon points={pts([P(0, 0), P(0, M), P(0, M, 1), P(0, 0, 1)])} fill={t.wall[1]} />
+      <polygon points={pts([P(0, 0, 1), P(N, 0, 1), P(N, 0, WALL), P(0, 0, WALL)])} fill="url(#isoglass)" stroke={t.trim} strokeOpacity=".7" strokeWidth=".8" />
+      <polygon points={pts([P(0, 0, 1), P(0, M, 1), P(0, M, WALL), P(0, 0, WALL)])} fill="url(#isoglass)" stroke={t.trim} strokeOpacity=".7" strokeWidth=".8" />
+      {Array.from({ length: N + 1 }, (_, i) => <polygon key={`mx${i}`} points={pts([P(i, 0, 1), P(i + 0.06, 0, 1), P(i + 0.06, 0, WALL), P(i, 0, WALL)])} fill={t.trim} opacity=".55" />)}
+      {Array.from({ length: M + 1 }, (_, i) => <polygon key={`my${i}`} points={pts([P(0, i, 1), P(0, i + 0.06, 1), P(0, i + 0.06, WALL), P(0, i, WALL)])} fill={t.trim} opacity=".4" />)}
+      <polygon points={pts([P(0, 0, WALL), P(N, 0, WALL), P(N, 0, WALL + 0.22), P(0, 0, WALL + 0.22)])} fill={t.trim} />
+      <polygon points={pts([P(0, 0, WALL), P(0, M, WALL), P(0, M, WALL + 0.22), P(0, 0, WALL + 0.22)])} fill={shade(t.trim, 0.7)} />
       {/* floor: checker tiles */}
       {tiles.map(({ x, y }) => <polygon key={`${x}-${y}`} points={pts([P(x, y), P(x + 1, y), P(x + 1, y + 1), P(x, y + 1)])} fill={(x + y) % 2 ? t.floor[0] : t.floor[1]} stroke="rgba(0,0,0,.25)" strokeWidth=".5" />)}
       <polygon points={pts([P(0, 0), P(N, 0), P(N, M), P(0, M)])} fill="none" stroke={t.trim} strokeOpacity=".6" strokeWidth="1" />
       {/* rug under the desks */}
       <polygon points={pts([P(0.6, 0.6), P(N - 0.6, 0.6), P(N - 0.6, 4), P(0.6, 4)])} fill={t.rug} opacity=".22" />
       <Furniture r={r} P={P} o={o} />
-      {/* front glass edge */}
-      <polygon points={pts([P(0, M), P(N, M), P(N, M, 0.9), P(0, M, 0.9)])} fill="rgba(160,220,255,.12)" stroke={t.trim} strokeOpacity=".5" strokeWidth=".8" />
+      {/* front glass edge with a sliding door in the middle */}
+      <polygon points={pts([P(0, M), P(N / 2 - 1, M), P(N / 2 - 1, M, 0.9), P(0, M, 0.9)])} fill="rgba(160,220,255,.12)" stroke={t.trim} strokeOpacity=".5" strokeWidth=".8" />
+      <polygon points={pts([P(N / 2 + 1, M), P(N, M), P(N, M, 0.9), P(N / 2 + 1, M, 0.9)])} fill="rgba(160,220,255,.12)" stroke={t.trim} strokeOpacity=".5" strokeWidth=".8" />
       <polygon points={pts([P(N, 0), P(N, M), P(N, M, 0.9), P(N, 0, 0.9)])} fill="rgba(160,220,255,.08)" stroke={t.trim} strokeOpacity=".4" strokeWidth=".8" />
+      <Door o={o} r={r} open={!!doorOpen} light={doorLight} />
       {/* desks, agents */}
       {agents.map((a, i) => {
         const cx = 0.9 + i * (agents.length > 3 ? 2.35 : 2.9), planned = !a.live, st = views[a.key]?.state ?? 'idle', on = !planned && (st === 'working' || st === 'received' || st === 'coordinating'); const head = P(cx + 1, 0.7, 0);
@@ -54,7 +92,7 @@ function IsoRoom({ r, o, views, selected, onPickDept, onPickAgent }: { r: Room; 
         return (
           <g key={a.key} onClick={(e) => { e.stopPropagation(); onPickAgent(a.key); }} style={{ cursor: 'pointer', filter: planned ? 'saturate(.5) brightness(.85)' : undefined }}>
             <Block o={o} x={cx + 0.5} y={0.1} w={1} d={0.8} h={1.1} c="#33406a" />
-            <g transform={`translate(${head.x} ${head.y - 4}) scale(.42)`}><PixelSeated k={a.key} accent={a.shirt} prop={undefined} /></g>
+            {!away.has(a.key) && <g transform={`translate(${head.x} ${head.y - 4}) scale(.42)`}><PixelSeated k={a.key} accent={a.shirt} prop={undefined} /></g>}
             <Block o={o} x={cx} y={1.3} w={2} d={1} h={0.75} c={r === 'board' ? '#2b3350' : '#e6edf9'} />
             <Block o={o} x={cx + 0.5} y={1.35} w={1} d={0.12} h={0.7} z={0.75} c={on ? '#7fe4ff' : '#16234a'} />
             <Block o={o} x={cx + 0.45} y={2.1} w={1.1} d={0.3} h={0.04} z={0.75} c="#1b2a52" />
@@ -94,18 +132,34 @@ function Furniture({ r, P, o }: { r: Room; P: (x: number, y: number, z?: number)
   return <g>{sig}{plant(N - 0.9, M - 1.1)}{r !== 'cafe' && cooler}</g>;
 }
 
-export function HqIso({ views, selectedAgent, demo, onPickDept, onPickAgent }: { views: Record<string, AgentView>; selectedAgent: string; demo: boolean; onPickDept: (d: string) => void; onPickAgent: (k: string) => void }) {
-  const cols = 3, rows = 3; const origin = (i: number) => { const c = i % cols, rr = Math.floor(i / cols); return iso(c * (N + GAP), rr * (M + GAP)); };
-  const box = useMemo(() => { let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; ROOMS.forEach((_, i) => { const o = origin(i); for (const q of [iso(0, 0, WALL + 1.5), iso(N, 0), iso(N, M), iso(0, M)]) { x0 = Math.min(x0, q.x + o.x); x1 = Math.max(x1, q.x + o.x); y0 = Math.min(y0, q.y + o.y); y1 = Math.max(y1, q.y + o.y); } }); return { x: x0 - 20, y: y0 - 20, w: x1 - x0 + 40, h: y1 - y0 + 50 }; }, []);
+export function HqIso({ views, events, now, still, selectedAgent, demo, onPickDept, onPickAgent }: { views: Record<string, AgentView>; events: HqEvent[]; now: number; still: boolean; selectedAgent: string; demo: boolean; onPickDept: (d: string) => void; onPickAgent: (k: string) => void }) {
+  const cols = 3, rows = 3; const origin = (i: number) => iso(col(i) * (N + GAP), rowOf(i) * (M + GAP));
+  const host = useRef<HTMLDivElement>(null); const t = useSmooth(now, !still, host);
+  const box = useMemo(() => { let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; ROOMS.forEach((_, i) => { const o = origin(i); for (const q of [iso(0, 0, WALL + 1.5), iso(N, 0), iso(N, M + GAP), iso(0, M + GAP)]) { x0 = Math.min(x0, q.x + o.x); x1 = Math.max(x1, q.x + o.x); y0 = Math.min(y0, q.y + o.y); y1 = Math.max(y1, q.y + o.y); } }); return { x: x0 - 20, y: y0 - 20, w: x1 - x0 + 40, h: y1 - y0 + 50 }; }, []);
+  const trips: TripState[] = useMemo(() => handoverTrips(events, t).map((x) => tripState(x, t)).filter((x): x is TripState => !!x), [events, Math.floor(t / 33)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dr = doors(events, views, trips, t); const away = new Set(trips.filter((s) => s.away).map((s) => s.trip.agent));
+  const G = (x: number, y: number) => iso(x, y);
+  const totalW = cols * (N + GAP), totalH = rows * (M + GAP);
   return (
-    <div className="iso-wrap" style={{ aspectRatio: `${box.w} / ${box.h}` }}>
+    <div className="iso-wrap" ref={host} style={{ aspectRatio: `${box.w} / ${box.h}` }}>
       <style>{PIXEL_CSS}{`.iso-wrap{width:100%;border-radius:14px;background:radial-gradient(ellipse at 50% 30%,#10265c,#050b22);border:1px solid rgba(110,170,255,.3);overflow:hidden}.iso-wrap svg{width:100%;height:100%;display:block;shape-rendering:crispEdges}.iso-wrap text{font-family:"Courier New",ui-monospace,monospace}`}</style>
       <PixelCtx.Provider value={true}>
-        <svg viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} role="group" aria-label="Isometric pixel office: nine rooms">
-          {ROOMS.map((r, i) => ({ r, i })).sort((a, b) => (Math.floor(a.i / 3) + (a.i % 3)) - (Math.floor(b.i / 3) + (b.i % 3))).map(({ r, i }) => <IsoRoom key={r} r={r} o={origin(i)} views={views} selected={selectedAgent} onPickDept={(d) => onPickDept(d)} onPickAgent={onPickAgent} />)}
+        <svg viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`} role="group" aria-label="Isometric pixel office: nine rooms joined by glass corridors">
+          <defs><linearGradient id="isoglass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#bfe6ff" stopOpacity=".26" /><stop offset=".5" stopColor="#bfe6ff" stopOpacity=".1" /><stop offset="1" stopColor="#bfe6ff" stopOpacity=".2" /></linearGradient></defs>
+          {/* corridors: a lit floor between the rooms */}
+          {[0, 1, 2].map((r) => { const y0 = r * (M + GAP) + M, y1 = y0 + GAP; return <polygon key={`h${r}`} points={pts([G(-1, y0), G(totalW, y0), G(totalW, y1), G(-1, y1)])} fill="rgba(30,70,150,.28)" stroke="rgba(120,190,255,.25)" strokeWidth=".8" />; })}
+          {[0, 1, 2].map((c) => { const x0 = c * (N + GAP) + N, x1 = x0 + GAP; return <polygon key={`v${c}`} points={pts([G(x0, -1), G(x1, -1), G(x1, totalH), G(x0, totalH)])} fill="rgba(30,70,150,.28)" stroke="rgba(120,190,255,.25)" strokeWidth=".8" />; })}
+          {ROOMS.map((r, i) => ({ r, i })).sort((a, b) => (rowOf(a.i) + col(a.i)) - (rowOf(b.i) + col(b.i))).map(({ r, i }) => <IsoRoom key={r} r={r} o={origin(i)} views={views} selected={selectedAgent} away={away} doorOpen={dr[r].open} doorLight={LIGHT[dr[r].light] ?? LIGHT.idle} onPickDept={(d) => onPickDept(d)} onPickAgent={onPickAgent} />)}
+          {/* walkers: only for real hand-overs between agents */}
+          {trips.filter((s) => s.away).map((s) => {
+            const a = AGENTS.find((q) => q.key === s.trip.agent), partner = s.trip.partner; if (!a || !partner) return null;
+            const route = isoRoute(a.key, partner), { pos, sx, sy } = alongTiles(route, s.f), q = iso(pos.x, pos.y);
+            const view = Math.abs(sx) > Math.abs(sy) * 0.8 ? 'side' : (sy < 0 ? 'back' : 'front'); const flip = sx < 0 ? -1 : 1;
+            return <g key={s.trip.id} className={`walker ${s.moving ? 'go' : 'stand'}`} transform={`translate(${q.x} ${q.y}) scale(.52)`} pointerEvents="none"><ellipse cx="0" cy="2" rx="26" ry="7" fill="rgba(0,0,0,.4)" /><g transform={`scale(${view === 'side' ? flip : 1} 1)`}><PixelWalker k={a.key} view={view} accent={a.shirt} prop={s.carrying ? 'envelope' : undefined} /></g></g>;
+          })}
         </svg>
       </PixelCtx.Provider>
-      {demo && <div className="iso-note">SAMPLE · demo mode. Agent states come from the same events as Rooms V2; walking and doors are not drawn here yet.</div>}
+      {demo && <div className="iso-note">SAMPLE · demo mode. Doors open and robots walk only for real (or sample) hand-overs between agents.</div>}
     </div>
   );
 }

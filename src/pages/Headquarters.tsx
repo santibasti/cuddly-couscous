@@ -128,7 +128,7 @@ export default function Headquarters() {
       <div className="hqp-body"><div className="hqp-main">
       <div className="hqp-stagebox">
       {look === 'studio' && <HqStudio services={{ ...svcN, sample: demo }} demo={demo} events={events} views={views} kpis={kpis} now={clock} focus={focus} selectedAgent={sel} still={still} hold={demo && sc.status === 'paused'} mobile={mobile} inset={panel && !mobile ? 400 : 0} onPickDept={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
-      {look === 'iso' && <HqIso views={views} selectedAgent={sel} demo={demo} onPickDept={(d) => { setFocus(d); setOpenQ(true); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
+      {look === 'iso' && <HqIso views={views} events={events} now={clock} still={still} selectedAgent={sel} demo={demo} onPickDept={(d) => { setFocus(d); setOpenQ(true); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
       {(look === 'rooms' || look === 'pixel') && <HqWing retro={look === 'pixel'} demo={demo} events={events} views={views} kpis={kpis} now={clock} still={still} hold={demo && sc.status === 'paused'} focus={focus} selectedAgent={sel} mobile={mobile} services={{ ...svcN, sample: demo }} link={rt} onPickDept={(d) => { setFocus(d); setOpenQ(true); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} />}
       {look === 'cinematic' && <HqCinematic services={{ ...svcN, sample: demo }} demo={demo} events={events} views={views} kpis={kpis} now={clock} selected={focus} onPick={(d) => { setFocus(d); setOpenQ(!!d); setSel(''); }} onPickAgent={(k) => { setSel(sel === k ? '' : k); }} still={still} />}
       </div>
