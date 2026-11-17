@@ -17,18 +17,18 @@ const ASSESS = {
 };
 const needsPerson = (kind: 'custom' | 'commercial'): Estimate => ({ ok: false, kind, rates_en: ASSESS[kind].en, rates_tl: ASSESS[kind].tl, rates_tglish: ASSESS[kind].tg, estimate_en: ASSESS[kind].en, estimate_tl: ASSESS[kind].tl, estimate_tglish: ASSESS[kind].tg });
 /** The rates only apply to what the rate table covers: residential glass packages and the roof / wall / floor / solar rates. Commercial properties and everything else are quoted by a person. */
-export function estimate(address: string, service: string, qty?: number, property: string = 'residential', withGlass = false): Estimate {
+export function estimate(address: string, service: string, qty?: number, property: string = 'residential', withMain = false): Estimate {
   const q = Number.isFinite(Number(qty)) && Number(qty) > 0 ? Math.round(Number(qty)) : undefined;
   if (/commercial|business|office|store|company|building|condo(minium)? ?(corp|association)|hotel|school|hospital|warehouse|factory/i.test(property)) return needsPerson('commercial');
   const kindOf = classify(service); if (kindOf === 'custom') return needsPerson('custom');
   const other = kindOf === 'glass' ? undefined : OTHER.find((o) => o.code === kindOf);
   if (other) {
-    const billed = withGlass ? (q ?? 0) : Math.max(q ?? other.min, other.min), total = billed * other.rate, kind: Kind = other.code === 'SOLAR' ? 'solar' : 'area';
-    const rates_en = withGlass ? `${other.name} is ₱${other.rate} per ${other.unit}. Booked together with a window cleaning package, there is no minimum charge: you pay only for the quantity our crew counts.` : `${other.name} is ₱${other.rate} per ${other.unit}, with a minimum of ${other.min} ${other.unit} (${peso(other.rate * other.min)}).`;
-    const rates_tl = withGlass ? `Ang ${other.name} po ay ₱${other.rate} bawat ${other.unit}. Kapag isinabay sa window cleaning package, walang minimum na singil: ang babayaran lang po ay ang dami na bibilangin ng aming crew.` : `Ang ${other.name} po ay ₱${other.rate} bawat ${other.unit}, may minimum na ${other.min} ${other.unit} (${peso(other.rate * other.min)}).`;
-    const rates_tglish = withGlass ? `Ang ${other.name} po namin ay ₱${other.rate} per ${other.unit}. Kapag isinabay sa window cleaning package, walang minimum charge po: ang babayaran lang ay ang quantity na bibilangin ng crew namin.` : `Ang ${other.name} po namin ay ₱${other.rate} per ${other.unit}, may minimum na ${other.min} ${other.unit} (${peso(other.rate * other.min)}).`;
+    const billed = withMain ? (q ?? 0) : Math.max(q ?? other.min, other.min), total = billed * other.rate, kind: Kind = other.code === 'SOLAR' ? 'solar' : 'area';
+    const rates_en = withMain ? `${other.name} is ₱${other.rate} per ${other.unit}. Booked together with another main service (like a window cleaning package or roof cleaning), there is no minimum charge: you pay per ${other.unit} only for the quantity our crew counts.` : `${other.name} is ₱${other.rate} per ${other.unit}, with a minimum of ${other.min} ${other.unit} (${peso(other.rate * other.min)}).`;
+    const rates_tl = withMain ? `Ang ${other.name} po ay ₱${other.rate} bawat ${other.unit}. Kapag isinabay sa isa pang main service (tulad ng window cleaning package o roof cleaning), walang minimum na singil: ang babayaran lang po ay ang dami na bibilangin ng aming crew, bawat ${other.unit}.` : `Ang ${other.name} po ay ₱${other.rate} bawat ${other.unit}, may minimum na ${other.min} ${other.unit} (${peso(other.rate * other.min)}).`;
+    const rates_tglish = withMain ? `Ang ${other.name} po namin ay ₱${other.rate} per ${other.unit}. Kapag isinabay sa isa pang main service (like window cleaning package o roof cleaning), walang minimum charge po: ang babayaran lang ay ang quantity na bibilangin ng crew namin, per ${other.unit}.` : `Ang ${other.name} po namin ay ₱${other.rate} per ${other.unit}, may minimum na ${other.min} ${other.unit} (${peso(other.rate * other.min)}).`;
     if (!q) return { ok: true, kind, unit: other.unit, rates_en, rates_tl, rates_tglish, estimate_en: '', estimate_tl: '', estimate_tglish: '' };
-    const under = !withGlass && q < other.min; const u = other.unit === 'panel' && q > 1 ? 'panels' : other.unit;
+    const under = !withMain && q < other.min; const u = other.unit === 'panel' && q > 1 ? 'panels' : other.unit;
     return { ok: true, kind, unit: other.unit, qty: q, estimate: total, rates_en, rates_tl, rates_tglish,
       estimate_tglish: `Para sa ${q} ${u}${under ? ` (below sa ${other.min} minimum, kaya minimum po ang singil)` : ''}, ang estimate po ay ${peso(total)}. ${NOTE_TG}`,
       estimate_en: `For ${q} ${u}${under ? ` (below the ${other.min} minimum, so the minimum applies)` : ''}, the estimate is ${peso(total)}. ${NOTE_EN}`,

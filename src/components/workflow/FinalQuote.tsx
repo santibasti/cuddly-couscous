@@ -7,7 +7,7 @@ import { DraftBar, PresetChips, Stepper, Toggle } from '@/components/touch';
 import { useDraft } from '@/lib/useDraft';
 import { confirmLeave } from '@/lib/sync';
 import { getGeo } from '@/lib/geo';
-import { billRows, ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, currentRequest, discountBlock, jobRequests, categoryLabel, finalQuoteSummary, lineTotals, packagePanels, panelBreakdown, resolveReviewItems, rowPanels } from '@/lib/business';
+import { billRows, ADDITIONAL_CATEGORIES, UNIT_OPTIONS, categoryDefaults, currentRequest, discountBlock, jobRequests, categoryLabel, finalQuoteSummary, lineTotals, packagePanels, panelBreakdown, resolveReviewItems, baseBooked, rowPanels } from '@/lib/business';
 import { DISCOUNT_NOTICE, DeclineJobModal } from './DiscountPanel';
 import { applyDiscount, approveFinalQuote, billBase, decideDiscount, declineAdditionalWork, requestFinalQuoteRevision, reviewVat, saveFinalReview } from '@/lib/workflow';
 import { conformePdf } from '@/lib/export';
@@ -86,7 +86,7 @@ export function AdditionalWork({ wf, job, run, onPresent }: { wf: JobWorkflow; j
   const quote = db.quotations.find((x) => x.id === (wf.conf_quotation_id ?? job.quotation_id));
   const measureLines = (quote?.items ?? []).map((it, idx) => ({ it, idx })).filter((x) => x.it.measure);
   const dr = useDraft(`d:${wf.id}:conf:extra`, { items, deposit, depNote }, (d) => { setItems(d.items); setDeposit(d.deposit); setDepNote(d.depNote); }, run && !wf.conf_at);
-  const resolved = useMemo(() => resolveReviewItems(db, wf.panels, items, packagePanels(db, job, wf)), [db, wf, job, items]);
+  const resolved = useMemo(() => resolveReviewItems(db, wf.panels, items, packagePanels(db, job, wf), baseBooked(db, job)), [db, wf, job, items]);
   const sm = finalQuoteSummary(db, job, { pending: { items: resolved, ...vat }, deposit });
   const save = () => { const ok = attempt(() => saveFinalReview(wf.id, { items, deposit, deposit_note: depNote }), 'Additional work saved'); if (ok) dr.markSaved(); return !!ok; };
   const present = () => { if (save()) onPresent(); };
@@ -149,7 +149,7 @@ function LineModal({ wf, job, initial, onClose, onSave }: { wf: JobWorkflow; job
   const unit = unitSel === 'custom' ? customUnit.trim() : unitSel;
   const line: QuoteItem = { service_code: ADDITIONAL_CATEGORIES.find((c) => c.key === cat)!.code, category: cat, description: desc, qty: qty ?? 0, entered_qty: qty ?? 0, unit, rate, discount: disc, note: note.trim() || undefined, linked_panels: cat === 'glass' && linked, ...(custom && canNegotiate ? { negotiated: true, custom_min: cmin ?? def.min } : {}), ...(initial?.from_measure !== undefined ? { from_measure: initial.from_measure } : {}) };
   const effMin = custom && canNegotiate ? (cmin ?? def.min) : def.min;
-  const [res] = resolveReviewItems(db, wf.panels, [line], packagePanels(db, job, wf));
+  const [res] = resolveReviewItems(db, wf.panels, [line], packagePanels(db, job, wf), baseBooked(db, job));
   const t = lineTotals(res, vat.vat_mode, vat.vat_rate);
   const minApplied = effMin > 0 && (res.entered_qty ?? 0) > 0 && res.qty > (res.entered_qty ?? 0);
   const close = () => { if (dr.dirty && !confirmLeave()) return; onClose(); };
@@ -209,7 +209,7 @@ export function ClientReview({ wf, job, run, onClose }: { wf: JobWorkflow; job: 
   const { draft, history } = useReview(job);
   const vat = reviewVat(job);
   const signed = !!wf.conf_at;
-  const pendingItems = useMemo(() => (draft && !signed ? resolveReviewItems(db, wf.panels, draft.items, packagePanels(db, job, wf)) : []), [db, wf, job, draft, signed]);
+  const pendingItems = useMemo(() => (draft && !signed ? resolveReviewItems(db, wf.panels, draft.items, packagePanels(db, job, wf), baseBooked(db, job)) : []), [db, wf, job, draft, signed]);
   const approved = db.variations.filter((v) => v.job_id === job.id && v.status === 'Approved' && !v.deleted_at);
   const sm = finalQuoteSummary(db, job, { pending: pendingItems.length ? { items: pendingItems, ...vat } : undefined, deposit: wf.conf_deposit });
   const pb = panelBreakdown(db, q, wf.panels, packagePanels(db, job, wf));

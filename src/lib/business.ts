@@ -717,9 +717,12 @@ export function packagePanels(d: Pick<DB, 'services' | 'quotations'>, job: Pick<
   return n > 0 ? n : undefined;
 }
 
+/** Does the job already have a booked main service (any basic package or service on its quotation)? Then any further service added to it has no minimum charge. */
+export const baseBooked = (d: Pick<DB, 'quotations'>, job: Pick<Job, 'quotation_id'>): boolean => !!d.quotations.find((q) => q.id === job.quotation_id && !q.deleted_at)?.items?.length;
 /** Normalises additional-work lines: glass lines follow the panel table, minimum quantities are applied.
- *  When a glass package is booked (pkg is known) the minimum charge of the add-on services (roof, wall, floor, solar) is waived: they are billed for the quantity counted on site. A minimum negotiated for a line still applies. */
-export function resolveReviewItems(d: Pick<DB, 'services'>, panels: PanelRow[], items: QuoteItem[], pkg?: number): QuoteItem[] {
+ *  When the job already has a booked main service (a glass package, a roof job, any basic package: hasBase, or pkg when the package is known), the minimum charge of the services added to it (roof, wall, floor, solar) is waived:
+ *  they are billed per square metre or panel for the quantity counted on site. The main service keeps its own minimum. A minimum negotiated for a line still applies. */
+export function resolveReviewItems(d: Pick<DB, 'services'>, panels: PanelRow[], items: QuoteItem[], pkg?: number, hasBase = false): QuoteItem[] {
   return items.map((it) => {
     if (!it.category) return it;
     const def = categoryDefaults(d.services, it.category);
@@ -732,7 +735,7 @@ export function resolveReviewItems(d: Pick<DB, 'services'>, panels: PanelRow[], 
       if (!description.trim() || description.startsWith('Additional glass panels –')) description = `Additional glass panels – ${b.additionalExternal} external, ${b.additionalInternal} internal${areas ? ` (${areas})` : ''}`;
     }
     const negotiatedMin = it.negotiated && it.custom_min !== undefined;
-    const min = negotiatedMin ? it.custom_min! : pkg !== undefined ? 0 : def.min;
+    const min = negotiatedMin ? it.custom_min! : pkg !== undefined || hasBase ? 0 : def.min;
     const qty = min > 0 && entered > 0 ? Math.max(entered, min) : entered;
     return { ...it, description, entered_qty: entered, qty };
   });

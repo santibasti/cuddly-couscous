@@ -7,7 +7,7 @@ import { CLOUD } from './cloud';
 import type {
   ClientFeedback, ConfirmMethod, ContainerCondition, PaymentConfirmation, DB, DiscountKind, DiscountRequest, FuelLevel, IncidentReport, IncidentType, IssueCategory, SatisfactionRating, ItemCondition, Job, JobStatus, JobWorkflow, PanelRow, QuoteItem, Variation, CheckItem,
 } from './types';
-import { isDone, ISSUE_CATEGORIES, RATING_STARS_FROM_QUESTIONS, needsFollowUp, openFollowUp, buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, packagePanels, resolveReviewItems, rowPanels, round2Safe, scopeRoute, variationTotals } from './business';
+import { isDone, ISSUE_CATEGORIES, RATING_STARS_FROM_QUESTIONS, needsFollowUp, openFollowUp, buildChecklistItems, categoryDefaults, currentRequest, discountAmount, discountBlock, discountImpact, discountLocked, jobRequests, docTotals, finalContract, finalQuoteSummary, hqGaps, isRecurringJob, kindOfAsset, onHand, openVariations, packagePanels, resolveReviewItems, baseBooked, rowPanels, round2Safe, scopeRoute, variationTotals } from './business';
 import { syncFollowUps } from './followups';
 import { jobSavedHooks, settleConfirmation, syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { isoNow, nowLocal, today } from './util';
@@ -278,7 +278,7 @@ export function saveFinalReview(id: string, f: FinalReviewInput) {
     if (it.discount > 0 && !store.can('discount.approve')) fail('Only the Owner / Admin can apply a discount. Submit a Discount Request instead.');
     if (it.rate < 0) fail('Unit rate cannot be negative.');
   }
-  const items = resolveReviewItems(db(), wf.panels, f.items, packagePanels(db(), job, wf));
+  const items = resolveReviewItems(db(), wf.panels, f.items, packagePanels(db(), job, wf), baseBooked(db(), job));
   for (const it of items) {
     if (!it.description.trim()) fail('Describe the area or work for every additional line.');
     if (!(it.qty > 0)) fail(it.linked_panels ? 'No additional panels are marked in the panel-counting table. Set the starter package panels, or tick “Extra” on the rows beyond the quoted scope.' : `Enter a quantity for ${it.description}.`);
@@ -347,7 +347,7 @@ export function approveFinalQuote(id: string, f: { name: string; signature?: str
   const now = new Date().toISOString();
   let variationId: string | undefined;
   if (v && v.items.length) {
-    const items = resolveReviewItems(db(), wf.panels, v.items, packagePanels(db(), job, wf));
+    const items = resolveReviewItems(db(), wf.panels, v.items, packagePanels(db(), job, wf), baseBooked(db(), job));
     if (items.some((i) => !(i.qty > 0))) fail('An additional line has no quantity. Update the additional work first.');
     store.update('variations', v.id, { items, status: 'Approved', client_name: f.name.trim(), client_signature: f.signature, signed_at: now, decided_at: now, decided_by: uidNow(), sign_lat: f.lat, sign_lng: f.lng, sign_gps_note: f.gps_note, sign_device: f.device } as never, 'approve', `${v.number}: additional work approved by ${f.name.trim()} — change order`);
     variationId = v.id;
@@ -693,7 +693,7 @@ export function billBase(job: Job): { original: number; additional: number; base
   const wf = workflowFor(job.id);
   const draft = reviewDraft(job.id);
   const vat = reviewVat(job);
-  const pending = draft && draft.items.length && !wf?.conf_at ? { items: resolveReviewItems(db(), wf?.panels ?? [], draft.items, packagePanels(db(), job, wf)), ...vat } : undefined;
+  const pending = draft && draft.items.length && !wf?.conf_at ? { items: resolveReviewItems(db(), wf?.panels ?? [], draft.items, packagePanels(db(), job, wf), baseBooked(db(), job)), ...vat } : undefined;
   const sm = finalQuoteSummary(db(), job, { pending });
   return { original: sm.originalTotal, additional: sm.additionalTotal, base: sm.subtotal };
 }
