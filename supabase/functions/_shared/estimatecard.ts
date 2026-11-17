@@ -1,6 +1,7 @@
 // The estimate card: a picture (SVG, 1080 x 1080) with the same figures as the estimate text, in the look of the TopMop free-estimate calculator. Pure: no network, no database.
 // It only ever draws an estimate that the rate table produced; it never invents a number. A person-needed answer (unknown city, commercial) gets no card.
 import type { Estimate } from './estimate.ts';
+import { LOGO_DATA_URI } from './logoimg.ts';
 
 const peso = (n: number) => '₱' + Math.round(n).toLocaleString('en-US');
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -34,9 +35,9 @@ export function estimateCardSvg(e: Estimate, o: CardOpts = {}): string | null {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img" aria-label="TopMop estimate">
 <rect width="1080" height="1080" fill="#eef3f0"/>
 <rect x="40" y="40" width="1000" height="1000" rx="36" fill="#0d2a35"/>
-<g><circle cx="118" cy="118" r="34" fill="#1f7a4a"/><text x="118" y="127" text-anchor="middle" ${f} font-size="22" font-weight="800" fill="#fff">TOP</text></g>
-<text x="170" y="112" ${f} font-size="38" font-weight="800" fill="#fff" letter-spacing="1">TOPMOP</text>
-<text x="170" y="140" ${f} font-size="16" fill="#9fd8bd" letter-spacing="1.5">WINDOW CLEANING · EXTERIOR AND PROPERTY CARE</text>
+<image href="${LOGO_DATA_URI}" x="72" y="64" width="92" height="92"/>
+<text x="184" y="112" ${f} font-size="38" font-weight="800" fill="#fff" letter-spacing="1">TOPMOP</text>
+<text x="184" y="140" ${f} font-size="16" fill="#9fd8bd" letter-spacing="1.5">WINDOW CLEANING · EXTERIOR AND PROPERTY CARE</text>
 <text x="90" y="240" ${f} font-size="20" font-weight="700" fill="#8fd6b0" letter-spacing="3">YOUR ESTIMATE</text>
 <text x="90" y="310" ${f} font-size="58" font-weight="800" fill="#fff">See your calculated total.</text>
 <text x="90" y="368" ${f} font-size="28" fill="#bfe3d2">${esc(where)}</text>
