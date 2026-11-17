@@ -78,6 +78,10 @@ export async function runBrain(a: { mode: Mode; system: string; messages: { role
       messages.push({ role: 'user', content: results });
       if (res.stop_reason !== 'tool_use') break;
     }
+    if (!out.reply.trim() && out.log.length && !out.error) {                                                                   // the model used its tools but wrote no words: ask once for the reply, then fall back to the system's own sentence
+      try { const fin = await a.callModel(a.system, [...messages, { role: 'user', content: 'Now write your reply to the customer, using what the tools returned. Plain text, no tools.' }], []); out.reply = fin.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim(); } catch { /* use the fallback below */ }
+      if (!out.reply.trim()) { const last = [...out.log].reverse().find((l) => READ_TOOLS.includes(l.tool) && l.result.trim()); if (last) out.reply = last.result.replace(/^status: \w+\.\s*/, '').trim(); }
+    }
   } catch (e) { out.error = (e as Error).message; }
   return out;
 }

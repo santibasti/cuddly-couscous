@@ -63,3 +63,14 @@ describe('greeting', () => {
     expect(buildSystem({ sections: [], version: null, lang: 'en' })).toContain('Hi Mam/Sir! Thanks for messaging TopMop.');
   });
 });
+
+describe('a reply is never empty after tools', () => {
+  const tool = (name: string, input: unknown) => ({ content: [{ type: 'tool_use', id: 't' + Math.random(), name, input: input as Record<string, unknown> }], stop_reason: 'tool_use' });
+  it('asks once for the words, and falls back to the system sentence', async () => {
+    let calls = 0; const exec = async () => ({ text: 'Nov 18 is too soon for us to schedule. The nearest open dates are Nov 19, Nov 20 and Nov 21 po.', amounts: [] });
+    const b1 = await runBrain({ mode: 'suggest', system: 's', messages: [{ role: 'user', content: 'Nov 18' }], maxRounds: 3, exec, callModel: async (_s, _m, tools) => { calls++; return (tools as unknown[]).length ? tool('check_date', { when: 'Nov 18' }) : { content: [{ type: 'text', text: 'Sorry po, Nov 18 is too soon. May I offer Nov 19, 20 or 21?' }], stop_reason: 'end_turn' }; } });
+    expect(b1.reply).toMatch(/too soon/); expect(calls).toBe(4);
+    const b2 = await runBrain({ mode: 'suggest', system: 's', messages: [{ role: 'user', content: 'Nov 18' }], maxRounds: 3, exec, callModel: async (_s, _m, tools) => (tools as unknown[]).length ? tool('check_date', { when: 'Nov 18' }) : { content: [], stop_reason: 'end_turn' } });
+    expect(b2.reply).toMatch(/nearest open dates/);
+  });
+});
