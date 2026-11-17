@@ -33,7 +33,9 @@ export default function Headquarters() {
   const [live, setLive] = useState<HqEvent[]>([]); const [loaded, setLoaded] = useState(!CLOUD); const [err, setErr] = useState(''); const [rt, setRt] = useState<Rt>(CLOUD ? 'connecting' : 'off');
   const [demo, setDemo] = useState(!CLOUD); const [sc, setSc] = useState({ status: 'idle' as 'idle' | 'running' | 'paused' | 'done', base: Date.now(), elapsed: 0 });
   const root = useRef<HTMLDivElement>(null); const [full, setFull] = useState(false);
-  const [now, setNow] = useState(Date.now()); const [look, setLook] = useState<Look>('studio'); const [still, setStill] = useState(false);
+  const [now, setNow] = useState(Date.now()); const LOOKS_OK: Look[] = ['studio', 'rooms', 'pixel', 'iso', 'open', 'cinematic', 'list'];
+  const [look, setLookRaw] = useState<Look>(() => { try { const v = localStorage.getItem('hq-look') as Look | null; return v && LOOKS_OK.includes(v) ? v : 'open'; } catch { return 'open'; } });
+  const setLook = (l: Look) => { setLookRaw(l); try { localStorage.setItem('hq-look', l); } catch { /* no storage */ } }; const [still, setStill] = useState(false);
   const [sel, setSel] = useState(''); const [focus, setFocus] = useState(''); const [openQ, setOpenQ] = useState(false); const [mobile, setMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 760);
   useEffect(() => { const f = () => setMobile(window.innerWidth < 760); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   const skew = useRef(0); // server time minus this computer's time: a fresh live event shows how far this clock is off, so a hand-over is never missed or shown early
