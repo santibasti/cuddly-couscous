@@ -65,9 +65,10 @@ Deno.serve(async (req) => {
     const { data: c, error } = await sb.from('clients').insert({ name, contact_person: name, mobile: mob, email: clip(b.email, 120), address, billing_address: address, type: /commercial|business|office|store|company/i.test(clip(b.property_type ?? b.type, 40)) ? 'Commercial' : 'Residential', status: 'Prospect', notes: `Created from a ${source} chat booking`, branch_id: br?.[0]?.id ?? null }).select('id').single();
     if (error) return json({ error: error.message }, 500); clientId = c.id;
   }
+  const { data: rb } = await sb.from('ai_rulebook').select('version').eq('status', 'published').maybeSingle();                                          // which published rulebook version the conversation followed (kept on the inquiry)
   const est = estimate(address, clip(b.service, 200), Number(b.panels ?? b.qty), clip(b.property_type ?? b.type, 40)); const ratesOk = b.rates_ok === true || b.rates_ok === 'true' || b.rates_ok === 1;
   const codes = serviceCodes(b.service_codes ?? b.service);
-  const details = [clip(b.service, 200) && `Service wanted: ${clip(b.service, 200)}`, `Requested date: ${wanted}`, `Starting rates agreed in the chat: ${ratesOk ? `yes, ${new Date().toISOString()}` : 'not stated'}`, est.ok && est.estimate ? `Estimate given in the chat: ${est.estimate} for ${est.qty} ${est.unit ?? 'panels'} (the customer's own count; the crew counts on site)` : '', clip(b.details ?? b.message, 1500), `Source: ${source} chat`].filter(Boolean).join('\n');
+  const details = [clip(b.service, 200) && `Service wanted: ${clip(b.service, 200)}`, `Requested date: ${wanted}`, `Starting rates agreed in the chat: ${ratesOk ? `yes, ${new Date().toISOString()}` : 'not stated'}`, est.ok && est.estimate ? `Estimate given in the chat: ${est.estimate} for ${est.qty} ${est.unit ?? 'panels'} (the customer's own count; the crew counts on site)` : '', clip(b.details ?? b.message, 1500), `Source: ${source} chat`, rb?.version ? `Rulebook version: ${rb.version}` : ''].filter(Boolean).join('\n');
   const { data: inq, error: ie } = await sb.from('inquiries').insert({ client_id: clientId, service_codes: codes, stage: 'Inquiry', source, details }).select('id').single();
   if (ie) return json({ error: ie.message }, 500);
 

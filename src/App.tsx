@@ -20,6 +20,7 @@ import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 const Receipts = lazy(() => import('@/pages/Receipts'));
 const Today = lazy(() => import('@/pages/Today'));
+const AiRulebook = lazy(() => import('@/pages/AiRulebook'));
 const Maintenance = lazy(() => import('@/pages/Maintenance'));
 const Clients = lazy(() => import('@/pages/Clients'));
 const ClientDetail = lazy(() => import('@/pages/ClientDetail'));
@@ -87,6 +88,7 @@ const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: st
   { to: '/employees', key: 'employees', label: 'Employees', icon: 'employees' },
   { to: '/reports', key: 'reports', label: 'Reports', icon: 'reports', group: 'Insights' },
   { to: '/admin', key: 'admin', label: 'Admin', icon: 'admin', group: 'System' },
+  { to: '/rulebook', key: 'admin', label: 'AI Rulebook', icon: 'admin', group: 'System' },
 ];
 
 function homeFor(any: (p: string[]) => boolean): string {
@@ -232,6 +234,7 @@ function Shell() {
             <Route path="/telegram" element={<Guard area="telegram"><Telegram /></Guard>} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/admin" element={<Guard area="admin"><Admin /></Guard>} />
+            <Route path="/rulebook" element={<Guard area="admin"><AiRulebook /></Guard>} />
             <Route path="*" element={<Navigate to={homeFor(any)} replace />} />
           </Routes>
           </Suspense>
