@@ -1,4 +1,6 @@
 // The chat books an open date by itself. POST JSON, key in  x-api-key: <LEAD_INTAKE_KEY>  or  ?key=<LEAD_INTAKE_KEY>  (the same secret as lead-intake).
+//   optional: "panels" (glass panels, or square metres for roof / wall / floor) = the customer's own count: the answer then includes an ESTIMATE, always with "the crew does the final count on site";
+//             "rates_ok": true = the customer said yes to the starting rates in the chat (saved on the inquiry with the time)
 //   { "name": "Maria Santos", "mobile": "0917 123 4567", "address": "Alabang, Muntinlupa", "service": "window cleaning", "date": "2026-11-21" (or "when": "next Saturday"), "details": "...", "source": "Facebook" }
 // Always saves the lead (client + inquiry). Then:
 //   - the date is not open (or not understood): nothing is booked, the answer offers the nearest open dates;
@@ -6,6 +8,7 @@
 //   - the date is open but the switch is off: the answer says our team will confirm (a person books it, as before).
 // Answer: { ok, status: confirmed | pending_human | full | closed | too_soon | unclear, booked, job_number, ..., reply_en, reply_tl, alt1_label, alt1_date, ... }
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { estimate } from '../_shared/estimate.ts';
 import { addDays, bookedReply, checkAvailability, manilaDay, normalizeRules, parseWanted } from '../chat-availability/logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
@@ -45,6 +48,9 @@ Deno.serve(async (req) => {
   const facts = { jobs: jobs.data ?? [], field: (emps.data ?? []).filter((e: { status?: string }) => e.status !== 'inactive'), vehicles: cars.data ?? [], holidays: (hol.data ?? []).map((h: { date: string }) => h.date) };
   const flat = (alts: { date: string; label: string }[]) => { const o: Record<string, string> = {}; alts.forEach((a, i) => { o[`alt${i + 1}_date`] = a.date; o[`alt${i + 1}_label`] = a.label; }); return o; };
   const avail = checkAvailability(wanted, today, rules, facts);
+  const est0 = estimate(clip(b.address ?? b.location, 300), clip(b.service, 200), Number(b.panels ?? b.qty));
+  // the estimate is added to the reply (never a fixed price): the crew does the final count on site
+  const withEstimate = <T extends { reply_en: string; reply_tl: string }>(r: T) => ({ ...r, reply_en: est0.ok && est0.estimate ? `${r.reply_en} ${est0.estimate_en}` : r.reply_en, reply_tl: est0.ok && est0.estimate ? `${r.reply_tl} ${est0.estimate_tl}` : r.reply_tl, estimate: est0.ok ? est0.estimate ?? null : null, estimate_note_en: est0.ok && est0.estimate ? est0.estimate_en : '' });
   if (!avail.ok) return json({ ...avail, booked: false, confirmed: false, ...flat(avail.alternatives), alt_count: avail.alternatives.length });       // nothing saved, nothing booked: the chat asks for another date
 
   // the lead: the client (same mobile = same client) and an inquiry
@@ -54,14 +60,15 @@ Deno.serve(async (req) => {
     const { data: c, error } = await sb.from('clients').insert({ name, contact_person: name, mobile: mob, email: clip(b.email, 120), address, billing_address: address, type: /commercial|business|office|store|company/i.test(clip(b.property_type ?? b.type, 40)) ? 'Commercial' : 'Residential', status: 'Prospect', notes: `Created from a ${source} chat booking`, branch_id: br?.[0]?.id ?? null }).select('id').single();
     if (error) return json({ error: error.message }, 500); clientId = c.id;
   }
+  const est = estimate(address, clip(b.service, 200), Number(b.panels ?? b.qty)); const ratesOk = b.rates_ok === true || b.rates_ok === 'true' || b.rates_ok === 1;
   const codes = serviceCodes(b.service_codes ?? b.service);
-  const details = [clip(b.service, 200) && `Service wanted: ${clip(b.service, 200)}`, `Requested date: ${wanted}`, clip(b.details ?? b.message, 1500), `Source: ${source} chat`].filter(Boolean).join('\n');
+  const details = [clip(b.service, 200) && `Service wanted: ${clip(b.service, 200)}`, `Requested date: ${wanted}`, `Starting rates agreed in the chat: ${ratesOk ? `yes, ${new Date().toISOString()}` : 'not stated'}`, est.ok && est.estimate ? `Estimate given in the chat: ${est.estimate} for ${est.qty} ${est.unit ?? 'panels'} (the customer's own count; the crew counts on site)` : '', clip(b.details ?? b.message, 1500), `Source: ${source} chat`].filter(Boolean).join('\n');
   const { data: inq, error: ie } = await sb.from('inquiries').insert({ client_id: clientId, service_codes: codes, stage: 'Inquiry', source, details }).select('id').single();
   if (ie) return json({ error: ie.message }, 500);
 
   if (!rules.auto_confirm) {                                                                                                                         // the switch is off: a person books it, as before
     await sb.from('alert_outbox').insert({ kind: 'lead', title: 'New lead with a date', body: `${name} ${mob}${address ? `, ${address}` : ''}, wants ${avail.requested_label} (${source}). Date looks open: please confirm.`, link: `/clients/${clientId}` });
-    return json({ ...avail, status: 'pending_human', booked: false, confirmed: false, client_id: clientId, inquiry_id: inq.id, alt_count: 0 });
+    return json({ ...avail, status: 'pending_human', booked: false, confirmed: false, client_id: clientId, inquiry_id: inq.id, alt_count: 0, ...withEstimate(avail) });
   }
   const { data: res, error: be } = await sb.rpc('chat_book', { p: { date: wanted, client_id: clientId, inquiry_id: inq.id, address, service_codes: codes, max_jobs: rules.max_jobs_per_day } });
   if (be || !res?.ok) {                                                                                                                              // lost the race for the last place, or the booking could not be made: never say "booked"
@@ -72,5 +79,5 @@ Deno.serve(async (req) => {
   }
   await sb.from('alert_outbox').insert({ kind: 'booking', title: 'Booked automatically', body: `${name}, ${address || 'address to be confirmed'}: ${res.number} on ${avail.requested_label} (booked by the chat). Team, vehicle and price are still to be arranged.`, link: `/jobs/${res.job_id}` });
   const r = bookedReply(avail.requested_label ?? wanted!, res.number);
-  return json({ ok: true, status: 'confirmed', booked: true, confirmed: true, requested: wanted, requested_label: avail.requested_label, job_number: res.number, job_id: res.job_id, client_id: clientId, inquiry_id: inq.id, alternatives: [], alt_count: 0, ...r });
+  return json({ ok: true, status: 'confirmed', booked: true, confirmed: true, requested: wanted, requested_label: avail.requested_label, job_number: res.number, job_id: res.job_id, client_id: clientId, inquiry_id: inq.id, alternatives: [], alt_count: 0, ...withEstimate(r) });
 });
