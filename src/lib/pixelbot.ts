@@ -1,12 +1,12 @@
 // Pixel-art version of every robot. A sprite is a grid of characters built from the agent's Look (head, face, ears, antenna, body, feet) so each agent keeps its own silhouette.
-// Pure data (no drawing): '.' empty, 'o' outline, 'w' shell, 'g' shade, 'v' visor, 'e' eye, 'a' agent colour, 'f' feet.
+// Pure data (no drawing): 'l' highlight, 'p' prop body, 'q' paper, 'k' dark gadget, '.' empty, 'o' outline, 'w' shell, 'g' shade, 'v' visor, 'e' eye, 'a' agent colour, 'f' feet.
 import { lookOf, type Look } from './botlook';
 export type PixView = 'front' | 'back' | 'side';
 export const PIX_W = 24, PIX_H = 36;
 const HEAD: Record<Look['head'], { w: number; h: number; cut: number }> = { sphere: { w: 14, h: 12, cut: 3 }, tall: { w: 12, h: 14, cut: 3 }, square: { w: 14, h: 11, cut: 1 }, dome: { w: 15, h: 11, cut: 3 }, big: { w: 16, h: 13, cut: 3 } };
 const BODY: Record<Look['body'], { top: number; bot: number; h: number }> = { slim: { top: 8, bot: 8, h: 8 }, chunk: { top: 12, bot: 12, h: 9 }, pear: { top: 8, bot: 12, h: 9 }, round: { top: 10, bot: 12, h: 9 } };
 
-export function spriteRows(key: string, view: PixView, frame: 0 | 1, seated: boolean): string[] {
+export function spriteRows(key: string, view: PixView, frame: 0 | 1, seated: boolean, prop?: string): string[] {
   const look = lookOf(key); const g: string[][] = Array.from({ length: PIX_H }, () => Array(PIX_W).fill('.'));
   const put = (x0: number, y0: number, c: string) => { const x = Math.round(x0), y = Math.round(y0); if (x >= 0 && x < PIX_W && y >= 0 && y < PIX_H) g[y][x] = c; };
   const rect = (x0: number, y0: number, x1: number, y1: number, c: string) => { for (let y = Math.round(y0); y <= Math.round(y1); y++) for (let x = Math.round(x0); x <= Math.round(x1); x++) put(x, y, c); };
@@ -49,6 +49,20 @@ export function spriteRows(key: string, view: PixView, frame: 0 | 1, seated: boo
     if (look.feet === 'wheel') { rect(cx - 3, ly0, cx + 2, ly0 + 4, 'o'); rect(cx - 2, ly0 + 1, cx + 1, ly0 + 3, 'f'); }
     else if (view === 'side') { l(cx - 2 + (frame ? 2 : -2), 5 - (frame ? 1 : 0)); l(cx - 2 + (frame ? -2 : 2), 5 - (frame ? 0 : 1)); }
     else { l(cx - 5, 5 - (frame ? 1 : 0)); l(cx + 2, 5 - (frame ? 0 : 1)); }
+  }
+  // highlights on the shell so the head and body read as glossy
+  if (view !== 'back') { put(hx0 + 2, hy0 + 1, 'l'); put(hx0 + 3, hy0 + 1, 'l'); put(hx0 + 1, hy0 + 2, 'l'); }
+  put(cx - bd.top / 2 + 2, by0 + 1, 'l'); put(cx - bd.top / 2 + 2, by0 + 2, 'l');
+  if (look.ears === 'headset' && view !== 'back') { const ey = hy0 + Math.floor(hd.h / 2) - 1; put(hx0 - 1, ey + 4, 'o'); put(hx0, ey + 5, 'o'); put(hx0 + 1, ey + 5, 'o'); put(hx0 + 2, ey + 5, 'a'); }
+  // the prop in the right hand
+  if (prop && view !== 'back') {
+    const ox = Math.round(view === 'side' ? cx + 1 : cx + bd.top / 2 + 1), oy = by0 + 3;
+    const shape: Record<string, string[]> = {
+      clip: ['.kk.', 'pppp', 'pqqp', 'pqqp', 'pqqp', 'pppp'], tablet: ['kkkk', 'keek', 'keek', 'keek', 'kkkk'], phone: ['kkk', 'kek', 'kek', 'kkk'],
+      envelope: ['qqqqq', 'qoqoq', 'qqoqq', 'qqqqq'], camera: ['.kk..', 'kkkkk', 'keeek', 'kkkkk'], laptop: ['kkkkkk', 'keeeek', 'keeeek', 'oooooo'],
+      magnifier: ['.oo..', 'o..o.', 'o..o.', '.oo.o', '....o'], orb: ['.ee.', 'eeee', 'eeee', '.ee.'],
+    };
+    (shape[prop] ?? shape.tablet).forEach((row, dy) => [...row].forEach((c, dx) => { if (c !== '.') put(ox + dx, oy + dy, c === 'p' ? 'p' : c === 'e' ? 'e' : c); }));
   }
   return g.map((r) => r.join(''));
 }

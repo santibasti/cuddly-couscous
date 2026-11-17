@@ -156,7 +156,7 @@ export function HqBot({ deskColors, scale = 0.74, desk = true, social = false, b
       <ellipse cx="0" cy="34" rx="64" ry="9" fill="rgba(0,0,0,.35)" />
       {desk && <g className="chair" pointerEvents="none"><rect x={-(BODY_DIM[look.body].bottom + 7)} y="-64" width={2 * (BODY_DIM[look.body].bottom + 7)} height="66" rx="15" fill="#1b2748" stroke="#3a4f86" strokeWidth="1.2" /><rect x={-(BODY_DIM[look.body].bottom + 3)} y="-60" width={2 * (BODY_DIM[look.body].bottom + 3)} height="6" rx="3" fill={a.shirt} opacity=".55" /></g>}
       <g className="body" style={away ? { display: 'none' } : undefined}>
-        {pix ? <PixelSeated k={a.key} accent={a.shirt} /> : <g transform={`scale(${look.size})`}>
+        {pix ? <PixelSeated k={a.key} accent={a.shirt} prop={propOf(a.key)} /> : <g transform={`scale(${look.size})`}>
           <g transform={`translate(${-(BODY_DIM[look.body].top + 3.5)} -44)`}><ToyArm cls="armL" accent={a.shirt} w={look.body === 'chunk' ? 11.4 : 9.6} /><Joint accent={a.shirt} r={5.4} /></g>
           <g transform={`translate(${BODY_DIM[look.body].top + 3.5} -44)`}><ToyArm cls="armR" accent={a.shirt} prop={propOf(a.key)} held w={look.body === 'chunk' ? 11.4 : 9.6} /><Joint accent={a.shirt} r={5.4} /></g>
           <ToyTorso accent={a.shirt} look={look} />
@@ -255,7 +255,7 @@ export function HqWalker({ a, x, y, dir, moving, carrying, give, prop, scale = 0
       <ellipse cx="0" cy="1" rx="22" ry="5.5" fill="rgba(0,0,0,.38)" />
       <g transform={`scale(${view === 'side' ? f : 1} 1)`}>
         <g className="wk-bob">
-          {pix ? <PixelWalker k={a.key} view={view} accent={ac} /> : view === 'side' ? <>
+          {pix ? <PixelWalker k={a.key} view={view} accent={ac} prop={prop === undefined ? propOf(a.key) : undefined} /> : view === 'side' ? <>
             {leg('far', 3)}{arm('far', 0)}
             <rect x={-sideW} y="-87" width={2 * sideW} height="53" rx={Math.min(11, sideW)} fill="url(#botg)" stroke="#9fb4de" strokeWidth=".8" /><circle cx={sideW * 0.5} cy="-66" r="6" fill="#0b1b45" stroke="#9fb4de" strokeWidth=".9" /><circle cx={sideW * 0.5} cy="-66" r="3" fill={ac} style={{ filter: `drop-shadow(0 0 3px ${ac})` }} /><rect x={-sideW} y="-52" width={2 * sideW} height="4.5" fill={ac} opacity=".9" />
             <g transform="translate(0 -86)"><g className="wk-head"><ToyHeadView accent={ac} look={look} view="side" /></g></g>
