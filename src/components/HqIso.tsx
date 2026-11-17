@@ -75,11 +75,10 @@ function IsoRoom({ r, o, views, selected, away, doorOpen, doorLight, onPickDept,
       <polygon points={pts([P(0, 0, WALL), P(N, 0, WALL), P(N, 0, WALL + 0.22), P(0, 0, WALL + 0.22)])} fill={t.trim} />
       <polygon points={pts([P(0, 0, WALL), P(0, M, WALL), P(0, M, WALL + 0.22), P(0, 0, WALL + 0.22)])} fill={shade(t.trim, 0.7)} />
       {/* floor: checker tiles */}
-      {tiles.map(({ x, y }) => <polygon key={`${x}-${y}`} points={pts([P(x, y), P(x + 1, y), P(x + 1, y + 1), P(x, y + 1)])} fill={(x + y) % 2 ? t.floor[0] : t.floor[1]} stroke="rgba(0,0,0,.25)" strokeWidth=".5" />)}
+      {tiles.map(({ x, y }) => <polygon key={`${x}-${y}`} points={pts([P(x, y), P(x + 1, y), P(x + 1, y + 1), P(x, y + 1)])} fill={shade((x + y) % 2 ? t.floor[0] : t.floor[1], 2.1)} stroke="rgba(0,0,0,.25)" strokeWidth=".5" />)}
       <polygon points={pts([P(0, 0), P(N, 0), P(N, M), P(0, M)])} fill="none" stroke={t.trim} strokeOpacity=".6" strokeWidth="1" />
       {/* rug under the desks */}
       <polygon points={pts([P(0.6, 0.6), P(N - 0.6, 0.6), P(N - 0.6, 4), P(0.6, 4)])} fill={t.rug} opacity=".22" />
-      <Furniture r={r} P={P} o={o} />
       {/* front glass edge with a sliding door in the middle */}
       <polygon points={pts([P(0, M), P(N / 2 - 1, M), P(N / 2 - 1, M, 0.9), P(0, M, 0.9)])} fill="rgba(160,220,255,.12)" stroke={t.trim} strokeOpacity=".5" strokeWidth=".8" />
       <polygon points={pts([P(N / 2 + 1, M), P(N, M), P(N, M, 0.9), P(N / 2 + 1, M, 0.9)])} fill="rgba(160,220,255,.12)" stroke={t.trim} strokeOpacity=".5" strokeWidth=".8" />
@@ -100,10 +99,11 @@ function IsoRoom({ r, o, views, selected, away, doorOpen, doorLight, onPickDept,
           </g>
         );
       })}
-      {agents.map((a, i) => { const cx = 0.9 + i * (agents.length > 3 ? 2.35 : 2.9); const q = P(cx + 1, 2.9); const planned = !a.live; const label = `${a.name}${planned ? ' · PLANNED' : ''}`; const w = label.length * 4.6 + 8;
+      <Furniture r={r} P={P} o={o} />
+      {agents.map((a, i) => { const cx = 0.9 + i * (agents.length > 3 ? 2.35 : 2.9); const q0 = P(cx + 1, 0.7); const q = { x: q0.x, y: q0.y - 50 }; const planned = !a.live; const label = `${a.name}${planned ? ' · PLANNED' : ''}`; const w = label.length * 4.6 + 8;
         return <g key={`t${a.key}`} pointerEvents="none"><rect x={q.x - w / 2} y={q.y - 3} width={w} height="11" rx="2" fill="rgba(5,12,34,.85)" stroke={selected === a.key ? '#ffd86b' : t.trim} strokeWidth={selected === a.key ? 1.6 : 0.6} /><text x={q.x} y={q.y + 5} textAnchor="middle" fontSize="7.5" fontWeight="800" fill="#e8f1ff">{label}</text></g>; })}
       {/* room label */}
-      <g transform={`translate(${P(N / 2, 0, WALL + 0.9).x} ${P(N / 2, 0, WALL + 0.9).y})`}><rect x="-62" y="-9" width="124" height="16" rx="8" fill="rgba(6,14,40,.88)" stroke={t.trim} /><text y="2.5" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing=".05em" fill="#e8f1ff">{name.toUpperCase()}</text>
+      <g transform={`translate(${P(N / 2, 0, WALL + 2.4).x} ${P(N / 2, 0, WALL + 2.4).y})`}><rect x="-62" y="-9" width="124" height="16" rx="8" fill="rgba(6,14,40,.88)" stroke={t.trim} /><text y="2.5" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing=".05em" fill="#e8f1ff">{name.toUpperCase()}</text>
         <text y="16" textAnchor="middle" fontSize="6.5" fontWeight="700" fill={live ? '#7ff0b4' : '#9fb3d9'}>{live ? 'LIVE' : 'NOT CONNECTED'}</text></g>
     </g>
   );
@@ -118,7 +118,31 @@ function Furniture({ r, P, o }: { r: Room; P: (x: number, y: number, z?: number)
   const sig = (() => {
     switch (r) {
       case 'email': return <g>{[0, 1, 2].map((i) => <Fragment key={i}>{B(0.15, 4.2 + i * 0.85, 0.7, 0.75, 1.5 + (i % 2) * 0.3, '#2c4a7e')}</Fragment>)}{B(N - 1.2, 4.6, 0.8, 0.8, 0.5, '#f4f7ff')}</g>;
-      case 'creative': return <g>{B(N - 2.4, 4.4, 1.6, 0.8, 0.7, '#6c3da8')}{B(N - 2.2, 4.5, 0.6, 0.6, 0.12, '#f4f7ff', 0.7)}{B(N - 1.4, 4.5, 0.5, 0.5, 0.3, '#1b1e30', 0.7)}{B(0.2, 5, 0.9, 0.9, 0.9, '#2a1b40')}{B(0.3, 5.1, 0.7, 0.7, 0.14, '#e0a8ff', 0.9)}</g>;
+      case 'creative': {
+        const reel = (x: number, y: number, z: number, rr: number, c: string) => { const q = P(x, y, z), rx = rr * 22, ry = rr * 11; return <g><rect x={q.x - rx} y={q.y} width={rx * 2} height="4" fill={shade(c, 0.55)} /><ellipse cx={q.x} cy={q.y + 4} rx={rx} ry={ry} fill={shade(c, 0.55)} /><ellipse cx={q.x} cy={q.y} rx={rx} ry={ry} fill={c} />{[0, 1, 2, 3, 4, 5].map((i) => <ellipse key={i} cx={q.x + Math.cos(i * 1.047) * rx * 0.55} cy={q.y + Math.sin(i * 1.047) * ry * 0.55} rx={rx * 0.2} ry={ry * 0.2} fill="#0b0f1c" />)}<ellipse cx={q.x} cy={q.y} rx={rx * 0.14} ry={ry * 0.14} fill="#d7def0" /></g>; };
+        const cable = (x0: number, y0: number, x1: number, y1: number) => { const a = P(x0, y0), c = P(x1, y1); return <path d={`M${a.x} ${a.y}Q${(a.x + c.x) / 2} ${(a.y + c.y) / 2 + 8} ${c.x} ${c.y}`} fill="none" stroke="#0b0f1c" strokeWidth="1.6" />; };
+        const stripe = (x: number, i: number) => B(x + i * 0.2, 5.2, 0.1, 0.1, 0.1, i % 2 ? '#f4f7ff' : '#0b0f1c', 1.25);
+        return (
+          <g>
+            {cable(1.2, 5.2, 4, 3.4)}{cable(4, 3.4, 7.5, 5.8)}{cable(1.2, 6, 3, 6.6)}
+            {/* editing wall: a long desk with two glowing monitors, keyboard and a purple chair */}
+            {B(0.15, 3.5, 0.9, 3, 0.75, '#8a5a3a')}{B(0.2, 3.6, 0.12, 1.3, 0.75, '#e0a8ff', 0.75)}{B(0.2, 5.1, 0.12, 1.3, 0.75, '#7fe4ff', 0.75)}{B(0.35, 3.9, 0.3, 0.7, 0.04, '#1b2a52', 0.75)}{B(0.35, 5.3, 0.3, 0.7, 0.04, '#1b2a52', 0.75)}
+            {B(0.5, 4.8, 0.25, 0.25, 0.2, '#d7def0', 0.75)}{B(1.3, 4.5, 0.8, 0.8, 0.45, '#7a3fd0')}{B(1.3, 4.5, 0.15, 0.8, 1.0, '#5a2aa8')}
+            {/* shelf of film reels on the left wall */}
+            {B(0.05, 0.4, 0.5, 2.4, 0.1, '#5a3d25', 1.9)}{reel(0.5, 0.9, 2.05, 0.55, '#f2c94c')}{reel(0.5, 1.8, 2.05, 0.55, '#e0554f')}{reel(0.5, 2.6, 2.05, 0.55, '#4fb0ff')}
+            {/* floor lamp / softbox */}
+            {B(5.2, 3.5, 0.12, 0.12, 2.4, '#2a2f45')}{B(4.8, 3.3, 0.9, 0.12, 0.9, '#fff6d0', 2.1)}{B(4.7, 3.4, 0.5, 0.5, 0.06, '#2a2f45')}
+            {/* camera on a tripod with a red REC light */}
+            {B(6.2, 4.2, 0.08, 0.08, 1.4, '#2a2f45')}{B(6.6, 4.2, 0.08, 0.08, 1.4, '#2a2f45')}{B(6.4, 4.5, 0.08, 0.08, 1.4, '#2a2f45')}
+            {B(6.1, 4.0, 0.9, 0.55, 0.45, '#3b4160', 1.4)}{B(6.95, 4.15, 0.35, 0.25, 0.25, '#0b0f1c', 1.5)}{B(6.2, 4.05, 0.12, 0.12, 0.1, '#ff4d4d', 1.85)}
+            {/* reel table with stacked reels and a clapperboard */}
+            {B(7.6, 3.9, 2, 1.1, 0.7, '#6c3da8')}{reel(8.2, 4.35, 0.7, 0.7, '#e0a8ff')}{reel(8.2, 4.35, 0.94, 0.7, '#f2c94c')}{reel(9.0, 4.45, 0.7, 0.55, '#4fb0ff')}
+            {B(8.6, 5.1, 0.9, 0.12, 0.6, '#14172a')}{[0, 1, 2, 3].map((i) => <Fragment key={i}>{stripe(8.6, i)}</Fragment>)}
+            {/* film strip running along the floor edge */}
+            {Array.from({ length: 9 }, (_, i) => B(1.2 + i * 0.75, M - 0.3, 0.4, 0.22, 0.03, i % 2 ? '#14172a' : '#e0a8ff'))}
+          </g>
+        );
+      }
       case 'ads': return <g>{B(N - 2.2, 4.2, 1.8, 0.7, 0.6, '#a86a1c')}{B(0.2, 5, 0.9, 0.9, 1.4, '#3d424e')}{B(0.3, 5.1, 0.7, 0.2, 0.8, '#ffae3d', 1.4)}</g>;
       case 'desk': return <g>{B(N - 2.4, 4.4, 1.6, 0.8, 0.5, '#0f8f8a')}{B(0.2, 5, 0.9, 0.9, 0.5, '#2fe0c0')}</g>;
       case 'hub': return <g>{B(N / 2 - 0.9, 4.3, 1.8, 1.8, 0.35, '#2a4aa6')}{B(N / 2 - 0.35, 4.85, 0.7, 0.7, 1.7, '#4f86ff', 0.35)}{B(N / 2 - 0.2, 5, 0.4, 0.4, 0.4, '#e6fbff', 2.05)}</g>;
