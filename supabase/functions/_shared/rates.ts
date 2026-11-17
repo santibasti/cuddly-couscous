@@ -31,3 +31,13 @@ export function findRate(address: string): Rate | undefined {
   return undefined;
 }
 
+
+/** What kind of service the customer means. Only these are priced from the rate table; everything else needs an assessment and a person's quotation. */
+export type Kind = 'glass' | 'ROOF' | 'SOLAR' | 'FLOOR' | 'WALL' | 'custom';
+export function classify(service: string): Kind {
+  const t = String(service ?? '').trim();
+  if (/solar/i.test(t)) return 'SOLAR';
+  if (/gutter|acp|cladding|ceiling|interior|indoor|post[- ]?construction|facade|façade|curtain\s*wall|rope|high[- ]?rise|pool/i.test(t)) return 'custom';
+  if (/^\s*$|glass|window|salamin|bintana|panel/i.test(t)) return 'glass';
+  const o = OTHER.find((x) => x.match.test(t)); return o ? o.code : 'custom';
+}

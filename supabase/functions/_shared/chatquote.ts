@@ -1,13 +1,15 @@
 // The INTERNAL pre-approved quotation for a chat booking, priced like the app's Quick booking: the city's starting package (glass) or the minimum (roof, wall, floor, solar).
 // The client never receives it: it exists so the Job Order and the invoice have something to work from. The real quantity is counted by the crew on site.
 import { defaultCrew, defaultDisclaimer, defaultIntro, defaultMethodology, priceService, syncMethodSections } from './appcore.mjs';
-import { EXTRA_PANEL, OTHER, findRate } from './rates.ts';
+import { EXTRA_PANEL, OTHER, classify, findRate } from './rates.ts';
 
-export const isOther = (service: string) => (/glass|window|panel|salamin|bintana|^\s*$/i.test(service) && !/solar/i.test(service) ? undefined : OTHER.find((o) => o.match.test(service)));
+/** The rate-table service for the text, or undefined for glass (a custom-quote service has no rate: see chatQuotation). */
+export const isOther = (service: string) => { const k = classify(service); return k === 'glass' || k === 'custom' ? undefined : OTHER.find((o) => o.code === k); };
 // deno-lint-ignore no-explicit-any
 type Any = any;
 export interface ChatQuote { code: string; scope: string; payload: Record<string, unknown> }
-export function chatQuotation(a: { services: Any[]; settings: Any; address: string; service: string; today: string; addDays: (d: string, n: number) => string }): ChatQuote | null {
+export function chatQuotation(a: { services: Any[]; settings: Any; address: string; service: string; today: string; property?: string; addDays: (d: string, n: number) => string }): ChatQuote | null {
+  if (classify(a.service) === 'custom' || /commercial|business|office|store|company|building|hotel|school|hospital|warehouse|factory/i.test(a.property ?? '')) return null;     // priced by a person, never from the residential rate table
   const other = isOther(a.service); let items: Any[]; let code: string; let name: string;
   if (other) {
     const base = a.services.find((s: Any) => s.code === other.code) ?? { code: other.code, name: other.name, unit: other.unit, rate: other.rate, minimum_qty: other.min, custom_quote: false };

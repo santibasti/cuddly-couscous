@@ -22,6 +22,7 @@ describe('the internal pre-approved quotation of a chat booking', () => {
     expect(cq('Imus', 'roof cleaning')!.payload.items).toMatchObject([{ qty: 100, rate: 145 }]); expect(cq('Imus', 'Solar Panel Cleaning')!.code).toBe('SOLAR'); expect(cq('Imus', 'Solar Panel Cleaning')!.payload.items).toMatchObject([{ qty: 20, rate: 245 }]);
     expect(isOther('window cleaning')).toBeUndefined(); expect(planQuote(db, { address: 'Imus', service: 'Solar Panel Cleaning' }).other?.code).toBe('SOLAR');
   });
+  it('no quotation for a commercial property or a service with no list price (a person prices it)', () => { expect(cq('Makati', 'gutter cleaning')).toBeNull(); expect(chatQuotation({ services: db.services, settings: db.settings, address: 'Makati', service: '', today, property: 'Commercial', addDays })).toBeNull(); });
   it('holds nothing about a total for the client: the scope says the crew counts on site; an unknown city gives no quotation', () => {
     expect(cq('Makati')!.scope).toMatch(/crew counts the real quantity on site/); expect(cq('Hong Kong')).toBeNull();
   });

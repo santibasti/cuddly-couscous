@@ -35,3 +35,16 @@ describe('Taglish', () => {
     expect(estimate('Hong Kong', '', 5).estimate_tglish).toMatch(/Paki-verify/);
   });
 });
+
+describe('what the rate table does not cover', () => {
+  it('services with no list price are never priced as a glass package', () => {
+    for (const svc of ['gutter cleaning', 'ACP cladding', 'ceiling cleaning', 'indoor wall cleaning', 'facade cleaning', 'post-construction cleaning', 'swimming pool', 'rope access high-rise']) { const e = estimate('Makati', svc, 40); expect(e.ok).toBe(false); expect(e.kind).toBe('custom'); expect(e.estimate).toBeUndefined(); expect(e.estimate_en).toMatch(/assessment/); }
+  });
+  it('a commercial property is quoted by a person, not from the residential packages', () => {
+    for (const p of ['Commercial', 'office building', 'warehouse']) { const e = estimate('Makati', 'window cleaning', 80, p); expect(e.ok).toBe(false); expect(e.kind).toBe('commercial'); expect(e.estimate).toBeUndefined(); expect(e.estimate_en).toMatch(/company name/); }
+    expect(estimate('Makati', 'window cleaning', 40, 'Residential').estimate).toBe(6059);
+  });
+  it('glass words, floors and solar still get their rates; the wording is correct for one panel', () => {
+    expect(estimate('Makati', 'salamin / bintana', 10).kind).toBe('glass'); expect(estimate('Makati', 'driveway pressure washing', 60).kind).toBe('area'); expect(estimate('Makati', 'Solar Panel Cleaning', 25).estimate).toBe(6125); expect(estimate('Makati', 'solar', 1).estimate_en).toMatch(/For 1 panel /);
+  });
+});

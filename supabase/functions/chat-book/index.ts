@@ -53,9 +53,9 @@ Deno.serve(async (req) => {
   const facts = { jobs: jobs.data ?? [], field: (emps.data ?? []).filter((e: { status?: string }) => e.status !== 'inactive'), vehicles: cars.data ?? [], holidays: (hol.data ?? []).map((h: { date: string }) => h.date) };
   const flat = (alts: { date: string; label: string }[]) => { const o: Record<string, string> = {}; alts.forEach((a, i) => { o[`alt${i + 1}_date`] = a.date; o[`alt${i + 1}_label`] = a.label; }); return o; };
   const avail = checkAvailability(wanted, today, rules, facts);
-  const est0 = estimate(clip(b.address ?? b.location, 300), clip(b.service, 200), Number(b.panels ?? b.qty));
+  const est0 = estimate(clip(b.address ?? b.location, 300), clip(b.service, 200), Number(b.panels ?? b.qty), clip(b.property_type ?? b.type, 40));
   // the estimate is added to the reply (never a fixed price): the crew does the final count on site
-  const withEstimate = <T extends { reply_en: string; reply_tl: string; reply_tglish: string }>(r: T) => { const has = est0.ok && !!est0.estimate; const o = { ...r, reply_en: has ? `${r.reply_en} ${est0.estimate_en}` : r.reply_en, reply_tl: has ? `${r.reply_tl} ${est0.estimate_tl}` : r.reply_tl, reply_tglish: has ? `${r.reply_tglish} ${est0.estimate_tglish}` : r.reply_tglish }; return { ...o, reply: pick(o, lang), estimate: has ? est0.estimate ?? null : null, estimate_note_en: has ? est0.estimate_en : '' }; };
+  const withEstimate = <T extends { reply_en: string; reply_tl: string; reply_tglish: string }>(r: T) => { const has = (est0.ok && !!est0.estimate) || est0.kind === 'commercial' || est0.kind === 'custom'; const o = { ...r, reply_en: has ? `${r.reply_en} ${est0.estimate_en}` : r.reply_en, reply_tl: has ? `${r.reply_tl} ${est0.estimate_tl}` : r.reply_tl, reply_tglish: has ? `${r.reply_tglish} ${est0.estimate_tglish}` : r.reply_tglish }; return { ...o, reply: pick(o, lang), estimate: has ? est0.estimate ?? null : null, estimate_note_en: has ? est0.estimate_en : '' }; };
   if (!avail.ok) return json({ ...avail, reply: pick(avail, lang), booked: false, confirmed: false, ...flat(avail.alternatives), alt_count: avail.alternatives.length });       // nothing saved, nothing booked: the chat asks for another date
 
   // the lead: the client (same mobile = same client) and an inquiry
@@ -65,18 +65,18 @@ Deno.serve(async (req) => {
     const { data: c, error } = await sb.from('clients').insert({ name, contact_person: name, mobile: mob, email: clip(b.email, 120), address, billing_address: address, type: /commercial|business|office|store|company/i.test(clip(b.property_type ?? b.type, 40)) ? 'Commercial' : 'Residential', status: 'Prospect', notes: `Created from a ${source} chat booking`, branch_id: br?.[0]?.id ?? null }).select('id').single();
     if (error) return json({ error: error.message }, 500); clientId = c.id;
   }
-  const est = estimate(address, clip(b.service, 200), Number(b.panels ?? b.qty)); const ratesOk = b.rates_ok === true || b.rates_ok === 'true' || b.rates_ok === 1;
+  const est = estimate(address, clip(b.service, 200), Number(b.panels ?? b.qty), clip(b.property_type ?? b.type, 40)); const ratesOk = b.rates_ok === true || b.rates_ok === 'true' || b.rates_ok === 1;
   const codes = serviceCodes(b.service_codes ?? b.service);
   const details = [clip(b.service, 200) && `Service wanted: ${clip(b.service, 200)}`, `Requested date: ${wanted}`, `Starting rates agreed in the chat: ${ratesOk ? `yes, ${new Date().toISOString()}` : 'not stated'}`, est.ok && est.estimate ? `Estimate given in the chat: ${est.estimate} for ${est.qty} ${est.unit ?? 'panels'} (the customer's own count; the crew counts on site)` : '', clip(b.details ?? b.message, 1500), `Source: ${source} chat`].filter(Boolean).join('\n');
   const { data: inq, error: ie } = await sb.from('inquiries').insert({ client_id: clientId, service_codes: codes, stage: 'Inquiry', source, details }).select('id').single();
   if (ie) return json({ error: ie.message }, 500);
 
-  if (!rules.auto_confirm) {                                                                                                                         // the switch is off: a person books it, as before
+  if (!rules.auto_confirm || est.kind === 'commercial') {                                                                                                                         // the switch is off: a person books it, as before
     await sb.from('alert_outbox').insert({ kind: 'lead', title: 'New lead with a date', body: `${name} ${mob}${address ? `, ${address}` : ''}, wants ${avail.requested_label} (${source}). Date looks open: please confirm.`, link: `/clients/${clientId}` });
     return json({ ...avail, status: 'pending_human', booked: false, confirmed: false, client_id: clientId, inquiry_id: inq.id, alt_count: 0, ...withEstimate(avail) });
   }
   const { data: svcRows } = await sb.from('services').select('*').is('deleted_at', null);
-  const cq = chatQuotation({ services: svcRows ?? [], settings: st?.data, address: address || 'the address given', service: clip(b.service, 200), today, addDays });          // null when the city is not in the rate list: the booking is still made, a person prices it
+  const cq = chatQuotation({ services: svcRows ?? [], settings: st?.data, address: address || 'the address given', service: clip(b.service, 200), today, property: clip(b.property_type ?? b.type, 40), addDays });          // null when the city is not in the rate list: the booking is still made, a person prices it
   const { data: res, error: be } = await sb.rpc('chat_book', { p: { date: wanted, client_id: clientId, inquiry_id: inq.id, address, service_codes: cq ? [cq.code] : codes, max_jobs: rules.max_jobs_per_day, ...(cq ? { quotation: cq.payload } : {}) } });
   if (be || !res?.ok) {                                                                                                                              // lost the race for the last place, or the booking could not be made: never say "booked"
     const fresh = res?.reason === 'full' ? await sb.from('jobs').select('start_at, end_at, status, leader_id, crew_ids, vehicle_id').is('deleted_at', null).lte('start_at', to + 'T23:59').gte('end_at', today) : null;
