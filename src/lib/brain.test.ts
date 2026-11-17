@@ -82,3 +82,10 @@ describe('no blank drafts', () => {
     const d = decide('suggest', b, 'en'); expect(d.kind).toBe('draft'); expect(d.text.length).toBeGreaterThan(10);
   });
 });
+
+describe('panel counting rule', () => {
+  it('teaches counting by side, not by size', () => {
+    const s = buildSystem({ sections: [], version: null, lang: 'en' });
+    expect(s).toMatch(/counted by SIDE, never by size/); expect(s).toMatch(/inside and outside is two panels/); expect(s).toMatch(/no 2 m x 1 m rule/);
+  });
+});
