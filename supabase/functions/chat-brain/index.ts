@@ -1,7 +1,7 @@
 // The AI brain: ManyChat sends every customer message here (External Request). POST JSON, key in  x-api-key: <LEAD_INTAKE_KEY>  or  ?key=
 //   { "channel": "messenger" | "instagram" | "whatsapp", "subscriber_id": "...", "name": "...", "text": "the customer's message", "message_id": "...", "lang": "en" | "tl" | "taglish" }
 // Mode (Admin → Settings → AI chat): off = nothing happens; suggest = the AI writes a DRAFT for staff, nothing is sent; auto = the reply goes out at once unless a safety check fails.
-// Answer: { ok, status: "reply" | "held" | "handover" | "duplicate" | "off", reply, mode } — put `reply` in the chatbot's next message; when it is empty, send nothing (staff or a draft is handling it).
+// Answer: { ok, status: "queued" | "reply" | "held" | "handover" | "duplicate" | "off", reply, mode } ("queued": the work continues after the answer because ManyChat waits only 10 seconds) — put `reply` in the chatbot's next message; when it is empty, send nothing (staff or a draft is handling it).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { cardForLog } from '../_shared/estimatecard.ts';
 import { buildSystem, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
@@ -36,6 +36,8 @@ Deno.serve(async (req) => {
   if (conv.status === 'Needs a person') return json({ ok: true, status: 'handover', reply: '', mode });                    // a person has this conversation: the AI stays silent
   if (!env('ANTHROPIC_API_KEY')) return json({ ok: true, status: 'held', reply: '', mode, note: 'ANTHROPIC_API_KEY is not set' });
 
+  // ManyChat gives an External Request only 10 seconds. The AI needs longer, so the work runs after we have answered ("queued"): in suggest mode the draft appears in AI Chat; in full mode the reply is pushed to the customer with the ManyChat API token. Without that token a full-mode reply is awaited and returned as before.
+  const run = async (): Promise<Response> => {
   const [{ data: hist }, { data: rb }] = await Promise.all([
     sb.from('chat_messages').select('direction, body, status').eq('conversation_id', conv.id).in('status', ['received', 'sent', 'approved']).order('created_at', { ascending: false }).limit(14),
     sb.from('ai_rulebook').select('version, sections').eq('status', 'published').maybeSingle(),
@@ -71,4 +73,17 @@ Deno.serve(async (req) => {
   }
   await put({ ...common, body: d.text, status: 'sent' });
   return json({ ok: true, status: 'reply', reply: d.text, mode, card_url: card ?? '' });
+  };
+  const token = env('MANYCHAT_API_TOKEN'), edge = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  if (!edge?.waitUntil || (mode === 'auto' && !token)) return await run();
+  edge.waitUntil((async () => {
+    try {
+      const res = await run(); const j = await res.json().catch(() => ({})) as { reply?: string; card_url?: string };
+      if (mode === 'auto' && j.reply) {
+        const r = await fetch('https://api.manychat.com/fb/sending/sendContent', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: sub, data: { version: 'v2', content: { messages: [{ type: 'text', text: j.reply }, ...(j.card_url ? [{ type: 'image', url: j.card_url }] : [])] } } }) });
+        if (!r.ok) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'A full-mode reply could not be sent', body: `ManyChat said ${r.status}: ${(await r.text()).slice(0, 120)}`, link: '/ai-chat' });
+      }
+    } catch (e) { await sb.from('alert_outbox').insert({ kind: 'chat', title: 'The AI chat had an error', body: String((e as Error).message ?? e).slice(0, 160), link: '/ai-chat' }); }
+  })());
+  return json({ ok: true, status: 'queued', reply: '', mode });
 });
