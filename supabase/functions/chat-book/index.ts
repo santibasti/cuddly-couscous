@@ -99,7 +99,14 @@ Deno.serve(async (req) => {
       const db2 = new Proxy(facts2, { get: (t, k) => (k in t ? t[k as string] : []) });                                                            // the app's own Job Order code reads this like the app's data
       const content = buildContent(db2, job);
       const sub = clip(b.subscriber_id, 80), later = rules.job_order_delay_min > 0 && !!sub && !!env('MANYCHAT_API_TOKEN');      // sent later only when we can push it to the customer ourselves
-      const { data: jo, error: je } = await sb.rpc('chat_job_order', { p: { job_id: res.job_id, content, content_key: contentKey(content), send: !later } });
+      let { data: jo, error: je } = await sb.rpc('chat_job_order', { p: { job_id: res.job_id, content, content_key: contentKey(content), send: !later } });
+      if (!je && jo?.ok === false && jo?.reason === 'exists') {                                                                                     // the app (open on someone's screen) already made its own Draft for this booking: use it instead of failing
+        const { data: ex } = await sb.from('job_orders').select('id, number, status, share_token').eq('job_id', res.job_id).is('deleted_at', null).order('version', { ascending: false }).limit(1).maybeSingle();
+        if (ex && ['Draft', 'Revised', 'Sent to Client'].includes(ex.status)) {
+          if (!later && ex.status !== 'Sent to Client') { const now = new Date().toISOString(); await sb.from('job_orders').update({ status: 'Sent to Client', sent_at: now, sent_by: 'chat', sent_via: 'Messenger chat (automatic)', last_sent_at: now, sent_count: 1 }).eq('id', ex.id); }
+          jo = { ok: true, job_order_id: ex.id, number: ex.number, share_token: ex.share_token }; je = null;
+        }
+      }
       if (je || !jo?.ok) throw new Error(`the Job Order could not be saved: ${je?.message ?? jo?.reason ?? 'no answer'}`);
       link = `${(env('APP_URL') || 'https://ops.topmop.ph').replace(/\/$/, '')}/#/jo/${jo.share_token}`; joNumber = jo.number;
       if (later) {
