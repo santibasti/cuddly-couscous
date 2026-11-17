@@ -22,7 +22,7 @@ export const stepDef = (k: FlowStep) => STEPS.find((s) => s.key === k)!;
 
 export interface FlowCard {
   id: string; step: FlowStep; client: string; service: string; place: string; since: string; ageH: number;
-  flags: string[]; urgent: boolean; /** forgotten: older than 30 days (or a job that started days ago), hidden until asked for */ stale: boolean; clientId: string; inquiryId?: string; quotationId?: string; jobId?: string; number?: string;
+  flags: string[]; urgent: boolean; /** booked by the chat in the last 2 days: shown first in its column */ fresh?: boolean; /** forgotten: older than 30 days (or a job that started days ago), hidden until asked for */ stale: boolean; clientId: string; inquiryId?: string; quotationId?: string; jobId?: string; number?: string;
 }
 const DAY = 86_400_000;
 const isLiveJob = (j: Job) => !j.deleted_at && !['Cancelled', 'Rescheduled'].includes(j.status) && !isDone(j.status);
@@ -46,7 +46,8 @@ export function flowCards(db: DB, now: number = Date.now()): FlowCard[] {
     if (c.step === 'sent' && ageH >= 72) flags.push(`No reply for ${Math.floor(ageH / 24)} d`);
     if (c.step === 'confirm' && ageH >= 24) { flags.push('Not booked yet'); urgent = true; }
     if (stale) urgent = false;
-    out.push({ ...c, ageH, flags, urgent, stale });
+    const chat = !!c.jobId && (db.jobs ?? []).some((j) => j.id === c.jobId && (j as { created_by?: string }).created_by === 'chat'); if (chat) flags.unshift('Booked by the chat');
+    out.push({ ...c, ageH, flags, urgent, stale, fresh: chat && ageH < 48 });
   };
 
   for (const i of (db.inquiries ?? []).filter((x) => !x.deleted_at && x.stage !== 'Lost')) {
@@ -73,7 +74,7 @@ export function flowCards(db: DB, now: number = Date.now()): FlowCard[] {
     if (o?.status !== 'Sent to Client') return add({ ...jc, step: 'order', since: j.updated_at ?? j.created_at, flags: starts <= 2 && starts >= -2 ? [`Starts ${starts <= 0 ? 'today' : `in ${starts} d`}`] : [], urgent: starts <= 2 && starts >= -2, stale: starts < -2 });
     if (starts >= 0 && starts <= 7) add({ ...jc, step: 'ready', since: j.start_at });
   }
-  return out.sort((a, b) => Number(b.urgent) - Number(a.urgent) || b.ageH - a.ageH);
+  return out.sort((a, b) => Number(!!b.fresh) - Number(!!a.fresh) || Number(b.urgent) - Number(a.urgent) || b.ageH - a.ageH);
 }
 
 export interface FlowSummary { byStep: Record<FlowStep, number>; waitingForYou: number; urgent: number; wonThisMonth: number; leadsThisMonth: number; conversion: number }

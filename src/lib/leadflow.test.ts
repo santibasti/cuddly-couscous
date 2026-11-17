@@ -68,3 +68,13 @@ describe('lead flow: booking helpers', () => {
     const team = proposeTeam(days[0], 3); expect(team.leader?.id).toBe('L1'); expect(team.crew.map((e) => e.id).sort()).toEqual(['T1', 'T2']); expect(team.vehicle?.id).toBe('v1');
   });
 });
+
+describe('lead flow: bookings made by the chat', () => {
+  it('shows a chat booking first in its column with a "Booked by the chat" tag', () => {
+    const old = job('j0', { id: 'j0', quotation_id: 'q0', created_at: iso(24 * 9), start_at: '2026-11-17T08:00', end_at: '2026-11-17T17:00' });
+    const chat = job('j1', { created_by: 'chat', created_at: iso(1), start_at: '2026-11-19T08:00', end_at: '2026-11-19T17:00' });
+    const cards = flowCards(db({ inquiries: [inq('i0', { id: 'i0' }), inq('i1')], quotations: [quote('q0', 'Approved', { inquiry_id: 'i0' }), quote('q1', 'Approved')], jobs: [old, chat] }), NOW);
+    expect(cards[0]).toMatchObject({ jobId: 'j1', step: 'book', fresh: true }); expect(cards[0].flags).toContain('Booked by the chat');
+    expect(cards.find((c) => c.jobId === 'j0')!.fresh).toBe(false);
+  });
+});
