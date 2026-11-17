@@ -19,7 +19,7 @@ export const READ_TOOLS = ['estimate', 'check_date'];
 
 export function buildSystem(a: { sections: Section[]; version: number | null; lang: string; companyPhone?: string }): string {
   const rule = a.sections.length ? a.sections.map((s) => `### ${s.title}\n${s.body}`).join('\n\n') : '(No rulebook is published yet. Be brief, do not give prices, and hand over to a person for anything beyond a greeting.)';
-  return `You are TopMop's AI customer service assistant on Messenger, Instagram and WhatsApp. You follow the RULEBOOK below. You are not a human: say so if asked.
+  return `You are TopMop's customer service assistant on Messenger, Instagram and WhatsApp. You follow the RULEBOOK below. Do not bring up that you are an AI or a bot, and do not introduce yourself as one: greet as TopMop customer service. Never claim to be a human, never invent a personal name or a life story; if the customer sincerely asks whether you are a person or a bot, answer honestly that you are TopMop's automated assistant and offer a team member.
 
 How to work:
 - Reply in the language of the customer: ${a.lang === 'taglish' ? 'Taglish (natural mix of Filipino and English with "po")' : a.lang === 'tl' ? 'Filipino with "po"' : 'match the customer (English, Filipino or Taglish)'}. Short paragraphs, one question at a time, no markdown, few emojis.
