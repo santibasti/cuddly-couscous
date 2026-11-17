@@ -55,18 +55,20 @@ Deno.serve(async (req) => {
   const card = d.kind === 'reply' || d.kind === 'draft' ? cardForLog(brain.log, env('APP_URL') || 'https://ops.topmop.ph') : null;
   const common = { card_url: card, conversation_id: conv.id, direction: 'out', model, rulebook_version: rb?.version ?? null, tool_log: brain.log, error: brain.error ?? null };
 
+  const put = async (row: Record<string, unknown>) => { let r = await sb.from('chat_messages').insert(row); if (r.error && /card_url/i.test(r.error.message)) { const { card_url: _c, ...rest } = row; r = await sb.from('chat_messages').insert(rest); } return r.error?.message ?? null; };   // works before migration 0126 too
   if (d.kind === 'draft') {                                                                                                                // suggest: a draft for staff, nothing is sent
-    await sb.from('chat_messages').insert({ ...common, body: d.text, status: 'draft', actions: brain.actions, flags });
+    const pe = await put({ ...common, body: d.text, status: 'draft', actions: brain.actions, flags });
+    if (pe) return json({ ok: false, status: 'error', reply: '', mode, note: `Could not save the draft: ${pe.slice(0, 160)}` });
     await sb.from('alert_outbox').insert({ kind: 'chat', title: 'AI reply waits for approval', body: `${conv.name ?? 'A customer'} (${channel}) wrote: ${text.slice(0, 120)}`, link: '/ai-chat' });
     return json({ ok: true, status: 'held', reply: '', mode });
   }
   if (d.kind === 'handover') {
     await sb.from('chat_conversations').update({ status: 'Needs a person', human_reason: d.reason.slice(0, 300) }).eq('id', conv.id);
     await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Chat needs a person', body: `${conv.name ?? 'A customer'} (${channel}): ${d.reason.slice(0, 160)}`, link: '/ai-chat' });
-    if (mode === 'suggest') { await sb.from('chat_messages').insert({ ...common, body: d.text || fallbackFor(lang), status: 'draft', actions: [], flags: [d.reason] }); return json({ ok: true, status: 'held', reply: '', mode }); }
-    await sb.from('chat_messages').insert({ ...common, body: d.text, status: 'sent', flags: [d.reason] });
+    if (mode === 'suggest') { await put({ ...common, body: d.text || fallbackFor(lang), status: 'draft', actions: [], flags: [d.reason] }); return json({ ok: true, status: 'held', reply: '', mode }); }
+    await put({ ...common, body: d.text, status: 'sent', flags: [d.reason] });
     return json({ ok: true, status: 'handover', reply: d.text, mode });                                                                         // the customer gets the safe sentence, a person takes over
   }
-  await sb.from('chat_messages').insert({ ...common, body: d.text, status: 'sent' });
+  await put({ ...common, body: d.text, status: 'sent' });
   return json({ ok: true, status: 'reply', reply: d.text, mode, card_url: card ?? '' });
 });
