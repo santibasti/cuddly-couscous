@@ -153,7 +153,7 @@ export function HqBot({ deskColors, scale = 0.74, desk = true, social = false, b
       <title>{label}</title>
       <ellipse className="focusring" cx="0" cy="-30" rx="56" ry="66" fill="none" stroke="#ffd86b" strokeWidth="2" strokeDasharray="5 4" />
       <ellipse cx="0" cy="34" rx="64" ry="9" fill="rgba(0,0,0,.35)" />
-      {desk && <rect x={-(BODY_DIM[look.body].bottom + 5)} y="-66" width={2 * (BODY_DIM[look.body].bottom + 5)} height="68" rx="14" fill="#101c46" stroke="#2a4a9a" strokeWidth="1" />}
+      {desk && <g className="chair" pointerEvents="none"><rect x={-(BODY_DIM[look.body].bottom + 7)} y="-64" width={2 * (BODY_DIM[look.body].bottom + 7)} height="66" rx="15" fill="#1b2748" stroke="#3a4f86" strokeWidth="1.2" /><rect x={-(BODY_DIM[look.body].bottom + 3)} y="-60" width={2 * (BODY_DIM[look.body].bottom + 3)} height="6" rx="3" fill={a.shirt} opacity=".55" /></g>}
       <g className="body" style={away ? { display: 'none' } : undefined}>
         <g transform={`scale(${look.size})`}>
           <g transform={`translate(${-(BODY_DIM[look.body].top + 3.5)} -44)`}><ToyArm cls="armL" accent={a.shirt} w={look.body === 'chunk' ? 11.4 : 9.6} /><Joint accent={a.shirt} r={5.4} /></g>
@@ -164,13 +164,19 @@ export function HqBot({ deskColors, scale = 0.74, desk = true, social = false, b
       </g>
       {bubble && <g className="bub" transform="translate(0 -118)"><rect x="-62" y="-12" width="124" height="22" rx="11" fill="#f4f7ff" /><text y="3" textAnchor="middle" fontSize="9" fontWeight="700" fill="#10204f">{bubble}</text></g>}
       {badge && !away && <g className="badge" transform="translate(30 -92)"><circle r="9" /><text y="3.6" textAnchor="middle" fontSize="10" fontWeight="800">{badge}</text></g>}
-      {desk && <g className="holo-pad" pointerEvents="none"><path d="M36 0L62 0L56 -34L42 -34Z" fill={a.shirt} opacity=".13" /><rect x="40" y="-34" width="18" height="11" rx="2" fill="none" stroke={a.shirt} strokeWidth=".9" opacity=".85" /><path d="M43 -29h8M43 -26h12" stroke={a.shirt} strokeWidth=".8" opacity=".8" /><ellipse cx="49" cy="0" rx="14" ry="2.6" fill={a.shirt} opacity=".5" /></g>}
-      {desk && <><rect x="-66" y="0" width="132" height="9" rx="3" style={{ fill: 'var(--desk1, #19a4d6)' }} stroke="rgba(255,255,255,.55)" strokeWidth=".8" /><rect x="-64" y="8" width="128" height="1.6" rx=".8" fill={a.shirt} opacity=".95" style={{ filter: `drop-shadow(0 0 3px ${a.shirt})` }} />
-      <rect x="-66" y="9" width="132" height="22" rx="3" style={{ fill: 'var(--desk2, #0a1740)' }} stroke="rgba(0,0,0,.35)" strokeWidth=".8" />
-      <g className="kb"><rect x="-22" y="1.5" width="44" height="6" rx="2" fill="#12295f" />{[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <rect key={i} className={`key k${i % 4}`} x={-20 + i * 5} y="3" width="3.6" height="3" rx=".8" />)}</g>
-      <g transform={`translate(${side * 50} -22)`}><rect x="-3" y="14" width="6" height="8" fill="#2a4a9a" /><Screen kind={screen} on={on} /></g></>}
+      {desk && <g className="workstation">
+        <rect x="-70" y="21" width="5" height="14" rx="1.5" fill="#1a2440" /><rect x="65" y="21" width="5" height="14" rx="1.5" fill="#1a2440" />
+        <rect x="-64" y="19" width="128" height="14" rx="2" fill="rgba(6,12,32,.55)" />
+        <g transform={`translate(${-side * 40} 0)`}><rect x="-22" y="19" width="44" height="15" rx="2" style={{ fill: 'var(--desk2, #0a1740)' }} stroke="rgba(255,255,255,.18)" /><rect x="-22" y="19" width="44" height="6" rx="1.5" fill="rgba(255,255,255,.08)" /><rect x="-7" y="27" width="14" height="2.2" rx="1.1" fill={a.shirt} opacity=".9" /></g>
+        <path d="M-72 3H72L80 17H-80Z" style={{ fill: 'var(--desk1, #19a4d6)' }} stroke="rgba(255,255,255,.7)" strokeWidth=".8" />
+        <path d="M-72 3H72L68 6H-68Z" fill="#fff" opacity=".28" />
+        <rect x="-80" y="17" width="160" height="4" rx="1.5" style={{ fill: 'var(--desk2, #0a1740)' }} stroke="rgba(0,0,0,.35)" strokeWidth=".6" /><rect x="-78" y="20.2" width="156" height="1.4" rx=".7" fill={a.shirt} opacity=".95" style={{ filter: `drop-shadow(0 0 3px ${a.shirt})` }} />
+        <g className="kb"><rect x="-21" y="7" width="42" height="7" rx="2" fill="#1b2a52" stroke="#5d7bc0" strokeWidth=".5" />{[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <rect key={i} className={`key k${i % 4}`} x={-19 + i * 5} y="8.4" width="3.6" height="3.4" rx=".8" />)}</g>
+        <ellipse cx={-side * 54} cy="11" rx="8" ry="3" fill="#fff" opacity=".85" /><rect x={-side * 54 - 4} y="5" width="8" height="6" rx="1.4" fill="#f4f7ff" stroke="#9fb4de" strokeWidth=".5" /><path className="steam" d={`M${-side * 54 - 1} 4q-2 -3 0 -6`} fill="none" stroke="rgba(220,240,255,.6)" strokeWidth="1" />
+        <rect x={-side * 32 - 7} y="8" width="14" height="6" rx="1" fill="#fff6c8" opacity=".9" /><path d={`M${-side * 32 - 5} 10.5h10M${-side * 32 - 5} 12.5h7`} stroke="#b8a65a" strokeWidth=".6" />
+        <g transform={`translate(${side * 54} -22)`}><rect x="-3" y="14" width="6" height="9" fill="#33406a" /><rect x="-9" y="22" width="18" height="3" rx="1.5" fill="#33406a" /><Screen kind={screen} on={on} /></g></g>}
       {social && <g className="cup" transform={`translate(${side * -22} -46)`}><rect x="-5" y="-6" width="10" height="11" rx="2" fill="#f4f7ff" /><path d="M5 -3q5 1 0 6" fill="none" stroke="#f4f7ff" strokeWidth="1.6" /><path className="steam" d="M-2 -9q-3 -4 0 -7" fill="none" stroke="rgba(220,240,255,.7)" strokeWidth="1.2" /></g>}
-      <text className="nm" x="0" y="25" textAnchor="middle" fontSize="11" fontWeight="700">{a.name}{planned && !social ? ' · PLANNED' : ''}</text>
+      <text className="nm" x="0" y="33" textAnchor="middle" fontSize="11" fontWeight="700">{a.name}{planned && !social ? ' · PLANNED' : ''}</text>
     </g>
   );
 }
