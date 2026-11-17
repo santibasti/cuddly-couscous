@@ -1,35 +1,31 @@
 // The animated headquarters: nine rooms (seven departments, the Chief of Staff's hub and the café) with the agents moving between them.
 // Everything the characters do comes from agentState() / agentPos() in lib/hq.ts, i.e. from real events (or the labelled demo script). Idle motion is CSS only, never an AI call.
+import { ToyHead, torsoPath } from './HqBot';
+import { BODY_DIM, HEAD_DIM, lookOf } from '@/lib/botlook';
 import { useEffect, useRef, useState } from 'react';
 import { AGENTS, DEPTS, STATE_LABEL, agentPos, agentState, cafeLine, deskPos, hash, inCafe, type AgentDef, type AgentState, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
 
 const EYE: Partial<Record<AgentState, string>> = { error: '#ff5a5a', blocked: '#ff5a5a', awaiting: '#ffc233', done: '#5dff9c', working: '#7fe7ff', received: '#7fe7ff', coordinating: '#a98bff' };
 export function RobotAvatar({ a, state, moving }: { a: AgentDef; state: AgentState; moving: boolean }) {
-  const eye = EYE[state] ?? '#7fe4ff'; const ac = a.shirt; const id = a.key;
+  const ac = a.shirt; const id = a.key; const look = lookOf(a.key); const { top: bt, bottom: bb } = BODY_DIM[look.body]; const k = 0.6, sc = 0.62;
+  const neckY = (2 * HEAD_DIM[look.head].ry + (look.ant === 'none' ? 1.5 : 9)) * sc + 1.5; const y0 = neckY + 0.5, y1 = 46; const t = bt * k, b = bb * k;
+  const foot = (x: number) => look.feet === 'wheel' ? <g><circle cx={x} cy="53" r="4.3" fill="#2a3555" stroke="#9fb4de" strokeWidth=".5" /><circle cx={x} cy="53" r="1.7" fill={ac} /></g> : <rect x={x - (look.feet === 'big' ? 5.2 : 4.6)} y={look.feet === 'big' ? 50.4 : 51} width={look.feet === 'big' ? 10.4 : 9.2} height={look.feet === 'big' ? 6.4 : 5.6} rx="2.8" fill={ac} stroke="#0b1230" strokeWidth=".5" />;
   return (
-    <svg className={`av ${moving ? 'walk' : ''}`} viewBox="0 0 44 60" width="100%" aria-hidden>
+    <svg className={`av ${moving ? 'walk' : ''}`} viewBox="0 0 44 60" width="100%" aria-hidden style={{ ['--eye' as string]: EYE[state] ?? '#7fe4ff' }}>
       <defs>
-        <linearGradient id={`bd-${id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#b3c4e6" /></linearGradient>
-        <radialGradient id={`sh-${id}`} cx=".34" cy=".28" r=".95"><stop offset="0" stopColor="#ffffff" /><stop offset=".55" stopColor="#eaf0fc" /><stop offset="1" stopColor="#a9bbe0" /></radialGradient>
-        <linearGradient id={`vz-${id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1d2f6c" /><stop offset="1" stopColor="#060c22" /></linearGradient>
+        <linearGradient id="botg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#b3c4e6" /></linearGradient>
+        <radialGradient id="shell" cx=".34" cy=".28" r=".95"><stop offset="0" stopColor="#ffffff" /><stop offset=".55" stopColor="#eaf0fc" /><stop offset="1" stopColor="#a9bbe0" /></radialGradient>
+        <linearGradient id="visor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1d2f6c" /><stop offset="1" stopColor="#060c22" /></linearGradient>
       </defs>
-      <ellipse cx="22" cy="57" rx="12" ry="2.4" fill="rgba(0,0,0,.4)" />
-      <g className="leg l"><rect x="14" y="42" width="6.4" height="11" rx="3.2" fill={`url(#bd-${id})`} stroke="#9fb4de" strokeWidth=".5" /><rect x="12.6" y="51" width="9.2" height="5.6" rx="2.8" fill={ac} stroke="#0b1230" strokeWidth=".5" /></g>
-      <g className="leg r"><rect x="23.6" y="42" width="6.4" height="11" rx="3.2" fill={`url(#bd-${id})`} stroke="#9fb4de" strokeWidth=".5" /><rect x="22.2" y="51" width="9.2" height="5.6" rx="2.8" fill={ac} stroke="#0b1230" strokeWidth=".5" /></g>
-      <g className="arm l"><rect x="5" y="26" width="6" height="15" rx="3" fill={`url(#bd-${id})`} stroke="#9fb4de" strokeWidth=".5" /><circle cx="8" cy="41.5" r="3" fill="#4a5778" /><circle cx="8" cy="27" r="2.6" fill="#dfe6f5" stroke="#8fa8d8" strokeWidth=".4" /><circle cx="8" cy="27" r="1" fill={ac} /></g>
-      <g className="arm r"><rect x="33" y="26" width="6" height="15" rx="3" fill={`url(#bd-${id})`} stroke="#9fb4de" strokeWidth=".5" /><circle cx="36" cy="41.5" r="3" fill="#4a5778" /><circle cx="36" cy="27" r="2.6" fill="#dfe6f5" stroke="#8fa8d8" strokeWidth=".4" /><circle cx="36" cy="27" r="1" fill={ac} /></g>
-      <rect x="11" y="24" width="22" height="22" rx="8.5" fill={`url(#bd-${id})`} stroke="#9fb4de" strokeWidth=".5" />
-      <circle cx="22" cy="33" r="4.6" fill="#0b1b45" stroke="#9fb4de" strokeWidth=".5" /><circle cx="22" cy="33" r="2.3" fill={ac} />
-      <rect x="11" y="41" width="22" height="3" fill={ac} opacity=".9" />
-      <line x1="22" y1="2.4" x2="22" y2="0.2" stroke="#9fb4de" strokeWidth="1" /><circle className="ant" cx="22" cy="0.9" r="1.5" fill={eye} />
-      <circle cx="8.4" cy="14.5" r="2.7" fill="#25304f" stroke="#9fb4de" strokeWidth=".6" />
-      <ellipse cx="22" cy="14" rx="14" ry="12.6" fill={`url(#sh-${id})`} stroke="#9fb4de" strokeWidth=".6" />
-      <path d="M12.5 6.4Q22 1.4 31.5 6.4" fill="none" stroke={ac} strokeWidth="1.7" strokeLinecap="round" />
-      <ellipse cx="21.4" cy="14.4" rx="10.6" ry="8.4" fill={`url(#vz-${id})`} stroke="#0b1230" strokeWidth=".6" />
-      <path d="M14.6 10.2Q20 7 26 8.6" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1.2" strokeLinecap="round" />
-      <g className="eyes"><circle cx="17.6" cy="14.4" r="2.3" fill={eye} /><circle cx="25.4" cy="14.4" r="2.3" fill={eye} /></g>
-      {state === 'error' || state === 'blocked' ? <path d="M19 19.6q2.4 -1.8 4.8 0" stroke={eye} strokeWidth=".9" fill="none" /> : <path d="M19 19q2.4 1.8 4.8 0" stroke={eye} strokeWidth=".9" fill="none" />}
-      <circle cx="35.6" cy="14.5" r="5" fill="#1b2750" stroke="#9fb4de" strokeWidth=".8" /><circle cx="35.6" cy="14.5" r="3.3" fill="none" stroke={ac} strokeWidth="1.1" /><circle cx="35.6" cy="14.5" r="1.6" fill="#070d24" />
+      <ellipse cx="22" cy="57.4" rx="12" ry="2.2" fill="rgba(0,0,0,.4)" />
+      <g className="leg l"><rect x={22 - b * 0.55 - 3.2} y="42" width="6.4" height="11" rx="3.2" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".5" />{foot(22 - b * 0.55)}</g>
+      <g className="leg r"><rect x={22 + b * 0.55 - 3.2} y="42" width="6.4" height="11" rx="3.2" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".5" />{foot(22 + b * 0.55)}</g>
+      <g className="arm l"><rect x={22 - t - 6.5} y={y0 + 1} width="6" height="14" rx="3" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".5" /><circle cx={22 - t - 3.5} cy={y0 + 15.5} r="3" fill="#4a5778" /><circle cx={22 - t - 3.5} cy={y0 + 2} r="2.4" fill="#dfe6f5" stroke="#8fa8d8" strokeWidth=".4" /><circle cx={22 - t - 3.5} cy={y0 + 2} r="1" fill={ac} /></g>
+      <g className="arm r"><rect x={22 + t + 0.5} y={y0 + 1} width="6" height="14" rx="3" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".5" /><circle cx={22 + t + 3.5} cy={y0 + 15.5} r="3" fill="#4a5778" /><circle cx={22 + t + 3.5} cy={y0 + 2} r="2.4" fill="#dfe6f5" stroke="#8fa8d8" strokeWidth=".4" /><circle cx={22 + t + 3.5} cy={y0 + 2} r="1" fill={ac} /></g>
+      <path d={torsoPath(t, b, y0, y1)} transform="translate(22 0)" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".5" />
+      <circle cx="22" cy={y0 + (y1 - y0) * 0.36} r="4.2" fill="#0b1b45" stroke="#9fb4de" strokeWidth=".5" /><circle cx="22" cy={y0 + (y1 - y0) * 0.36} r="2.1" fill={ac} />
+      <rect x={22 - b + 0.5} y={y1 - 4.5} width={2 * b - 1} height="2.8" fill={ac} opacity=".9" />
+      <g transform={`translate(22 ${neckY}) scale(${sc})`} className={`av-head s-${state}`}><ToyHead accent={ac} look={look} /></g>
     </svg>
   );
 }
@@ -83,6 +79,7 @@ export function HqOffice({ events, now, selected, onPick, still, onRoom, kpis }:
 }
 
 const CSS = `
+.av .eye,.av .ant{fill:var(--eye)}.av .mouth{stroke:var(--eye)}
 .hq-scene{position:relative;container-type:inline-size;width:100%;aspect-ratio:16/12;min-height:400px;border-radius:16px;overflow:hidden;background:radial-gradient(ellipse at 50% 45%,#0e2a6b 0,#08163d 55%,#040b22 100%);border:1px solid rgba(120,160,255,.25);box-shadow:0 0 40px rgba(40,90,255,.15) inset;--u:clamp(30px,3.7cqw,58px)}
 .hq-scene:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(120,160,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(120,160,255,.06) 1px,transparent 1px);background-size:5% 8%;pointer-events:none}
 .hq-room{position:absolute;box-sizing:border-box;border:1px solid rgba(130,170,255,.28);border-radius:12px;background:linear-gradient(180deg,rgba(20,45,120,.45),rgba(10,24,70,.35));cursor:pointer}

@@ -2,6 +2,7 @@
 // The pose comes from the agent's real state (see poseOf); only breathing, blinking and a slow look-around are decorative and always allowed.
 import type { AgentDef, AgentState } from '@/lib/hq';
 import { STATE_LABEL, hash } from '@/lib/hq';
+import { BODY_DIM, HEAD_DIM, lookOf, type Look } from '@/lib/botlook';
 
 export type Pose = 'idle' | 'typing' | 'review' | 'notify' | 'handoff' | 'waiting' | 'cheer' | 'blocked' | 'rest' | 'social';
 /** The single place where an operational state becomes a pose. A planned (not connected) agent can only rest. */
@@ -60,44 +61,88 @@ function Prop({ kind, accent }: { kind: PropKind; accent: string }) {
 function Joint({ cx = 0, cy = 0, accent, r = 5 }: { cx?: number; cy?: number; accent: string; r?: number }) {
   return <g><circle cx={cx} cy={cy} r={r} fill="#dfe6f5" stroke="#8fa8d8" strokeWidth=".8" /><circle cx={cx} cy={cy} r={r * 0.42} fill={accent} /></g>;
 }
-/** One arm: upper arm, elbow joint, forearm, a grey gripper hand and (right hand only) the prop. */
-function ToyArm({ cls, accent, prop, held }: { cls: string; accent: string; prop?: PropKind; held?: boolean }) {
+/** One arm: upper arm, elbow joint, forearm, a grey gripper hand and (right hand only) the prop. `w` = how thick the arm is. */
+function ToyArm({ cls, accent, prop, held, w = 9.6 }: { cls: string; accent: string; prop?: PropKind; held?: boolean; w?: number }) {
+  const h = w / 2;
   return (
-    <g className={`arm ${cls}`}><rect x="-4.8" y="0" width="9.6" height="20" rx="4.8" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" />
-      <g transform="translate(0 19)"><g className="fore"><Joint accent={accent} r={4.6} /><rect x="-4.2" y="2" width="8.4" height="15" rx="4.2" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><circle cx="0" cy="18" r="5" fill="#4a5778" stroke="#9fb4de" strokeWidth=".7" /><circle cx="0" cy="18" r="2" fill={accent} opacity=".9" />
+    <g className={`arm ${cls}`}><rect x={-h} y="0" width={w} height="20" rx={h} fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" />
+      <g transform="translate(0 19)"><g className="fore"><Joint accent={accent} r={h - 0.2} /><rect x={-h + 0.6} y="2" width={w - 1.2} height="15" rx={h - 0.6} fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><circle cx="0" cy="18" r={h + 0.2} fill="#4a5778" stroke="#9fb4de" strokeWidth=".7" /><circle cx="0" cy="18" r="2" fill={accent} opacity=".9" />
         {prop && <g className={held ? 'held' : ''} transform="translate(0 18)"><Prop kind={prop} accent={accent} /></g>}</g></g></g>
   );
 }
-/** The round head, seen from the front: glossy shell, big dark visor with glowing eyes, a lens ring on the side, an accent stripe. */
-function ToyHead({ accent, ant }: { accent: string; ant: boolean }) {
+/** The head of one robot: shell shape, face (pair of eyes, wide visor, one big eye, visor band or a screen), ears (lens, headphones, headset) and antenna all come from its own Look. Neck at (0,0). */
+export function ToyHead({ accent, look }: { accent: string; look: Look }) {
+  const { rx, ry } = HEAD_DIM[look.head]; const cy = -(ry + 1.5); const top = cy - ry;
+  const vr = look.face === 'wide' ? { x: rx * 0.9, y: ry * 0.8 } : { x: rx * 0.76, y: ry * 0.64 };
+  const eyeX = look.face === 'wide' ? rx * 0.3 : rx * 0.31;
   return (
     <>
       <rect x="-4.5" y="-4" width="9" height="6" rx="2" fill="#9fb4de" />
-      {ant && <g><line x1="0" y1="-39" x2="0" y2="-46" stroke="#9fb4de" strokeWidth="1.6" /><circle className="ant" cx="0" cy="-47" r="2.8" /></g>}
-      <circle cx="-22" cy="-20" r="5.4" fill="#25304f" stroke="#9fb4de" strokeWidth="1.2" /><circle cx="-22" cy="-20" r="2.4" fill={accent} opacity=".9" />
-      <ellipse cx="0" cy="-21" rx="22" ry="19.5" fill="url(#shell)" stroke="#9fb4de" strokeWidth=".9" />
-      <path d="M-15 -34Q0 -43 15 -34" fill="none" stroke={accent} strokeWidth="2.6" strokeLinecap="round" />
-      <ellipse cx="-1" cy="-21" rx="16.5" ry="12.8" fill="url(#visor)" stroke="#0b1230" strokeWidth="1" />
-      <path d="M-11 -28Q-3 -33.5 6 -30.5" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="2" strokeLinecap="round" />
-      <g transform="translate(-1 -21)"><g className="eyes"><circle className="eye" cx="-6.4" cy="0" r="3.4" /><circle className="eye" cx="6.4" cy="0" r="3.4" /><circle cx="-7.4" cy="-1.1" r=".9" fill="#fff" opacity=".85" /><circle cx="5.4" cy="-1.1" r=".9" fill="#fff" opacity=".85" /></g></g>
-      <path className="mouth" d="M-4 -12.6q4 2.4 8 0" fill="none" strokeWidth="1.1" />
-      <circle cx="22" cy="-20" r="8" fill="#1b2750" stroke="#9fb4de" strokeWidth="1.4" /><circle cx="22" cy="-20" r="5.3" fill="none" stroke={accent} strokeWidth="1.8" /><circle cx="22" cy="-20" r="2.6" fill="#070d24" /><circle cx="21" cy="-21" r=".9" fill="#fff" opacity=".8" />
+      {look.ant === 'ball' && <g><line x1="0" y1={top + 1} x2="0" y2={top - 6} stroke="#9fb4de" strokeWidth="1.6" /><circle className="ant" cx="0" cy={top - 7} r="2.8" /></g>}
+      {look.ant === 'wire' && <g><path d={`M-5 ${top + 2}Q-12 ${top - 12} 4 ${top - 9}`} fill="none" stroke="#9fb4de" strokeWidth="1.4" /><circle className="ant" cx="4" cy={top - 9} r="2.6" /></g>}
+      {look.ears === 'phones' && <path d={`M${-rx - 1} ${cy}Q0 ${top - 12} ${rx + 1} ${cy}`} fill="none" stroke="#25304f" strokeWidth="3.2" strokeLinecap="round" />}
+      {look.ears === 'headset' && <path d={`M${-rx} ${cy + 4}Q${-rx + 2} ${cy + ry * 0.95} ${-rx + 11} ${cy + ry * 0.92}`} fill="none" stroke="#25304f" strokeWidth="1.8" strokeLinecap="round" />}
+      {look.head === 'square' ? <rect x={-rx} y={top} width={2 * rx} height={2 * ry} rx="11" fill="url(#shell)" stroke="#9fb4de" strokeWidth=".9" /> : <ellipse cx="0" cy={cy} rx={rx} ry={ry} fill="url(#shell)" stroke="#9fb4de" strokeWidth=".9" />}
+      <path d={look.head === 'square' ? `M${-rx + 6} ${top + 3}H${rx - 6}` : `M${-rx * 0.7} ${top + ry * 0.2}Q0 ${top - 4} ${rx * 0.7} ${top + ry * 0.2}`} fill="none" stroke={accent} strokeWidth="2.6" strokeLinecap="round" />
+      {look.face === 'cyclops' ? <><circle cx="0" cy={cy} r={Math.min(rx, ry) * 0.66} fill="url(#visor)" stroke="#0b1230" strokeWidth="1" /><circle cx="0" cy={cy} r={Math.min(rx, ry) * 0.46} fill="none" stroke={accent} strokeWidth="1.8" opacity=".9" /></>
+        : look.face === 'band' ? <rect x={-rx * 0.82} y={cy - ry * 0.3} width={rx * 1.64} height={ry * 0.62} rx={ry * 0.3} fill="url(#visor)" stroke="#0b1230" strokeWidth="1" />
+        : look.face === 'screen' ? <rect x={-rx * 0.8} y={cy - ry * 0.66} width={rx * 1.6} height={ry * 1.32} rx="7" fill="url(#visor)" stroke="#0b1230" strokeWidth="1" />
+        : <ellipse cx="-1" cy={cy} rx={vr.x} ry={vr.y} fill="url(#visor)" stroke="#0b1230" strokeWidth="1" />}
+      {look.face !== 'cyclops' && <path d={`M${-rx * 0.55} ${cy - ry * 0.42}Q${-rx * 0.15} ${cy - ry * 0.68} ${rx * 0.3} ${cy - ry * 0.52}`} fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="2" strokeLinecap="round" />}
+      <g transform={`translate(-1 ${cy})`}><g className="eyes">
+        {look.face === 'cyclops' ? <><circle className="eye" cx="0" cy="0" r={Math.min(rx, ry) * 0.27} /><circle cx="-2" cy="-2" r="1.1" fill="#fff" opacity=".85" /></>
+          : look.face === 'band' ? <><rect className="eye" x={-eyeX - 3.8} y="-1.8" width="7.6" height="3.6" rx="1.6" /><rect className="eye" x={eyeX - 3.8} y="-1.8" width="7.6" height="3.6" rx="1.6" /></>
+          : look.face === 'screen' ? <><rect className="eye" x={-eyeX - 3.2} y="-5" width="6.4" height="6.4" rx="2.2" /><rect className="eye" x={eyeX - 3.2} y="-5" width="6.4" height="6.4" rx="2.2" /></>
+          : <><circle className="eye" cx={-eyeX} cy="0" r={look.face === 'wide' ? 2.9 : 3.4} /><circle className="eye" cx={eyeX} cy="0" r={look.face === 'wide' ? 2.9 : 3.4} /><circle cx={-eyeX - 1} cy="-1.1" r=".9" fill="#fff" opacity=".85" /><circle cx={eyeX - 1} cy="-1.1" r=".9" fill="#fff" opacity=".85" /></>}
+      </g></g>
+      {(look.face === 'pair' || look.face === 'wide') && <path className="mouth" d={`M-4 ${cy + vr.y * 0.62}q4 2.4 8 0`} fill="none" strokeWidth="1.1" />}
+      {look.face === 'screen' && <path className="mouth" d={`M-5 ${cy + ry * 0.38}q5 3.2 10 0`} fill="none" strokeWidth="1.3" />}
+      {look.ears === 'lens' && <><circle cx={-rx} cy={cy} r="5.2" fill="#25304f" stroke="#9fb4de" strokeWidth="1.2" /><circle cx={-rx} cy={cy} r="2.3" fill={accent} opacity=".9" /><circle cx={rx} cy={cy} r="8" fill="#1b2750" stroke="#9fb4de" strokeWidth="1.4" /><circle cx={rx} cy={cy} r="5.3" fill="none" stroke={accent} strokeWidth="1.8" /><circle cx={rx} cy={cy} r="2.6" fill="#070d24" /><circle cx={rx - 1} cy={cy - 1} r=".9" fill="#fff" opacity=".8" /></>}
+      {look.ears === 'phones' && <><circle cx={-rx - 1} cy={cy} r="6.6" fill="#25304f" stroke="#9fb4de" strokeWidth="1.2" /><circle cx={-rx - 1} cy={cy} r="3.4" fill={accent} opacity=".9" /><circle cx={rx + 1} cy={cy} r="6.6" fill="#25304f" stroke="#9fb4de" strokeWidth="1.2" /><circle cx={rx + 1} cy={cy} r="3.4" fill={accent} opacity=".9" /></>}
+      {look.ears === 'headset' && <><circle cx={-rx} cy={cy} r="6.4" fill="#25304f" stroke="#9fb4de" strokeWidth="1.2" /><circle cx={-rx} cy={cy} r="3" fill={accent} opacity=".9" /><circle cx={-rx + 11} cy={cy + ry * 0.92} r="2.4" fill="#0b1230" stroke={accent} strokeWidth="1" /><circle cx={rx} cy={cy} r="4.6" fill="#25304f" stroke="#9fb4de" strokeWidth="1" /></>}
+      {look.ears === 'none' && <><circle cx={-rx} cy={cy} r="2.6" fill="#9fb4de" /><circle cx={rx} cy={cy} r="2.6" fill="#9fb4de" /></>}
     </>
   );
 }
-function ToyTorso({ accent }: { accent: string }) {
+/** The same head seen from behind (no face) or from the side (one eye, the ear in the middle). */
+export function ToyHeadView({ accent, look, view }: { accent: string; look: Look; view: 'back' | 'side' }) {
+  const { rx: r0, ry } = HEAD_DIM[look.head]; const cy = -(ry + 1.5); const top = cy - ry; const rx = view === 'side' ? r0 * 0.9 : r0; const fx = rx * 0.42;
   return (
     <>
-      <rect x="-17" y="-53" width="34" height="55" rx="14" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".8" />
-      <circle cx="0" cy="-35" r="8" fill="#0b1b45" stroke="#9fb4de" strokeWidth="1" /><circle cx="0" cy="-35" r="4" fill={accent} style={{ filter: `drop-shadow(0 0 4px ${accent})` }} /><circle cx="-1" cy="-36" r="1.1" fill="#fff" opacity=".8" />
-      <rect x="-17" y="-19" width="34" height="5" fill={accent} opacity=".9" />
+      <rect x="-3.8" y="-4" width="7.6" height="6" rx="2" fill="#9fb4de" />
+      {look.ant === 'ball' && <g><line x1="0" y1={top + 1} x2="0" y2={top - 6} stroke="#9fb4de" strokeWidth="1.6" /><circle className="ant" cx="0" cy={top - 7} r="2.8" /></g>}
+      {look.ant === 'wire' && <g><path d={`M-4 ${top + 2}Q-10 ${top - 12} 4 ${top - 9}`} fill="none" stroke="#9fb4de" strokeWidth="1.4" /><circle className="ant" cx="4" cy={top - 9} r="2.6" /></g>}
+      {look.ears === 'phones' && <path d={view === 'side' ? `M${-rx * 0.1} ${cy - 5}Q${-rx * 0.1} ${top - 9} ${rx * 0.45} ${top + 1}` : `M${-rx - 1} ${cy}Q0 ${top - 12} ${rx + 1} ${cy}`} fill="none" stroke="#25304f" strokeWidth="3.2" strokeLinecap="round" />}
+      {view === 'side' || look.head !== 'square' ? <ellipse cx="0" cy={cy} rx={rx} ry={ry} fill="url(#shell)" stroke="#9fb4de" strokeWidth=".9" /> : <rect x={-rx} y={top} width={2 * rx} height={2 * ry} rx="11" fill="url(#shell)" stroke="#9fb4de" strokeWidth=".9" />}
+      <path d={`M${-rx * 0.7} ${top + ry * 0.2}Q0 ${top - 4} ${rx * 0.7} ${top + ry * 0.2}`} fill="none" stroke={accent} strokeWidth="2.6" strokeLinecap="round" />
+      {view === 'back' ? <><rect x={-rx * 0.5} y={cy - ry * 0.45} width={rx} height={ry * 0.62} rx={ry * 0.3} fill="#cfd8ee" stroke="#9fb4de" strokeWidth=".7" /><rect x="-5" y={cy + ry * 0.3} width="10" height="3" rx="1.5" fill={accent} opacity=".85" />
+        {look.ears !== 'none' && look.ears !== 'phones' && <><circle cx={-rx} cy={cy} r="5" fill="#25304f" stroke="#9fb4de" strokeWidth="1.1" /><circle cx={rx} cy={cy} r={look.ears === 'lens' ? 7.4 : 5} fill="#1b2750" stroke="#9fb4de" strokeWidth="1.2" /><circle cx={rx} cy={cy} r="3" fill="none" stroke={accent} strokeWidth="1.4" /></>}
+        {look.ears === 'phones' && <><circle cx={-rx - 1} cy={cy} r="6.6" fill="#25304f" stroke="#9fb4de" strokeWidth="1.2" /><circle cx={rx + 1} cy={cy} r="6.6" fill="#25304f" stroke="#9fb4de" strokeWidth="1.2" /></>}</>
+        : <>
+          {look.face === 'cyclops' ? <circle cx={fx} cy={cy} r={Math.min(rx, ry) * 0.56} fill="url(#visor)" stroke="#0b1230" strokeWidth="1" /> : look.face === 'screen' ? <rect x={fx - rx * 0.4} y={cy - ry * 0.62} width={rx * 0.95} height={ry * 1.24} rx="6" fill="url(#visor)" stroke="#0b1230" strokeWidth="1" /> : <ellipse cx={fx} cy={cy} rx={rx * 0.6} ry={ry * (look.face === 'wide' ? 0.8 : look.face === 'band' ? 0.36 : 0.64)} fill="url(#visor)" stroke="#0b1230" strokeWidth="1" />}
+          <circle className="eye" cx={fx + rx * 0.14} cy={cy} r={look.face === 'cyclops' ? 4.2 : look.face === 'band' ? 2.2 : 3.2} /><circle cx={fx + rx * 0.08} cy={cy - 1.2} r=".9" fill="#fff" opacity=".85" />
+          <circle cx={-rx * 0.12} cy={cy} r={look.ears === 'lens' ? 7 : 6} fill="#1b2750" stroke="#9fb4de" strokeWidth="1.3" /><circle cx={-rx * 0.12} cy={cy} r={look.ears === 'lens' ? 4.6 : 3.2} fill="none" stroke={accent} strokeWidth="1.7" /><circle cx={-rx * 0.12} cy={cy} r="2" fill="#070d24" />
+          {look.ears === 'headset' && <path d={`M${-rx * 0.12} ${cy + 5}Q${rx * 0.2} ${cy + ry * 0.9} ${rx * 0.55} ${cy + ry * 0.8}`} fill="none" stroke="#25304f" strokeWidth="1.8" strokeLinecap="round" />}
+        </>}
     </>
   );
 }
-
+/** Outline of a body that is `t` wide at the shoulders and `b` wide at the hips (half widths), from y=-53 to y=2. */
+export const torsoPath = (t: number, b: number, y0 = -53, y1 = 2) => { const r = Math.min(13, t * 0.8), r2 = Math.min(11, b * 0.7); return `M${-t + r} ${y0}H${t - r}Q${t} ${y0} ${t} ${y0 + r}L${b} ${y1 - r2}Q${b} ${y1} ${b - r2} ${y1}H${-b + r2}Q${-b} ${y1} ${-b} ${y1 - r2}L${-t} ${y0 + r}Q${-t} ${y0} ${-t + r} ${y0}Z`; };
+function ToyTorso({ accent, look }: { accent: string; look: Look }) {
+  const { top, bottom } = BODY_DIM[look.body];
+  return (
+    <>
+      <path d={torsoPath(top, bottom)} fill="url(#botg)" stroke="#9fb4de" strokeWidth=".8" />
+      {look.face === 'screen' ? <g><rect x="-9" y="-43" width="18" height="13" rx="3" fill="#0b1b45" stroke="#9fb4de" strokeWidth="1" />{[-40, -36, -32].map((y, i) => <rect key={y} x="-6.5" y={y} width={13 - i * 3} height="2" rx="1" fill={accent} />)}</g>
+        : <><circle cx="0" cy="-35" r="8" fill="#0b1b45" stroke="#9fb4de" strokeWidth="1" /><circle cx="0" cy="-35" r="4" fill={accent} style={{ filter: `drop-shadow(0 0 4px ${accent})` }} /><circle cx="-1" cy="-36" r="1.1" fill="#fff" opacity=".8" /></>}
+      <rect x={-bottom + 1} y="-19" width={2 * bottom - 2} height="5" fill={accent} opacity=".9" />
+    </>
+  );
+}
 export interface BotProps { scale?: number; desk?: boolean; social?: boolean; bubble?: string | null; a: AgentDef; x: number; y: number; side: 1 | -1; state: AgentState; dept: string; planned: boolean; screen: ScreenKind; selected: boolean; away?: boolean; onPick: () => void }
 export function HqBot({ scale = 0.74, desk = true, social = false, bubble, a, x, y, side, state, dept, planned, screen, selected, away, onPick }: BotProps) {
-  const pose: Pose = social ? 'social' : poseOf(state, planned, a.key, dept); const h = hash(a.key);
+  const pose: Pose = social ? 'social' : poseOf(state, planned, a.key, dept); const h = hash(a.key); const look = lookOf(a.key);
   const sty = { ['--d' as string]: `${-(h % 70) / 10}s`, ['--p' as string]: `${4 + (h % 30) / 10}s`, ['--tp' as string]: `${0.24 + (h % 17) / 100}s`, ['--side' as string]: side };
   const label = `${a.name}, ${a.role}: ${planned ? 'planned, not connected yet' : STATE_LABEL[state]}`;
   const on = !planned && (state === 'working' || state === 'received' || state === 'coordinating');
@@ -108,12 +153,14 @@ export function HqBot({ scale = 0.74, desk = true, social = false, bubble, a, x,
       <title>{label}</title>
       <ellipse className="focusring" cx="0" cy="-30" rx="56" ry="66" fill="none" stroke="#ffd86b" strokeWidth="2" strokeDasharray="5 4" />
       <ellipse cx="0" cy="34" rx="64" ry="9" fill="rgba(0,0,0,.35)" />
-      {desk && <rect x="-22" y="-66" width="44" height="68" rx="14" fill="#101c46" stroke="#2a4a9a" strokeWidth="1" />}
+      {desk && <rect x={-(BODY_DIM[look.body].bottom + 5)} y="-66" width={2 * (BODY_DIM[look.body].bottom + 5)} height="68" rx="14" fill="#101c46" stroke="#2a4a9a" strokeWidth="1" />}
       <g className="body" style={away ? { display: 'none' } : undefined}>
-        <g transform="translate(-20 -44)"><ToyArm cls="armL" accent={a.shirt} /><Joint accent={a.shirt} r={5.4} /></g>
-        <g transform="translate(20 -44)"><ToyArm cls="armR" accent={a.shirt} prop={propOf(a.key)} held /><Joint accent={a.shirt} r={5.4} /></g>
-        <ToyTorso accent={a.shirt} />
-        <g transform="translate(0 -54)"><g className="head"><ToyHead accent={a.shirt} ant={hash(a.key) % 3 === 0} /></g></g>
+        <g transform={`scale(${look.size})`}>
+          <g transform={`translate(${-(BODY_DIM[look.body].top + 3.5)} -44)`}><ToyArm cls="armL" accent={a.shirt} w={look.body === 'chunk' ? 11.4 : 9.6} /><Joint accent={a.shirt} r={5.4} /></g>
+          <g transform={`translate(${BODY_DIM[look.body].top + 3.5} -44)`}><ToyArm cls="armR" accent={a.shirt} prop={propOf(a.key)} held w={look.body === 'chunk' ? 11.4 : 9.6} /><Joint accent={a.shirt} r={5.4} /></g>
+          <ToyTorso accent={a.shirt} look={look} />
+          <g transform="translate(0 -54)"><g className="head"><ToyHead accent={a.shirt} look={look} /></g></g>
+        </g>
       </g>
       {bubble && <g className="bub" transform="translate(0 -118)"><rect x="-62" y="-12" width="124" height="22" rx="11" fill="#f4f7ff" /><text y="3" textAnchor="middle" fontSize="9" fontWeight="700" fill="#10204f">{bubble}</text></g>}
       {badge && !away && <g className="badge" transform="translate(30 -92)"><circle r="9" /><text y="3.6" textAnchor="middle" fontSize="10" fontWeight="800">{badge}</text></g>}
@@ -185,34 +232,33 @@ export const BOT_CSS = `
 .still .bot *{animation-play-state:paused!important}
 `;
 
-/** A standing robot that walks. Seen from the side when it walks along the corridor (real stepping legs), from the front or back when it walks toward or away from the viewer. Same toy-robot look as the seated ones. */
+/** A standing robot that walks. Seen from the side when it walks along the corridor (real stepping legs), from the front or back when it walks toward or away from the viewer. Same shape as its seated self. */
 export function HqWalker({ a, x, y, dir, moving, carrying, give, prop, scale = 0.74 }: { scale?: number; prop?: 'card' | 'cup' | 'mop'; a: AgentDef; x: number; y: number; dir: { x: number; y: number }; moving: boolean; carrying: boolean; give: boolean }) {
-  const view: 'side' | 'front' | 'back' = Math.abs(dir.x) > 0 ? 'side' : dir.y < 0 ? 'back' : 'front'; const f = dir.x < 0 ? -1 : 1; const h = hash(a.key); const ac = a.shirt;
+  const view: 'side' | 'front' | 'back' = Math.abs(dir.x) > 0 ? 'side' : dir.y < 0 ? 'back' : 'front'; const f = dir.x < 0 ? -1 : 1; const h = hash(a.key); const ac = a.shirt; const look = a.key === 'cleaner' ? lookOf('cleaner') : lookOf(a.key); const { top: bt, bottom: bb } = BODY_DIM[look.body]; const aw = look.body === 'chunk' ? 11 : 9.2;
   const card = <g className="wk-card" transform="translate(0 -4)"><rect x="-12" y="-8" width="24" height="16" rx="4" /><path d="M-6 -3l6 4.5l6 -4.5" fill="none" stroke="#06122e" strokeWidth="1.3" /></g>;
-  const leg = (cls: string, x0: number) => <g transform={`translate(${x0} -36)`}><g className={`wk-leg ${cls}`}><rect x="-5" y="0" width="10" height="19" rx="5" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><g transform="translate(0 18)"><g className="wk-shin"><circle r="4.4" fill="#dfe6f5" stroke="#8fa8d8" strokeWidth=".7" /><circle r="1.8" fill={ac} /><rect x="-4.6" y="2" width="9.2" height="14" rx="4.6" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><rect x={view === 'side' ? -5 : -7} y="13" width={view === 'side' ? 16 : 14} height="8" rx="4" fill={ac} stroke="#0b1230" strokeWidth=".7" /></g></g></g></g>;
-  const arm = (cls: string, x0: number, withProp = false) => <g transform={`translate(${x0} -78)`}><g className={`wk-arm ${cls}`}><rect x="-4.6" y="0" width="9.2" height="19" rx="4.6" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><g transform="translate(0 18)"><g className="wk-fore"><Joint accent={ac} r={4.4} /><rect x="-4" y="2" width="8" height="14" rx="4" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><circle cy="17" r="4.8" fill="#4a5778" stroke="#9fb4de" strokeWidth=".7" />{withProp && view !== 'back' && !prop && <g transform="translate(0 17)" className="wk-tool"><Prop kind={propOf(a.key)} accent={ac} /></g>}</g></g></g></g>;
-  const lift = give && !moving;
+  const foot = (side: boolean) => look.feet === 'wheel' ? <g><circle cy="17" r="6.6" fill="#2a3555" stroke="#9fb4de" strokeWidth=".8" /><circle cy="17" r="2.6" fill={ac} /></g>
+    : look.feet === 'big' ? <rect x={side ? -5.5 : -8} y="12" width={side ? 18 : 16} height="9.5" rx="4.8" fill={ac} stroke="#0b1230" strokeWidth=".7" />
+    : <rect x={side ? -5 : -7} y="13" width={side ? 16 : 14} height="8" rx="4" fill={ac} stroke="#0b1230" strokeWidth=".7" />;
+  const leg = (cls: string, x0: number) => <g transform={`translate(${x0} -36)`}><g className={`wk-leg ${cls}`}><rect x="-5" y="0" width="10" height="19" rx="5" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><g transform="translate(0 18)"><g className="wk-shin"><circle r="4.4" fill="#dfe6f5" stroke="#8fa8d8" strokeWidth=".7" /><circle r="1.8" fill={ac} /><rect x="-4.6" y="2" width="9.2" height="14" rx="4.6" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" />{foot(view === 'side')}</g></g></g></g>;
+  const arm = (cls: string, x0: number, withProp = false) => <g transform={`translate(${x0} -78)`}><g className={`wk-arm ${cls}`}><rect x={-aw / 2} y="0" width={aw} height="19" rx={aw / 2} fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><g transform="translate(0 18)"><g className="wk-fore"><Joint accent={ac} r={aw / 2 - 0.2} /><rect x={-aw / 2 + 0.6} y="2" width={aw - 1.2} height="14" rx={aw / 2 - 0.6} fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><circle cy="17" r={aw / 2 + 0.2} fill="#4a5778" stroke="#9fb4de" strokeWidth=".7" />{withProp && view !== 'back' && !prop && <g transform="translate(0 17)" className="wk-tool"><Prop kind={propOf(a.key)} accent={ac} /></g>}</g></g></g></g>;
+  const lift = give && !moving; const sideW = (bt + bb) / 2 * 0.72;
   return (
-    <g className={`walker v-${view} ${moving ? 'go' : 'stand'} ${lift ? 'give' : ''}`} transform={`translate(${x} ${y}) scale(${scale})`} style={{ ['--wd' as string]: `${-(h % 5) / 10}s` }} pointerEvents="none" aria-hidden>
+    <g className={`walker v-${view} ${moving ? 'go' : 'stand'} ${lift ? 'give' : ''}`} transform={`translate(${x} ${y}) scale(${scale * look.size})`} style={{ ['--wd' as string]: `${-(h % 5) / 10}s` }} pointerEvents="none" aria-hidden>
       <ellipse cx="0" cy="1" rx="22" ry="5.5" fill="rgba(0,0,0,.38)" />
       <g transform={`scale(${view === 'side' ? f : 1} 1)`}>
         <g className="wk-bob">
           {view === 'side' ? <>
             {leg('far', 3)}{arm('far', 0)}
-            <rect x="-12" y="-87" width="24" height="53" rx="11" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".8" /><circle cx="6" cy="-66" r="6.2" fill="#0b1b45" stroke="#9fb4de" strokeWidth=".9" /><circle cx="6" cy="-66" r="3" fill={ac} style={{ filter: `drop-shadow(0 0 3px ${ac})` }} /><rect x="-12" y="-52" width="24" height="4.5" fill={ac} opacity=".9" />
-            <g transform="translate(0 -86)"><g className="wk-head"><rect x="-3.5" y="-4" width="7" height="6" rx="2" fill="#9fb4de" /><ellipse cx="0" cy="-21" rx="19" ry="19.5" fill="url(#shell)" stroke="#9fb4de" strokeWidth=".9" /><path d="M-12 -34Q0 -42 12 -34" fill="none" stroke={ac} strokeWidth="2.6" strokeLinecap="round" /><ellipse cx="7" cy="-21" rx="11.5" ry="12.6" fill="url(#visor)" stroke="#0b1230" strokeWidth="1" /><circle cx="11" cy="-21" r="3.6" fill="#7fe4ff" /><circle cx="10" cy="-22.2" r=".9" fill="#fff" opacity=".85" /><circle cx="-5" cy="-20" r="7" fill="#1b2750" stroke="#9fb4de" strokeWidth="1.3" /><circle cx="-5" cy="-20" r="4.6" fill="none" stroke={ac} strokeWidth="1.7" /><circle cx="-5" cy="-20" r="2.2" fill="#070d24" /></g></g>
+            <rect x={-sideW} y="-87" width={2 * sideW} height="53" rx={Math.min(11, sideW)} fill="url(#botg)" stroke="#9fb4de" strokeWidth=".8" /><circle cx={sideW * 0.5} cy="-66" r="6" fill="#0b1b45" stroke="#9fb4de" strokeWidth=".9" /><circle cx={sideW * 0.5} cy="-66" r="3" fill={ac} style={{ filter: `drop-shadow(0 0 3px ${ac})` }} /><rect x={-sideW} y="-52" width={2 * sideW} height="4.5" fill={ac} opacity=".9" />
+            <g transform="translate(0 -86)"><g className="wk-head"><ToyHeadView accent={ac} look={look} view="side" /></g></g>
             {leg('near', -3)}{arm('near', 0, true)}
           </> : <>
-            {leg('far', 8)}{leg('near', -8)}
-            <rect x="-17" y="-87" width="34" height="53" rx="14" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".8" />
-            {view === 'front' ? <><circle cx="0" cy="-69" r="8" fill="#0b1b45" stroke="#9fb4de" strokeWidth="1" /><circle cx="0" cy="-69" r="4" fill={ac} style={{ filter: `drop-shadow(0 0 4px ${ac})` }} /></> : <rect x="-8" y="-76" width="16" height="12" rx="4" fill="#cfd8ee" stroke="#9fb4de" strokeWidth=".7" />}
-            <rect x="-17" y="-52" width="34" height="5" fill={ac} opacity=".9" />
-            {arm('far', 21, true)}{arm('near', -21)}
-            <g transform="translate(0 -86)"><g className="wk-head"><rect x="-4" y="-4" width="8" height="6" rx="2" fill="#9fb4de" />
-              <circle cx="-22" cy="-20" r="5.4" fill="#25304f" stroke="#9fb4de" strokeWidth="1.2" /><circle cx="22" cy="-20" r="8" fill="#1b2750" stroke="#9fb4de" strokeWidth="1.4" /><circle cx="22" cy="-20" r="5.3" fill="none" stroke={ac} strokeWidth="1.8" /><circle cx="22" cy="-20" r="2.6" fill="#070d24" />
-              <ellipse cx="0" cy="-21" rx="22" ry="19.5" fill="url(#shell)" stroke="#9fb4de" strokeWidth=".9" /><path d="M-15 -34Q0 -43 15 -34" fill="none" stroke={ac} strokeWidth="2.6" strokeLinecap="round" />
-              {view === 'front' ? <><ellipse cx="-1" cy="-21" rx="16.5" ry="12.8" fill="url(#visor)" stroke="#0b1230" strokeWidth="1" /><circle cx="-7.4" cy="-21" r="3.4" fill="#7fe4ff" /><circle cx="5.4" cy="-21" r="3.4" fill="#7fe4ff" /></> : <><rect x="-9" y="-30" width="18" height="9" rx="4.5" fill="#cfd8ee" stroke="#9fb4de" strokeWidth=".7" /><rect x="-5" y="-18" width="10" height="3" rx="1.5" fill={ac} opacity=".85" /></>}
-            </g></g>
+            {leg('far', bb * 0.5)}{leg('near', -bb * 0.5)}
+            <g transform="translate(0 -33)"><path d={torsoPath(bt, bb)} fill="url(#botg)" stroke="#9fb4de" strokeWidth=".8" />
+              {view === 'front' ? (look.face === 'screen' ? <g><rect x="-9" y="-43" width="18" height="13" rx="3" fill="#0b1b45" stroke="#9fb4de" strokeWidth="1" />{[-40, -36, -32].map((yy, i) => <rect key={yy} x="-6.5" y={yy} width={13 - i * 3} height="2" rx="1" fill={ac} />)}</g> : <><circle cx="0" cy="-35" r="8" fill="#0b1b45" stroke="#9fb4de" strokeWidth="1" /><circle cx="0" cy="-35" r="4" fill={ac} style={{ filter: `drop-shadow(0 0 4px ${ac})` }} /></>) : <rect x="-8" y="-43" width="16" height="12" rx="4" fill="#cfd8ee" stroke="#9fb4de" strokeWidth=".7" />}
+              <rect x={-bb + 1} y="-19" width={2 * bb - 2} height="5" fill={ac} opacity=".9" /></g>
+            {arm('far', bt + 3.5, true)}{arm('near', -(bt + 3.5))}
+            <g transform="translate(0 -86)"><g className="wk-head">{view === 'front' ? <ToyHead accent={ac} look={look} /> : <ToyHeadView accent={ac} look={look} view="back" />}</g></g>
           </>}
           {(carrying || (prop && prop !== 'card')) && (() => { const what = prop ?? 'card'; const at = view === 'side' ? 'translate(18 -46)' : view === 'front' ? 'translate(-24 -46)' : 'translate(24 -46)';
             return what === 'card' ? <g className="wk-held" transform={view === 'side' ? 'translate(16 -50)' : 'translate(0 -52)'}>{card}</g>
