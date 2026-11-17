@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOOKING_HOWTO, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { honorificFor, BOOKING_HOWTO, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -106,7 +106,7 @@ describe('separate messages', () => {
     expect(flattenMessages(t)).not.toContain('---'); expect(splitMessages('a\n---\nb\n---\nc\n---\nd\n---\ne\n---\nf')).toHaveLength(5); expect(splitMessages('no split here')).toEqual(['no split here']);
   });
   it('the system prompt asks for the booking details as their own message', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SEPARATE MESSAGES/); expect(s).toMatch(/Full name:/); expect(s).toMatch(/Complete service address \(with city\):\\nReservation Date:\\nType of Service \(Window, Solar, Wall\/floor or Roof\):/); expect(s).not.toMatch(/Number of glass panels:/); expect(s).toMatch(/Never ask for the number of glass panels in the booking details/); expect(s).toMatch(/line containing only ---/);
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SEPARATE MESSAGES/); expect(s).toMatch(/Full name:/); expect(s).toMatch(/Complete service address \(with city\):(\\n|\n)Reservation Date:(\\n|\n)Type of Service \(Window, Solar, Wall\/floor or Roof\):/); expect(s).not.toMatch(/Number of glass panels:/); expect(s).toMatch(/Never ask for the number of glass panels in the booking details/); expect(s).toMatch(/line containing only ---/);
   });
 });
 
@@ -123,5 +123,13 @@ describe('Job Order sent later', () => {
   it('default is 10 minutes, kept in range, and the booking reply says it will follow', () => {
     expect(normalizeRules({}).job_order_delay_min).toBe(10); expect(normalizeRules({ job_order_delay_min: 0 }).job_order_delay_min).toBe(0); expect(normalizeRules({ job_order_delay_min: 9999 }).job_order_delay_min).toBe(240);
     expect(bookedReply('Sat, Nov 21', 'JOB-1', undefined, true).reply_en).toMatch(/Job Order confirmation will follow in a few minutes/); expect(bookedReply('Sat, Nov 21', 'JOB-1', 'https://x/#/jo/abc').reply_en).toContain('https://x/#/jo/abc');
+  });
+});
+
+describe('Sir or Ma’am', () => {
+  it('uses the gender the chat platform gives, never a guess from the name; the welcome follows', () => {
+    expect(honorificFor('male')).toBe('Sir'); expect(honorificFor('Female')).toBe('Ma’am'); expect(honorificFor('')).toBe('Ma’am/Sir'); expect(honorificFor(undefined)).toBe('Ma’am/Sir'); expect(honorificFor('f')).toBe('Ma’am'); expect(honorificFor('other')).toBe('Ma’am/Sir');
+    expect(composeFirst('NO_ANSWER', 'Sir')).toContain('Hello po, Sir! Good day.'); expect(composeFirst('NO_ANSWER', 'Sir')).toContain('May we know your location po, Sir?'); expect(composeFirst('NO_ANSWER')).toBe(WELCOME_TEXT);
+    const s = buildSystem({ sections: [], version: null, lang: 'en', honorific: 'Ma’am' }); expect(s).toContain('as "Ma’am" together with "po"'); expect(s).toMatch(/Never guess whether a customer is a man or a woman from their name/);
   });
 });

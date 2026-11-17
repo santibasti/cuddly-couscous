@@ -4,7 +4,7 @@
 // Answer: { ok, status: "queued" | "reply" | "held" | "handover" | "duplicate" | "off", reply, mode } ("queued": the work continues after the answer because ManyChat waits only 10 seconds) — put `reply` in the chatbot's next message; when it is empty, send nothing (staff or a draft is handling it).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { cardForLog, explainsPanelCount, panelGuideUrl } from '../_shared/estimatecard.ts';
-import { BOOKING_HOWTO, wantsToBook, buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
+import { BOOKING_HOWTO, honorificFor, wantsToBook, buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
 import { makeExec } from '../_shared/chatexec.ts';
 import { parseLang } from '../chat-availability/logic.ts';
 
@@ -23,6 +23,7 @@ Deno.serve(async (req) => {
   // The body can be the short one we wrote, or ManyChat's own "Add Full Contact Data" (safer: ManyChat builds that JSON, so quotes, emoji and line breaks in a customer's message can never break it).
   const c = ((b.contact ?? b.data ?? {}) as Record<string, unknown>), pick = (...ks: string[]) => { for (const k of ks) { const v = b[k] ?? c[k]; if (v !== undefined && v !== null && String(v).trim() !== '') return v; } return ''; };
   const sub = clip(pick('subscriber_id', 'user_id', 'id'), 80), text = clip(pick('text', 'message', 'last_input_text', 'last_text_input'), 2000); const channel = ['messenger', 'instagram', 'whatsapp'].includes(String(b.channel)) ? String(b.channel) : String(b.channel ?? '') === '' ? 'messenger' : 'other';
+  const honorific = honorificFor(pick('gender'));   // ManyChat's contact data carries the customer's gender when Facebook shares it
   b.name = pick('name', 'first_name'); b.message_id = pick('message_id') || `${sub}-${text.slice(0, 40)}-${Math.floor(Date.now() / 20000)}`; b.lang = pick('lang', 'ai_lang');
   if (!sub || !text) return json({ error: 'subscriber_id and text are required' }, 400);
 
@@ -50,7 +51,7 @@ Deno.serve(async (req) => {
   if (!messages.length || messages[0].role !== 'user') messages.unshift({ role: 'user', content: text });
   const model = cfg?.model || env('CHAT_AI_MODEL') || 'claude-haiku-5-5';
   const { count: sentBefore } = await sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('direction', 'out').in('status', ['sent', 'approved', 'draft']); const first = (sentBefore ?? 0) === 0;   // the first reply of a conversation starts with the welcome
-  const system = buildSystem({ firstMessage: first, sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, customerName: (conv as { name?: string | null }).name, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
+  const system = buildSystem({ firstMessage: first, honorific, sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, customerName: (conv as { name?: string | null }).name, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
   const callModel = async (sys: string, msgs: unknown[], tools: unknown) => {
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 2500, system: sys, tools, messages: msgs }) });
     if (!r.ok) throw new Error(`AI error ${r.status}`); return await r.json();
@@ -58,7 +59,7 @@ Deno.serve(async (req) => {
   const exec = makeExec({ sb, base: env('SUPABASE_URL'), key, conv, lang, context: [...(hist ?? []).filter((m) => m.direction === 'in').map((m) => String(m.body ?? '')), text].join(' ').slice(-600) });
   const brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3 });
   if (!brain.reply.trim() && !brain.error && wantsToBook(text)) { brain.reply = BOOKING_HOWTO; brain.note = undefined; }   // the model wrote nothing but the customer wants to book: send the booking-details request
-  const d0 = decide(mode, brain, lang); const d = first && (d0.kind === 'draft' || d0.kind === 'send') ? { ...d0, text: composeFirst(d0.text) } : d0; const flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked }).violations;
+  const d0 = decide(mode, brain, lang); const d = first && (d0.kind === 'draft' || d0.kind === 'send') ? { ...d0, text: composeFirst(d0.text, honorific) } : d0; const flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked }).violations;
   const appUrl = env('APP_URL') || 'https://ops.topmop.ph'; const card = d.kind === 'send' || d.kind === 'draft' ? (cardForLog(brain.log, appUrl) ?? (explainsPanelCount(text, brain.reply) ? panelGuideUrl(appUrl) : null)) : null;   // one picture per reply: the estimate card, else the panel-counting guide
   const common = { card_url: card, conversation_id: conv.id, direction: 'out', model, rulebook_version: rb?.version ?? null, tool_log: brain.log, error: brain.error ?? (brain.reply.trim() ? (brain.note ? brain.note.slice(0, 240) : null) : `The AI wrote no text: ${brain.note ?? ''}`.slice(0, 240)) };
 
