@@ -1,5 +1,6 @@
 // The reusable seated robot of the Living Office. A rigged SVG character (head, visor eyes, torso, two-segment arms) driven by named animation POSES.
 // The pose comes from the agent's real state (see poseOf); only breathing, blinking and a slow look-around are decorative and always allowed.
+import { PixelSeated, PixelWalker, usePixel } from './HqPixel';
 import type { AgentDef, AgentState } from '@/lib/hq';
 import { STATE_LABEL, hash } from '@/lib/hq';
 import { BODY_DIM, HEAD_DIM, lookOf, type Look } from '@/lib/botlook';
@@ -142,7 +143,7 @@ function ToyTorso({ accent, look }: { accent: string; look: Look }) {
 }
 export interface BotProps { deskColors?: [string, string]; scale?: number; desk?: boolean; social?: boolean; bubble?: string | null; a: AgentDef; x: number; y: number; side: 1 | -1; state: AgentState; dept: string; planned: boolean; screen: ScreenKind; selected: boolean; away?: boolean; onPick: () => void }
 export function HqBot({ deskColors, scale = 0.74, desk = true, social = false, bubble, a, x, y, side, state, dept, planned, screen, selected, away, onPick }: BotProps) {
-  const pose: Pose = social ? 'social' : poseOf(state, planned, a.key, dept); const h = hash(a.key); const look = lookOf(a.key);
+  const pix = usePixel(); const pose: Pose = social ? 'social' : poseOf(state, planned, a.key, dept); const h = hash(a.key); const look = lookOf(a.key);
   const sty = { ['--d' as string]: `${-(h % 70) / 10}s`, ['--p' as string]: `${4 + (h % 30) / 10}s`, ['--tp' as string]: `${0.24 + (h % 17) / 100}s`, ['--side' as string]: side, ...(deskColors ? { ['--desk1' as string]: deskColors[0], ['--desk2' as string]: deskColors[1] } : {}) };
   const label = `${a.name}, ${a.role}: ${planned ? 'planned, not connected yet' : STATE_LABEL[state]}`;
   const on = !planned && (state === 'working' || state === 'received' || state === 'coordinating');
@@ -155,12 +156,12 @@ export function HqBot({ deskColors, scale = 0.74, desk = true, social = false, b
       <ellipse cx="0" cy="34" rx="64" ry="9" fill="rgba(0,0,0,.35)" />
       {desk && <g className="chair" pointerEvents="none"><rect x={-(BODY_DIM[look.body].bottom + 7)} y="-64" width={2 * (BODY_DIM[look.body].bottom + 7)} height="66" rx="15" fill="#1b2748" stroke="#3a4f86" strokeWidth="1.2" /><rect x={-(BODY_DIM[look.body].bottom + 3)} y="-60" width={2 * (BODY_DIM[look.body].bottom + 3)} height="6" rx="3" fill={a.shirt} opacity=".55" /></g>}
       <g className="body" style={away ? { display: 'none' } : undefined}>
-        <g transform={`scale(${look.size})`}>
+        {pix ? <PixelSeated k={a.key} accent={a.shirt} /> : <g transform={`scale(${look.size})`}>
           <g transform={`translate(${-(BODY_DIM[look.body].top + 3.5)} -44)`}><ToyArm cls="armL" accent={a.shirt} w={look.body === 'chunk' ? 11.4 : 9.6} /><Joint accent={a.shirt} r={5.4} /></g>
           <g transform={`translate(${BODY_DIM[look.body].top + 3.5} -44)`}><ToyArm cls="armR" accent={a.shirt} prop={propOf(a.key)} held w={look.body === 'chunk' ? 11.4 : 9.6} /><Joint accent={a.shirt} r={5.4} /></g>
           <ToyTorso accent={a.shirt} look={look} />
           <g transform="translate(0 -54)"><g className="head"><ToyHead accent={a.shirt} look={look} /></g></g>
-        </g>
+        </g>}
       </g>
       {bubble && <g className="bub" transform="translate(0 -118)"><rect x="-62" y="-12" width="124" height="22" rx="11" fill="#f4f7ff" /><text y="3" textAnchor="middle" fontSize="9" fontWeight="700" fill="#10204f">{bubble}</text></g>}
       {badge && !away && <g className="badge" transform="translate(30 -92)"><circle r="9" /><text y="3.6" textAnchor="middle" fontSize="10" fontWeight="800">{badge}</text></g>}
@@ -241,7 +242,7 @@ export const BOT_CSS = `
 
 /** A standing robot that walks. Seen from the side when it walks along the corridor (real stepping legs), from the front or back when it walks toward or away from the viewer. Same shape as its seated self. */
 export function HqWalker({ a, x, y, dir, moving, carrying, give, prop, scale = 0.74 }: { scale?: number; prop?: 'card' | 'cup' | 'mop'; a: AgentDef; x: number; y: number; dir: { x: number; y: number }; moving: boolean; carrying: boolean; give: boolean }) {
-  const view: 'side' | 'front' | 'back' = Math.abs(dir.x) > 0 ? 'side' : dir.y < 0 ? 'back' : 'front'; const f = dir.x < 0 ? -1 : 1; const h = hash(a.key); const ac = a.shirt; const look = a.key === 'cleaner' ? lookOf('cleaner') : lookOf(a.key); const { top: bt, bottom: bb } = BODY_DIM[look.body]; const aw = look.body === 'chunk' ? 11 : 9.2;
+  const pix = usePixel(); const view: 'side' | 'front' | 'back' = Math.abs(dir.x) > 0 ? 'side' : dir.y < 0 ? 'back' : 'front'; const f = dir.x < 0 ? -1 : 1; const h = hash(a.key); const ac = a.shirt; const look = a.key === 'cleaner' ? lookOf('cleaner') : lookOf(a.key); const { top: bt, bottom: bb } = BODY_DIM[look.body]; const aw = look.body === 'chunk' ? 11 : 9.2;
   const card = <g className="wk-card" transform="translate(0 -4)"><rect x="-12" y="-8" width="24" height="16" rx="4" /><path d="M-6 -3l6 4.5l6 -4.5" fill="none" stroke="#06122e" strokeWidth="1.3" /></g>;
   const foot = (side: boolean) => look.feet === 'wheel' ? <g><circle cy="17" r="6.6" fill="#2a3555" stroke="#9fb4de" strokeWidth=".8" /><circle cy="17" r="2.6" fill={ac} /></g>
     : look.feet === 'big' ? <rect x={side ? -5.5 : -8} y="12" width={side ? 18 : 16} height="9.5" rx="4.8" fill={ac} stroke="#0b1230" strokeWidth=".7" />
@@ -254,7 +255,7 @@ export function HqWalker({ a, x, y, dir, moving, carrying, give, prop, scale = 0
       <ellipse cx="0" cy="1" rx="22" ry="5.5" fill="rgba(0,0,0,.38)" />
       <g transform={`scale(${view === 'side' ? f : 1} 1)`}>
         <g className="wk-bob">
-          {view === 'side' ? <>
+          {pix ? <PixelWalker k={a.key} view={view} accent={ac} /> : view === 'side' ? <>
             {leg('far', 3)}{arm('far', 0)}
             <rect x={-sideW} y="-87" width={2 * sideW} height="53" rx={Math.min(11, sideW)} fill="url(#botg)" stroke="#9fb4de" strokeWidth=".8" /><circle cx={sideW * 0.5} cy="-66" r="6" fill="#0b1b45" stroke="#9fb4de" strokeWidth=".9" /><circle cx={sideW * 0.5} cy="-66" r="3" fill={ac} style={{ filter: `drop-shadow(0 0 3px ${ac})` }} /><rect x={-sideW} y="-52" width={2 * sideW} height="4.5" fill={ac} opacity=".9" />
             <g transform="translate(0 -86)"><g className="wk-head"><ToyHeadView accent={ac} look={look} view="side" /></g></g>

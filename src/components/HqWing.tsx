@@ -6,6 +6,7 @@ import { AGENTS, DEPTS, deptByKey, type AgentView, type DeptKey, type HqEvent, t
 import { CLEANER, COOLER_ROOMS, LOOK, LAYOUT, applyLayout, cleanerState, coolerAt, coolerState, lightPhase, manilaParts, type Phase, CAFE_SEATS, ROOMS, ROW_Y, SPINES, STATION, WORLD, alongFrac, box, cafeBubble, cafeWanted, describeTrip, doors, handoverTrips, hallPath, inTransit, pulses, stepLoc, tripState, type DoorLight, type Loc, type Room, type TripState } from '@/lib/hqwing';
 import { THEME, type FloorKind } from '@/lib/hqtheme';
 import { Decor, Rug } from './HqDecor';
+import { PIXEL_CSS, PixelCtx } from './HqPixel';
 import { BOT_CSS, HqBot, HqWalker, WALK_CSS, type ScreenKind } from './HqBot';
 
 const SCREEN: Record<Room, ScreenKind> = { email: 'mail', creative: 'photo', ads: 'chart', desk: 'chat', hub: 'core', booking: 'calendar', hr: 'list', cafe: 'core', board: 'chart' };
@@ -135,6 +136,8 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
   const host = useRef<HTMLDivElement>(null); const t = useSmooth(now, !frozen, host); const [sound, setSound] = useState(false); const ctx = useRef<AudioContext | null>(null);
   const [locs, setLocs] = useState<Record<string, Loc>>({});
   const [wallMs, setWallMs] = useState(Date.now()); useEffect(() => { const i = setInterval(() => { if (!document.hidden) setWallMs(Date.now()); }, 1000); return () => clearInterval(i); }, []);
+  const [pixel, setPixel] = useState(() => { try { return localStorage.getItem('hq-pixel') === '1'; } catch { return false; } });
+  const togglePixel = () => { const v = !pixel; setPixel(v); try { localStorage.setItem('hq-pixel', v ? '1' : '0'); } catch { /* no storage */ } };
   const [lightMode, setLightMode] = useState<'auto' | 'day' | 'night'>('auto');
   const wall = manilaParts(wallMs); const phase: Phase = lightMode === 'auto' ? lightPhase(wall.h, wall.m) : lightMode === 'day' ? 'day' : 'night'; const look = LOOK[phase];
   // where each agent is: at the desk or in the café. Re-evaluated four times a second; a change starts a walking trip.
@@ -166,11 +169,11 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
 
   return (
     <div className={`wing ${frozen ? 'still' : ''}`} ref={host} style={{ ['--wa' as string]: (WORLD.w / WORLD.h).toFixed(3) }}>
-      <style>{BOT_CSS}{WALK_CSS}{CSS}</style>
+      <style>{BOT_CSS}{WALK_CSS}{PIXEL_CSS}{CSS}</style>
       <div className="wing-bar"><div className="wing-tag" data-mode={demo ? 'demo' : link === 'live' || link === 'off' ? 'live' : 'wait'}>{demo ? 'SAMPLE · DEMO MODE · nothing is sent or saved' : link === 'live' ? 'LIVE · doors and walks follow real events' : link === 'off' ? 'LOCAL DATA · this browser only' : 'RECONNECTING · showing the last 24 h, nothing is lost'}</div>
-      <span className="wing-btns"><button type="button" className="wing-snd" onClick={() => setLightMode(lightMode === 'auto' ? 'day' : lightMode === 'day' ? 'night' : 'auto')} title="Light follows the Manila clock; tap to preview day or night">{lightMode === 'auto' ? `🌗 Light: auto (${phase})` : lightMode === 'day' ? '☀️ Light: day' : '🌙 Light: night'}</button> <button type="button" className="wing-snd" onClick={() => toggleSound()} aria-pressed={sound}>{sound ? '🔊 Door sounds on' : '🔇 Door sounds off'}</button></span></div>
+      <span className="wing-btns"><button type="button" className="wing-snd" onClick={togglePixel} aria-pressed={pixel} title="Draw the robots as pixel art">{pixel ? '👾 Pixel: on' : '👾 Pixel: off'}</button> <button type="button" className="wing-snd" onClick={() => setLightMode(lightMode === 'auto' ? 'day' : lightMode === 'day' ? 'night' : 'auto')} title="Light follows the Manila clock; tap to preview day or night">{lightMode === 'auto' ? `🌗 Light: auto (${phase})` : lightMode === 'day' ? '☀️ Light: day' : '🌙 Light: night'}</button> <button type="button" className="wing-snd" onClick={() => toggleSound()} aria-pressed={sound}>{sound ? '🔊 Door sounds on' : '🔇 Door sounds off'}</button></span></div>
       <div className="wing-cam" style={{ aspectRatio: mobile ? '460 / 520' : `${WORLD.w} / ${WORLD.h}` }}>
-        <motion.svg viewBox={vb} animate={{ viewBox: vb }} transition={{ duration: reduce ? 0 : 0.9, ease: [0.65, 0, 0.3, 1] }} preserveAspectRatio="xMidYMid meet" role="group" aria-label="Living office: nine rooms joined by corridors">
+        <PixelCtx.Provider value={pixel}><motion.svg viewBox={vb} animate={{ viewBox: vb }} transition={{ duration: reduce ? 0 : 0.9, ease: [0.65, 0, 0.3, 1] }} preserveAspectRatio="xMidYMid meet" role="group" aria-label="Living office: nine rooms joined by corridors">
           <defs>
             {ROOMS.map((r) => { const t = THEME[r]; return (<g key={r}>
               <linearGradient id={`wall-${r}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.wall[0]} /><stop offset="1" stopColor={t.wall[1]} /></linearGradient>
@@ -233,7 +236,7 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
             </g>); })}
           <rect x="-40" y="-20" width={WORLD.w + 80} height={WORLD.h + 60} fill={look.overlay} opacity={look.alpha} pointerEvents="none" />
           {active && <g transform={`translate(${WORLD.w / 2} ${ROW_Y[1] + 330})`}><rect x="-190" y="-12" width="380" height="22" rx="11" fill="rgba(6,16,48,.9)" stroke="rgba(123,227,255,.6)" /><text y="3" textAnchor="middle" fontSize="11" fontWeight="700" fill="#dff6ff">{describeTrip(active)}</text></g>}
-        </motion.svg>
+        </motion.svg></PixelCtx.Provider>
       </div>
       <p className="sr" aria-live="polite">{active ? describeTrip(active) : `${busy} busy, ${waiting} waiting for approval`}</p>
       <div className="wing-legend"><span><i className="d idle" /> Door idle</span><span><i className="d open" /> Opens only when someone walks through</span><span><i className="d amber" /> Waiting for you</span><span><i className="d green" /> Just finished</span><span><i className="d red" /> Problem</span><span className="grow">{demo ? 'Sample scenario: press Start above. ' : `${busy} busy · ${waiting} waiting · `}Café chat, the cleaning robot and water breaks are decorative.</span></div>
