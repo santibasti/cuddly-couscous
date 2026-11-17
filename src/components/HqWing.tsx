@@ -254,7 +254,7 @@ export function HqWing({ retro = false, demo, events, views, kpis, now, still, h
         </motion.svg></PixelCtx.Provider></RetroCtx.Provider>
       </div>
       <p className="sr" aria-live="polite">{active ? describeTrip(active) : `${busy} busy, ${waiting} waiting for approval`}</p>
-      <div className="wing-legend"><span><i className="d idle" /> Door idle</span><span><i className="d open" /> Opens only when someone walks through</span><span><i className="d amber" /> Waiting for you</span><span><i className="d green" /> Just finished</span><span><i className="d red" /> Problem</span><span className="grow">{demo ? 'Sample scenario: press Start above. ' : `${busy} busy · ${waiting} waiting · `}Café chat, the cleaning robot and water breaks are decorative.</span></div>
+      <div className="wing-legend"><span><i className="d idle" /> Door idle</span><span><i className="d open" /> Opens only when someone walks through</span><span><i className="d amber" /> Waiting for you</span><span><i className="d green" /> Just finished</span><span><i className="d red" /> Problem</span><span className="grow">{demo ? 'Sample scenario: press Start above. ' : `${busy} busy · ${waiting} waiting · `}Café chat, desk chatter, the cleaning robot and water breaks are decorative.</span></div>
       <p className="wing-note">{DEPTS.filter((d) => d.key !== 'cafe' && d.key !== 'hub' && !AGENTS.some((a) => a.dept === d.key && a.live)).map((d) => d.name).join(' · ')} are planned: their agents rest and can take café breaks, but never show work.</p>
     </div>
   );

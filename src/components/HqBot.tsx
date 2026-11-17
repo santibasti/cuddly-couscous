@@ -147,6 +147,7 @@ function ProfileSeat({ a, side, pose }: { a: AgentDef; side: 1 | -1; pose: Pose 
     <g className={`pseat pose-${pose}`}>
       <g transform={`scale(${side} 1)`}><rect x="-27" y="-82" width="9" height="62" rx="4" fill="#1b2748" stroke="#3a4f86" strokeWidth="1.2" /></g>
       <HqWalker a={a} x={0} y={0} dir={{ x: side, y: 0 }} moving={false} carrying={false} give={false} scale={1} />
+      <g transform={`translate(${side * 8} -128)`}><g className="talk" style={{ ['--td' as string]: side === 1 ? '0s' : '-3.5s' }}><rect x="-13" y="-8" width="26" height="13" rx="6" fill="#f4f7ff" stroke="#9fb4de" /><path d={`M${-side * 3} 5l${-side * 3} 6l${side * 7} -6Z`} fill="#f4f7ff" /><circle className="dd d1" cx="-6" cy="-1.5" r="2" /><circle className="dd d2" cx="0" cy="-1.5" r="2" /><circle className="dd d3" cx="6" cy="-1.5" r="2" /></g></g>
       <g transform={`scale(${side} 1)`}><rect x="-22" y="-34" width="38" height="12" rx="5" fill="#243257" stroke="#3a4f86" strokeWidth="1.2" /><rect x="-20" y="-24" width="34" height="26" rx="4" fill="#1b2748" stroke="#3a4f86" strokeWidth="1" /><ellipse cx="-3" cy="6" rx="18" ry="4" fill="#1b2748" /></g>
     </g>
   );
@@ -305,6 +306,22 @@ export const WALK_CSS = `
 @keyframes wk-bob{0%,50%,100%{transform:translateY(0)}25%,75%{transform:translateY(-1.8px)}}
 @keyframes wk-lift{0%,100%{transform:translateY(0)}25%{transform:translateY(-4px)}50%{transform:translateY(0)}}
 @keyframes wk-sway{0%,100%{transform:rotate(7deg)}50%{transform:rotate(-7deg)}}@keyframes wk-nod{0%,100%{transform:rotate(0)}50%{transform:rotate(.8deg)}}
-@media (prefers-reduced-motion:reduce){.walker *{animation:none!important}}
+/* desk chatter: seated people lean, nod, gesture and take turns to talk (decorative) */
+.pseat .wk-head{transform-box:fill-box;transform-origin:50% 95%;animation:p-nod calc(var(--p, 5s) * .7) ease-in-out infinite;animation-delay:var(--d, 0s)}
+.pseat .wk-bob{animation:p-lean calc(var(--p, 5s) * 1.1) ease-in-out infinite;animation-delay:var(--d, 0s)}
+.pseat .wk-arm.near{transform-origin:0 0;animation:p-gest calc(var(--p, 5s) * .9) ease-in-out infinite;animation-delay:var(--d, 0s)}.pseat .wk-arm.near .wk-fore{transform-origin:0 0;animation:p-fore calc(var(--p, 5s) * .9) ease-in-out infinite;animation-delay:var(--d, 0s)}
+.pseat .wk-arm.far{transform-origin:0 0;animation:p-gest2 calc(var(--p, 5s) * 1.3) ease-in-out infinite;animation-delay:calc(var(--d, 0s) - 1s)}
+.pseat .pf0{animation:p-px 1.4s steps(1) infinite;animation-delay:var(--d, 0s)}.pseat .pf1{display:none}
+.pseat .talk{opacity:0;animation:p-talk 7s ease-in-out infinite;animation-delay:calc(var(--td, 0s) + var(--d, 0s))}.pseat .talk .dd{fill:#33406a}.pseat .talk .d2{animation:p-dot .9s infinite .2s}.pseat .talk .d3{animation:p-dot .9s infinite .4s}.pseat .talk .d1{animation:p-dot .9s infinite}
+@keyframes p-nod{0%,100%{transform:rotate(0)}30%{transform:rotate(4deg)}60%{transform:rotate(-2deg)}}
+@keyframes p-lean{0%,100%{transform:translate(0,0) rotate(0)}50%{transform:translate(1.2px,-1px) rotate(1.6deg)}}
+@keyframes p-gest{0%,35%,100%{transform:rotate(4deg)}50%{transform:rotate(-38deg)}65%{transform:rotate(-20deg)}80%{transform:rotate(-44deg)}}
+@keyframes p-fore{0%,35%,100%{transform:rotate(0)}55%{transform:rotate(-24deg)}80%{transform:rotate(-8deg)}}
+@keyframes p-gest2{0%,100%{transform:rotate(6deg)}50%{transform:rotate(-14deg)}}
+@keyframes p-px{0%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
+@keyframes p-talk{0%,6%{opacity:0;transform:translateY(4px)}12%,42%{opacity:1;transform:translateY(0)}48%,100%{opacity:0;transform:translateY(-3px)}}
+@keyframes p-dot{0%,100%{opacity:.25}50%{opacity:1}}
+.still .pseat *{animation-play-state:paused!important}
+@media (prefers-reduced-motion:reduce){.walker *,.pseat *{animation:none!important}.pseat .talk{opacity:0}}
 .still .walker *{animation-play-state:paused!important}
 `;
