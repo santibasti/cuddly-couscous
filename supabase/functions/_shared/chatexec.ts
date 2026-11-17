@@ -22,7 +22,7 @@ export function makeExec(c: ExecCtx) {
         return { text: `status: ${j.status}. ${j.reply}` };
       }
       if (name === 'book_date') {
-        const j = await post(c, 'chat-book', { name: input.name, mobile: input.mobile, address: input.address, service: input.service, date: input.date, panels: input.panels, property_type: input.property_type, rates_ok: input.rates_ok, details: input.details, source: c.conv.channel });
+        const j = await post(c, 'chat-book', { name: input.name, mobile: input.mobile, address: input.address, service: input.service, date: input.date, panels: input.panels, property_type: input.property_type, rates_ok: input.rates_ok, details: input.details, source: c.conv.channel, subscriber_id: c.conv.subscriber_id, channel: c.conv.channel });
         await c.sb.from('chat_conversations').update({ client_id: j.client_id ?? null, inquiry_id: j.inquiry_id ?? null, status: 'Lead created' }).eq('id', c.conv.id);
         return { text: `status: ${j.status}. ${j.reply}`, amounts: nums(j.estimate), booked: { ok: j.booked === true, reply: String(j.reply ?? '') } };
       }

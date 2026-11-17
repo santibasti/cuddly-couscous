@@ -86,22 +86,31 @@ Deno.serve(async (req) => {
     return json({ ...(res?.reason === 'full' ? again : { ...avail, ok: false, status: 'pending_human', reply_en: 'Thank you! Our team will confirm your date shortly.', reply_tl: 'Salamat po! Kukumpirmahin po ng aming team ang inyong petsa.', reply_tglish: 'Thank you po! Kukumpirmahin po ng team namin ang date ninyo shortly.' }), reply: pick(res?.reason === 'full' ? again : { reply_en: 'Thank you! Our team will confirm your date shortly.', reply_tl: 'Salamat po! Kukumpirmahin po ng aming team ang inyong petsa.', reply_tglish: 'Thank you po! Kukumpirmahin po ng team namin ang date ninyo shortly.' }, lang), booked: false, confirmed: false, client_id: clientId, inquiry_id: inq.id, ...flat(again.alternatives), alt_count: again.alternatives.length });
   }
   await sb.from('alert_outbox').insert({ kind: 'booking', title: 'Booked automatically', body: `${name}, ${address || 'address to be confirmed'}: ${res.number} on ${avail.requested_label} (booked by the chat). ${cq ? `Pre-approved at the starting rates (${res.quotation_number}); the Job Order follows.` : 'The city is not in the rate list: please price it.'} Team and vehicle are still to be arranged.`, link: `/jobs/${res.job_id}` });
-  let link = ''; let joNumber = '';
+  let link = ''; let joNumber = ''; let joLater = false; let joErr = '';
   if (rules.auto_job_order && cq && res.quotation_id) {                                                                                           // the owner switched on the automatic Job Order
     try {
       const [jr, cl, si, qu, ve, em] = await Promise.all([
         sb.from('jobs').select('*').eq('id', res.job_id).single(), sb.from('clients').select('*').eq('id', clientId).single(), sb.from('sites').select('*').eq('id', res.site_id).single(), sb.from('quotations').select('*').eq('id', res.quotation_id).single(),
         sb.from('variations').select('*').eq('job_id', res.job_id).is('deleted_at', null), sb.from('employees').select('id, full_name').is('deleted_at', null).limit(1),
       ]);
+      const bad = [jr, cl, si, qu].find((x) => x.error || !x.data); if (bad) throw new Error(`could not read the booking records: ${bad.error?.message ?? 'not found'}`);
       const job = { ...jr.data, start_at: String(jr.data.start_at).slice(0, 16), end_at: String(jr.data.end_at).slice(0, 16), jo_prices: jr.data.jo_prices ?? undefined };
       const facts2: Record<string, unknown> = { settings: st?.data ?? {}, clients: [cl.data], sites: [si.data], quotations: [qu.data], variations: ve.data ?? [], employees: em.data ?? [], services: svcRows ?? [], invoices: [], assets: [], discount_requests: [], job_orders: [] };
       const db2 = new Proxy(facts2, { get: (t, k) => (k in t ? t[k as string] : []) });                                                            // the app's own Job Order code reads this like the app's data
       const content = buildContent(db2, job);
-      const { data: jo } = await sb.rpc('chat_job_order', { p: { job_id: res.job_id, content, content_key: contentKey(content), send: true } });
-      if (jo?.ok) { link = `${(env('APP_URL') || 'https://ops.topmop.ph').replace(/\/$/, '')}/#/jo/${jo.share_token}`; joNumber = jo.number; }
-    } catch (_e) { /* the booking stands; the app drafts the Job Order and you send it */ }
-    if (!link) await sb.from('alert_outbox').insert({ kind: 'lead', title: 'Job Order not sent', body: `${name}: ${res.number} is booked but the automatic Job Order could not be made. Please open the booking and send it.`, link: `/jobs/${res.job_id}` });
+      const sub = clip(b.subscriber_id, 80), later = rules.job_order_delay_min > 0 && !!sub && !!env('MANYCHAT_API_TOKEN');      // sent later only when we can push it to the customer ourselves
+      const { data: jo, error: je } = await sb.rpc('chat_job_order', { p: { job_id: res.job_id, content, content_key: contentKey(content), send: !later } });
+      if (je || !jo?.ok) throw new Error(`the Job Order could not be saved: ${je?.message ?? jo?.reason ?? 'no answer'}`);
+      link = `${(env('APP_URL') || 'https://ops.topmop.ph').replace(/\/$/, '')}/#/jo/${jo.share_token}`; joNumber = jo.number;
+      if (later) {
+        const when = new Date(Date.now() + rules.job_order_delay_min * 60_000).toISOString(); const text = { en: `Here is your Job Order confirmation po, with our rates: ${link}`, tl: `Narito po ang inyong Job Order confirmation, kasama ang aming mga rate: ${link}`, taglish: `Ito po ang Job Order confirmation ninyo, kasama ang rates namin: ${link}` }[lang];
+        const { error: fe } = await sb.from('chat_followups').insert({ channel: clip(b.channel, 20) || 'messenger', subscriber_id: sub, job_order_id: jo.job_order_id, messages: [{ type: 'text', text }], send_at: when });
+        if (fe) throw new Error(`could not schedule the Job Order message: ${fe.message}`);
+        joLater = true; link = '';
+      }
+    } catch (e) { joErr = String((e as Error).message ?? e).slice(0, 220); link = ''; joLater = false; }
+    if (!link && !joLater) await sb.from('alert_outbox').insert({ kind: 'lead', title: 'Job Order not sent', body: `${name}: ${res.number} is booked but the automatic Job Order could not be made${joErr ? ` (${joErr})` : ''}. Please open the booking and send it.`, link: `/jobs/${res.job_id}` });
   }
-  const r = bookedReply(avail.requested_label ?? wanted!, res.number, link || undefined);
-  return json({ ok: true, status: 'confirmed', booked: true, confirmed: true, requested: wanted, requested_label: avail.requested_label, job_number: res.number, job_id: res.job_id, quotation_number: res.quotation_number ?? null, job_order_number: joNumber || null, job_order_link: link || null, client_id: clientId, inquiry_id: inq.id, alternatives: [], alt_count: 0, ...withEstimate(r) });
+  const r = bookedReply(avail.requested_label ?? wanted!, res.number, link || undefined, joLater);
+  return json({ ok: true, status: 'confirmed', booked: true, confirmed: true, requested: wanted, requested_label: avail.requested_label, job_number: res.number, job_id: res.job_id, quotation_number: res.quotation_number ?? null, job_order_number: joNumber || null, job_order_link: link || null, job_order_later: joLater, job_order_error: joErr || null, client_id: clientId, inquiry_id: inq.id, alternatives: [], alt_count: 0, ...withEstimate(r) });
 });

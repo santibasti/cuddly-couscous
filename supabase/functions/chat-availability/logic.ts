@@ -5,14 +5,14 @@ export const manilaDay = (ms: number) => new Date(ms + 8 * 3600_000).toISOString
 const weekday = (d: string) => new Date(d + 'T00:00:00Z').getUTCDay();                       // 0 = Sunday
 
 /** auto_confirm: the chat books an open date by itself (a person still arranges the team, vehicle and the quotation). check_resources: also require a free leader, crew and vehicle (off by default: a day is open while it has fewer than max_jobs_per_day jobs). */
-export interface Rules { lead_days: number; closed_weekdays: number[]; max_jobs_per_day: number; horizon_days: number; alternatives: number; crew_needed: number; auto_confirm: boolean; check_resources: boolean; auto_job_order: boolean }
-export const DEFAULT_RULES: Rules = { lead_days: 2, closed_weekdays: [0], max_jobs_per_day: 2, horizon_days: 21, alternatives: 3, crew_needed: 3, auto_confirm: false, check_resources: false, auto_job_order: false };
+export interface Rules { lead_days: number; closed_weekdays: number[]; max_jobs_per_day: number; horizon_days: number; alternatives: number; crew_needed: number; auto_confirm: boolean; check_resources: boolean; auto_job_order: boolean; job_order_delay_min: number }
+export const DEFAULT_RULES: Rules = { lead_days: 2, closed_weekdays: [0], max_jobs_per_day: 2, horizon_days: 21, alternatives: 3, crew_needed: 3, auto_confirm: false, check_resources: false, auto_job_order: false, job_order_delay_min: 10 };
 const num = (v: unknown, d: number, lo: number, hi: number) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : d; };
 /** Rules from the Admin settings, every value kept inside a sensible range. */
 export function normalizeRules(x: unknown): Rules {
   const r = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
   const closed = Array.isArray(r.closed_weekdays) ? [...new Set(r.closed_weekdays.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))] : DEFAULT_RULES.closed_weekdays;
-  return { lead_days: num(r.lead_days, DEFAULT_RULES.lead_days, 0, 30), closed_weekdays: closed, max_jobs_per_day: num(r.max_jobs_per_day, DEFAULT_RULES.max_jobs_per_day, 1, 20), horizon_days: num(r.horizon_days, DEFAULT_RULES.horizon_days, 7, 90), alternatives: num(r.alternatives, DEFAULT_RULES.alternatives, 1, 5), crew_needed: num(r.crew_needed, DEFAULT_RULES.crew_needed, 1, 15), auto_confirm: r.auto_confirm === true, check_resources: r.check_resources === true, auto_job_order: r.auto_job_order === true };
+  return { lead_days: num(r.lead_days, DEFAULT_RULES.lead_days, 0, 30), closed_weekdays: closed, max_jobs_per_day: num(r.max_jobs_per_day, DEFAULT_RULES.max_jobs_per_day, 1, 20), horizon_days: num(r.horizon_days, DEFAULT_RULES.horizon_days, 7, 90), alternatives: num(r.alternatives, DEFAULT_RULES.alternatives, 1, 5), crew_needed: num(r.crew_needed, DEFAULT_RULES.crew_needed, 1, 15), auto_confirm: r.auto_confirm === true, check_resources: r.check_resources === true, auto_job_order: r.auto_job_order === true, job_order_delay_min: num(r.job_order_delay_min, DEFAULT_RULES.job_order_delay_min, 0, 240) };
 }
 
 const DAYS: Record<string, number> = { sunday: 0, sun: 0, linggo: 0, monday: 1, mon: 1, lunes: 1, tuesday: 2, tue: 2, tues: 2, martes: 2, wednesday: 3, wed: 3, miyerkules: 3, miyerkoles: 3, thursday: 4, thu: 4, thur: 4, thurs: 4, huwebes: 4, friday: 5, fri: 5, biyernes: 5, saturday: 6, sat: 6, sabado: 6 };
@@ -74,10 +74,10 @@ export function checkAvailability(wanted: string | null, today: string, rules: R
 }
 
 /** What the chat says after it really booked the date. Nothing about the price (the estimate sentence is added separately). With a Job Order link (automatic Job Order switched on) it also hands over the link. */
-export function bookedReply(label: string, number: string, link?: string): { reply_en: string; reply_tl: string; reply_tglish: string } {
+export function bookedReply(label: string, number: string, link?: string, later = false): { reply_en: string; reply_tl: string; reply_tglish: string } {
   const en = `Your booking is set for ${label} (ref ${number}). Our team will message you the arrival time and the final price after verifying the details. If you need to change the date, just tell us.`;
   const tl = `Naka-book na po kayo sa ${label} (ref ${number}). Ime-message po kayo ng aming team ng oras ng dating at ng final na presyo pagkatapos ma-verify ang detalye. Kung gusto ninyong palitan ang petsa, sabihin lang po.`;
   const tg = `Noted po! Naka-book na po kayo sa ${label} (ref ${number}). Ime-message po namin kayo ng arrival time at ng final price pagkatapos ma-verify ng team ang details. Kung gusto ninyong ilipat ang date, sabihin lang po.`;
-  if (!link) return { reply_en: en, reply_tl: tl, reply_tglish: tg };
+  if (!link) return later ? { reply_en: `${en} Your Job Order confirmation will follow in a few minutes.`, reply_tl: `${tl} Susunod po sa loob ng ilang minuto ang inyong Job Order confirmation.`, reply_tglish: `${tg} Susunod po ang Job Order confirmation ninyo in a few minutes.` } : { reply_en: en, reply_tl: tl, reply_tglish: tg };
   return { reply_en: `${en} Here is your Job Order with our rates: ${link}`, reply_tl: `${tl} Narito po ang inyong Job Order kasama ang aming mga rate: ${link}`, reply_tglish: `${tg} Ito po ang Job Order ninyo, kasama ang rates namin: ${link}` };
 }

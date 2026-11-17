@@ -117,3 +117,11 @@ describe('how to book', () => {
     const parts = splitMessages(BOOKING_HOWTO); expect(parts).toHaveLength(2); expect(parts[1]).toContain('Type of Service (Window, Solar, Wall/floor or Roof):'); expect(parts[1]).toContain('Preferred date:'); expect(parts[1]).not.toMatch(/glass panels/);
   });
 });
+
+import { bookedReply, normalizeRules } from '../../supabase/functions/chat-availability/logic';
+describe('Job Order sent later', () => {
+  it('default is 10 minutes, kept in range, and the booking reply says it will follow', () => {
+    expect(normalizeRules({}).job_order_delay_min).toBe(10); expect(normalizeRules({ job_order_delay_min: 0 }).job_order_delay_min).toBe(0); expect(normalizeRules({ job_order_delay_min: 9999 }).job_order_delay_min).toBe(240);
+    expect(bookedReply('Sat, Nov 21', 'JOB-1', undefined, true).reply_en).toMatch(/Job Order confirmation will follow in a few minutes/); expect(bookedReply('Sat, Nov 21', 'JOB-1', 'https://x/#/jo/abc').reply_en).toContain('https://x/#/jo/abc');
+  });
+});
