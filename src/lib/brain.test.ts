@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { WELCOME_TEXT, composeFirst, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -56,11 +56,14 @@ describe('the run loop and the modes', () => {
   it('the mode defaults to off', () => { expect([parseMode(undefined), parseMode('x'), parseMode('suggest'), parseMode('auto')]).toEqual(['off', 'off', 'suggest', 'auto']); });
 });
 
-describe('greeting', () => {
-  it('uses the customer first name when known, never an AI introduction', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en', customerName: 'Remar Jig Narciso' });
-    expect(s).toContain('Hi Mam/Sir Remar! Thanks for messaging TopMop. How can we help?'); expect(s).not.toMatch(/AI customer service/);
-    expect(buildSystem({ sections: [], version: null, lang: 'en' })).toContain('Hi Mam/Sir! Thanks for messaging TopMop.');
+describe('welcome message', () => {
+  it('the first reply starts with the TopMop welcome (all four services), then the answer; NO_ANSWER gives the welcome alone', () => {
+    expect(WELCOME_TEXT).toMatch(/^Hello po, Ma’am\/Sir! Good day\./); for (const t of ['Glass/Window Cleaning', 'Wall Cleaning', 'Roof Cleaning', 'Solar Panel Cleaning', 'May we know your location po, Ma’am/Sir?']) expect(WELCOME_TEXT).toContain(t);
+    expect(composeFirst('NO_ANSWER')).toBe(WELCOME_TEXT); expect(composeFirst('')).toBe(WELCOME_TEXT); expect(composeFirst('For 21 panels the package is ₱4,799 po.')).toBe(WELCOME_TEXT + '\n\nFor 21 panels the package is ₱4,799 po.');
+  });
+  it('the system prompt tells the AI not to greet when the welcome is added, and never to introduce itself as an AI', () => {
+    const f = buildSystem({ sections: [], version: null, lang: 'en', firstMessage: true }); expect(f).toMatch(/FIRST MESSAGE/); expect(f).toMatch(/NO_ANSWER/); expect(f).not.toMatch(/AI customer service/);
+    expect(buildSystem({ sections: [], version: null, lang: 'en' })).toMatch(/Do not greet again/);
   });
 });
 

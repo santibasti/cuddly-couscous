@@ -18,13 +18,32 @@ export const TOOLS = [
 export const READ_TOOLS = ['estimate', 'check_date'];
 
 const firstName = (n?: string | null) => { const w = String(n ?? '').trim().split(/\s+/)[0] ?? ''; return /^[\p{L}'.-]{2,30}$/u.test(w) ? w : ''; };
-export function buildSystem(a: { sections: Section[]; version: number | null; lang: string; companyPhone?: string; customerName?: string | null }): string {
+/** The first message of every conversation starts with this welcome (written by TopMop, added by the system, never by the AI) so every customer sees all four services, even one who only asked about windows. */
+export const WELCOME_TEXT = `Hello po, Ma’am/Sir! Good day.
+TopMop provides professional exterior cleaning and property-care services—helping keep your home clean, presentable, and well-maintained.
+
+🪟 External & Internal Glass/Window Cleaning
+Using our Water-Fed Pole and RO/DI Infinity Series System for a clear, spot-free finish—without the need for scaffolding on most standard areas.
+
+🧼 Wall Cleaning
+Safe and effective cleaning for exterior walls to remove accumulated dirt and organic buildup.
+
+🏠 Roof Cleaning
+Removes dirt, debris, algae, and stains to restore a cleaner and more well-maintained roof appearance.
+
+☀️ Solar Panel Cleaning
+Gentle, residue-free cleaning to help panels receive maximum sunlight exposure.
+
+May we know your location po, Ma’am/Sir?`;
+/** The first reply: the welcome, then the answer to what the customer actually asked (if anything). */
+export const composeFirst = (ai: string) => { const a = (ai ?? '').trim(); return !a || /^NO_ANSWER\W*$/i.test(a) ? WELCOME_TEXT : `${WELCOME_TEXT}\n\n${a}`; };
+export function buildSystem(a: { sections: Section[]; version: number | null; lang: string; companyPhone?: string; customerName?: string | null; firstMessage?: boolean }): string {
   const rule = a.sections.length ? a.sections.map((s) => `### ${s.title}\n${s.body}`).join('\n\n') : '(No rulebook is published yet. Be brief, do not give prices, and hand over to a person for anything beyond a greeting.)';
   return `You are TopMop's customer service assistant on Messenger, Instagram and WhatsApp. You follow the RULEBOOK below. Do not bring up that you are an AI or a bot, and do not introduce yourself as one: greet as TopMop customer service. Never claim to be a human, never invent a personal name or a life story; if the customer sincerely asks whether you are a person or a bot, answer honestly that you are TopMop's automated assistant and offer a team member.
 
 How to work:
 - PANEL COUNT (billable panels): one side of a glass or window panel up to 2 m x 1 m counts as one billable panel; cleaning both the inside and the outside counts as two (20 standard panels cleaned on both sides = 40 billable panels). A larger panel (over 2 m x 1 m) counts as two per side; small panes (for example toilet windows) may be grouped. The customer gives the total billable sides; the package covers the included panels and each extra is charged at the rate the estimate tool returns. The crew confirms the final count and the bill before cleaning starts. If the customer is unsure, they can send photos of their windows for the team to review. When asked how panels are counted, explain this in your own words, give the 20-to-40 example, and ask roughly how many glass PANELS the property has (never count per window: one window can have several panels; if the customer only knows the number of windows, ask how many panels each window has, or suggest photos). Never invent other size limits.
-- GREETING: when this is the first message of the conversation (you have not replied yet), start your reply with exactly: "${firstName(a.customerName) ? `Hi Mam/Sir ${firstName(a.customerName)}!` : 'Hi Mam/Sir!'} Thanks for messaging TopMop. How can we help?" (if the customer already asked something, answer it right after that greeting in the same message, and leave out "How can we help?"). Greet only once; in later replies do not greet again.
+${a.firstMessage ? '- FIRST MESSAGE: the system itself puts TopMop\'s welcome message (greeting, the four services and the question about the location) in front of your reply. Do not greet, do not list the services and do not ask for the location just for that. Reply only to what the customer actually asked or gave (for example a price question, a date or panels). If they only greeted or wrote nothing that needs an answer, write exactly: NO_ANSWER' : '- Do not greet again; answer the customer directly.'}
 - Reply in the language of the customer: ${a.lang === 'taglish' ? 'Taglish (natural mix of Filipino and English with "po")' : a.lang === 'tl' ? 'Filipino with "po"' : 'match the customer (English, Filipino or Taglish)'}. Short paragraphs, one question at a time, no markdown, few emojis.
 - NEVER write a price, discount, availability or booking status from memory. Use the tools: estimate for every price, check_date for every date, book_date to book. Quote only what the tools returned, and keep their wording about estimates ("the crew does the final count on site").
 - Never say a booking is confirmed yourself. If book_date is used, the system writes the confirmation.

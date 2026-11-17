@@ -4,7 +4,7 @@
 // Answer: { ok, status: "queued" | "reply" | "held" | "handover" | "duplicate" | "off", reply, mode } ("queued": the work continues after the answer because ManyChat waits only 10 seconds) — put `reply` in the chatbot's next message; when it is empty, send nothing (staff or a draft is handling it).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { cardForLog, explainsPanelCount, panelGuideUrl } from '../_shared/estimatecard.ts';
-import { buildSystem, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
+import { buildSystem, composeFirst, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
 import { makeExec } from '../_shared/chatexec.ts';
 import { parseLang } from '../chat-availability/logic.ts';
 
@@ -49,14 +49,15 @@ Deno.serve(async (req) => {
   for (const m of (hist ?? []).reverse()) { const role = m.direction === 'in' ? 'user' : 'assistant'; if (messages.length && messages[messages.length - 1].role === role) messages[messages.length - 1].content += `\n${m.body}`; else messages.push({ role, content: m.body }); }
   if (!messages.length || messages[0].role !== 'user') messages.unshift({ role: 'user', content: text });
   const model = cfg?.model || env('CHAT_AI_MODEL') || 'claude-haiku-5-5';
-  const system = buildSystem({ sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, customerName: (conv as { name?: string | null }).name, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
+  const { count: sentBefore } = await sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('direction', 'out').in('status', ['sent', 'approved', 'draft']); const first = (sentBefore ?? 0) === 0;   // the first reply of a conversation starts with the welcome
+  const system = buildSystem({ firstMessage: first, sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, customerName: (conv as { name?: string | null }).name, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
   const callModel = async (sys: string, msgs: unknown[], tools: unknown) => {
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 500, system: sys, tools, messages: msgs }) });
     if (!r.ok) throw new Error(`AI error ${r.status}`); return await r.json();
   };
   const exec = makeExec({ sb, base: env('SUPABASE_URL'), key, conv, lang });
   const brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3 });
-  const d = decide(mode, brain, lang); const flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked }).violations;
+  const d0 = decide(mode, brain, lang); const d = first && (d0.kind === 'draft' || d0.kind === 'send') ? { ...d0, text: composeFirst(d0.text) } : d0; const flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked }).violations;
   const appUrl = env('APP_URL') || 'https://ops.topmop.ph'; const card = d.kind === 'send' || d.kind === 'draft' ? (cardForLog(brain.log, appUrl) ?? (explainsPanelCount(text, brain.reply) ? panelGuideUrl(appUrl) : null)) : null;   // one picture per reply: the estimate card, else the panel-counting guide
   const common = { card_url: card, conversation_id: conv.id, direction: 'out', model, rulebook_version: rb?.version ?? null, tool_log: brain.log, error: brain.error ?? (brain.reply.trim() ? null : `The AI wrote no text: ${brain.note ?? ''}`.slice(0, 240)) };
 
