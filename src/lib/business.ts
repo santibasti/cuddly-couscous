@@ -717,7 +717,8 @@ export function packagePanels(d: Pick<DB, 'services' | 'quotations'>, job: Pick<
   return n > 0 ? n : undefined;
 }
 
-/** Normalises additional-work lines: glass lines follow the panel table, minimum quantities are applied. */
+/** Normalises additional-work lines: glass lines follow the panel table, minimum quantities are applied.
+ *  When a glass package is booked (pkg is known) the minimum charge of the add-on services (roof, wall, floor, solar) is waived: they are billed for the quantity counted on site. A minimum negotiated for a line still applies. */
 export function resolveReviewItems(d: Pick<DB, 'services'>, panels: PanelRow[], items: QuoteItem[], pkg?: number): QuoteItem[] {
   return items.map((it) => {
     if (!it.category) return it;
@@ -730,7 +731,8 @@ export function resolveReviewItems(d: Pick<DB, 'services'>, panels: PanelRow[], 
       const areas = b.auto ? '' : [...new Set(panels.filter((p) => p.additional).map((p) => `${p.area} ${p.side}`))].join(', ');
       if (!description.trim() || description.startsWith('Additional glass panels –')) description = `Additional glass panels – ${b.additionalExternal} external, ${b.additionalInternal} internal${areas ? ` (${areas})` : ''}`;
     }
-    const min = it.negotiated && it.custom_min !== undefined ? it.custom_min : def.min;
+    const negotiatedMin = it.negotiated && it.custom_min !== undefined;
+    const min = negotiatedMin ? it.custom_min! : pkg !== undefined ? 0 : def.min;
     const qty = min > 0 && entered > 0 ? Math.max(entered, min) : entered;
     return { ...it, description, entered_qty: entered, qty };
   });
