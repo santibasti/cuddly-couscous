@@ -317,3 +317,20 @@ The customer-service rules of the chat are **versioned data**, not text buried i
 - **What is not in it:** the rates (Admin → Pricing / the rate list) and the booking rules (Settings → Messenger booking rules), so a rule cannot be changed by editing wording.
 - **Use today:** `chat-book` records the published version on each inquiry ("Rulebook version: n"). The chat functions do not read the rulebook text yet; the AI brain for free-text questions will (next step), always calling the price, date and booking functions for facts.
 - Deploy: `supabase.cmd db push` (answer Y), `supabase.cmd functions deploy chat-book --no-verify-jwt`, then the usual "Update now". In the demo build the screen works in this browser only.
+
+## AI chat: the AI brain in ManyChat (functions `chat-brain` + `chat-send`, migration 0125; menu: Sales → AI Chat)
+Every customer message from ManyChat goes to `chat-brain`. The AI (Claude) answers from the **published AI Rulebook** and gets every price, date and booking from the system's own functions (`chat-estimate`, `chat-availability`, `chat-book`, `lead-intake`), never from memory. It never confirms a booking itself (the system writes that sentence), and hands over complaints, refunds, discounts, contracts, unusual or unsafe work, commercial properties and anything it is unsure of.
+
+**Modes** (Admin → Settings → AI chat; default Off):
+- **Suggest (start here).** The AI writes a **draft**; nothing is sent. The draft waits in **AI Chat** with its safety flags and the actions it would take (book the date, save the lead). Staff edit it, **Approve & send** (the actions run once, then the reply goes to the customer through ManyChat) or **Discard**. A booking's wording comes from the system, not from the draft.
+- **Full.** The reply goes out at once, unless a safety check fails: then the customer gets a safe sentence ("Ire-refer ko po ito sa aming team…"), the conversation is marked **Needs a person** and the owner is alerted.
+- **Off.** Messages are only stored.
+In both modes a conversation marked **Needs a person** (or taken over with **Take over**) gets no AI replies until you press **Hand back to the AI**.
+
+**Safety checks on every reply:** any peso amount must come from a tool or the rate table; no "booked / naka-book na / confirmed" unless the system really booked; no discount, free service, guarantee or rope-access promise; no empty or very long reply. Customer text is treated as information, never as instructions. A message with the same ManyChat message id is handled once (retries are safe). Every message keeps the rulebook version, the tools it called and any error.
+
+**Setup**
+1. `supabase.cmd db push` (answer Y; migration 0125), then `supabase.cmd functions deploy chat-brain --no-verify-jwt` and `supabase.cmd functions deploy chat-send` (and redeploy `chat-book`, `chat-estimate`, `chat-availability`).
+2. Secrets (on your PC): `ANTHROPIC_API_KEY` (already set for the other AI functions); optional `CHAT_AI_MODEL` (default `claude-haiku-5-5`); **`MANYCHAT_API_TOKEN`** (ManyChat → Settings → API) so an approved reply is pushed to the customer. Without that token, Approve marks the reply approved and copies it so you can paste it into ManyChat's live chat. `supabase.cmd secrets set MANYCHAT_API_TOKEN=...`
+3. In ManyChat, for each customer message: **External Request** POST `https://<project-ref>.supabase.co/functions/v1/chat-brain?key=your_long_random_key`, body `{"channel":"messenger","subscriber_id":"{{user_id}}","name":"{{first_name}}","text":"{{last_input_text}}","message_id":"{{message_id}}","lang":"{{language}}"}`; put the answer's `reply` in the next message and send nothing when it is empty. (Use your ManyChat field names; check ManyChat's current rules for External Request time limits, and for sending after the 24-hour window.)
+4. Open **AI Chat** to approve drafts, then try a Taglish price question, a date question and a complaint before changing anything for real customers.

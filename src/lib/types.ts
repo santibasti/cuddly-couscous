@@ -972,6 +972,8 @@ export interface Settings {
   /** with auto approval on: still wait for the Owner when someone is late by more than this many minutes (after the grace period). Default 15. */
   auto_approve_late_min?: number;
   fb_ai?: { mode: 'off' | 'suggest' | 'auto'; notes: string };
+  /** The AI customer-service chat in ManyChat: off, suggest (staff approve every reply) or auto (full mode: replies go out by themselves, unless a safety check fails) */
+  chat_ai?: { mode: 'off' | 'suggest' | 'auto'; model?: string };
   /** Messenger / ManyChat "is that date free?" answer: earliest day (days from today), closed weekdays (0 = Sunday), most jobs a day, how far ahead to look, how many alternative dates to offer, crew needed */
   chat_booking?: { lead_days: number; closed_weekdays: number[]; max_jobs_per_day: number; horizon_days: number; alternatives: number; crew_needed: number; auto_confirm?: boolean; check_resources?: boolean; auto_job_order?: boolean };
   /** Marketing AI: writes and posts to the Facebook Page. approve = I approve each post, auto = posts go out on schedule. */

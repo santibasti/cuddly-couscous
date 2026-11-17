@@ -1,0 +1,41 @@
+// The tools of the AI brain run through the chat functions that already exist (estimate, availability, booking, lead): one set of rules for the price, the date and the booking, whoever asks.
+import type { ToolOutcome } from './brain.ts';
+
+// deno-lint-ignore no-explicit-any
+type Sb = any;
+export interface ExecCtx { sb: Sb; base: string; key: string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null }; lang: string }
+const post = async (c: ExecCtx, fn: string, body: Record<string, unknown>) => {
+  const r = await fetch(`${c.base}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': c.key }, body: JSON.stringify({ ...body, lang: c.lang }) });
+  const j = await r.json().catch(() => ({})) as Record<string, unknown>; if (!r.ok) throw new Error(String(j.error ?? `${fn} answered ${r.status}`)); return j;
+};
+const nums = (...v: unknown[]) => v.map(Number).filter((n) => Number.isFinite(n) && n > 0);
+export function makeExec(c: ExecCtx) {
+  return async (name: string, input: Record<string, unknown>): Promise<ToolOutcome> => {
+    try {
+      if (name === 'estimate') {
+        const j = await post(c, 'chat-estimate', { address: input.address, service: input.service, qty: input.qty, property_type: input.property_type, with_main: input.with_main });
+        return { text: String(j.reply ?? ''), amounts: nums(j.estimate, j.package_price, j.extra_rate) };
+      }
+      if (name === 'check_date') {
+        const j = await post(c, 'chat-availability', { when: input.date });
+        return { text: `status: ${j.status}. ${j.reply}` };
+      }
+      if (name === 'book_date') {
+        const j = await post(c, 'chat-book', { name: input.name, mobile: input.mobile, address: input.address, service: input.service, date: input.date, panels: input.panels, property_type: input.property_type, rates_ok: input.rates_ok, details: input.details, source: c.conv.channel });
+        await c.sb.from('chat_conversations').update({ client_id: j.client_id ?? null, inquiry_id: j.inquiry_id ?? null, status: 'Lead created' }).eq('id', c.conv.id);
+        return { text: `status: ${j.status}. ${j.reply}`, amounts: nums(j.estimate), booked: { ok: j.booked === true, reply: String(j.reply ?? '') } };
+      }
+      if (name === 'save_lead') {
+        const j = await post(c, 'lead-intake', { name: input.name, mobile: input.mobile, address: input.address, service: input.service, property_type: input.property_type, details: input.details, source: c.conv.channel === 'messenger' ? 'Facebook' : c.conv.channel });
+        await c.sb.from('chat_conversations').update({ client_id: j.client_id ?? null, inquiry_id: j.inquiry_id ?? null, status: 'Lead created' }).eq('id', c.conv.id);
+        return { text: 'Lead saved. Tell the customer our team will contact them.' };
+      }
+      if (name === 'needs_human') {
+        await c.sb.from('chat_conversations').update({ status: 'Needs a person', human_reason: String(input.reason ?? 'Needs a person').slice(0, 300) }).eq('id', c.conv.id);
+        await c.sb.from('alert_outbox').insert({ kind: 'chat', title: 'Chat needs a person', body: `${c.conv.name ?? 'A customer'} (${c.conv.channel}): ${String(input.reason ?? '').slice(0, 160)}`, link: '/ai-chat' });
+        return { text: 'A staff member has been notified.' };
+      }
+      return { text: 'Unknown tool.' };
+    } catch (e) { return { text: `Error: ${(e as Error).message}. Do not guess: tell the customer the team will verify.` }; }
+  };
+}

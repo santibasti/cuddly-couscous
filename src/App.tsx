@@ -21,6 +21,7 @@ import Dashboard from '@/pages/Dashboard';
 const Receipts = lazy(() => import('@/pages/Receipts'));
 const Today = lazy(() => import('@/pages/Today'));
 const AiRulebook = lazy(() => import('@/pages/AiRulebook'));
+const AiChat = lazy(() => import('@/pages/AiChat'));
 const Maintenance = lazy(() => import('@/pages/Maintenance'));
 const Clients = lazy(() => import('@/pages/Clients'));
 const ClientDetail = lazy(() => import('@/pages/ClientDetail'));
@@ -79,6 +80,7 @@ const NAV: { to: string; key: keyof typeof ROUTE_ACCESS; label: string; icon: st
   { to: '/sales', key: 'sales', label: 'Quotations', icon: 'sales' },
   { to: '/flow', key: 'leadflow', label: 'Lead Flow', icon: 'dispatch' },
   { to: '/inbox', key: 'inbox', label: 'Facebook Inbox', icon: 'clients' },
+  { to: '/ai-chat', key: 'inbox', label: 'AI Chat', icon: 'clients' },
   { to: '/marketing', key: 'marketing', label: 'Marketing AI', icon: 'reports' },
   { to: '/sms', key: 'sms', label: 'SMS', icon: 'bell' },
   { to: '/telegram', key: 'telegram', label: 'Telegram', icon: 'camera' },
@@ -234,6 +236,7 @@ function Shell() {
             <Route path="/telegram" element={<Guard area="telegram"><Telegram /></Guard>} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/admin" element={<Guard area="admin"><Admin /></Guard>} />
+            <Route path="/ai-chat" element={<Guard area="inbox"><AiChat /></Guard>} />
             <Route path="/rulebook" element={<Guard area="admin"><AiRulebook /></Guard>} />
             <Route path="*" element={<Navigate to={homeFor(any)} replace />} />
           </Routes>
