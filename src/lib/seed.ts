@@ -84,12 +84,12 @@ export function seedDB(): DB {
     svc('GLASS_EXT', 'Exterior Glass / Window Cleaning', 'panel', 140, 1, { package_price: 4799, package_qty: 31, excess_rate: 140, est_hours_per_unit: 0.35, packages: [{ id: 'pk-5799-41', price: 5799, qty: 41, excess_rate: 140 }, { id: 'pk-6799-41', price: 6799, qty: 41, excess_rate: 140 }, { id: 'pk-12799-51', price: 12799, qty: 51, excess_rate: 140 }] }),
     svc('GLASS_INT', 'Interior Glass Cleaning', 'panel', 0, 1, { custom_quote: true }),
     svc('ROOF', 'Roof Cleaning', 'sqm', 145, 100, { est_hours_per_unit: 0.06 }),
-    svc('WALL', 'Wall / Floor Cleaning', 'sqm', 125, 50, { est_hours_per_unit: 0.05 }),
+    svc('WALL', 'Exterior Wall Cleaning', 'sqm', 125, 50, { est_hours_per_unit: 0.05 }),
     svc('SOLAR', 'Solar Panel Cleaning', 'panel', 245, 20, { est_hours_per_unit: 0.15 }),
-    svc('ACP', 'ACP / Cladding Cleaning', 'sqm', 0, 1, { custom_quote: true }),
-    svc('FLOOR', 'Hardscape / Floor Cleaning', 'sqm', 125, 50, { est_hours_per_unit: 0.05 }),
-    svc('CEILING', 'Ceiling Cleaning', 'sqm', 0, 1, { custom_quote: true }),
-    svc('GUTTER', 'Gutter Cleaning', 'lm', 0, 1, { custom_quote: true }),
+    svc('ACP', 'ACP Cleaning', 'sqm', 0, 1, { custom_quote: true }),
+    svc('FLOOR', 'Floor / Driveway Cleaning', 'sqm', 125, 50, { est_hours_per_unit: 0.05 }),
+    svc('CEILING', 'Interior Wall & Ceiling Dry Cleaning', 'sqm', 0, 1, { custom_quote: true }),
+    svc('GUTTER', 'Gutter Cleaning / Vacuuming', 'lm', 0, 1, { custom_quote: true }),
     svc('OTHER', 'Other Property-Care Service', 'lot', 0, 1, { custom_quote: true }),
   ];
   for (const sv of services) { const d = SERVICE_METHOD_DEFAULTS[sv.code]; if (d) { sv.materials = d.materials; sv.methodology = d.methodology; } }
