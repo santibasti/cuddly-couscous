@@ -14,10 +14,10 @@ const LIGHT: Record<DoorLight, string> = { idle: '#2f6dff', open: '#7be3ff', amb
 const clampN = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 const PAT: Record<FloorKind, { w: number; h: number; draw: (dark: string, light: string) => React.ReactNode }> = {
-  wood: { w: 30, h: 18, draw: (d, l) => <><rect width="30" height="9" fill="rgba(255,255,255,.05)" /><rect y="9" width="30" height="9" fill="rgba(0,0,0,.1)" /><path d="M0 .5H30M0 9.5H30M12 0V9M22 9V18" stroke={d} strokeWidth="1" opacity=".7" /><path d="M0 4.5H30" stroke={l} strokeWidth=".4" opacity=".12" /></> },
-  carpet: { w: 6, h: 6, draw: (_d, l) => <><circle cx="1.5" cy="1.5" r=".7" fill={l} opacity=".16" /><circle cx="4.5" cy="4.5" r=".7" fill="#000" opacity=".16" /></> },
-  tile: { w: 28, h: 28, draw: (d, l) => <><rect width="14" height="14" fill="rgba(255,255,255,.06)" /><rect x="14" y="14" width="14" height="14" fill="rgba(255,255,255,.06)" /><path d="M0 .5H28M.5 0V28M14 0V28M0 14H28" stroke={d} strokeWidth="1" opacity=".8" /><path d="M1 1H13" stroke={l} strokeWidth=".4" opacity=".2" /></> },
-  marble: { w: 64, h: 64, draw: (_d, l) => <><path d="M0 40L30 0M20 64L64 8M44 64L64 40" stroke={l} strokeWidth=".6" opacity=".14" /><path d="M10 64L40 20" stroke="#fff" strokeWidth=".3" opacity=".12" /></> },
+  wood: { w: 56, h: 56, draw: (_d, l) => <path d="M.5 0V56M0 .5H56" stroke={l} strokeWidth=".6" opacity=".16" /> },
+  carpet: { w: 56, h: 56, draw: (_d, l) => <path d="M.5 0V56M0 .5H56" stroke={l} strokeWidth=".6" opacity=".16" /> },
+  tile: { w: 56, h: 56, draw: (_d, l) => <><path d="M.5 0V56M0 .5H56" stroke={l} strokeWidth=".7" opacity=".2" /><path d="M0 56L56 0" stroke="#fff" strokeWidth="6" opacity=".025" /></> },
+  marble: { w: 96, h: 96, draw: (_d, l) => <><path d="M.5 0V96M0 .5H96" stroke={l} strokeWidth=".7" opacity=".18" /><path d="M0 96L96 0" stroke="#fff" strokeWidth="10" opacity=".035" /></> },
 };
 function viewBoxFor(focus: string, mobile: boolean): string {
   if (!ROOMS.includes(focus as Room)) return `0 0 ${WORLD.w} ${WORLD.h}`;
@@ -104,11 +104,11 @@ function RoomShell({ r, live, kpis, demo, count, svc, phase, wall, onOpen }: { r
     <g className={`room room-${r}`} role="button" tabIndex={0} aria-label={`Open the ${name} work queue`} onClick={onOpen} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}>
       <rect x={b.x} y={b.top} width={b.w} height="244" rx="10" fill="#060f2c" />
       <rect x={b.x} y={b.top} width={b.w} height="64" fill={`url(#wall-${r})`} />
-      <rect x={b.x} y={b.top} width={b.w} height="4" fill="#fff" opacity=".22" /><rect x={b.x + 10} y={b.top + 2} width={b.w - 20} height="3" rx="1.5" fill={THEME[r].glow} opacity=".55" />
+      <rect x={b.x} y={b.top} width={b.w} height="4" fill="#fff" opacity=".22" /><rect x={b.x + 10} y={b.top + 2} width={b.w - 20} height="3" rx="1.5" fill={THEME[r].glow} opacity=".95" style={{ filter: `drop-shadow(0 0 4px ${THEME[r].glow})` }} />
       <rect x={b.x} y={b.top} width={b.w} height="64" fill={look.sky} opacity={look.skyA} />
       {look.stars && [0.1, 0.22, 0.31, 0.47, 0.58, 0.69, 0.83, 0.92].map((f, i) => <circle key={i} cx={b.x + b.w * f} cy={b.top + 8 + ((i * 17) % 34)} r={i % 3 ? 0.8 : 1.3} fill="#fff" opacity=".85" />)}
-      <rect x={b.x} y={b.top + 31} width={b.w} height="31" fill="rgba(4,10,32,.62)" /><rect x={b.x} y={b.top + 31} width={b.w} height="1" fill={THEME[r].trim} opacity=".5" />
-      <rect x={b.x} y={b.top + 64} width={b.w} height="148" fill={`url(#floor-${r})`} /><rect x={b.x} y={b.top + 64} width={b.w} height="148" fill={`url(#fp-${r})`} /><ellipse cx={b.cx} cy={b.top + 130} rx={b.w * 0.42} ry="46" fill={`url(#glow-${r})`} /><rect x={b.x} y={b.top + 62} width={b.w} height="5" fill={THEME[r].trim} opacity=".6" /><rect x={b.x} y={b.top + 67} width={b.w} height="3" fill="#000" opacity=".25" />
+      {[1, 2, 3, 4, 5, 6].map((i) => <rect key={i} x={b.x + (b.w / 7) * i - 0.5} y={b.top + 6} width="1" height="25" fill="#fff" opacity=".07" />)}<rect x={b.x} y={b.top + 31} width={b.w} height="31" fill="rgba(4,10,32,.62)" /><rect x={b.x} y={b.top + 31} width={b.w} height="1" fill={THEME[r].trim} opacity=".5" />
+      <rect x={b.x} y={b.top + 64} width={b.w} height="148" fill={`url(#floor-${r})`} /><rect x={b.x} y={b.top + 64} width={b.w} height="148" fill={`url(#fp-${r})`} /><ellipse cx={b.cx} cy={b.top + 130} rx={b.w * 0.42} ry="46" fill={`url(#glow-${r})`} /><rect x={b.x} y={b.top + 62} width={b.w} height="5" fill={THEME[r].trim} opacity=".85" style={{ filter: `drop-shadow(0 0 3px ${THEME[r].trim})` }} /><rect x={b.x} y={b.top + 67} width={b.w} height="3" fill="#000" opacity=".4" />
       {[-4, -3, -2, -1, 0, 1, 2, 3, 4].map((i) => <line key={i} x1={b.cx + i * 30} y1={b.top + 64} x2={b.cx + i * 58} y2={b.top + 212} stroke="rgba(120,180,255,.1)" />)}
       {[0, 1, 2, 3].map((i) => <line key={i} x1={b.x} x2={b.x + b.w} y1={b.top + 84 + i * i * 9 + i * 14} y2={b.top + 84 + i * i * 9 + i * 14} stroke="rgba(120,180,255,.08)" />)}
       <rect x={b.cx - 120} y={b.top + 7} width="240" height="21" rx="10.5" fill="rgba(8,20,62,.85)" stroke="rgba(120,200,255,.5)" />
