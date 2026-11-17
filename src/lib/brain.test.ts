@@ -86,6 +86,6 @@ describe('no blank drafts', () => {
 describe('panel counting rule', () => {
   it('teaches the billable-panel rule: 2 m x 1 m per side, both sides double, larger = 2 per side', () => {
     const s = buildSystem({ sections: [], version: null, lang: 'en' });
-    expect(s).toMatch(/up to 2 m x 1 m counts as one billable panel/); expect(s).toMatch(/inside and the outside counts as two/); expect(s).toMatch(/over 2 m x 1 m\) counts as two per side/); expect(s).toMatch(/20 standard panels cleaned on both sides = 40 billable panels/); expect(s).toMatch(/crew confirms the final count/);
+    expect(s).toMatch(/up to 2 m x 1 m counts as one billable panel/); expect(s).toMatch(/inside and the outside counts as two/); expect(s).toMatch(/over 2 m x 1 m\) counts as two per side/); expect(s).toMatch(/20 standard panels cleaned on both sides = 40 billable panels/); expect(s).toMatch(/crew confirms the final count/); expect(s).toMatch(/never count per window/);
   });
 });
