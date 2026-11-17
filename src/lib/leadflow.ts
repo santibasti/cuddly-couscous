@@ -39,7 +39,7 @@ export function flowCards(db: DB, now: number = Date.now()): FlowCard[] {
   const hrs = (iso: string) => Math.max(0, Math.round((now - Date.parse(iso)) / 3_600_000));
   const svc = (codes: string[]) => (codes ?? []).map((c) => (db.services ?? []).find((s) => s.code === c)?.name ?? c).slice(0, 2).join(' + ') || 'Service';
 
-  const add = (c: Omit<FlowCard, 'ageH' | 'flags' | 'urgent' | 'stale'> & { flags?: string[]; urgent?: boolean; stale?: boolean }) => {
+  const add = (c: Omit<FlowCard, 'ageH' | 'flags' | 'urgent' | 'stale'> & { flags?: string[]; urgent?: boolean; stale?: boolean; fresh?: boolean }) => {
     const ageH = hrs(c.since); const flags = [...(c.flags ?? [])]; let urgent = !!c.urgent; const stale = !!c.stale || (['new', 'quote', 'sent', 'confirm'].includes(c.step) && ageH > 30 * 24);
     if (c.step === 'new' && ageH >= 24) { flags.push(`No quotation for ${Math.floor(ageH / 24)} d`); urgent = true; }
     if (c.step === 'quote' && ageH >= 24) { flags.push(`Waiting for you ${Math.floor(ageH / 24)} d`); urgent = true; }
@@ -47,7 +47,7 @@ export function flowCards(db: DB, now: number = Date.now()): FlowCard[] {
     if (c.step === 'confirm' && ageH >= 24) { flags.push('Not booked yet'); urgent = true; }
     if (stale) urgent = false;
     const chat = !!c.jobId && (db.jobs ?? []).some((j) => j.id === c.jobId && (j as { created_by?: string }).created_by === 'chat'); if (chat) flags.unshift('Booked by the chat');
-    out.push({ ...c, ageH, flags, urgent, stale, fresh: chat && ageH < 48 });
+    out.push({ ...c, ageH, flags, urgent, stale, fresh: c.fresh || (chat && ageH < 48) });
   };
 
   for (const i of (db.inquiries ?? []).filter((x) => !x.deleted_at && x.stage !== 'Lost')) {
@@ -66,7 +66,7 @@ export function flowCards(db: DB, now: number = Date.now()): FlowCard[] {
     if (q.status === 'Sent') return add({ ...common, id: `q:${q.id}`, step: 'sent', since: q.sent_at ?? q.created_at });
     if (q.status !== 'Approved') return;
     const j = jobOf(q);
-    if (!j) return add({ ...common, id: `q:${q.id}`, step: 'confirm', since: q.decided_at ?? q.created_at });
+    if (!j) { const gone = (db.jobs ?? []).find((x) => x.quotation_id === q.id && (x as { created_by?: string }).created_by === 'chat'); return add({ ...common, id: `q:${q.id}`, step: 'confirm', since: q.decided_at ?? q.created_at, flags: gone ? ['Chat booking cancelled'] : [], fresh: !!gone && hrs(q.decided_at ?? q.created_at) < 48 }); }
     const jc = { ...common, jobId: j.id, number: j.number, id: `j:${j.id}` };
     const starts = Math.ceil((Date.parse(`${j.start_at.slice(0, 10)}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY);
     if (!j.leader_id && !(j.crew_ids ?? []).length) return add({ ...jc, step: 'book', since: j.created_at, flags: starts <= 3 && starts >= -2 ? [`Starts ${starts <= 0 ? 'today' : `in ${starts} d`}, no crew`] : [], urgent: starts <= 3 && starts >= -2, stale: starts < -2 });

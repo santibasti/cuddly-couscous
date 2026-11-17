@@ -78,3 +78,11 @@ describe('lead flow: bookings made by the chat', () => {
     expect(cards.find((c) => c.jobId === 'j0')!.fresh).toBe(false);
   });
 });
+
+describe('lead flow: a chat booking that was cancelled', () => {
+  it('stays visible first in "Client said yes" for two days, tagged, because the approved quotation can be booked again', () => {
+    const cancelled = job('j1', { created_by: 'chat', status: 'Cancelled' });
+    const cards = flowCards(db({ inquiries: [inq('i0', { id: 'i0', created_at: iso(24 * 9) }), inq('i1')], quotations: [quote('q0', 'Approved', { inquiry_id: 'i0', decided_at: iso(24 * 9) }), quote('q1', 'Approved', { decided_at: iso(1) })], jobs: [cancelled] }), NOW);
+    expect(cards[0]).toMatchObject({ quotationId: 'q1', step: 'confirm', fresh: true }); expect(cards[0].flags).toContain('Chat booking cancelled');
+  });
+});
