@@ -6,7 +6,7 @@ import { AGENTS, DEPTS, deptByKey, type AgentView, type DeptKey, type HqEvent, t
 import { CLEANER, COOLER_ROOMS, LOOK, LAYOUT, applyLayout, cleanerState, coolerAt, coolerState, lightPhase, manilaParts, type Phase, CAFE_SEATS, ROOMS, ROW_Y, SPINES, STATION, WORLD, alongFrac, box, cafeBubble, cafeWanted, describeTrip, doors, handoverTrips, hallPath, inTransit, pulses, stepLoc, tripState, type DoorLight, type Loc, type Room, type TripState } from '@/lib/hqwing';
 import { THEME, type FloorKind } from '@/lib/hqtheme';
 import { Decor, Rug } from './HqDecor';
-import { PIXEL_CSS, PixelCtx } from './HqPixel';
+import { PIXEL_CSS, PixelCtx, RETRO_CSS, RetroCtx } from './HqPixel';
 import { BOT_CSS, HqBot, HqWalker, WALK_CSS, type ScreenKind } from './HqBot';
 
 const SCREEN: Record<Room, ScreenKind> = { email: 'mail', creative: 'photo', ads: 'chart', desk: 'chat', hub: 'core', booking: 'calendar', hr: 'list', cafe: 'core', board: 'chart' };
@@ -127,9 +127,9 @@ function RoomShell({ r, live, kpis, demo, count, svc, phase, wall, onOpen }: { r
   );
 }
 
-export interface HqWingProps { demo: boolean; events: HqEvent[]; views: Record<string, AgentView>; kpis?: Partial<Record<DeptKey, Kpi[]>>; now: number; still: boolean; hold: boolean; focus: string; selectedAgent: string; mobile: boolean; services?: { done: number; total: number; working: number; road: number; sample: boolean }; link?: 'live' | 'connecting' | 'reconnecting' | 'off'; onPickDept: (d: string) => void; onPickAgent: (k: string) => void }
+export interface HqWingProps { retro?: boolean; demo: boolean; events: HqEvent[]; views: Record<string, AgentView>; kpis?: Partial<Record<DeptKey, Kpi[]>>; now: number; still: boolean; hold: boolean; focus: string; selectedAgent: string; mobile: boolean; services?: { done: number; total: number; working: number; road: number; sample: boolean }; link?: 'live' | 'connecting' | 'reconnecting' | 'off'; onPickDept: (d: string) => void; onPickAgent: (k: string) => void }
 
-export function HqWing({ demo, events, views, kpis, now, still, hold, focus, selectedAgent, mobile, link, services, onPickDept, onPickAgent }: HqWingProps) {
+export function HqWing({ retro = false, demo, events, views, kpis, now, still, hold, focus, selectedAgent, mobile, link, services, onPickDept, onPickAgent }: HqWingProps) {
   const [vw, setVw] = useState(typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6); useEffect(() => { const f = () => setVw(window.innerWidth / window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   const wide = !mobile && vw > 1.25; applyLayout(wide);                    // the building takes the shape of the screen: wide screens get a wide building, no empty sides
   const reduce = useReducedMotion(); const frozen = still || hold || !!reduce;
@@ -168,17 +168,17 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
   const active = trips[0];
 
   return (
-    <div className={`wing ${frozen ? 'still' : ''}`} ref={host} style={{ ['--wa' as string]: (WORLD.w / WORLD.h).toFixed(3) }}>
-      <style>{BOT_CSS}{WALK_CSS}{PIXEL_CSS}{CSS}</style>
+    <div className={`wing ${frozen ? 'still' : ''} ${retro ? 'retro' : ''}`} ref={host} style={{ ['--wa' as string]: (WORLD.w / WORLD.h).toFixed(3) }}>
+      <style>{BOT_CSS}{WALK_CSS}{PIXEL_CSS}{RETRO_CSS}{CSS}</style>
       <div className="wing-bar"><div className="wing-tag" data-mode={demo ? 'demo' : link === 'live' || link === 'off' ? 'live' : 'wait'}>{demo ? 'SAMPLE · DEMO MODE · nothing is sent or saved' : link === 'live' ? 'LIVE · doors and walks follow real events' : link === 'off' ? 'LOCAL DATA · this browser only' : 'RECONNECTING · showing the last 24 h, nothing is lost'}</div>
-      <span className="wing-btns"><button type="button" className="wing-snd" onClick={togglePixel} aria-pressed={pixel} title="Draw the robots as pixel art">{pixel ? '👾 Pixel: on' : '👾 Pixel: off'}</button> <button type="button" className="wing-snd" onClick={() => setLightMode(lightMode === 'auto' ? 'day' : lightMode === 'day' ? 'night' : 'auto')} title="Light follows the Manila clock; tap to preview day or night">{lightMode === 'auto' ? `🌗 Light: auto (${phase})` : lightMode === 'day' ? '☀️ Light: day' : '🌙 Light: night'}</button> <button type="button" className="wing-snd" onClick={() => toggleSound()} aria-pressed={sound}>{sound ? '🔊 Door sounds on' : '🔇 Door sounds off'}</button></span></div>
+      <span className="wing-btns">{!retro && <button type="button" className="wing-snd" onClick={togglePixel} aria-pressed={pixel} title="Draw the robots as pixel art">{pixel ? '👾 Pixel: on' : '👾 Pixel: off'}</button>} <button type="button" className="wing-snd" onClick={() => setLightMode(lightMode === 'auto' ? 'day' : lightMode === 'day' ? 'night' : 'auto')} title="Light follows the Manila clock; tap to preview day or night">{lightMode === 'auto' ? `🌗 Light: auto (${phase})` : lightMode === 'day' ? '☀️ Light: day' : '🌙 Light: night'}</button> <button type="button" className="wing-snd" onClick={() => toggleSound()} aria-pressed={sound}>{sound ? '🔊 Door sounds on' : '🔇 Door sounds off'}</button></span></div>
       <div className="wing-cam" style={{ aspectRatio: mobile ? '460 / 520' : `${WORLD.w} / ${WORLD.h}` }}>
-        <PixelCtx.Provider value={pixel}><motion.svg viewBox={vb} animate={{ viewBox: vb }} transition={{ duration: reduce ? 0 : 0.9, ease: [0.65, 0, 0.3, 1] }} preserveAspectRatio="xMidYMid meet" role="group" aria-label="Living office: nine rooms joined by corridors">
+        <RetroCtx.Provider value={retro}><PixelCtx.Provider value={pixel || retro}><motion.svg viewBox={vb} animate={{ viewBox: vb }} transition={{ duration: reduce ? 0 : 0.9, ease: [0.65, 0, 0.3, 1] }} preserveAspectRatio="xMidYMid meet" role="group" aria-label="Living office: nine rooms joined by corridors">
           <defs>
             {ROOMS.map((r) => { const t = THEME[r]; return (<g key={r}>
-              <linearGradient id={`wall-${r}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.wall[0]} /><stop offset="1" stopColor={t.wall[1]} /></linearGradient>
-              <linearGradient id={`floor-${r}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.floor[0]} /><stop offset="1" stopColor={t.floor[1]} /></linearGradient>
-              <pattern id={`fp-${r}`} width={PAT[t.kind].w} height={PAT[t.kind].h} patternUnits="userSpaceOnUse">{PAT[t.kind].draw(t.floor[1], t.trim)}</pattern>
+              <linearGradient id={`wall-${r}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.wall[0]} /><stop offset="1" stopColor={retro ? t.wall[0] : t.wall[1]} /></linearGradient>
+              <linearGradient id={`floor-${r}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.floor[0]} /><stop offset="1" stopColor={retro ? t.floor[0] : t.floor[1]} /></linearGradient>
+              <pattern id={`fp-${r}`} width={retro ? 32 : PAT[t.kind].w} height={retro ? 32 : PAT[t.kind].h} patternUnits="userSpaceOnUse">{retro ? <><rect width="16" height="16" fill="#fff" opacity=".09" /><rect x="16" y="16" width="16" height="16" fill="#fff" opacity=".09" /><rect width="32" height="32" fill="none" stroke="#000" strokeOpacity=".25" /></> : PAT[t.kind].draw(t.floor[1], t.trim)}</pattern>
               <radialGradient id={`glow-${r}`} cx=".5" cy=".5" r=".5"><stop offset="0" stopColor={t.glow} stopOpacity=".28" /><stop offset="1" stopColor={t.glow} stopOpacity="0" /></radialGradient></g>); })}
             <linearGradient id="glassg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#fff" stopOpacity=".1" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
             <linearGradient id="botg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#b3c4e6" /></linearGradient>
@@ -236,7 +236,7 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
             </g>); })}
           <rect x="-40" y="-20" width={WORLD.w + 80} height={WORLD.h + 60} fill={look.overlay} opacity={look.alpha} pointerEvents="none" />
           {active && <g transform={`translate(${WORLD.w / 2} ${ROW_Y[1] + 330})`}><rect x="-190" y="-12" width="380" height="22" rx="11" fill="rgba(6,16,48,.9)" stroke="rgba(123,227,255,.6)" /><text y="3" textAnchor="middle" fontSize="11" fontWeight="700" fill="#dff6ff">{describeTrip(active)}</text></g>}
-        </motion.svg></PixelCtx.Provider>
+        </motion.svg></PixelCtx.Provider></RetroCtx.Provider>
       </div>
       <p className="sr" aria-live="polite">{active ? describeTrip(active) : `${busy} busy, ${waiting} waiting for approval`}</p>
       <div className="wing-legend"><span><i className="d idle" /> Door idle</span><span><i className="d open" /> Opens only when someone walks through</span><span><i className="d amber" /> Waiting for you</span><span><i className="d green" /> Just finished</span><span><i className="d red" /> Problem</span><span className="grow">{demo ? 'Sample scenario: press Start above. ' : `${busy} busy · ${waiting} waiting · `}Café chat, the cleaning robot and water breaks are decorative.</span></div>
