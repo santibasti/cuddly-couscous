@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { BOOKING_HOWTO, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -107,5 +107,13 @@ describe('separate messages', () => {
   });
   it('the system prompt asks for the booking details as their own message', () => {
     const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SEPARATE MESSAGES/); expect(s).toMatch(/Full name:/); expect(s).toMatch(/Type of Service \(Window, Solar, Wall\/floor or Roof\):/); expect(s).not.toMatch(/Number of glass panels:/); expect(s).toMatch(/Never ask for the number of glass panels in the booking details/); expect(s).toMatch(/line containing only ---/);
+  });
+});
+
+describe('how to book', () => {
+  it('recognises a customer who wants to book, and has a ready booking-details request', () => {
+    for (const q of ['how do i boook?'.replace('boook', 'book'), 'Gusto ko po mag-book', 'pwede po bang magpa-schedule', 'I want to reserve Saturday']) expect(wantsToBook(q)).toBe(true);
+    expect(wantsToBook('Magkano po sa Pasig?')).toBe(false);
+    const parts = splitMessages(BOOKING_HOWTO); expect(parts).toHaveLength(2); expect(parts[1]).toContain('Type of Service (Window, Solar, Wall/floor or Roof):'); expect(parts[1]).toContain('Preferred date:'); expect(parts[1]).not.toMatch(/glass panels/);
   });
 });
