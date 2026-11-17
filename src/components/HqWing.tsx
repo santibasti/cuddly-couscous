@@ -4,12 +4,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { AGENTS, DEPTS, deptByKey, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
 import { CLEANER, COOLER_ROOMS, LOOK, LAYOUT, applyLayout, cleanerState, coolerAt, coolerState, lightPhase, manilaParts, type Phase, CAFE_SEATS, ROOMS, ROW_Y, SPINES, STATION, WORLD, alongFrac, box, cafeBubble, cafeWanted, describeTrip, doors, handoverTrips, hallPath, inTransit, pulses, stepLoc, tripState, type DoorLight, type Loc, type Room, type TripState } from '@/lib/hqwing';
+import { THEME, type FloorKind } from '@/lib/hqtheme';
+import { Decor, Rug } from './HqDecor';
 import { BOT_CSS, HqBot, HqWalker, WALK_CSS, type ScreenKind } from './HqBot';
 
 const SCREEN: Record<Room, ScreenKind> = { email: 'mail', creative: 'photo', ads: 'chart', desk: 'chat', hub: 'core', booking: 'calendar', hr: 'list', cafe: 'core', board: 'chart' };
 const ART: Record<Room, string> = { email: '✉️', creative: '🎞️', ads: '📊', desk: '💬', hub: '✦', booking: '📅', hr: '✅', cafe: '☕', board: '🏛️' };
 const LIGHT: Record<DoorLight, string> = { idle: '#2f6dff', open: '#7be3ff', amber: '#ffb020', green: '#4dffa0', red: '#ff5d5d' };
 const clampN = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+const PAT: Record<FloorKind, { w: number; h: number; draw: (dark: string, light: string) => React.ReactNode }> = {
+  wood: { w: 30, h: 18, draw: (d, l) => <><rect width="30" height="9" fill="rgba(255,255,255,.05)" /><rect y="9" width="30" height="9" fill="rgba(0,0,0,.1)" /><path d="M0 .5H30M0 9.5H30M12 0V9M22 9V18" stroke={d} strokeWidth="1" opacity=".7" /><path d="M0 4.5H30" stroke={l} strokeWidth=".4" opacity=".12" /></> },
+  carpet: { w: 6, h: 6, draw: (_d, l) => <><circle cx="1.5" cy="1.5" r=".7" fill={l} opacity=".16" /><circle cx="4.5" cy="4.5" r=".7" fill="#000" opacity=".16" /></> },
+  tile: { w: 28, h: 28, draw: (d, l) => <><rect width="14" height="14" fill="rgba(255,255,255,.06)" /><rect x="14" y="14" width="14" height="14" fill="rgba(255,255,255,.06)" /><path d="M0 .5H28M.5 0V28M14 0V28M0 14H28" stroke={d} strokeWidth="1" opacity=".8" /><path d="M1 1H13" stroke={l} strokeWidth=".4" opacity=".2" /></> },
+  marble: { w: 64, h: 64, draw: (_d, l) => <><path d="M0 40L30 0M20 64L64 8M44 64L64 40" stroke={l} strokeWidth=".6" opacity=".14" /><path d="M10 64L40 20" stroke="#fff" strokeWidth=".3" opacity=".12" /></> },
+};
 function viewBoxFor(focus: string, mobile: boolean): string {
   if (!ROOMS.includes(focus as Room)) return `0 0 ${WORLD.w} ${WORLD.h}`;
   const b = box(focus as Room), w = mobile ? 460 : b.w + 170, h = mobile ? 520 : (w * WORLD.h) / WORLD.w * 0.95;
@@ -94,11 +103,12 @@ function RoomShell({ r, live, kpis, demo, count, svc, phase, wall, onOpen }: { r
   return (
     <g className={`room room-${r}`} role="button" tabIndex={0} aria-label={`Open the ${name} work queue`} onClick={onOpen} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}>
       <rect x={b.x} y={b.top} width={b.w} height="244" rx="10" fill="#060f2c" />
-      <rect x={b.x} y={b.top} width={b.w} height="64" fill="url(#wallg)" />
+      <rect x={b.x} y={b.top} width={b.w} height="64" fill={`url(#wall-${r})`} />
+      <rect x={b.x} y={b.top} width={b.w} height="4" fill="#fff" opacity=".22" /><rect x={b.x + 10} y={b.top + 2} width={b.w - 20} height="3" rx="1.5" fill={THEME[r].glow} opacity=".55" />
       <rect x={b.x} y={b.top} width={b.w} height="64" fill={look.sky} opacity={look.skyA} />
       {look.stars && [0.1, 0.22, 0.31, 0.47, 0.58, 0.69, 0.83, 0.92].map((f, i) => <circle key={i} cx={b.x + b.w * f} cy={b.top + 8 + ((i * 17) % 34)} r={i % 3 ? 0.8 : 1.3} fill="#fff" opacity=".85" />)}
       <path d={`M${b.x + 12} ${b.top + 64} l12 -12 l9 6 l14 -16 l10 14 l18 -9 l12 16 l20 -20 l14 18 l20 -8 l12 10 H${b.x + b.w - 12} V${b.top + 64} Z`} fill="#0a1a4d" opacity=".7" />
-      <rect x={b.x} y={b.top + 64} width={b.w} height="148" fill="url(#floorg)" />
+      <rect x={b.x} y={b.top + 64} width={b.w} height="148" fill={`url(#floor-${r})`} /><rect x={b.x} y={b.top + 64} width={b.w} height="148" fill={`url(#fp-${r})`} /><ellipse cx={b.cx} cy={b.top + 130} rx={b.w * 0.42} ry="46" fill={`url(#glow-${r})`} /><rect x={b.x} y={b.top + 62} width={b.w} height="5" fill={THEME[r].trim} opacity=".6" /><rect x={b.x} y={b.top + 67} width={b.w} height="3" fill="#000" opacity=".25" />
       {[-4, -3, -2, -1, 0, 1, 2, 3, 4].map((i) => <line key={i} x1={b.cx + i * 30} y1={b.top + 64} x2={b.cx + i * 58} y2={b.top + 212} stroke="rgba(120,180,255,.1)" />)}
       {[0, 1, 2, 3].map((i) => <line key={i} x1={b.x} x2={b.x + b.w} y1={b.top + 84 + i * i * 9 + i * 14} y2={b.top + 84 + i * i * 9 + i * 14} stroke="rgba(120,180,255,.08)" />)}
       <rect x={b.cx - 120} y={b.top + 7} width="240" height="21" rx="10.5" fill="rgba(8,20,62,.85)" stroke="rgba(120,200,255,.5)" />
@@ -160,6 +170,11 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
       <div className="wing-cam" style={{ aspectRatio: mobile ? '460 / 520' : `${WORLD.w} / ${WORLD.h}` }}>
         <motion.svg viewBox={vb} animate={{ viewBox: vb }} transition={{ duration: reduce ? 0 : 0.9, ease: [0.65, 0, 0.3, 1] }} preserveAspectRatio="xMidYMid meet" role="group" aria-label="Living office: nine rooms joined by corridors">
           <defs>
+            {ROOMS.map((r) => { const t = THEME[r]; return (<g key={r}>
+              <linearGradient id={`wall-${r}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.wall[0]} /><stop offset="1" stopColor={t.wall[1]} /></linearGradient>
+              <linearGradient id={`floor-${r}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.floor[0]} /><stop offset="1" stopColor={t.floor[1]} /></linearGradient>
+              <pattern id={`fp-${r}`} width={PAT[t.kind].w} height={PAT[t.kind].h} patternUnits="userSpaceOnUse">{PAT[t.kind].draw(t.floor[1], t.trim)}</pattern>
+              <radialGradient id={`glow-${r}`} cx=".5" cy=".5" r=".5"><stop offset="0" stopColor={t.glow} stopOpacity=".28" /><stop offset="1" stopColor={t.glow} stopOpacity="0" /></radialGradient></g>); })}
             <linearGradient id="botg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#b3c4e6" /></linearGradient>
             <radialGradient id="shell" cx=".34" cy=".28" r=".95"><stop offset="0" stopColor="#ffffff" /><stop offset=".55" stopColor="#eaf0fc" /><stop offset="1" stopColor="#a9bbe0" /></radialGradient>
             <linearGradient id="visor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1d2f6c" /><stop offset="1" stopColor="#060c22" /></linearGradient>
@@ -180,6 +195,7 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
             {ROOMS.filter((r) => r !== 'hub').map((r) => <polyline key={r} className="link" points={hallPath('hub', r).map((q) => `${q.x},${q.y}`).join(' ')} fill="none" stroke="rgba(123,227,255,.2)" strokeWidth="2" />)}
           </g>
           {ROOMS.map((r) => <RoomShell key={r} r={r} live={r === 'hub' || r === 'cafe' ? true : AGENTS.some((a) => a.dept === r && a.live)} kpis={kpis?.[r]} demo={demo} count={events.filter((e) => e.dept === r && e.at.slice(0, 10) === today).length} svc={services} phase={phase} wall={wall} onOpen={() => onPickDept(r)} />)}
+          {ROOMS.map((r) => <g key={`d${r}`}><Rug r={r} /><Decor r={r} /></g>)}
           {ROOMS.map((r) => <Furniture key={r} r={r} warm={look.warm} />)}
 
           {/* JARVIS core */}
@@ -193,8 +209,8 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
           </g>
 
           {/* people at their desks, in the café, and walking */}
-          {withStation.map((a) => { const s = STATION[a.key]; if (gone(a.key)) return null; return <HqBot scale={LAYOUT.scale} key={a.key} a={a} x={s.x} y={s.y} side={s.side} state={views[a.key]?.state ?? 'idle'} dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
-          {withStation.map((a) => { const s = STATION[a.key]; return gone(a.key) && (!!cooler[a.key] || trips.some((x) => x.trip.agent === a.key && x.away)) ? <HqBot scale={LAYOUT.scale} key={`e${a.key}`} a={a} x={s.x} y={s.y} side={s.side} state="idle" dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} away selected={false} onPick={() => onPickAgent(a.key)} /> : null; })}
+          {withStation.map((a) => { const s = STATION[a.key]; if (gone(a.key)) return null; return <HqBot deskColors={THEME[s.room].desk} scale={LAYOUT.scale} key={a.key} a={a} x={s.x} y={s.y} side={s.side} state={views[a.key]?.state ?? 'idle'} dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
+          {withStation.map((a) => { const s = STATION[a.key]; return gone(a.key) && (!!cooler[a.key] || trips.some((x) => x.trip.agent === a.key && x.away)) ? <HqBot deskColors={THEME[s.room].desk} scale={LAYOUT.scale} key={`e${a.key}`} a={a} x={s.x} y={s.y} side={s.side} state="idle" dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} away selected={false} onPick={() => onPickAgent(a.key)} /> : null; })}
           {cafeGuests.map((a, i) => { const seat = CAFE_SEATS[locs[a.key].seat ?? 0]; return <HqBot scale={LAYOUT.scale} key={`c${a.key}`} a={a} x={seat.x} y={seat.y + 22} side={seat.x < box('cafe').cx ? 1 : -1} state="idle" dept="cafe" planned={!a.live} screen="core" desk={false} social bubble={cafeBubble(a.key, t + i * 3000)} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
 
           <g className="flights" pointerEvents="none">

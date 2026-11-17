@@ -140,10 +140,10 @@ function ToyTorso({ accent, look }: { accent: string; look: Look }) {
     </>
   );
 }
-export interface BotProps { scale?: number; desk?: boolean; social?: boolean; bubble?: string | null; a: AgentDef; x: number; y: number; side: 1 | -1; state: AgentState; dept: string; planned: boolean; screen: ScreenKind; selected: boolean; away?: boolean; onPick: () => void }
-export function HqBot({ scale = 0.74, desk = true, social = false, bubble, a, x, y, side, state, dept, planned, screen, selected, away, onPick }: BotProps) {
+export interface BotProps { deskColors?: [string, string]; scale?: number; desk?: boolean; social?: boolean; bubble?: string | null; a: AgentDef; x: number; y: number; side: 1 | -1; state: AgentState; dept: string; planned: boolean; screen: ScreenKind; selected: boolean; away?: boolean; onPick: () => void }
+export function HqBot({ deskColors, scale = 0.74, desk = true, social = false, bubble, a, x, y, side, state, dept, planned, screen, selected, away, onPick }: BotProps) {
   const pose: Pose = social ? 'social' : poseOf(state, planned, a.key, dept); const h = hash(a.key); const look = lookOf(a.key);
-  const sty = { ['--d' as string]: `${-(h % 70) / 10}s`, ['--p' as string]: `${4 + (h % 30) / 10}s`, ['--tp' as string]: `${0.24 + (h % 17) / 100}s`, ['--side' as string]: side };
+  const sty = { ['--d' as string]: `${-(h % 70) / 10}s`, ['--p' as string]: `${4 + (h % 30) / 10}s`, ['--tp' as string]: `${0.24 + (h % 17) / 100}s`, ['--side' as string]: side, ...(deskColors ? { ['--desk1' as string]: deskColors[0], ['--desk2' as string]: deskColors[1] } : {}) };
   const label = `${a.name}, ${a.role}: ${planned ? 'planned, not connected yet' : STATE_LABEL[state]}`;
   const on = !planned && (state === 'working' || state === 'received' || state === 'coordinating');
   const badge = planned ? '' : state === 'received' ? '🔔' : state === 'awaiting' ? '⏸' : state === 'done' ? '✔' : state === 'error' || state === 'blocked' ? '!' : '';
@@ -164,8 +164,8 @@ export function HqBot({ scale = 0.74, desk = true, social = false, bubble, a, x,
       </g>
       {bubble && <g className="bub" transform="translate(0 -118)"><rect x="-62" y="-12" width="124" height="22" rx="11" fill="#f4f7ff" /><text y="3" textAnchor="middle" fontSize="9" fontWeight="700" fill="#10204f">{bubble}</text></g>}
       {badge && !away && <g className="badge" transform="translate(30 -92)"><circle r="9" /><text y="3.6" textAnchor="middle" fontSize="10" fontWeight="800">{badge}</text></g>}
-      {desk && <><rect x="-66" y="0" width="132" height="9" rx="3" fill="url(#desktop)" stroke="#5fd0ff" strokeWidth=".8" />
-      <rect x="-66" y="9" width="132" height="22" rx="3" fill="#0a1740" stroke="#2a4a9a" strokeWidth=".8" opacity=".94" />
+      {desk && <><rect x="-66" y="0" width="132" height="9" rx="3" style={{ fill: 'var(--desk1, #19a4d6)' }} stroke="rgba(255,255,255,.55)" strokeWidth=".8" />
+      <rect x="-66" y="9" width="132" height="22" rx="3" style={{ fill: 'var(--desk2, #0a1740)' }} stroke="rgba(0,0,0,.35)" strokeWidth=".8" />
       <g className="kb"><rect x="-22" y="1.5" width="44" height="6" rx="2" fill="#12295f" />{[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <rect key={i} className={`key k${i % 4}`} x={-20 + i * 5} y="3" width="3.6" height="3" rx=".8" />)}</g>
       <g transform={`translate(${side * 50} -22)`}><rect x="-3" y="14" width="6" height="8" fill="#2a4a9a" /><Screen kind={screen} on={on} /></g></>}
       {social && <g className="cup" transform={`translate(${side * -22} -46)`}><rect x="-5" y="-6" width="10" height="11" rx="2" fill="#f4f7ff" /><path d="M5 -3q5 1 0 6" fill="none" stroke="#f4f7ff" strokeWidth="1.6" /><path className="steam" d="M-2 -9q-3 -4 0 -7" fill="none" stroke="rgba(220,240,255,.7)" strokeWidth="1.2" /></g>}
