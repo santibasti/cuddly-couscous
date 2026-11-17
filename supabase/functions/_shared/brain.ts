@@ -57,7 +57,7 @@ export function guardReply(reply: string, ctx: { amounts: number[]; booked: bool
 export const FALLBACK = { en: 'Let me refer this to our team so we can give you accurate information po.', tl: 'Ire-refer ko po ito sa aming team para makapagbigay kami ng tamang impormasyon.', taglish: 'Ire-refer ko po muna ito sa team namin para makapagbigay kami ng tamang information.' };
 export const fallbackFor = (lang: string) => (lang === 'tl' ? FALLBACK.tl : lang === 'taglish' ? FALLBACK.taglish : FALLBACK.en);
 
-export interface Brain { reply: string; actions: Action[]; amounts: number[]; booked: boolean; bookReply?: string; humanReason?: string; log: { tool: string; input: unknown; result: string }[]; error?: string }
+export interface Brain { reply: string; actions: Action[]; amounts: number[]; booked: boolean; bookReply?: string; humanReason?: string; log: { tool: string; input: unknown; result: string }[]; error?: string; note?: string }
 export interface ModelOut { content: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[]; stop_reason: string }
 /** Runs the model with the tools. Read tools (estimate, check_date) always run. Write tools (book_date, save_lead, needs_human) run now only in `auto` mode; in `suggest` mode they are queued as actions for staff to approve. */
 export async function runBrain(a: { mode: Mode; system: string; messages: { role: 'user' | 'assistant'; content: unknown }[]; callModel: (system: string, messages: unknown[], tools: unknown) => Promise<ModelOut>; exec: (name: string, input: Record<string, unknown>, live: boolean) => Promise<ToolOutcome>; maxRounds?: number }): Promise<Brain> {
@@ -65,7 +65,7 @@ export async function runBrain(a: { mode: Mode; system: string; messages: { role
   try {
     for (let round = 0; round < (a.maxRounds ?? 3); round++) {
       const res = await a.callModel(a.system, messages, TOOLS);
-      out.reply = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+      out.reply = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim(); out.note = res.content.length ? undefined : `empty answer, stop_reason ${res.stop_reason}`;
       const uses = res.content.filter((b) => b.type === 'tool_use'); if (!uses.length) break;
       messages.push({ role: 'assistant', content: res.content }); const results: unknown[] = [];
       for (const u of uses) {
@@ -78,9 +78,10 @@ export async function runBrain(a: { mode: Mode; system: string; messages: { role
       messages.push({ role: 'user', content: results });
       if (res.stop_reason !== 'tool_use') break;
     }
-    if (!out.reply.trim() && out.log.length && !out.error) {                                                                   // the model used its tools but wrote no words: ask once for the reply, then fall back to the system's own sentence
+    if (!out.reply.trim() && !out.error) {                                                                   // the model used its tools but wrote no words: ask once for the reply, then fall back to the system's own sentence
       try { const fin = await a.callModel(a.system, [...messages, { role: 'user', content: 'Now write your reply to the customer, using what the tools returned. Plain text, no tools.' }], []); out.reply = fin.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim(); } catch { /* use the fallback below */ }
       if (!out.reply.trim()) { const last = [...out.log].reverse().find((l) => READ_TOOLS.includes(l.tool) && l.result.trim()); if (last) out.reply = last.result.replace(/^status: \w+\.\s*/, '').trim(); }
+      if (!out.reply.trim()) out.note = `${out.note ?? 'the model wrote no text'}; tools used: ${out.log.map((l) => l.tool).join(', ') || 'none'}`;
     }
   } catch (e) { out.error = (e as Error).message; }
   return out;
@@ -92,7 +93,7 @@ export function decide(mode: Mode, b: Brain, lang: string): Decision {
   const g = guardReply(b.bookReply ?? b.reply, { amounts: b.amounts, booked: b.booked });
   if (b.humanReason) return { kind: 'handover', text: g.ok && b.reply ? b.reply : fallbackFor(lang), reason: b.humanReason };
   if (b.error) return { kind: 'handover', text: fallbackFor(lang), reason: `The AI could not answer (${b.error.slice(0, 80)})` };
-  if (mode === 'suggest') return { kind: 'draft', text: b.reply };                       // staff see the text and any safety flags before anything is sent
+  if (mode === 'suggest') return { kind: 'draft', text: b.reply.trim() ? b.reply : fallbackFor(lang) };   // never a blank draft: staff get a safe holding sentence they can edit                       // staff see the text and any safety flags before anything is sent
   if (!g.ok) return { kind: 'handover', text: fallbackFor(lang), reason: `The reply failed a safety check: ${g.violations.join('; ')}` };
   return { kind: 'send', text: b.bookReply ?? b.reply };
 }

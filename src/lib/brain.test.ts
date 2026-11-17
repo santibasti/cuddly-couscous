@@ -74,3 +74,11 @@ describe('a reply is never empty after tools', () => {
     expect(b2.reply).toMatch(/nearest open dates/);
   });
 });
+
+describe('no blank drafts', () => {
+  it('an empty model answer becomes a safe holding sentence with a note for staff', async () => {
+    const b = await runBrain({ mode: 'suggest', system: 's', messages: [{ role: 'user', content: 'Pasig, home' }], exec: async () => ({ text: '', amounts: [] }), callModel: async () => ({ content: [], stop_reason: 'end_turn' }) });
+    expect(b.reply).toBe(''); expect(b.note).toMatch(/no text|empty answer/);
+    const d = decide('suggest', b, 'en'); expect(d.kind).toBe('draft'); expect(d.text.length).toBeGreaterThan(10);
+  });
+});

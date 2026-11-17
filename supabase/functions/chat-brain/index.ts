@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
   const brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3 });
   const d = decide(mode, brain, lang); const flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked }).violations;
   const card = d.kind === 'reply' || d.kind === 'draft' ? cardForLog(brain.log, env('APP_URL') || 'https://ops.topmop.ph') : null;
-  const common = { card_url: card, conversation_id: conv.id, direction: 'out', model, rulebook_version: rb?.version ?? null, tool_log: brain.log, error: brain.error ?? null };
+  const common = { card_url: card, conversation_id: conv.id, direction: 'out', model, rulebook_version: rb?.version ?? null, tool_log: brain.log, error: brain.error ?? (brain.reply.trim() ? null : `The AI wrote no text: ${brain.note ?? ''}`.slice(0, 240)) };
 
   const put = async (row: Record<string, unknown>) => { let r = await sb.from('chat_messages').insert(row); if (r.error && /card_url/i.test(r.error.message)) { const { card_url: _c, ...rest } = row; r = await sb.from('chat_messages').insert(rest); } return r.error?.message ?? null; };   // works before migration 0126 too
   if (d.kind === 'draft') {                                                                                                                // suggest: a draft for staff, nothing is sent
