@@ -161,6 +161,8 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
         <motion.svg viewBox={vb} animate={{ viewBox: vb }} transition={{ duration: reduce ? 0 : 0.9, ease: [0.65, 0, 0.3, 1] }} preserveAspectRatio="xMidYMid meet" role="group" aria-label="Living office: nine rooms joined by corridors">
           <defs>
             <linearGradient id="botg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#b3c4e6" /></linearGradient>
+            <radialGradient id="shell" cx=".34" cy=".28" r=".95"><stop offset="0" stopColor="#ffffff" /><stop offset=".55" stopColor="#eaf0fc" /><stop offset="1" stopColor="#a9bbe0" /></radialGradient>
+            <linearGradient id="visor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1d2f6c" /><stop offset="1" stopColor="#060c22" /></linearGradient>
             <linearGradient id="desktop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#19a4d6" /><stop offset="1" stopColor="#0f4f94" /></linearGradient>
             <linearGradient id="wallg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#12307a" /><stop offset="1" stopColor="#0a1c52" /></linearGradient>
             <linearGradient id="floorg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#0c2159" /><stop offset="1" stopColor="#081541" /></linearGradient>

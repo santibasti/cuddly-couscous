@@ -36,6 +36,65 @@ function Screen({ kind, on }: { kind: ScreenKind; on: boolean }) {
   );
 }
 
+
+// ── the look: glossy toy robots (round white head, big dark visor, a lens ring on the side, chunky joints in the agent's own accent colour, a prop in the hand that tells the job)
+export type PropKind = 'phone' | 'envelope' | 'clip' | 'tablet' | 'camera' | 'laptop' | 'magnifier' | 'orb';
+const PROP_OF: Record<string, PropKind> = {
+  jarvis: 'orb', messenger: 'phone', qualifier: 'clip', support: 'phone', router: 'tablet', quote: 'clip', booking: 'tablet', scheduler: 'tablet', joborders: 'clip',
+  inbox: 'envelope', mailer: 'envelope', followup: 'phone', photo: 'camera', video: 'camera', creative: 'clip', qc: 'magnifier', campaign: 'clip', strategist: 'laptop', attrib: 'magnifier',
+  records: 'clip', attendance: 'magnifier', training: 'clip', growth: 'tablet', industry: 'clip', cfo: 'laptop', ops: 'tablet',
+};
+export const propOf = (key: string): PropKind => PROP_OF[key] ?? 'tablet';
+function Prop({ kind, accent }: { kind: PropKind; accent: string }) {
+  switch (kind) {
+    case 'phone': return <g><rect x="-3.6" y="-13" width="7.2" height="14" rx="1.9" fill="#1b2750" stroke="#d6def3" strokeWidth=".8" /><rect x="-2.4" y="-11" width="4.8" height="9" rx=".8" fill={accent} opacity=".75" /></g>;
+    case 'envelope': return <g><rect x="-8.5" y="-11" width="17" height="11.5" rx="1.6" fill="#f4f7ff" stroke="#cfd8ee" strokeWidth=".8" /><path d="M-8.5 -11L0 -4.2L8.5 -11" fill="none" stroke={accent} strokeWidth="1.2" /></g>;
+    case 'clip': return <g><rect x="-7.5" y="-16" width="15" height="18" rx="2" fill="#d9993f" stroke="#a87325" strokeWidth=".7" /><rect x="-5.5" y="-13" width="11" height="13.5" rx="1" fill="#fff" /><rect x="-2.5" y="-17.5" width="5" height="3.4" rx="1" fill="#6b7a99" />{[-9, -6, -3].map((y) => <rect key={y} x="-4" y={y} width="8" height="1.1" fill={accent} opacity=".85" />)}</g>;
+    case 'tablet': return <g><rect x="-6.5" y="-16" width="13" height="17" rx="2" fill="#12204a" stroke="#d6def3" strokeWidth=".8" />{[-12, -8, -4].map((y, i) => <rect key={y} x="-4.5" y={y} width={9 - i * 2} height="2" rx="1" fill={accent} opacity=".85" />)}</g>;
+    case 'camera': return <g><rect x="-8.5" y="-10" width="17" height="11" rx="2.2" fill="#1b2233" stroke="#4a5778" strokeWidth=".7" /><rect x="-4" y="-12.5" width="6" height="3" rx="1" fill="#2c3550" /><circle cx="0" cy="-4.5" r="4.4" fill="#0a0f1c" stroke={accent} strokeWidth="1.5" /><circle cx="-1" cy="-5.5" r="1" fill="#fff" opacity=".7" /></g>;
+    case 'laptop': return <g><rect x="-9.5" y="-14" width="19" height="11.5" rx="1.4" fill="#0f1a3d" stroke={accent} strokeWidth="1" /><rect x="-10.5" y="-2.5" width="21" height="2.8" rx="1" fill="#cfd8ee" /></g>;
+    case 'magnifier': return <g><circle cx="-2" cy="-10" r="5.6" fill="rgba(160,220,255,.28)" stroke="#d6def3" strokeWidth="1.8" /><line x1="2" y1="-6" x2="6.5" y2="0" stroke="#8fa8d8" strokeWidth="2.6" strokeLinecap="round" /><path d="M-5 -12q2 -3 5 -2" fill="none" stroke="#fff" strokeWidth="1" opacity=".7" /></g>;
+    case 'orb': return <g><circle cx="0" cy="-8" r="6.4" fill="url(#coreg)" style={{ filter: 'drop-shadow(0 0 5px #4fc4ff)' }} /><ellipse cx="0" cy="-8" rx="8.4" ry="2.6" fill="none" stroke={accent} strokeWidth="1" /></g>;
+  }
+}
+function Joint({ cx = 0, cy = 0, accent, r = 5 }: { cx?: number; cy?: number; accent: string; r?: number }) {
+  return <g><circle cx={cx} cy={cy} r={r} fill="#dfe6f5" stroke="#8fa8d8" strokeWidth=".8" /><circle cx={cx} cy={cy} r={r * 0.42} fill={accent} /></g>;
+}
+/** One arm: upper arm, elbow joint, forearm, a grey gripper hand and (right hand only) the prop. */
+function ToyArm({ cls, accent, prop, held }: { cls: string; accent: string; prop?: PropKind; held?: boolean }) {
+  return (
+    <g className={`arm ${cls}`}><rect x="-4.8" y="0" width="9.6" height="20" rx="4.8" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" />
+      <g transform="translate(0 19)"><g className="fore"><Joint accent={accent} r={4.6} /><rect x="-4.2" y="2" width="8.4" height="15" rx="4.2" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><circle cx="0" cy="18" r="5" fill="#4a5778" stroke="#9fb4de" strokeWidth=".7" /><circle cx="0" cy="18" r="2" fill={accent} opacity=".9" />
+        {prop && <g className={held ? 'held' : ''} transform="translate(0 18)"><Prop kind={prop} accent={accent} /></g>}</g></g></g>
+  );
+}
+/** The round head, seen from the front: glossy shell, big dark visor with glowing eyes, a lens ring on the side, an accent stripe. */
+function ToyHead({ accent, ant }: { accent: string; ant: boolean }) {
+  return (
+    <>
+      <rect x="-4.5" y="-4" width="9" height="6" rx="2" fill="#9fb4de" />
+      {ant && <g><line x1="0" y1="-39" x2="0" y2="-46" stroke="#9fb4de" strokeWidth="1.6" /><circle className="ant" cx="0" cy="-47" r="2.8" /></g>}
+      <circle cx="-22" cy="-20" r="5.4" fill="#25304f" stroke="#9fb4de" strokeWidth="1.2" /><circle cx="-22" cy="-20" r="2.4" fill={accent} opacity=".9" />
+      <ellipse cx="0" cy="-21" rx="22" ry="19.5" fill="url(#shell)" stroke="#9fb4de" strokeWidth=".9" />
+      <path d="M-15 -34Q0 -43 15 -34" fill="none" stroke={accent} strokeWidth="2.6" strokeLinecap="round" />
+      <ellipse cx="-1" cy="-21" rx="16.5" ry="12.8" fill="url(#visor)" stroke="#0b1230" strokeWidth="1" />
+      <path d="M-11 -28Q-3 -33.5 6 -30.5" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="2" strokeLinecap="round" />
+      <g transform="translate(-1 -21)"><g className="eyes"><circle className="eye" cx="-6.4" cy="0" r="3.4" /><circle className="eye" cx="6.4" cy="0" r="3.4" /><circle cx="-7.4" cy="-1.1" r=".9" fill="#fff" opacity=".85" /><circle cx="5.4" cy="-1.1" r=".9" fill="#fff" opacity=".85" /></g></g>
+      <path className="mouth" d="M-4 -12.6q4 2.4 8 0" fill="none" strokeWidth="1.1" />
+      <circle cx="22" cy="-20" r="8" fill="#1b2750" stroke="#9fb4de" strokeWidth="1.4" /><circle cx="22" cy="-20" r="5.3" fill="none" stroke={accent} strokeWidth="1.8" /><circle cx="22" cy="-20" r="2.6" fill="#070d24" /><circle cx="21" cy="-21" r=".9" fill="#fff" opacity=".8" />
+    </>
+  );
+}
+function ToyTorso({ accent }: { accent: string }) {
+  return (
+    <>
+      <rect x="-17" y="-53" width="34" height="55" rx="14" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".8" />
+      <circle cx="0" cy="-35" r="8" fill="#0b1b45" stroke="#9fb4de" strokeWidth="1" /><circle cx="0" cy="-35" r="4" fill={accent} style={{ filter: `drop-shadow(0 0 4px ${accent})` }} /><circle cx="-1" cy="-36" r="1.1" fill="#fff" opacity=".8" />
+      <rect x="-17" y="-19" width="34" height="5" fill={accent} opacity=".9" />
+    </>
+  );
+}
+
 export interface BotProps { scale?: number; desk?: boolean; social?: boolean; bubble?: string | null; a: AgentDef; x: number; y: number; side: 1 | -1; state: AgentState; dept: string; planned: boolean; screen: ScreenKind; selected: boolean; away?: boolean; onPick: () => void }
 export function HqBot({ scale = 0.74, desk = true, social = false, bubble, a, x, y, side, state, dept, planned, screen, selected, away, onPick }: BotProps) {
   const pose: Pose = social ? 'social' : poseOf(state, planned, a.key, dept); const h = hash(a.key);
@@ -49,22 +108,12 @@ export function HqBot({ scale = 0.74, desk = true, social = false, bubble, a, x,
       <title>{label}</title>
       <ellipse className="focusring" cx="0" cy="-30" rx="56" ry="66" fill="none" stroke="#ffd86b" strokeWidth="2" strokeDasharray="5 4" />
       <ellipse cx="0" cy="34" rx="64" ry="9" fill="rgba(0,0,0,.35)" />
-      {desk && <rect x="-21" y="-64" width="42" height="66" rx="12" fill="#101c46" stroke="#2a4a9a" strokeWidth="1" />}
+      {desk && <rect x="-22" y="-66" width="44" height="68" rx="14" fill="#101c46" stroke="#2a4a9a" strokeWidth="1" />}
       <g className="body" style={away ? { display: 'none' } : undefined}>
-        <g transform="translate(-20 -44)"><g className="arm armL"><rect x="-4.5" y="0" width="9" height="20" rx="4.5" fill="url(#botg)" /><g transform="translate(0 19)"><g className="fore"><rect x="-4" y="0" width="8" height="18" rx="4" fill="url(#botg)" /><circle cx="0" cy="18" r="4.6" fill="#9fb4de" /></g></g></g></g>
-        <g transform="translate(20 -44)"><g className="arm armR"><rect x="-4.5" y="0" width="9" height="20" rx="4.5" fill="url(#botg)" /><g transform="translate(0 19)"><g className="fore"><rect x="-4" y="0" width="8" height="18" rx="4" fill="url(#botg)" /><circle cx="0" cy="18" r="4.6" fill="#9fb4de" /></g></g></g></g>
-        <rect x="-18" y="-54" width="36" height="56" rx="12" fill="url(#botg)" stroke="#8fa8d8" strokeWidth=".8" />
-        <rect x="-10" y="-42" width="20" height="14" rx="4" fill="#0b1b45" /><text x="0" y="-31.6" textAnchor="middle" fontSize="8.5" fontWeight="800" fill={a.shirt} fontFamily="system-ui,sans-serif">AI</text>
-        <rect x="-18" y="-18" width="36" height="5" fill={a.shirt} opacity=".85" />
-        <g transform="translate(0 -54)"><g className="head">
-          <rect x="-4" y="-4" width="8" height="6" fill="#8fa8d8" />
-          <line x1="0" y1="-38" x2="0" y2="-45" stroke="#8fa8d8" strokeWidth="1.5" /><circle className="ant" cx="0" cy="-46" r="2.8" />
-          <rect x="-21.5" y="-24" width="4.5" height="12" rx="2.2" fill="#8fa8d8" /><rect x="17" y="-24" width="4.5" height="12" rx="2.2" fill="#8fa8d8" />
-          <rect x="-18" y="-38" width="36" height="36" rx="13" fill="url(#botg)" stroke="#8fa8d8" strokeWidth=".8" />
-          <rect x="-14.5" y="-31" width="29" height="19" rx="8" fill="#08153a" />
-          <g transform="translate(0 -21.5)"><g className="eyes"><circle className="eye" cx="-6.2" cy="0" r="3.1" /><circle className="eye" cx="6.2" cy="0" r="3.1" /></g></g>
-          <path className="mouth" d="M-3.5 -9.4q3.5 2.3 7 0" fill="none" strokeWidth="1.1" />
-        </g></g>
+        <g transform="translate(-20 -44)"><ToyArm cls="armL" accent={a.shirt} /><Joint accent={a.shirt} r={5.4} /></g>
+        <g transform="translate(20 -44)"><ToyArm cls="armR" accent={a.shirt} prop={propOf(a.key)} held /><Joint accent={a.shirt} r={5.4} /></g>
+        <ToyTorso accent={a.shirt} />
+        <g transform="translate(0 -54)"><g className="head"><ToyHead accent={a.shirt} ant={hash(a.key) % 3 === 0} /></g></g>
       </g>
       {bubble && <g className="bub" transform="translate(0 -118)"><rect x="-62" y="-12" width="124" height="22" rx="11" fill="#f4f7ff" /><text y="3" textAnchor="middle" fontSize="9" fontWeight="700" fill="#10204f">{bubble}</text></g>}
       {badge && !away && <g className="badge" transform="translate(30 -92)"><circle r="9" /><text y="3.6" textAnchor="middle" fontSize="10" fontWeight="800">{badge}</text></g>}
@@ -85,7 +134,7 @@ export const BOT_CSS = `
 .bot .eyes{animation:b-blink var(--p) infinite;animation-delay:var(--d)}
 .bot .head{animation:b-look calc(var(--p) * 2.2) ease-in-out infinite;animation-delay:var(--d)}
 .bot .arm{transform:rotate(7deg)}.bot .armR{transform:rotate(-7deg)}.bot .fore{transform:rotate(-12deg)}.bot .armR .fore{transform:rotate(12deg)}
-.bot .badge circle{fill:#ffd86b}.bot .badge text{fill:#1b1200}.bot .nm{fill:#dbe8ff;paint-order:stroke;stroke:#050d26;stroke-width:3px}.bot .pl{fill:#9fb3d9;paint-order:stroke;stroke:#050d26;stroke-width:3px;letter-spacing:.1em}
+.bot .held{transition:opacity .3s}.bot.pose-typing .held,.bot.pose-review .held{opacity:0}.bot .badge circle{fill:#ffd86b}.bot .badge text{fill:#1b1200}.bot .nm{fill:#dbe8ff;paint-order:stroke;stroke:#050d26;stroke-width:3px}.bot .pl{fill:#9fb3d9;paint-order:stroke;stroke:#050d26;stroke-width:3px;letter-spacing:.1em}
 .bot .key{fill:#2a4f9a}.bot.planned{opacity:.5}
 .bot .scr .m,.bot .scr .cell{fill:#1c3a73}.bot .scr .dots circle{fill:#7be3ff;opacity:0}.bot .scr .sweep{opacity:0}.bot .scr .cell.hot{fill:#2a4f9a}.bot .scr .spin{transform-box:fill-box;transform-origin:center}
 .bot .scr.on .m1{animation:s-pop 3.2s infinite}.bot .scr.on .m2{animation:s-pop 3.2s .9s infinite}.bot .scr.on .m3{animation:s-pop 3.2s 1.8s infinite}.bot .scr.on .dots circle{animation:s-dot 1s infinite}.bot .scr.on .dots circle:nth-child(2){animation-delay:.18s}.bot .scr.on .dots circle:nth-child(3){animation-delay:.36s}
@@ -136,12 +185,12 @@ export const BOT_CSS = `
 .still .bot *{animation-play-state:paused!important}
 `;
 
-/** A standing robot that walks. Seen from the side when it walks along the corridor (real stepping legs), from the front or back when it walks toward or away from the viewer. */
+/** A standing robot that walks. Seen from the side when it walks along the corridor (real stepping legs), from the front or back when it walks toward or away from the viewer. Same toy-robot look as the seated ones. */
 export function HqWalker({ a, x, y, dir, moving, carrying, give, prop, scale = 0.74 }: { scale?: number; prop?: 'card' | 'cup' | 'mop'; a: AgentDef; x: number; y: number; dir: { x: number; y: number }; moving: boolean; carrying: boolean; give: boolean }) {
-  const view: 'side' | 'front' | 'back' = Math.abs(dir.x) > 0 ? 'side' : dir.y < 0 ? 'back' : 'front'; const f = dir.x < 0 ? -1 : 1; const h = hash(a.key);
+  const view: 'side' | 'front' | 'back' = Math.abs(dir.x) > 0 ? 'side' : dir.y < 0 ? 'back' : 'front'; const f = dir.x < 0 ? -1 : 1; const h = hash(a.key); const ac = a.shirt;
   const card = <g className="wk-card" transform="translate(0 -4)"><rect x="-12" y="-8" width="24" height="16" rx="4" /><path d="M-6 -3l6 4.5l6 -4.5" fill="none" stroke="#06122e" strokeWidth="1.3" /></g>;
-  const leg = (cls: string, x0: number) => <g transform={`translate(${x0} -36)`}><g className={`wk-leg ${cls}`}><rect x="-4.5" y="0" width="9" height="19" rx="4.5" fill="#8fa2c8" /><g transform="translate(0 18)"><g className="wk-shin"><rect x="-4" y="0" width="8" height="17" rx="4" fill="#8fa2c8" /><rect x={view === 'side' ? -4 : -6} y="14" width={view === 'side' ? 13 : 12} height="6" rx="3" fill="#586a9a" /></g></g></g></g>;
-  const arm = (cls: string, x0: number) => <g transform={`translate(${x0} -78)`}><g className={`wk-arm ${cls}`}><rect x="-4.2" y="0" width="8.4" height="19" rx="4.2" fill="url(#botg)" /><g transform="translate(0 18)"><g className="wk-fore"><rect x="-3.8" y="0" width="7.6" height="16" rx="3.8" fill="url(#botg)" /><circle cy="16" r="4.3" fill="#9fb4de" /></g></g></g></g>;
+  const leg = (cls: string, x0: number) => <g transform={`translate(${x0} -36)`}><g className={`wk-leg ${cls}`}><rect x="-5" y="0" width="10" height="19" rx="5" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><g transform="translate(0 18)"><g className="wk-shin"><circle r="4.4" fill="#dfe6f5" stroke="#8fa8d8" strokeWidth=".7" /><circle r="1.8" fill={ac} /><rect x="-4.6" y="2" width="9.2" height="14" rx="4.6" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><rect x={view === 'side' ? -5 : -7} y="13" width={view === 'side' ? 16 : 14} height="8" rx="4" fill={ac} stroke="#0b1230" strokeWidth=".7" /></g></g></g></g>;
+  const arm = (cls: string, x0: number, withProp = false) => <g transform={`translate(${x0} -78)`}><g className={`wk-arm ${cls}`}><rect x="-4.6" y="0" width="9.2" height="19" rx="4.6" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><g transform="translate(0 18)"><g className="wk-fore"><Joint accent={ac} r={4.4} /><rect x="-4" y="2" width="8" height="14" rx="4" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".6" /><circle cy="17" r="4.8" fill="#4a5778" stroke="#9fb4de" strokeWidth=".7" />{withProp && view !== 'back' && !prop && <g transform="translate(0 17)" className="wk-tool"><Prop kind={propOf(a.key)} accent={ac} /></g>}</g></g></g></g>;
   const lift = give && !moving;
   return (
     <g className={`walker v-${view} ${moving ? 'go' : 'stand'} ${lift ? 'give' : ''}`} transform={`translate(${x} ${y}) scale(${scale})`} style={{ ['--wd' as string]: `${-(h % 5) / 10}s` }} pointerEvents="none" aria-hidden>
@@ -150,17 +199,22 @@ export function HqWalker({ a, x, y, dir, moving, carrying, give, prop, scale = 0
         <g className="wk-bob">
           {view === 'side' ? <>
             {leg('far', 3)}{arm('far', 0)}
-            <rect x="-11.5" y="-86" width="23" height="52" rx="10" fill="url(#botg)" stroke="#8fa8d8" strokeWidth=".8" /><rect x="3" y="-74" width="9" height="14" rx="3" fill="#0b1b45" />
-            <g transform="translate(0 -86)"><g className="wk-head"><rect x="-3" y="-4" width="6" height="6" fill="#8fa8d8" /><line x1="0" y1="-36" x2="0" y2="-42" stroke="#8fa8d8" strokeWidth="1.5" /><circle cx="0" cy="-43" r="2.6" fill="#7fe4ff" /><rect x="-15" y="-36" width="30" height="34" rx="12" fill="url(#botg)" stroke="#8fa8d8" strokeWidth=".8" /><rect x="0" y="-30" width="16" height="20" rx="8" fill="#08153a" /><circle cx="9" cy="-20" r="3" fill="#7fe4ff" /></g></g>
-            {leg('near', -3)}{arm('near', 0)}
+            <rect x="-12" y="-87" width="24" height="53" rx="11" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".8" /><circle cx="6" cy="-66" r="6.2" fill="#0b1b45" stroke="#9fb4de" strokeWidth=".9" /><circle cx="6" cy="-66" r="3" fill={ac} style={{ filter: `drop-shadow(0 0 3px ${ac})` }} /><rect x="-12" y="-52" width="24" height="4.5" fill={ac} opacity=".9" />
+            <g transform="translate(0 -86)"><g className="wk-head"><rect x="-3.5" y="-4" width="7" height="6" rx="2" fill="#9fb4de" /><ellipse cx="0" cy="-21" rx="19" ry="19.5" fill="url(#shell)" stroke="#9fb4de" strokeWidth=".9" /><path d="M-12 -34Q0 -42 12 -34" fill="none" stroke={ac} strokeWidth="2.6" strokeLinecap="round" /><ellipse cx="7" cy="-21" rx="11.5" ry="12.6" fill="url(#visor)" stroke="#0b1230" strokeWidth="1" /><circle cx="11" cy="-21" r="3.6" fill="#7fe4ff" /><circle cx="10" cy="-22.2" r=".9" fill="#fff" opacity=".85" /><circle cx="-5" cy="-20" r="7" fill="#1b2750" stroke="#9fb4de" strokeWidth="1.3" /><circle cx="-5" cy="-20" r="4.6" fill="none" stroke={ac} strokeWidth="1.7" /><circle cx="-5" cy="-20" r="2.2" fill="#070d24" /></g></g>
+            {leg('near', -3)}{arm('near', 0, true)}
           </> : <>
-            {leg('far', 7)}{leg('near', -7)}
-            <rect x="-17" y="-86" width="34" height="52" rx="12" fill="url(#botg)" stroke="#8fa8d8" strokeWidth=".8" />
-            {view === 'front' && <><rect x="-10" y="-74" width="20" height="14" rx="4" fill="#0b1b45" /><text y="-63.6" textAnchor="middle" fontSize="8.5" fontWeight="800" fill={a.shirt} fontFamily="system-ui,sans-serif">AI</text></>}
-            {arm('far', 20)}{arm('near', -20)}
-            <g transform="translate(0 -86)"><g className="wk-head"><rect x="-3.5" y="-4" width="7" height="6" fill="#8fa8d8" /><line x1="0" y1="-38" x2="0" y2="-45" stroke="#8fa8d8" strokeWidth="1.5" /><circle cx="0" cy="-46" r="2.7" fill="#7fe4ff" /><rect x="-18" y="-38" width="36" height="36" rx="13" fill="url(#botg)" stroke="#8fa8d8" strokeWidth=".8" />{view === 'front' ? <><rect x="-14.5" y="-31" width="29" height="19" rx="8" fill="#08153a" /><circle cx="-6.2" cy="-21.5" r="3.1" fill="#7fe4ff" /><circle cx="6.2" cy="-21.5" r="3.1" fill="#7fe4ff" /></> : <rect x="-9" y="-28" width="18" height="10" rx="5" fill="#b3c4e6" opacity=".7" />}</g></g>
+            {leg('far', 8)}{leg('near', -8)}
+            <rect x="-17" y="-87" width="34" height="53" rx="14" fill="url(#botg)" stroke="#9fb4de" strokeWidth=".8" />
+            {view === 'front' ? <><circle cx="0" cy="-69" r="8" fill="#0b1b45" stroke="#9fb4de" strokeWidth="1" /><circle cx="0" cy="-69" r="4" fill={ac} style={{ filter: `drop-shadow(0 0 4px ${ac})` }} /></> : <rect x="-8" y="-76" width="16" height="12" rx="4" fill="#cfd8ee" stroke="#9fb4de" strokeWidth=".7" />}
+            <rect x="-17" y="-52" width="34" height="5" fill={ac} opacity=".9" />
+            {arm('far', 21, true)}{arm('near', -21)}
+            <g transform="translate(0 -86)"><g className="wk-head"><rect x="-4" y="-4" width="8" height="6" rx="2" fill="#9fb4de" />
+              <circle cx="-22" cy="-20" r="5.4" fill="#25304f" stroke="#9fb4de" strokeWidth="1.2" /><circle cx="22" cy="-20" r="8" fill="#1b2750" stroke="#9fb4de" strokeWidth="1.4" /><circle cx="22" cy="-20" r="5.3" fill="none" stroke={ac} strokeWidth="1.8" /><circle cx="22" cy="-20" r="2.6" fill="#070d24" />
+              <ellipse cx="0" cy="-21" rx="22" ry="19.5" fill="url(#shell)" stroke="#9fb4de" strokeWidth=".9" /><path d="M-15 -34Q0 -43 15 -34" fill="none" stroke={ac} strokeWidth="2.6" strokeLinecap="round" />
+              {view === 'front' ? <><ellipse cx="-1" cy="-21" rx="16.5" ry="12.8" fill="url(#visor)" stroke="#0b1230" strokeWidth="1" /><circle cx="-7.4" cy="-21" r="3.4" fill="#7fe4ff" /><circle cx="5.4" cy="-21" r="3.4" fill="#7fe4ff" /></> : <><rect x="-9" y="-30" width="18" height="9" rx="4.5" fill="#cfd8ee" stroke="#9fb4de" strokeWidth=".7" /><rect x="-5" y="-18" width="10" height="3" rx="1.5" fill={ac} opacity=".85" /></>}
+            </g></g>
           </>}
-          {(carrying || prop) && (() => { const what = prop ?? 'card'; const at = view === 'side' ? 'translate(18 -46)' : view === 'front' ? 'translate(-24 -46)' : 'translate(24 -46)';
+          {(carrying || (prop && prop !== 'card')) && (() => { const what = prop ?? 'card'; const at = view === 'side' ? 'translate(18 -46)' : view === 'front' ? 'translate(-24 -46)' : 'translate(24 -46)';
             return what === 'card' ? <g className="wk-held" transform={view === 'side' ? 'translate(16 -50)' : 'translate(0 -52)'}>{card}</g>
               : what === 'cup' ? <g className="wk-held" transform={at}><rect x="-4.5" y="-6" width="9" height="10" rx="2" fill="#f4f7ff" /><path d="M4.5 -3q4 1 0 5" fill="none" stroke="#f4f7ff" strokeWidth="1.4" /></g>
               : <g className="wk-held" transform={view === 'side' ? 'translate(16 -46)' : view === 'front' ? 'translate(-26 -48)' : 'translate(26 -48)'}><line x1="0" y1="-6" x2={view === 'side' ? 22 : 0} y2="46" stroke="#b78a4a" strokeWidth="3" strokeLinecap="round" /><rect x={view === 'side' ? 14 : -9} y="42" width="20" height="7" rx="3" fill="#7fe4ff" /></g>; })()}
@@ -180,7 +234,7 @@ export const WALK_CSS = `
 .walker.go:not(.v-side) .wk-arm.near{animation:wk-sway .48s ease-in-out infinite}.walker.go:not(.v-side) .wk-arm.far{animation:wk-sway .48s ease-in-out infinite .25s}
 .walker .wk-head{animation:none}.walker.go .wk-head{animation:wk-nod .48s ease-in-out infinite}
 .walker .wk-held{transition:none}.walker.give .wk-arm.near{transform:rotate(-70deg)}.walker.give.v-side .wk-arm.near .wk-fore{transform:rotate(-10deg)}
-.walker .wk-card rect{fill:#bdf3ff;stroke:#fff;stroke-width:1;filter:drop-shadow(0 0 5px #4fc4ff)}
+.walker .wk-tool{transition:opacity .2s}.walker.go .wk-tool{opacity:0}.walker .wk-card rect{fill:#bdf3ff;stroke:#fff;stroke-width:1;filter:drop-shadow(0 0 5px #4fc4ff)}
 @keyframes wk-near{0%,100%{transform:rotate(34deg)}50%{transform:rotate(-34deg)}}@keyframes wk-far{0%,100%{transform:rotate(-34deg)}50%{transform:rotate(34deg)}}
 @keyframes wk-knee{0%,40%{transform:rotate(0)}70%{transform:rotate(-34deg)}100%{transform:rotate(0)}}
 @keyframes wk-bob{0%,50%,100%{transform:translateY(0)}25%,75%{transform:translateY(-1.8px)}}

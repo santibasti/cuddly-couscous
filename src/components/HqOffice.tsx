@@ -5,21 +5,31 @@ import { AGENTS, DEPTS, STATE_LABEL, agentPos, agentState, cafeLine, deskPos, ha
 
 const EYE: Partial<Record<AgentState, string>> = { error: '#ff5a5a', blocked: '#ff5a5a', awaiting: '#ffc233', done: '#5dff9c', working: '#7fe7ff', received: '#7fe7ff', coordinating: '#a98bff' };
 export function RobotAvatar({ a, state, moving }: { a: AgentDef; state: AgentState; moving: boolean }) {
-  const eye = EYE[state] ?? a.shirt;
+  const eye = EYE[state] ?? '#7fe4ff'; const ac = a.shirt; const id = a.key;
   return (
-    <svg className={`av ${moving ? 'walk' : ''}`} viewBox="0 0 40 58" width="100%" aria-hidden>
-      <defs><linearGradient id={`bd-${a.key}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#b9c7e3" /></linearGradient></defs>
-      <ellipse cx="20" cy="55.5" rx="11" ry="2.4" fill="rgba(0,0,0,.4)" />
-      <rect className="leg l" x="13" y="41" width="5.8" height="13" rx="2.6" fill="#8fa2c8" /><rect className="leg r" x="21.2" y="41" width="5.8" height="13" rx="2.6" fill="#8fa2c8" />
-      <rect className="arm l" x="4.5" y="25" width="5.5" height="15" rx="2.7" fill={`url(#bd-${a.key})`} stroke="#8fa2c8" strokeWidth=".6" /><rect className="arm r" x="30" y="25" width="5.5" height="15" rx="2.7" fill={`url(#bd-${a.key})`} stroke="#8fa2c8" strokeWidth=".6" />
-      <rect x="10" y="23" width="20" height="21" rx="7" fill={`url(#bd-${a.key})`} stroke="#8fa2c8" strokeWidth=".6" />
-      <rect x="14" y="28" width="12" height="9" rx="3" fill="#0b1b45" /><text x="20" y="35" textAnchor="middle" fontSize="6.4" fontWeight="800" fill={a.shirt} fontFamily="system-ui,sans-serif">AI</text>
-      <line x1="20" y1="3.5" x2="20" y2="0.5" stroke="#8fa2c8" strokeWidth="1" /><circle className="ant" cx="20" cy="1.2" r="1.6" fill={eye} />
-      <rect x="8" y="3.5" width="24" height="19" rx="8" fill={`url(#bd-${a.key})`} stroke="#8fa2c8" strokeWidth=".6" />
-      <rect x="5.6" y="10" width="3" height="7" rx="1.5" fill="#8fa2c8" /><rect x="31.4" y="10" width="3" height="7" rx="1.5" fill="#8fa2c8" />
-      <rect x="11.5" y="8" width="17" height="10.5" rx="5" fill="#0b1b45" />
-      <g className="eyes"><circle cx="16.5" cy="13.2" r="2.1" fill={eye} /><circle cx="23.5" cy="13.2" r="2.1" fill={eye} /></g>
-      {state === 'error' || state === 'blocked' ? <path d="M17 16.4q3-1.8 6 0" stroke={eye} strokeWidth="1" fill="none" /> : <path d="M17.3 15.9q2.7 2 5.4 0" stroke={eye} strokeWidth="1" fill="none" />}
+    <svg className={`av ${moving ? 'walk' : ''}`} viewBox="0 0 44 60" width="100%" aria-hidden>
+      <defs>
+        <linearGradient id={`bd-${id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#b3c4e6" /></linearGradient>
+        <radialGradient id={`sh-${id}`} cx=".34" cy=".28" r=".95"><stop offset="0" stopColor="#ffffff" /><stop offset=".55" stopColor="#eaf0fc" /><stop offset="1" stopColor="#a9bbe0" /></radialGradient>
+        <linearGradient id={`vz-${id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1d2f6c" /><stop offset="1" stopColor="#060c22" /></linearGradient>
+      </defs>
+      <ellipse cx="22" cy="57" rx="12" ry="2.4" fill="rgba(0,0,0,.4)" />
+      <g className="leg l"><rect x="14" y="42" width="6.4" height="11" rx="3.2" fill={`url(#bd-${id})`} stroke="#9fb4de" strokeWidth=".5" /><rect x="12.6" y="51" width="9.2" height="5.6" rx="2.8" fill={ac} stroke="#0b1230" strokeWidth=".5" /></g>
+      <g className="leg r"><rect x="23.6" y="42" width="6.4" height="11" rx="3.2" fill={`url(#bd-${id})`} stroke="#9fb4de" strokeWidth=".5" /><rect x="22.2" y="51" width="9.2" height="5.6" rx="2.8" fill={ac} stroke="#0b1230" strokeWidth=".5" /></g>
+      <g className="arm l"><rect x="5" y="26" width="6" height="15" rx="3" fill={`url(#bd-${id})`} stroke="#9fb4de" strokeWidth=".5" /><circle cx="8" cy="41.5" r="3" fill="#4a5778" /><circle cx="8" cy="27" r="2.6" fill="#dfe6f5" stroke="#8fa8d8" strokeWidth=".4" /><circle cx="8" cy="27" r="1" fill={ac} /></g>
+      <g className="arm r"><rect x="33" y="26" width="6" height="15" rx="3" fill={`url(#bd-${id})`} stroke="#9fb4de" strokeWidth=".5" /><circle cx="36" cy="41.5" r="3" fill="#4a5778" /><circle cx="36" cy="27" r="2.6" fill="#dfe6f5" stroke="#8fa8d8" strokeWidth=".4" /><circle cx="36" cy="27" r="1" fill={ac} /></g>
+      <rect x="11" y="24" width="22" height="22" rx="8.5" fill={`url(#bd-${id})`} stroke="#9fb4de" strokeWidth=".5" />
+      <circle cx="22" cy="33" r="4.6" fill="#0b1b45" stroke="#9fb4de" strokeWidth=".5" /><circle cx="22" cy="33" r="2.3" fill={ac} />
+      <rect x="11" y="41" width="22" height="3" fill={ac} opacity=".9" />
+      <line x1="22" y1="2.4" x2="22" y2="0.2" stroke="#9fb4de" strokeWidth="1" /><circle className="ant" cx="22" cy="0.9" r="1.5" fill={eye} />
+      <circle cx="8.4" cy="14.5" r="2.7" fill="#25304f" stroke="#9fb4de" strokeWidth=".6" />
+      <ellipse cx="22" cy="14" rx="14" ry="12.6" fill={`url(#sh-${id})`} stroke="#9fb4de" strokeWidth=".6" />
+      <path d="M12.5 6.4Q22 1.4 31.5 6.4" fill="none" stroke={ac} strokeWidth="1.7" strokeLinecap="round" />
+      <ellipse cx="21.4" cy="14.4" rx="10.6" ry="8.4" fill={`url(#vz-${id})`} stroke="#0b1230" strokeWidth=".6" />
+      <path d="M14.6 10.2Q20 7 26 8.6" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1.2" strokeLinecap="round" />
+      <g className="eyes"><circle cx="17.6" cy="14.4" r="2.3" fill={eye} /><circle cx="25.4" cy="14.4" r="2.3" fill={eye} /></g>
+      {state === 'error' || state === 'blocked' ? <path d="M19 19.6q2.4 -1.8 4.8 0" stroke={eye} strokeWidth=".9" fill="none" /> : <path d="M19 19q2.4 1.8 4.8 0" stroke={eye} strokeWidth=".9" fill="none" />}
+      <circle cx="35.6" cy="14.5" r="5" fill="#1b2750" stroke="#9fb4de" strokeWidth=".8" /><circle cx="35.6" cy="14.5" r="3.3" fill="none" stroke={ac} strokeWidth="1.1" /><circle cx="35.6" cy="14.5" r="1.6" fill="#070d24" />
     </svg>
   );
 }
