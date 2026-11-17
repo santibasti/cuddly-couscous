@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WELCOME_TEXT, composeFirst, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -59,7 +59,7 @@ describe('the run loop and the modes', () => {
 describe('welcome message', () => {
   it('the first reply starts with the TopMop welcome (all four services), then the answer; NO_ANSWER gives the welcome alone', () => {
     expect(WELCOME_TEXT).toMatch(/^Hello po, Ma’am\/Sir! Good day\./); for (const t of ['Glass/Window Cleaning', 'Wall Cleaning', 'Roof Cleaning', 'Solar Panel Cleaning', 'May we know your location po, Ma’am/Sir?']) expect(WELCOME_TEXT).toContain(t);
-    expect(composeFirst('NO_ANSWER')).toBe(WELCOME_TEXT); expect(composeFirst('')).toBe(WELCOME_TEXT); expect(composeFirst('For 21 panels the package is ₱4,799 po.')).toBe(WELCOME_TEXT + '\n\nFor 21 panels the package is ₱4,799 po.');
+    expect(composeFirst('NO_ANSWER')).toBe(WELCOME_TEXT); expect(composeFirst('')).toBe(WELCOME_TEXT); expect(composeFirst('For 21 panels the package is ₱4,799 po.')).toBe(WELCOME_TEXT + '\n\n---\n\nFor 21 panels the package is ₱4,799 po.'); expect(splitMessages(composeFirst('Answer po.'))).toEqual([WELCOME_TEXT, 'Answer po.']);
   });
   it('the system prompt tells the AI not to greet when the welcome is added, and never to introduce itself as an AI', () => {
     const f = buildSystem({ sections: [], version: null, lang: 'en', firstMessage: true }); expect(f).toMatch(/FIRST MESSAGE/); expect(f).toMatch(/NO_ANSWER/); expect(f).not.toMatch(/AI customer service/);
@@ -96,5 +96,16 @@ describe('panel counting rule', () => {
 describe('booking flow rules', () => {
   it('reads pasted answers, never re-asks, and always writes a proper reply', () => {
     const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/BOOKING FLOW/); expect(s).toMatch(/never ask again for something they already gave/); expect(s).toMatch(/Never answer with only a tool's sentence/);
+  });
+});
+
+describe('separate messages', () => {
+  it('a line with only --- starts the next chat message (max 5); flatten keeps one text for tools that cannot split', () => {
+    const t = 'Good news po, Saturday, Nov 21 is open.\n\n---\n\nTo send your booking request, please copy this and fill in your details po:\nFull name:\nMobile number:';
+    expect(splitMessages(t)).toEqual(['Good news po, Saturday, Nov 21 is open.', 'To send your booking request, please copy this and fill in your details po:\nFull name:\nMobile number:']);
+    expect(flattenMessages(t)).not.toContain('---'); expect(splitMessages('a\n---\nb\n---\nc\n---\nd\n---\ne\n---\nf')).toHaveLength(5); expect(splitMessages('no split here')).toEqual(['no split here']);
+  });
+  it('the system prompt asks for the booking details as their own message', () => {
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SEPARATE MESSAGES/); expect(s).toMatch(/Full name:/); expect(s).toMatch(/line containing only ---/);
   });
 });

@@ -52,6 +52,7 @@ export default function AiChat() {
               {m.status === 'draft' || m.status === 'failed' || m.status === 'approved' ? <>
                 <textarea rows={4} value={edit[m.id] ?? m.body} onChange={(e) => setEdit({ ...edit, [m.id]: e.target.value })} style={{ width: '100%' }} />
                 {m.card_url && <div className="aichat-card"><img src={m.card_url} alt="Estimate card that will be sent with this reply" style={{ width: 180, borderRadius: 10, display: 'block' }} /><label className="muted small"><input type="checkbox" checked={noCard[m.id] !== true} onChange={(e) => setNoCard({ ...noCard, [m.id]: !e.target.checked })} /> Send this estimate card with the reply</label></div>}
+                {m.body.includes('---') && <div className="muted small">A line with only --- splits the reply into separate chat messages.</div>}
                 {m.flags.length > 0 && <div className="alert warn">Safety check: {m.flags.join('; ')}. Read it carefully before approving.</div>}
                 {m.actions.length > 0 && <div className="muted small">On approval the system will: {m.actions.map(actionLabel).join(' · ')}. (A booking's wording comes from the system, not from this draft.)</div>}
                 {m.error && <div className="alert err">{m.error}</div>}

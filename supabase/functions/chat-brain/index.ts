@@ -4,7 +4,7 @@
 // Answer: { ok, status: "queued" | "reply" | "held" | "handover" | "duplicate" | "off", reply, mode } ("queued": the work continues after the answer because ManyChat waits only 10 seconds) — put `reply` in the chatbot's next message; when it is empty, send nothing (staff or a draft is handling it).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { cardForLog, explainsPanelCount, panelGuideUrl } from '../_shared/estimatecard.ts';
-import { buildSystem, composeFirst, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
+import { buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
 import { makeExec } from '../_shared/chatexec.ts';
 import { parseLang } from '../chat-availability/logic.ts';
 
@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
     return json({ ok: true, status: 'handover', reply: d.text, mode });                                                                         // the customer gets the safe sentence, a person takes over
   }
   await put({ ...common, body: d.text, status: 'sent' });
-  return json({ ok: true, status: 'reply', reply: d.text, mode, card_url: card ?? '' });
+  return json({ ok: true, status: 'reply', reply: edge?.waitUntil && token ? d.text : flattenMessages(d.text), mode, card_url: card ?? '' });
   };
   const token = env('MANYCHAT_API_TOKEN'), edge = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
   if (!edge?.waitUntil || (mode === 'auto' && !token)) return await run();
@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
     try {
       const res = await run(); const j = await res.json().catch(() => ({})) as { reply?: string; card_url?: string };
       if (mode === 'auto' && j.reply) {
-        const r = await fetch('https://api.manychat.com/fb/sending/sendContent', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: sub, data: { version: 'v2', content: { messages: [{ type: 'text', text: j.reply }, ...(j.card_url ? [{ type: 'image', url: j.card_url }] : [])] } } }) });
+        const r = await fetch('https://api.manychat.com/fb/sending/sendContent', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: sub, data: { version: 'v2', content: { messages: [...splitMessages(j.reply).map((t) => ({ type: 'text', text: t })), ...(j.card_url ? [{ type: 'image', url: j.card_url }] : [])] } } }) });
         if (!r.ok) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'A full-mode reply could not be sent', body: `ManyChat said ${r.status}: ${(await r.text()).slice(0, 120)}`, link: '/ai-chat' });
       }
     } catch (e) { await sb.from('alert_outbox').insert({ kind: 'chat', title: 'The AI chat had an error', body: String((e as Error).message ?? e).slice(0, 160), link: '/ai-chat' }); }
