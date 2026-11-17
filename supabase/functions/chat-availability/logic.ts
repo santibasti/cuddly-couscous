@@ -4,14 +4,15 @@ export const addDays = (d: string, n: number) => new Date(Date.parse(d + 'T00:00
 export const manilaDay = (ms: number) => new Date(ms + 8 * 3600_000).toISOString().slice(0, 10);
 const weekday = (d: string) => new Date(d + 'T00:00:00Z').getUTCDay();                       // 0 = Sunday
 
-export interface Rules { lead_days: number; closed_weekdays: number[]; max_jobs_per_day: number; horizon_days: number; alternatives: number; crew_needed: number }
-export const DEFAULT_RULES: Rules = { lead_days: 2, closed_weekdays: [0], max_jobs_per_day: 3, horizon_days: 21, alternatives: 3, crew_needed: 3 };
+/** auto_confirm: the chat books an open date by itself (a person still arranges the team, vehicle and the quotation). check_resources: also require a free leader, crew and vehicle (off by default: a day is open while it has fewer than max_jobs_per_day jobs). */
+export interface Rules { lead_days: number; closed_weekdays: number[]; max_jobs_per_day: number; horizon_days: number; alternatives: number; crew_needed: number; auto_confirm: boolean; check_resources: boolean }
+export const DEFAULT_RULES: Rules = { lead_days: 2, closed_weekdays: [0], max_jobs_per_day: 2, horizon_days: 21, alternatives: 3, crew_needed: 3, auto_confirm: false, check_resources: false };
 const num = (v: unknown, d: number, lo: number, hi: number) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : d; };
 /** Rules from the Admin settings, every value kept inside a sensible range. */
 export function normalizeRules(x: unknown): Rules {
   const r = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
   const closed = Array.isArray(r.closed_weekdays) ? [...new Set(r.closed_weekdays.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))] : DEFAULT_RULES.closed_weekdays;
-  return { lead_days: num(r.lead_days, DEFAULT_RULES.lead_days, 0, 30), closed_weekdays: closed, max_jobs_per_day: num(r.max_jobs_per_day, DEFAULT_RULES.max_jobs_per_day, 1, 20), horizon_days: num(r.horizon_days, DEFAULT_RULES.horizon_days, 7, 90), alternatives: num(r.alternatives, DEFAULT_RULES.alternatives, 1, 5), crew_needed: num(r.crew_needed, DEFAULT_RULES.crew_needed, 1, 15) };
+  return { lead_days: num(r.lead_days, DEFAULT_RULES.lead_days, 0, 30), closed_weekdays: closed, max_jobs_per_day: num(r.max_jobs_per_day, DEFAULT_RULES.max_jobs_per_day, 1, 20), horizon_days: num(r.horizon_days, DEFAULT_RULES.horizon_days, 7, 90), alternatives: num(r.alternatives, DEFAULT_RULES.alternatives, 1, 5), crew_needed: num(r.crew_needed, DEFAULT_RULES.crew_needed, 1, 15), auto_confirm: r.auto_confirm === true, check_resources: r.check_resources === true };
 }
 
 const DAYS: Record<string, number> = { sunday: 0, sun: 0, linggo: 0, monday: 1, mon: 1, lunes: 1, tuesday: 2, tue: 2, tues: 2, martes: 2, wednesday: 3, wed: 3, miyerkules: 3, miyerkoles: 3, thursday: 4, thu: 4, thur: 4, thurs: 4, huwebes: 4, friday: 5, fri: 5, biyernes: 5, saturday: 6, sat: 6, sabado: 6 };
@@ -44,7 +45,7 @@ export function dayCheck(date: string, today: string, rules: Rules, f: Facts): D
   const base = { date, jobs: act.length, free_people: free.length, free_leaders: leaders.length, free_vehicles: veh.length };
   if (rules.closed_weekdays.includes(weekday(date)) || f.holidays.includes(date)) return { ...base, status: 'closed' };
   if (date < addDays(today, rules.lead_days)) return { ...base, status: 'too_soon' };
-  if (act.length >= rules.max_jobs_per_day || leaders.length < 1 || free.length < rules.crew_needed || veh.length < 1) return { ...base, status: 'full' };
+  if (act.length >= rules.max_jobs_per_day || (rules.check_resources && (leaders.length < 1 || free.length < rules.crew_needed || veh.length < 1))) return { ...base, status: 'full' };
   return { ...base, status: 'available' };
 }
 
@@ -65,4 +66,10 @@ export function checkAvailability(wanted: string | null, today: string, rules: R
   const en = `Sorry, ${L} ${why[0]}.` + (list ? ` The nearest open dates are: ${list}. Which one suits you?` : ' Please tell us another date and our team will check.');
   const tl = `Paumanhin po, ang ${L} ${why[1]}.` + (list ? ` Ang pinakamalapit na bukas na petsa ay: ${list}. Alin po ang gusto ninyo?` : ' Pakisabi po ang ibang petsa at titingnan ng aming team.');
   return { ok: false, status: c.status, requested: wanted, requested_label: L, alternatives: alts, reply_en: en, reply_tl: tl };
+}
+
+/** What the chat says after it really booked the date. Nothing about the price: that is confirmed in a quotation. */
+export function bookedReply(label: string, number: string): { reply_en: string; reply_tl: string } {
+  return { reply_en: `Your booking is set for ${label} (ref ${number}). Our team will message you the arrival time and the final price after verifying the details. If you need to change the date, just tell us.`,
+    reply_tl: `Naka-book na po kayo sa ${label} (ref ${number}). Ime-message po kayo ng aming team ng oras ng dating at ng final na presyo pagkatapos ma-verify ang detalye. Kung gusto ninyong palitan ang petsa, sabihin lang po.` };
 }

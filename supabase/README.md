@@ -266,7 +266,7 @@ ManyChat runs the conversation in Messenger and replies to the customer. TopMop 
 
 **What the chat does:** greets, asks the service, place, property type, a date and the mobile number; asks TopMop whether the date is free (`chat-availability`); offers the nearest open dates when it is not; at the end sends the lead (`lead-intake`), which creates the client and the inquiry (source "Facebook") and alerts the owner. The chat never gives a price or confirms a booking: it says a person reviews the details and confirms. (Prices stay with the approved quotation in Lead Flow.)
 
-**Rules** (Admin → Settings → *Messenger booking rules*): earliest day (default 2 days from today), closed weekdays (default Sunday), most jobs in a day (3), people needed for a normal job (3), how far ahead to look (21 days), alternative dates offered (3). A day is open when a team leader, enough free crew and a free vehicle exist and the daily limit is not reached; regular holidays are closed. It checks the same calendar as the booking form, does not book or hold anything, and a customer's date is only ever a request.
+**Rules** (Admin → Settings → *Messenger booking rules*): earliest day (default 2 days from today), closed weekdays (default Sunday), most jobs in a day (**2**), how far ahead to look (21 days), alternative dates offered (3). A day is open while it has fewer than the daily limit of live jobs; regular holidays are closed. Optionally also require a free team leader, crew and vehicle (off by default). It checks the same calendar as the booking form, does not book or hold anything, and a customer's date is only ever a request.
 
 **Setup**
 1. Use the same secret as the lead address (`supabase secrets set LEAD_INTAKE_KEY=your_long_random_key`) and deploy both: `supabase.cmd functions deploy lead-intake --no-verify-jwt` and `supabase.cmd functions deploy chat-availability --no-verify-jwt`. No `db push` is needed.
@@ -277,3 +277,11 @@ ManyChat runs the conversation in Messenger and replies to the customer. TopMop 
 Quick test from PowerShell: `Invoke-RestMethod -Method Post -Uri "https://<project-ref>.supabase.co/functions/v1/chat-availability?key=your_long_random_key" -ContentType "application/json" -Body '{"when":"next Saturday"}'`
 
 Not built (decide later): a soft hold on a date while the customer decides, an instant price estimate in the chat, photos from the customer, and replying from an AI inside ManyChat.
+
+### ManyChat: book an open date automatically (function `chat-book`, migration 0121)
+Admin → Settings → Messenger booking rules → **Book open dates automatically** (off by default). Use `chat-book` instead of `lead-intake` at the end of the chat when the customer has given name, mobile, address, service and a date (same address pattern and key; body as `lead-intake` plus `"date"` or `"when"`).
+- **The date is not open** (full, closed, too soon, or not understood): nothing is saved or booked; the answer offers the nearest open dates (`alt1_label`, `alt1_date` ...).
+- **Open and the switch is ON:** the lead is saved and the date is booked as a **Confirmed job with no team, vehicle or price** (stage "Booked", a person arranges the team and sends the quotation). The check and the booking happen in one step under a lock on that day, so two customers can never take the last place. The customer reply (`reply_en` / `reply_tl`, `status` = `confirmed`, `job_number`) names the date and reference and says the arrival time and final price follow; the owner gets an alert and the booking appears in the AI Headquarters.
+- **Open and the switch is OFF:** the lead is saved and the answer says our team will confirm (`status` = `pending_human`), as before.
+- If the last place is taken at the same moment, or the booking fails, the chat never says "booked": it offers other dates or says a person will confirm, and the owner is alerted.
+Deploy: `supabase.cmd db push` (answer Y), then `supabase.cmd functions deploy chat-book --no-verify-jwt` (and redeploy `chat-availability`). Try one test booking and cancel it in Jobs before enabling the switch for real customers.
