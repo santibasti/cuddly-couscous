@@ -164,7 +164,8 @@ export function HqBot({ deskColors, scale = 0.74, desk = true, social = false, b
       </g>
       {bubble && <g className="bub" transform="translate(0 -118)"><rect x="-62" y="-12" width="124" height="22" rx="11" fill="#f4f7ff" /><text y="3" textAnchor="middle" fontSize="9" fontWeight="700" fill="#10204f">{bubble}</text></g>}
       {badge && !away && <g className="badge" transform="translate(30 -92)"><circle r="9" /><text y="3.6" textAnchor="middle" fontSize="10" fontWeight="800">{badge}</text></g>}
-      {desk && <><rect x="-66" y="0" width="132" height="9" rx="3" style={{ fill: 'var(--desk1, #19a4d6)' }} stroke="rgba(255,255,255,.55)" strokeWidth=".8" />
+      {desk && <g className="holo-pad" pointerEvents="none"><path d="M36 0L62 0L56 -34L42 -34Z" fill={a.shirt} opacity=".13" /><rect x="40" y="-34" width="18" height="11" rx="2" fill="none" stroke={a.shirt} strokeWidth=".9" opacity=".85" /><path d="M43 -29h8M43 -26h12" stroke={a.shirt} strokeWidth=".8" opacity=".8" /><ellipse cx="49" cy="0" rx="14" ry="2.6" fill={a.shirt} opacity=".5" /></g>}
+      {desk && <><rect x="-66" y="0" width="132" height="9" rx="3" style={{ fill: 'var(--desk1, #19a4d6)' }} stroke="rgba(255,255,255,.55)" strokeWidth=".8" /><rect x="-64" y="8" width="128" height="1.6" rx=".8" fill={a.shirt} opacity=".95" style={{ filter: `drop-shadow(0 0 3px ${a.shirt})` }} />
       <rect x="-66" y="9" width="132" height="22" rx="3" style={{ fill: 'var(--desk2, #0a1740)' }} stroke="rgba(0,0,0,.35)" strokeWidth=".8" />
       <g className="kb"><rect x="-22" y="1.5" width="44" height="6" rx="2" fill="#12295f" />{[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <rect key={i} className={`key k${i % 4}`} x={-20 + i * 5} y="3" width="3.6" height="3" rx=".8" />)}</g>
       <g transform={`translate(${side * 50} -22)`}><rect x="-3" y="14" width="6" height="8" fill="#2a4a9a" /><Screen kind={screen} on={on} /></g></>}

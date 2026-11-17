@@ -109,8 +109,8 @@ function RoomShell({ r, live, kpis, demo, count, svc, phase, wall, onOpen }: { r
       {look.stars && [0.1, 0.22, 0.31, 0.47, 0.58, 0.69, 0.83, 0.92].map((f, i) => <circle key={i} cx={b.x + b.w * f} cy={b.top + 8 + ((i * 17) % 34)} r={i % 3 ? 0.8 : 1.3} fill="#fff" opacity=".85" />)}
       {[1, 2, 3, 4, 5, 6].map((i) => <rect key={i} x={b.x + (b.w / 7) * i - 0.5} y={b.top + 6} width="1" height="25" fill="#fff" opacity=".07" />)}<rect x={b.x} y={b.top + 31} width={b.w} height="31" fill="rgba(4,10,32,.62)" /><rect x={b.x} y={b.top + 31} width={b.w} height="1" fill={THEME[r].trim} opacity=".5" />
       <rect x={b.x} y={b.top + 64} width={b.w} height="148" fill={`url(#floor-${r})`} /><rect x={b.x} y={b.top + 64} width={b.w} height="148" fill={`url(#fp-${r})`} /><ellipse cx={b.cx} cy={b.top + 130} rx={b.w * 0.42} ry="46" fill={`url(#glow-${r})`} /><rect x={b.x} y={b.top + 62} width={b.w} height="5" fill={THEME[r].trim} opacity=".85" style={{ filter: `drop-shadow(0 0 3px ${THEME[r].trim})` }} /><rect x={b.x} y={b.top + 67} width={b.w} height="3" fill="#000" opacity=".4" />
-      {[-4, -3, -2, -1, 0, 1, 2, 3, 4].map((i) => <line key={i} x1={b.cx + i * 30} y1={b.top + 64} x2={b.cx + i * 58} y2={b.top + 212} stroke="rgba(120,180,255,.1)" />)}
-      {[0, 1, 2, 3].map((i) => <line key={i} x1={b.x} x2={b.x + b.w} y1={b.top + 84 + i * i * 9 + i * 14} y2={b.top + 84 + i * i * 9 + i * 14} stroke="rgba(120,180,255,.08)" />)}
+      {[-4, -3, -2, -1, 0, 1, 2, 3, 4].map((i) => <line key={i} x1={b.cx + i * 30} y1={b.top + 64} x2={b.cx + i * 58} y2={b.top + 212} stroke={THEME[r].trim} strokeOpacity=".2" style={{ filter: `drop-shadow(0 0 2px ${THEME[r].trim})` }} />)}
+      {[0, 1, 2, 3].map((i) => <line key={i} x1={b.x} x2={b.x + b.w} y1={b.top + 84 + i * i * 9 + i * 14} y2={b.top + 84 + i * i * 9 + i * 14} stroke={THEME[r].trim} strokeOpacity=".16" />)}
       <rect x={b.cx - 120} y={b.top + 7} width="240" height="21" rx="10.5" fill="rgba(8,20,62,.85)" stroke="rgba(120,200,255,.5)" />
       <text x={b.cx} y={b.top + 21.5} textAnchor="middle" fontSize="11.5" fontWeight="800" letterSpacing=".06em" fill="#dff1ff">{name.toUpperCase()}</text>
       {r === 'booking' && svc ? <g className="today-pill" aria-label="Services today"><rect x={b.cx - 62} y={b.top + 33} width="132" height="26" rx="13" fill="rgba(60,220,140,.14)" stroke="#3fdc94" /><text x={b.cx} y={b.top + 44} textAnchor="middle" fontSize="8" fontWeight="800" letterSpacing=".12em" fill="#b8ffd9">SERVICES TODAY{svc.sample ? ' · SAMPLE' : ''}</text><text x={b.cx} y={b.top + 55} textAnchor="middle" fontSize="10" fontWeight="800" fill="#fff">{svc.done}/{svc.total} done · 🧽 {svc.working} · 🚚 {svc.road}</text></g>
@@ -119,7 +119,9 @@ function RoomShell({ r, live, kpis, demo, count, svc, phase, wall, onOpen }: { r
       {r !== 'cafe' && <g transform={`translate(${b.x + b.w - 10} ${b.top + 48})`}><rect x="-84" y="-10" width="84" height="16" rx="8" fill={live ? 'rgba(60,220,140,.22)' : 'rgba(150,170,210,.2)'} /><text x="-42" y="1.5" textAnchor="middle" fontSize="9" fontWeight="800" fill={live ? '#a8ffcc' : '#d0dcf5'}>{live ? `LIVE${count ? ` · ${count} today` : ''}` : 'NOT CONNECTED'}</text></g>}
       {kpis?.slice(0, 2).map((k, i) => <g key={k.label} transform={`translate(${b.x + 12 + i * 68} ${b.top + 50})`}><text fontSize="17" fontWeight="800" fill="#ffffff">{k.value}</text><text y="9" fontSize="7.5" fontWeight="600" fill="#d6e6ff">{k.label.slice(0, 14)}{demo ? '*' : ''}</text></g>)}
       {r !== 'cafe' && <WallClock cx={b.x + b.w - 26} cy={b.top + 20} h={wall.h} m={wall.m} sec={wall.s} />}
-      <rect className="rim" x={b.x} y={b.top} width={b.w} height="244" rx="10" fill="none" stroke="rgba(110,170,255,.45)" strokeWidth="1.5" />
+      <polygon points={`${b.x + 8},${b.top + 2} ${b.x + b.w * 0.42},${b.top + 2} ${b.x + b.w * 0.18},${b.top + 242} ${b.x + 8},${b.top + 242}`} fill="url(#glassg)" pointerEvents="none" />
+      <polygon points={`${b.x + b.w * 0.55},${b.top + 2} ${b.x + b.w * 0.62},${b.top + 2} ${b.x + b.w * 0.4},${b.top + 242} ${b.x + b.w * 0.33},${b.top + 242}`} fill="url(#glassg)" opacity=".7" pointerEvents="none" />
+      <rect className="rim" x={b.x} y={b.top} width={b.w} height="244" rx="10" fill="none" stroke={THEME[r].trim} strokeOpacity=".6" strokeWidth="1.5" style={{ filter: `drop-shadow(0 0 4px ${THEME[r].glow})` }} />
     </g>
   );
 }
@@ -175,6 +177,7 @@ export function HqWing({ demo, events, views, kpis, now, still, hold, focus, sel
               <linearGradient id={`floor-${r}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.floor[0]} /><stop offset="1" stopColor={t.floor[1]} /></linearGradient>
               <pattern id={`fp-${r}`} width={PAT[t.kind].w} height={PAT[t.kind].h} patternUnits="userSpaceOnUse">{PAT[t.kind].draw(t.floor[1], t.trim)}</pattern>
               <radialGradient id={`glow-${r}`} cx=".5" cy=".5" r=".5"><stop offset="0" stopColor={t.glow} stopOpacity=".28" /><stop offset="1" stopColor={t.glow} stopOpacity="0" /></radialGradient></g>); })}
+            <linearGradient id="glassg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#fff" stopOpacity=".1" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
             <linearGradient id="botg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#b3c4e6" /></linearGradient>
             <radialGradient id="shell" cx=".34" cy=".28" r=".95"><stop offset="0" stopColor="#ffffff" /><stop offset=".55" stopColor="#eaf0fc" /><stop offset="1" stopColor="#a9bbe0" /></radialGradient>
             <linearGradient id="visor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1d2f6c" /><stop offset="1" stopColor="#060c22" /></linearGradient>
