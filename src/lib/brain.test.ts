@@ -106,6 +106,6 @@ describe('separate messages', () => {
     expect(flattenMessages(t)).not.toContain('---'); expect(splitMessages('a\n---\nb\n---\nc\n---\nd\n---\ne\n---\nf')).toHaveLength(5); expect(splitMessages('no split here')).toEqual(['no split here']);
   });
   it('the system prompt asks for the booking details as their own message', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SEPARATE MESSAGES/); expect(s).toMatch(/Full name:/); expect(s).toMatch(/line containing only ---/);
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SEPARATE MESSAGES/); expect(s).toMatch(/Full name:/); expect(s).toMatch(/Type of Service \(Window, Solar, Wall\/floor or Roof\):/); expect(s).not.toMatch(/Number of glass panels:/); expect(s).toMatch(/Never ask for the number of glass panels in the booking details/); expect(s).toMatch(/line containing only ---/);
   });
 });
