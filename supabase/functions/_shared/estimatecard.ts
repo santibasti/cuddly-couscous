@@ -69,3 +69,9 @@ export function cardForLog(log: { tool: string; input: unknown }[], base: string
   }
   return null;
 }
+
+/** True when the customer asks how panels are counted, or the reply explains it: then the reference picture (public/panel-guide.png, counting by side) goes with the reply. */
+export function explainsPanelCount(customerText: string, reply: string): boolean {
+  return /(paano|pano|how|ano).{0,40}(count|bilang|magbilang|kinukuha|computed|determine)|(ilan|how many).{0,30}(panel|window|bintana)|what.{0,15}\bpanel|panel.{0,25}(count|bilang)/i.test(customerText) || /counted by side|each side of a window/i.test(reply);
+}
+export const panelGuideUrl = (base: string) => `${base.replace(/\/+$/, '')}/panel-guide.png`;

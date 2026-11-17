@@ -3,7 +3,7 @@
 // Mode (Admin → Settings → AI chat): off = nothing happens; suggest = the AI writes a DRAFT for staff, nothing is sent; auto = the reply goes out at once unless a safety check fails.
 // Answer: { ok, status: "queued" | "reply" | "held" | "handover" | "duplicate" | "off", reply, mode } ("queued": the work continues after the answer because ManyChat waits only 10 seconds) — put `reply` in the chatbot's next message; when it is empty, send nothing (staff or a draft is handling it).
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { cardForLog } from '../_shared/estimatecard.ts';
+import { cardForLog, explainsPanelCount, panelGuideUrl } from '../_shared/estimatecard.ts';
 import { buildSystem, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
 import { makeExec } from '../_shared/chatexec.ts';
 import { parseLang } from '../chat-availability/logic.ts';
@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
   const exec = makeExec({ sb, base: env('SUPABASE_URL'), key, conv, lang });
   const brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3 });
   const d = decide(mode, brain, lang); const flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked }).violations;
-  const card = d.kind === 'reply' || d.kind === 'draft' ? cardForLog(brain.log, env('APP_URL') || 'https://ops.topmop.ph') : null;
+  const appUrl = env('APP_URL') || 'https://ops.topmop.ph'; const card = d.kind === 'send' || d.kind === 'draft' ? (cardForLog(brain.log, appUrl) ?? (explainsPanelCount(text, brain.reply) ? panelGuideUrl(appUrl) : null)) : null;   // one picture per reply: the estimate card, else the panel-counting guide
   const common = { card_url: card, conversation_id: conv.id, direction: 'out', model, rulebook_version: rb?.version ?? null, tool_log: brain.log, error: brain.error ?? (brain.reply.trim() ? null : `The AI wrote no text: ${brain.note ?? ''}`.slice(0, 240)) };
 
   const put = async (row: Record<string, unknown>) => { let r = await sb.from('chat_messages').insert(row); if (r.error && /card_url/i.test(r.error.message)) { const { card_url: _c, ...rest } = row; r = await sb.from('chat_messages').insert(rest); } return r.error?.message ?? null; };   // works before migration 0126 too

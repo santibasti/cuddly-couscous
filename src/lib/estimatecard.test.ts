@@ -38,3 +38,12 @@ describe('card server bundle', () => {
     expect(readFileSync('api/_cardcore.mjs', 'utf8').trim()).toBe(readFileSync(out, 'utf8').trim());
   }, 60_000);
 });
+
+import { explainsPanelCount, panelGuideUrl } from '../../supabase/functions/_shared/estimatecard';
+describe('panel guide picture', () => {
+  it('goes with the reply when panel counting is asked about or explained', () => {
+    expect(explainsPanelCount('Paano po kayo magbilang ng panels?', '')).toBe(true); expect(explainsPanelCount('How do you count the panels?', '')).toBe(true); expect(explainsPanelCount('ilan po ba ang panels ng 10 windows', '')).toBe(true);
+    expect(explainsPanelCount('hi', 'A glass panel is counted by side, not by its size.')).toBe(true); expect(explainsPanelCount('Magkano po sa Makati?', 'The package is 4,799')).toBe(false);
+    expect(panelGuideUrl('https://ops.topmop.ph/')).toBe('https://ops.topmop.ph/panel-guide.png');
+  });
+});
