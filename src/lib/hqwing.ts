@@ -16,13 +16,22 @@ const boxes = {} as Record<Room, Box>;
 export const box = (r: Room): Box => boxes[r];
 export const STATION: Record<string, { room: Room; x: number; y: number; side: 1 | -1 }> = {};
 export const CAFE_SEATS: { x: number; y: number }[] = [];
+/** Rooms where the team sits in profile at the two ends of one long table, facing each other. */
+export const TABLE: Partial<Record<Room, { x0: number; x1: number; y: number }>> = {};
 const geoCache = new Map<string, { pts: Pt[]; doors: Passage[]; c: number[]; total: number; T: number }>();
 function build() {
   for (const r of ROOMS) { const [c, rw] = COLROW[r]; const top = ROW_Y[rw], x = LAYOUT.colX[c]; boxes[r] = { x, w: LAYOUT.roomW, top, cx: x + LAYOUT.roomW / 2, wallY: top + 212, doorY: top + 228, hallY: top + 294, walkY: top + 198, deskY: top + 150 }; }
   for (const k of Object.keys(STATION)) delete STATION[k];
   for (const r of ROOMS) {
     if (r === 'cafe') continue; const list = AGENTS.filter((a) => a.dept === r), b = box(r);
-    list.forEach((a, i) => { STATION[a.key] = { room: r, x: r === 'hub' ? b.cx - 120 * LAYOUT.k : b.x + (b.w * (i + 0.5)) / list.length, y: b.deskY, side: i % 2 ? -1 : 1 }; });
+    if (r !== 'hub' && list.length >= 2) {
+      const left = Math.ceil(list.length / 2), endX = b.w / 2 - 54 * LAYOUT.k, half = endX - 38 * LAYOUT.k; TABLE[r] = { x0: b.cx - half, x1: b.cx + half, y: b.deskY };
+      const place = (n: number, j: number) => (n === 1 ? 0 : j === 0 ? -6 : 18);   // two people on one side sit one behind the other
+      list.forEach((a, i) => { const lft = i < left, j = lft ? i : i - left, n = lft ? left : list.length - left; STATION[a.key] = { room: r, x: (lft ? b.cx - endX : b.cx + endX) + (n === 2 && j === 0 ? (lft ? -20 : 20) * LAYOUT.k : 0), y: b.deskY + 4 + place(n, j), side: lft ? 1 : -1 }; });
+    } else {
+      delete TABLE[r];
+      list.forEach((a, i) => { STATION[a.key] = { room: r, x: r === 'hub' ? b.cx - 120 * LAYOUT.k : b.x + (b.w * (i + 0.5)) / list.length, y: b.deskY, side: i % 2 ? -1 : 1 }; });
+    }
   }
   const cb = box('cafe'); CAFE_SEATS.length = 0;
   for (const [dx, dy] of [[-140, 170], [-76, 170], [-8, 186], [56, 186], [128, 170]] as [number, number][]) CAFE_SEATS.push({ x: cb.cx + dx * LAYOUT.k, y: cb.top + dy });

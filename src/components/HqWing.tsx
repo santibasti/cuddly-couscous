@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { AGENTS, DEPTS, deptByKey, type AgentView, type DeptKey, type HqEvent, type Kpi } from '@/lib/hq';
-import { CLEANER, COOLER_ROOMS, LOOK, LAYOUT, applyLayout, cleanerState, coolerAt, coolerState, lightPhase, manilaParts, type Phase, CAFE_SEATS, ROOMS, ROW_Y, SPINES, STATION, WORLD, alongFrac, box, cafeBubble, cafeWanted, describeTrip, doors, handoverTrips, hallPath, inTransit, pulses, stepLoc, tripState, type DoorLight, type Loc, type Room, type TripState } from '@/lib/hqwing';
+import { CLEANER, COOLER_ROOMS, LOOK, LAYOUT, applyLayout, cleanerState, coolerAt, coolerState, lightPhase, manilaParts, type Phase, CAFE_SEATS, ROOMS, ROW_Y, SPINES, STATION, TABLE, WORLD, alongFrac, box, cafeBubble, cafeWanted, describeTrip, doors, handoverTrips, hallPath, inTransit, pulses, stepLoc, tripState, type DoorLight, type Loc, type Room, type TripState } from '@/lib/hqwing';
 import { THEME, type FloorKind } from '@/lib/hqtheme';
 import { Decor, Rug } from './HqDecor';
 import { PIXEL_CSS, PixelCtx, RETRO_CSS, RetroCtx } from './HqPixel';
@@ -73,6 +73,20 @@ function Cooler({ r }: { r: Room }) {
   const c = coolerAt(r);
   return (
     <g className="cooler" aria-hidden><rect x={c.x - 7} y={c.y - 30} width="14" height="30" rx="3" fill="#dfe9ff" stroke="#8fa8d8" /><rect x={c.x - 6} y={c.y - 40} width="12" height="12" rx="5" fill="rgba(110,200,255,.55)" stroke="#7be3ff" /><circle cx={c.x + 1} cy={c.y - 34} r="2" fill="rgba(255,255,255,.7)" className="bubble" /><rect x={c.x - 5} y={c.y - 22} width="10" height="3" fill="#4f8bff" /><rect x={c.x - 5} y={c.y - 16} width="10" height="3" fill="#ff6a5a" /></g>
+  );
+}
+/** The long shared table of a department. Its two screens light up while someone in the room works. */
+function LongTable({ r, on }: { r: Room; on: boolean }) {
+  const t = TABLE[r]; if (!t || r === 'board') return null; const th = THEME[r], w = t.x1 - t.x0, y = t.y;
+  return (
+    <g className="ltable" pointerEvents="none">
+      <ellipse cx={(t.x0 + t.x1) / 2} cy={y + 48} rx={w / 2 + 6} ry="9" fill="rgba(0,0,0,.3)" />
+      <rect x={t.x0 + 6} y={y + 32} width="7" height="16" fill="#2a2f45" /><rect x={t.x1 - 13} y={y + 32} width="7" height="16" fill="#2a2f45" />
+      <rect x={t.x0} y={y + 20} width={w} height="14" rx="3" fill={th.desk[1]} stroke="rgba(0,0,0,.35)" />
+      <path d={`M${t.x0 - 6} ${y + 8}H${t.x1 + 6}L${t.x1} ${y + 22}H${t.x0}Z`} fill={th.desk[0]} stroke="rgba(255,255,255,.6)" strokeWidth=".8" /><rect x={t.x0} y={y + 20} width={w} height="2" fill={th.trim} opacity=".9" />
+      {[0.34, 0.66].map((f) => <g key={f}><rect x={t.x0 + w * f - 17} y={y - 22} width="34" height="24" rx="3" fill="#0e1736" stroke="#7a8cb4" strokeWidth="1.4" /><rect x={t.x0 + w * f - 14} y={y - 19} width="28" height="18" rx="2" fill={on ? th.glow : '#16234a'} opacity={on ? 0.9 : 1} /><rect x={t.x0 + w * f - 3} y={y + 2} width="6" height="6" fill="#2a2f45" /></g>)}
+      <rect x={(t.x0 + t.x1) / 2 - 12} y={y + 11} width="24" height="5" rx="1.5" fill="#1b2a52" />
+    </g>
   );
 }
 function Furniture({ r, warm }: { r: Room; warm: number }) {
@@ -203,6 +217,7 @@ export function HqWing({ retro = false, demo, events, views, kpis, now, still, h
           {ROOMS.map((r) => <RoomShell key={r} r={r} live={r === 'hub' || r === 'cafe' ? true : AGENTS.some((a) => a.dept === r && a.live)} kpis={kpis?.[r]} demo={demo} count={events.filter((e) => e.dept === r && e.at.slice(0, 10) === today).length} svc={services} phase={phase} wall={wall} onOpen={() => onPickDept(r)} />)}
           {ROOMS.map((r) => <g key={`d${r}`}><Rug r={r} /><Decor r={r} /></g>)}
           {ROOMS.map((r) => <Furniture key={r} r={r} warm={look.warm} />)}
+          {ROOMS.map((r) => <LongTable key={`t${r}`} r={r} on={AGENTS.some((a) => STATION[a.key]?.room === r && ['working', 'received', 'coordinating'].includes(views[a.key]?.state))} />)}
 
           {/* JARVIS core */}
           <g className={`core ${busy ? 'busy' : ''} ${waiting ? 'wait' : ''}`} transform={`translate(${box('hub').cx} ${box('hub').top + 112}) scale(${0.78 * (1 + (LAYOUT.k - 1) * 0.45)})`}>
@@ -215,8 +230,8 @@ export function HqWing({ retro = false, demo, events, views, kpis, now, still, h
           </g>
 
           {/* people at their desks, in the café, and walking */}
-          {withStation.map((a) => { const s = STATION[a.key]; if (gone(a.key)) return null; return <HqBot deskColors={THEME[s.room].desk} scale={LAYOUT.scale} key={a.key} a={a} x={s.x} y={s.y} side={s.side} state={views[a.key]?.state ?? 'idle'} dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
-          {withStation.map((a) => { const s = STATION[a.key]; return gone(a.key) && (!!cooler[a.key] || trips.some((x) => x.trip.agent === a.key && x.away)) ? <HqBot deskColors={THEME[s.room].desk} scale={LAYOUT.scale} key={`e${a.key}`} a={a} x={s.x} y={s.y} side={s.side} state="idle" dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board'} away selected={false} onPick={() => onPickAgent(a.key)} /> : null; })}
+          {withStation.map((a) => { const s = STATION[a.key]; if (gone(a.key)) return null; return <HqBot profile={!!TABLE[s.room]} deskColors={THEME[s.room].desk} scale={LAYOUT.scale} key={a.key} a={a} x={s.x} y={s.y} side={s.side} state={views[a.key]?.state ?? 'idle'} dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board' && !TABLE[s.room]} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
+          {withStation.map((a) => { const s = STATION[a.key]; return gone(a.key) && (!!cooler[a.key] || trips.some((x) => x.trip.agent === a.key && x.away)) ? <HqBot profile={!!TABLE[s.room]} deskColors={THEME[s.room].desk} scale={LAYOUT.scale} key={`e${a.key}`} a={a} x={s.x} y={s.y} side={s.side} state="idle" dept={s.room} planned={!a.live} screen={SCREEN[s.room]} desk={s.room !== 'board' && !TABLE[s.room]} away selected={false} onPick={() => onPickAgent(a.key)} /> : null; })}
           {cafeGuests.map((a, i) => { const seat = CAFE_SEATS[locs[a.key].seat ?? 0]; return <HqBot scale={LAYOUT.scale} key={`c${a.key}`} a={a} x={seat.x} y={seat.y + 22} side={seat.x < box('cafe').cx ? 1 : -1} state="idle" dept="cafe" planned={!a.live} screen="core" desk={false} social bubble={cafeBubble(a.key, t + i * 3000)} selected={selectedAgent === a.key} onPick={() => onPickAgent(a.key)} />; })}
 
           <g className="flights" pointerEvents="none">

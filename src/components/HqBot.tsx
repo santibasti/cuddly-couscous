@@ -141,8 +141,18 @@ function ToyTorso({ accent, look }: { accent: string; look: Look }) {
     </>
   );
 }
-export interface BotProps { deskColors?: [string, string]; scale?: number; desk?: boolean; social?: boolean; bubble?: string | null; a: AgentDef; x: number; y: number; side: 1 | -1; state: AgentState; dept: string; planned: boolean; screen: ScreenKind; selected: boolean; away?: boolean; onPick: () => void }
-export function HqBot({ deskColors, scale = 0.74, desk = true, social = false, bubble, a, x, y, side, state, dept, planned, screen, selected, away, onPick }: BotProps) {
+/** A robot sitting sideways in a chair at the end of a long table, looking along the table at the others (never at the viewer). */
+function ProfileSeat({ a, side, pose }: { a: AgentDef; side: 1 | -1; pose: Pose }) {
+  return (
+    <g className={`pseat pose-${pose}`}>
+      <g transform={`scale(${side} 1)`}><rect x="-27" y="-82" width="9" height="62" rx="4" fill="#1b2748" stroke="#3a4f86" strokeWidth="1.2" /></g>
+      <HqWalker a={a} x={0} y={0} dir={{ x: side, y: 0 }} moving={false} carrying={false} give={false} scale={1} />
+      <g transform={`scale(${side} 1)`}><rect x="-22" y="-34" width="38" height="12" rx="5" fill="#243257" stroke="#3a4f86" strokeWidth="1.2" /><rect x="-20" y="-24" width="34" height="26" rx="4" fill="#1b2748" stroke="#3a4f86" strokeWidth="1" /><ellipse cx="-3" cy="6" rx="18" ry="4" fill="#1b2748" /></g>
+    </g>
+  );
+}
+export interface BotProps { profile?: boolean; deskColors?: [string, string]; scale?: number; desk?: boolean; social?: boolean; bubble?: string | null; a: AgentDef; x: number; y: number; side: 1 | -1; state: AgentState; dept: string; planned: boolean; screen: ScreenKind; selected: boolean; away?: boolean; onPick: () => void }
+export function HqBot({ profile, deskColors, scale = 0.74, desk = true, social = false, bubble, a, x, y, side, state, dept, planned, screen, selected, away, onPick }: BotProps) {
   const pix = usePixel(); const pose: Pose = social ? 'social' : poseOf(state, planned, a.key, dept); const h = hash(a.key); const look = lookOf(a.key);
   const sty = { ['--d' as string]: `${-(h % 70) / 10}s`, ['--p' as string]: `${4 + (h % 30) / 10}s`, ['--tp' as string]: `${0.24 + (h % 17) / 100}s`, ['--side' as string]: side, ...(deskColors ? { ['--desk1' as string]: deskColors[0], ['--desk2' as string]: deskColors[1] } : {}) };
   const label = `${a.name}, ${a.role}: ${planned ? 'planned, not connected yet' : STATE_LABEL[state]}`;
@@ -155,7 +165,8 @@ export function HqBot({ deskColors, scale = 0.74, desk = true, social = false, b
       <ellipse className="focusring" cx="0" cy="-30" rx="56" ry="66" fill="none" stroke="#ffd86b" strokeWidth="2" strokeDasharray="5 4" />
       <ellipse cx="0" cy="34" rx="64" ry="9" fill="rgba(0,0,0,.35)" />
       {desk && <g className="chair" pointerEvents="none"><rect x={-(BODY_DIM[look.body].bottom + 7)} y="-64" width={2 * (BODY_DIM[look.body].bottom + 7)} height="66" rx="15" fill="#1b2748" stroke="#3a4f86" strokeWidth="1.2" /><rect x={-(BODY_DIM[look.body].bottom + 3)} y="-60" width={2 * (BODY_DIM[look.body].bottom + 3)} height="6" rx="3" fill={a.shirt} opacity=".55" /></g>}
-      <g className="body" style={away ? { display: 'none' } : undefined}>
+      {profile && !away && <g className="prof" transform="translate(0 34)"><ProfileSeat a={a} side={side} pose={pose} /></g>}
+      <g className="body" style={away || profile ? { display: 'none' } : undefined}>
         {pix ? <PixelSeated k={a.key} accent={a.shirt} prop={propOf(a.key)} /> : <g transform={`scale(${look.size})`}>
           <g transform={`translate(${-(BODY_DIM[look.body].top + 3.5)} -44)`}><ToyArm cls="armL" accent={a.shirt} w={look.body === 'chunk' ? 11.4 : 9.6} /><Joint accent={a.shirt} r={5.4} /></g>
           <g transform={`translate(${BODY_DIM[look.body].top + 3.5} -44)`}><ToyArm cls="armR" accent={a.shirt} prop={propOf(a.key)} held w={look.body === 'chunk' ? 11.4 : 9.6} /><Joint accent={a.shirt} r={5.4} /></g>
@@ -177,7 +188,7 @@ export function HqBot({ deskColors, scale = 0.74, desk = true, social = false, b
         <rect x={-side * 32 - 7} y="8" width="14" height="6" rx="1" fill="#fff6c8" opacity=".9" /><path d={`M${-side * 32 - 5} 10.5h10M${-side * 32 - 5} 12.5h7`} stroke="#b8a65a" strokeWidth=".6" />
         <g transform={`translate(${side * 54} -22)`}><rect x="-3" y="14" width="6" height="9" fill="#33406a" /><rect x="-9" y="22" width="18" height="3" rx="1.5" fill="#33406a" /><Screen kind={screen} on={on} /></g></g>}
       {social && <g className="cup" transform={`translate(${side * -22} -46)`}><rect x="-5" y="-6" width="10" height="11" rx="2" fill="#f4f7ff" /><path d="M5 -3q5 1 0 6" fill="none" stroke="#f4f7ff" strokeWidth="1.6" /><path className="steam" d="M-2 -9q-3 -4 0 -7" fill="none" stroke="rgba(220,240,255,.7)" strokeWidth="1.2" /></g>}
-      <text className="nm" x="0" y="33" textAnchor="middle" fontSize="11" fontWeight="700">{a.name}{planned && !social ? ' · PLANNED' : ''}</text>
+      <text className="nm" x="0" y={profile ? 52 : 33} textAnchor="middle" fontSize="11" fontWeight="700">{a.name}{planned && !social ? ' · PLANNED' : ''}</text>
     </g>
   );
 }
