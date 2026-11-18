@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { clientLabel, sortedClients } from '@/lib/clientname';
 import { Link, useSearchParams } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { BirCompliance } from '@/components/BirCompliance';
@@ -26,7 +27,7 @@ function InvoiceModal({ initial, onClose }: { initial?: Invoice; onClose: () => 
   return (
     <Modal title={initial ? `Edit draft ${initial.number}` : 'New invoice'} size="xl" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => { if (attempt(() => saveInvoice({ ...v, id: initial?.id, number: initial?.number }), 'Draft saved')) onClose(); }}>Save draft</button></>}>
       <div className="form-grid">
-        <Field label="Client"><select value={v.client_id} onChange={(e) => onClient(e.target.value)}>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+        <Field label="Client"><select value={v.client_id} onChange={(e) => onClient(e.target.value)}>{sortedClients(live(db.clients)).map((c) => <option key={c.id} value={c.id}>{clientLabel(c)}</option>)}</select></Field>
         <Field label="Related job"><select value={v.job_id ?? ''} onChange={(e) => f.set('job_id', e.target.value || undefined)}><option value="">— none —</option>{live(db.jobs).filter((j) => j.client_id === v.client_id && isDone(j.status)).map((j) => <option key={j.id} value={j.id}>{j.number}</option>)}</select></Field>
         <Field label="Issue date"><input type="date" {...f.bind('issue_date')} /></Field><Field label="Due date"><input type="date" {...f.bind('due_date')} /></Field>
       </div>

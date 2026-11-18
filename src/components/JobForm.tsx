@@ -1,4 +1,5 @@
 import { isUnavailable } from '@/lib/maintenance-core';
+import { clientLabel, sortedClients } from '@/lib/clientname';
 import { useMemo, useState } from 'react';
 import { useAuth, live } from '@/lib/store';
 import { Field, Icon, Modal, attempt, useObj } from '@/components/ui';
@@ -64,7 +65,7 @@ export function JobForm({ initial, fromQuoteId, defaultStart, onClose, onSaved }
     <Modal size="xl" title={initial ? `Edit ${initial.number}` : 'Book a job'} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save}>{initial ? 'Save changes' : 'Book job'}</button></>}>
       {conflicts.length > 0 && <div className="alert err" style={{ marginBottom: 12 }}><b>Double-booking detected.</b> Highlighted resources are already assigned in this time window; saving is blocked until resolved.</div>}
       <div className="form-grid">
-        <Field label="Client" required><select value={v.client_id} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', ''); }}>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+        <Field label="Client" required><select value={v.client_id} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', ''); }}>{sortedClients(live(db.clients)).map((c) => <option key={c.id} value={c.id}>{clientLabel(c)}</option>)}</select></Field>
         <Field label="Job site" required hint={v.client_id && !sites.length ? 'This client has no service site yet.' : undefined}><div className="row" style={{ gap: 6 }}><select style={{ flex: 1 }} {...f.bind('site_id')}><option value="">— select —</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{v.client_id && can('clients.edit') && <button type="button" className="btn sm" onClick={() => setNewSite(true)}>+ Site</button>}</div></Field>
         <Field label="Booking date" hint="The day the client booked. Change it if the booking is entered later than it was made."><input type="date" value={v.booking_date ?? ''} onChange={(e) => f.set('booking_date', e.target.value || undefined)} /></Field>
         <Field label="Depart HQ at" hint="The time the crew leaves headquarters on the service day, so everyone knows when to be ready."><input type="time" step={300} value={v.depart_hq ?? ''} onChange={(e) => f.set('depart_hq', e.target.value || undefined)} /></Field>

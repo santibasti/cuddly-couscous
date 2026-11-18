@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { clientLabel, sortedClients } from '@/lib/clientname';
 import { useNavigate } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { QuickBooking } from '@/components/QuickBooking';
@@ -23,7 +24,7 @@ function InquiryForm({ onClose }: { onClose: () => void }) {
       attempt(() => store.insert('inquiries', { ...f.v, site_id: f.v.site_id || undefined, ocular_date: f.v.ocular_date || undefined, stage: f.v.ocular_date ? 'Ocular Visit' : 'Inquiry', assigned_to: db.employees.find((e) => e.id === store.user?.employee_id)?.id }), 'Inquiry logged'); onClose();
     }}>Save inquiry</button></>}>
       <div className="form-grid">
-        <Field label="Client" required><select value={f.v.client_id} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', ''); }}>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+        <Field label="Client" required><select value={f.v.client_id} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', ''); }}>{sortedClients(live(db.clients)).map((c) => <option key={c.id} value={c.id}>{clientLabel(c)}</option>)}</select></Field>
         <Field label="Service site"><select {...f.bind('site_id')}><option value="">—</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
         <Field label="Source"><input {...f.bind('source')} /></Field>
         <Field label="Ocular visit date"><input type="date" {...f.bind('ocular_date')} /></Field>

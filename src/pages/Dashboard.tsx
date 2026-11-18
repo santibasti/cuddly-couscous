@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { clientLabel, sortedClients } from '@/lib/clientname';
 import { Link } from 'react-router-dom';
 import { Area, AreaChart, Bar as RBar, BarChart, Pie, PieChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts';
 import { live, useAuth } from '@/lib/store';
@@ -89,7 +90,7 @@ export default function Dashboard() {
       <Field label="To"><input type="date" value={to} onChange={(e) => { setPreset('custom'); setRange([from, e.target.value]); }} /></Field>
       <Field label="Branch"><select value={branch} onChange={(e) => setBranch(e.target.value)}><option value="">All branches</option>{db.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
       <Field label="Service"><select value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{live(db.services).map((sv) => <option key={sv.code} value={sv.code}>{sv.name}</option>)}</select></Field>
-      <Field label="Client"><select value={client} onChange={(e) => setClient(e.target.value)}><option value="">All clients</option>{db.clients.filter((c) => !c.deleted_at).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+      <Field label="Client"><select value={client} onChange={(e) => setClient(e.target.value)}><option value="">All clients</option>{sortedClients(db.clients.filter((c) => !c.deleted_at)).map((c) => <option key={c.id} value={c.id}>{clientLabel(c)}</option>)}</select></Field>
       {!mine && <>
         <Field label="Client type"><select value={segment} onChange={(e) => setSegment(e.target.value as InsightFilters['segment'])}><option value="">Residential + Commercial</option><option>Residential</option><option>Commercial</option></select></Field>
         <Field label="Status"><select value={stage} onChange={(e) => setStage(e.target.value as InsightFilters['stage'])}><option value="">All statuses</option>{STAGES.map((x) => <option key={x}>{x}</option>)}</select></Field>

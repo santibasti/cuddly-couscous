@@ -1,5 +1,6 @@
 // Client Lifetime Value & Maintenance Follow-Up: profile summary, Admin status / interval dialogs, dashboard widget and the Admin task list.
 import { useMemo, useState } from 'react';
+import { clientLabel, sortedClients } from '@/lib/clientname';
 import { Link, useNavigate } from 'react-router-dom';
 import { store, useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, Modal, Stat, attempt, useObj } from '@/components/ui';
@@ -78,7 +79,7 @@ export function IntervalModal({ clientId, onClose }: { clientId?: string; onClos
           <Field label="Applies to"><select {...f.bind('scope')}><option value="service">A service type</option><option value="client">One client</option></select></Field>
           {f.v.scope === 'service'
             ? <Field label="Service type"><select {...f.bind('service_code')}>{live(db.services).map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></Field>
-            : <Field label="Client"><select {...f.bind('client_id')}><option value="">Choose…</option>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>}
+            : <Field label="Client"><select {...f.bind('client_id')}><option value="">Choose…</option>{sortedClients(live(db.clients)).map((c) => <option key={c.id} value={c.id}>{clientLabel(c)}</option>)}</select></Field>}
         </>}
         <Field label="First follow-up (months after last service)"><input type="number" min={1} max={36} {...f.bind('short_months')} /></Field>
         <Field label="Second follow-up (months after last service)"><input type="number" min={2} max={60} {...f.bind('long_months')} /></Field>

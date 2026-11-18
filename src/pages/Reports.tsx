@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { clientLabel, sortedClients } from '@/lib/clientname';
 import { useAuth, live } from '@/lib/store';
 import { Badge, Card, Field, PageHead, attempt } from '@/components/ui';
 import { paymentCounts, paymentStatusLabel, finalContract, panelTotals, isDone, AGING_BUCKETS, agingBucket, aggregateProfit, backJobStats, satisfactionStats, RATING_LABEL, discountAggregate, discountRows, type DiscountView, docTotals, invoiceBalance, invoiceSettled, invoiceTotals, jobProfitRows, nextDue, onHand, profitAndLoss, scorecard, serviceProfitRows, stockSummary } from '@/lib/business';
@@ -166,7 +167,7 @@ export default function Reports() {
                 {def.params.includes('date') && <Field label="Date"><input type="date" value={p.date} onChange={(e) => set('date', e.target.value)} /></Field>}
                 {def.params.includes('month') && <Field label="Month"><input type="month" value={p.month} onChange={(e) => set('month', e.target.value)} /></Field>}
                 {def.params.includes('period') && <Field label="Payroll period"><select value={p.period} onChange={(e) => set('period', e.target.value)}>{live(db.periods).sort((a, b) => b.start.localeCompare(a.start)).map((x) => <option key={x.id} value={x.id}>{x.label} · {x.status}</option>)}</select></Field>}
-                {def.params.includes('client') && <Field label="Client"><select value={p.client} onChange={(e) => set('client', e.target.value)}>{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>}
+                {def.params.includes('client') && <Field label="Client"><select value={p.client} onChange={(e) => set('client', e.target.value)}>{sortedClients(live(db.clients)).map((c) => <option key={c.id} value={c.id}>{clientLabel(c)}</option>)}</select></Field>}
                 {def.params.includes('job') && <Field label="Completed job"><select value={p.job} onChange={(e) => set('job', e.target.value)}>{live(db.jobs).filter((j) => isDone(j.status)).sort((a, b) => b.start_at.localeCompare(a.start_at)).map((j) => <option key={j.id} value={j.id}>{j.number} · {cn(db, j.client_id)}</option>)}</select></Field>}
                 <span className="grow" />
                 <button className="btn primary" onClick={() => attempt(() => exportXlsx(table))}>Download Excel</button>

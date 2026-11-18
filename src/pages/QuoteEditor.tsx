@@ -1,4 +1,5 @@
 import { RepeatClientCard, type RepeatSource } from '@/components/RepeatClientCard';
+import { clientLabel, sortedClients } from '@/lib/clientname';
 import { RepeatReviewModal } from '@/components/RepeatReview';
 import { PackageTiles, ServiceTiles } from '@/components/ServiceTiles';
 import { PAYMENT_OPTIONS, SERVICE_METHOD_DEFAULTS, syncMethodSections, defaultCrew, defaultDisclaimer, defaultIntro, defaultMethodology, durationText, manpowerText } from '@/lib/quote-text';
@@ -142,7 +143,7 @@ export default function QuoteEditor() {
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
         <Card title="Client & scope">
           <div className="form-grid">
-            <Field label="Client" required><select value={v.client_id} disabled={readOnly} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', undefined); const c = db.clients.find((x) => x.id === e.target.value); if (c) f.set('vat_mode', c.vat_status === 'VAT-registered' ? 'exclusive' : 'none'); }}>{!v.client_id && <option value="">— choose a client —</option>}{live(db.clients).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+            <Field label="Client" required><select value={v.client_id} disabled={readOnly} onChange={(e) => { f.set('client_id', e.target.value); f.set('site_id', undefined); const c = db.clients.find((x) => x.id === e.target.value); if (c) f.set('vat_mode', c.vat_status === 'VAT-registered' ? 'exclusive' : 'none'); }}>{!v.client_id && <option value="">— choose a client —</option>}{sortedClients(live(db.clients)).map((c) => <option key={c.id} value={c.id}>{clientLabel(c)}</option>)}</select></Field>
             <Field label="Service location" hint={v.client_id && !sites.length ? 'This client has no service site yet.' : undefined}><div className="row" style={{ gap: 6 }}><select style={{ flex: 1 }} value={v.site_id ?? ''} disabled={readOnly} onChange={(e) => f.set('site_id', e.target.value || undefined)}><option value="">— select site —</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{v.client_id && !readOnly && can('clients.edit') && <button type="button" className="btn sm" onClick={() => setNewSite(true)}>+ Site</button>}</div></Field>
             <Field label="Issue date"><input type="date" disabled={readOnly} {...f.bind('issue_date')} /></Field>
             <Field label="Valid until"><input type="date" disabled={readOnly} {...f.bind('valid_until')} /></Field>
