@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -47,7 +47,7 @@ describe('the run loop and the modes', () => {
   });
   it('auto mode never sends a reply that fails a check: a person takes over with a safe fallback', async () => {
     const b = await runBrain({ ...base, mode: 'auto', callModel: script([say('Sure, ₱2,000 lang po!')]), exec: exec([]) }); const d = decide('auto', b, 'taglish');
-    expect(d.kind).toBe('handover'); if (d.kind === 'handover') { expect(d.reason).toMatch(/safety check/); expect(d.text).toMatch(/Ire-refer ko po/); }
+    expect(d.kind).toBe('handover'); if (d.kind === 'handover') { expect(d.reason).toMatch(/safety check/); expect(d.text).toMatch(/refer this to our team po/); }
   });
   it('needs_human hands over in both modes; a model error hands over with the fallback', async () => {
     for (const mode of ['suggest', 'auto'] as const) { const b = await runBrain({ ...base, mode, callModel: script([tool('needs_human', { reason: 'complaint' }), say('Ipapasa ko po kayo sa team.')]), exec: exec([]) }); expect(decide(mode, b, 'en')).toMatchObject({ kind: 'handover', reason: 'complaint' }); }
@@ -174,5 +174,18 @@ describe('never ask for quantities', () => {
   it('the AI does not ask how many panels or how much area, and says the team counts and measures on site', () => {
     const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/NEVER ASK QUANTITIES/); expect(s).toContain(ONSITE_COUNT);
     expect(ONSITE_COUNT).toBe('Our team will conduct on-site glass and solar panel counting and wall and floor area measurement before they begin the cleaning session.'); expect(s).not.toMatch(/ask roughly how many glass PANELS/);
+  });
+});
+
+describe('house language: English with po or light Taglish', () => {
+  it('flags Tagalog sentences, accepts English and light Taglish', () => {
+    expect(tooTagalog('Hi po! Para ma-check ko ang tamang presyo, anong klaseng cleaning po ang kailangan ninyo (window, solar, wall/floor, or roof) at saan po ang location (city)?')).toBe(true);
+    expect(tooTagalog('Hi po! May I know the type of service you need (Window, Solar, Wall/floor or Roof) and your location po?')).toBe(false);
+    expect(tooTagalog('Sure po, ₱4,799 po ang estimate for 21 panels in Quezon City. Our team will count on site.')).toBe(false);
+  });
+  it('rewrites a Tagalog draft once in English', async () => {
+    let calls = 0;
+    const b = await runBrain({ mode: 'suggest', system: 's', messages: [{ role: 'user', content: 'hi' }], exec: async () => ({ text: '' }), callModel: async () => { calls++; return { stop_reason: 'end_turn', content: [{ type: 'text', text: calls === 1 ? 'Para ma-check ko ang tamang presyo, anong klaseng cleaning po ang kailangan ninyo at saan po ang location?' : 'May I know the type of service you need and your location po?' }] }; } } as never);
+    expect(b.reply).toMatch(/^May I know/); expect(calls).toBe(2);
   });
 });

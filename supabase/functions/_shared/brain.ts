@@ -91,12 +91,20 @@ export function guardReply(reply: string, ctx: { amounts: number[]; booked: bool
   return { ok: v.length === 0, violations: v };
 }
 
-export const FALLBACK = { en: 'Let me refer this to our team so we can give you accurate information po.', tl: 'Ire-refer ko po ito sa aming team para makapagbigay kami ng tamang impormasyon.', taglish: 'Ire-refer ko po muna ito sa team namin para makapagbigay kami ng tamang information.' };
+export const FALLBACK = { en: 'Let me refer this to our team so we can give you accurate information po.', tl: 'Ire-refer ko po ito sa aming team para makapagbigay kami ng tamang impormasyon.', taglish: 'Let me refer this to our team po so we can give you accurate information.' };
 export const fallbackFor = (lang: string) => (lang === 'tl' || lang === 'taglish' ? FALLBACK.taglish : FALLBACK.en);
 
 export interface Brain { reply: string; actions: Action[]; amounts: number[]; booked: boolean; bookReply?: string; humanReason?: string; log: { tool: string; input: unknown; result: string }[]; error?: string; note?: string }
 export interface ModelOut { content: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[]; stop_reason: string }
 /** Runs the model with the tools. Read tools (estimate, check_date) always run. Write tools (book_date, save_lead, needs_human) run now only in `auto` mode; in `suggest` mode they are queued as actions for staff to approve. */
+/** Share of the words that are Tagalog function words (0–1). Taglish stays low; a reply written in Tagalog sentences is high. */
+const TL_WORDS = new Set('ang ng sa mga ko mo ka ako ikaw siya kami tayo kayo sila ninyo niyo namin natin nila ito iyan iyon yung ay at para kung kapag pag saan ano anong anu alin paano bakit kailan magkano mayroon meron wala hindi huwag lang naman din rin na pa nang kasi pero dahil tamang presyo klaseng kailangan gusto pwede puwede salamat opo oo sige muna po kayo ba nga daw raw'.split(' ').filter((w) => w !== 'po'));
+export function tagalogShare(text: string): number {
+  const w = text.toLowerCase().replace(/[^a-zñ\s'-]/g, ' ').split(/\s+/).filter(Boolean); if (w.length < 6) return 0;
+  return w.filter((x) => TL_WORDS.has(x) || /^(ma|mag|nag|pag|ipa|ire|i)-/.test(x)).length / w.length;
+}
+export const tooTagalog = (text: string) => tagalogShare(text) > 0.3;
+
 export async function runBrain(a: { mode: Mode; system: string; messages: { role: 'user' | 'assistant'; content: unknown }[]; callModel: (system: string, messages: unknown[], tools: unknown) => Promise<ModelOut>; exec: (name: string, input: Record<string, unknown>, live: boolean) => Promise<ToolOutcome>; maxRounds?: number }): Promise<Brain> {
   const out: Brain = { reply: '', actions: [], amounts: [], booked: false, log: [] }; const messages = [...a.messages];
   try {
@@ -119,6 +127,9 @@ export async function runBrain(a: { mode: Mode; system: string; messages: { role
       try { const fin = await a.callModel(a.system, [...messages, { role: 'user', content: 'Now write your reply to the customer, using what the tools returned. Plain text, no tools.' }], []); out.reply = fin.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim(); } catch { /* use the fallback below */ }
       if (!out.reply.trim()) { const last = [...out.log].reverse().find((l) => READ_TOOLS.includes(l.tool) && l.result.trim()); if (last) { out.reply = last.result.replace(/^status: \w+\.\s*/, '').trim(); out.note = 'The model wrote no text, so the system sentence from its last tool is shown.'; } }
       if (!out.reply.trim()) out.note = `the model wrote no text (${out.note ?? 'no detail'}); tools used: ${out.log.map((l) => l.tool).join(', ') || 'none'}`;
+    }
+    if (out.reply.trim() && tooTagalog(out.reply) && !out.error) {                                          // house style: English with "po" or light Taglish, never Tagalog sentences: rewrite once
+      try { const fix = await a.callModel(a.system, [...messages, { role: 'assistant', content: out.reply }, { role: 'user', content: 'Rewrite that same reply in plain English with a polite "po" (at most a few light Tagalog words such as po, opo, salamat). No Tagalog sentences. Same facts, same length or shorter. Reply with only the new text.' }], []); const t = fix.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim(); if (t && !tooTagalog(t)) out.reply = t; } catch { /* keep the first answer */ }
     }
   } catch (e) { out.error = (e as Error).message; }
   return out;
