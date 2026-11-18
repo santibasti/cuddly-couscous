@@ -3,6 +3,8 @@ import { headOrder } from '@/lib/joborder-core';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, live } from '@/lib/store';
+import { exportCsv } from '@/lib/export';
+import { clientJobsTable } from '@/lib/clientexport';
 import { Badge, Card, Icon, PageHead, Tabs, attempt } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { JobForm } from '@/components/JobForm';
@@ -102,6 +104,7 @@ export default function Jobs() {
         { icon: '⏳', label: 'Next 7 days', value: jobs.filter((j) => j.start_at.slice(0, 10) > today() && j.start_at.slice(0, 10) <= addDays(today(), 7) && !isOff(j)).length, sub: 'upcoming bookings', tone: 'teal' },
         { icon: '📋', label: 'This month', value: jobs.filter((j) => j.start_at.startsWith(today().slice(0, 7)) && !isOff(j)).length, sub: 'jobs booked', tone: 'gold' },
       ]} title="Jobs & booking calendar" sub={mineOnly ? 'Your assigned jobs' : 'Schedule, assign crews and equipment. Drag a job to another day to reschedule — double-bookings are blocked.'}>
+        {can('followups.manage') && <button className="btn" title="Names, address, contact and final billing of every client with a job (CSV). Contains personal data: use it only where the customers agreed." onClick={() => attempt(() => exportCsv(clientJobsTable(db)))}>⬇ Export clients (CSV)</button>}
         {can('ocular.schedule') && <button className="btn" onClick={() => setOvForm({})}><Icon name="plus" />Schedule ocular visit</button>}
         {edit && <button className="btn primary" onClick={() => setForm({})}><Icon name="plus" />Book a job</button>}
       </PageHead>
