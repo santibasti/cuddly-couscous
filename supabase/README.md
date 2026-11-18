@@ -371,3 +371,6 @@ Office only (`jobs.edit`): on a job's price card, **➖ Remove from booking** re
 
 ## Jarvis as the staff Command Center, step 1 (read-only)
 Jarvis (owner login, Claude, read-only) gained four lookups: **get_prices** (live price list), **find_client** (client + inquiries, quotations, jobs), **get_job_order** (job + Job Order versions) and **check_date** (how busy a day is). Each answer shows "Looked at: …" (the lookups used); every question is already logged in `jarvis_turns`. It can write a *draft* customer reply for a person to review but cannot send anything, change a booking or touch money. Redeploy with `supabase.cmd functions deploy jarvis --no-verify-jwt`.
+
+## Jarvis business questions and follow-up radar (read-only)
+Three more lookups: **get_business_stats** (this month so far / last month / quarter / year against the period before: jobs, contract value, by service, top clients), **get_dormant_clients** (booked before, not in the last N months, with contact) and **get_followups** (quotations sent 3+ days ago without an answer, inquiries without a quotation for 2+ days, overdue invoices). Values are contract value of scheduled jobs (not cash). Jarvis drafts a follow-up message for each; nothing is sent. Redeploy: `supabase.cmd functions deploy jarvis --no-verify-jwt`.

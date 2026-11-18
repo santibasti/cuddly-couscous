@@ -11,7 +11,7 @@
 //          ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID. Optional: JARVIS_MODEL (default claude-sonnet-5-5), JARVIS_ADDRESS (how it addresses you), JARVIS_SPEAK_NAMES=0 (do not say client names),
 //          JARVIS_WEB=0 (turn off the web search; on by default), ELEVENLABS_TTS_MODEL (default eleven_multilingual_v2), ELEVENLABS_STT_MODEL (default scribe_v1; scribe_v2 is tried if that one is refused). Deploy with --no-verify-jwt.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { addDays, alertIsInstant, alertLine, chunks, CITY_COORDS, cityOf, cleanNote, crewBonus, invoiceBalance, knowledgeBlock, MAX_KNOWLEDGE_CHARS, parseProposals, pickSections, splitKnowledge, weatherRisk, invoiceTotal, LEARN_RULES, manilaDay, MAX_NOTES, memoryBlock, NOTE_KINDS, ownerIds, personaPrompt, round2, speakable, TOOL_TOPIC, type WxHour } from './logic.ts';
+import { addDays, alertIsInstant, alertLine, chunks, CITY_COORDS, cityOf, cleanNote, crewBonus, invoiceBalance, knowledgeBlock, MAX_KNOWLEDGE_CHARS, parseProposals, pickSections, splitKnowledge, weatherRisk, invoiceTotal, LEARN_RULES, manilaDay, MAX_NOTES, memoryBlock, NOTE_KINDS, ownerIds, personaPrompt, round2, speakable, TOOL_TOPIC, type WxHour, periodStats, periodRange, dormantClients, pctChange, type JobRow } from './logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-jarvis-action', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -248,6 +248,39 @@ async function getJobOrder(sb: Db, number: unknown) {
   const [cn, { data: jo }] = await Promise.all([names(sb, 'clients', 'name', [j.client_id]), sb.from('job_orders').select('number, version, status, sent_at').eq('job_id', j.id).is('deleted_at', null).order('version')]);
   return { job: { number: j.number, client: cn[j.client_id] ?? '', start: String(j.start_at).slice(0, 16), status: j.status, services: j.service_codes, contract_amount: Number(j.contract_amount), crew: Array.isArray(j.crew_ids) ? j.crew_ids.length : 0, leader_assigned: !!j.leader_id }, job_orders: (jo ?? []).map((o: Db) => ({ number: o.number, version: o.version, status: o.status, sent: o.sent_at ? String(o.sent_at).slice(0, 10) : null })) };
 }
+async function allJobs(sb: Db, from: string): Promise<JobRow[]> {
+  const { data } = await sb.from('jobs').select('client_id, contract_amount, start_at, status, service_codes').is('deleted_at', null).gte('start_at', `${from}T00:00:00`).limit(5000);
+  return (data ?? []) as JobRow[];
+}
+async function businessStats(sb: Db, period: unknown) {
+  const r = periodRange(String(period ?? 'month'), today()); const jobs = await allJobs(sb, r.prevFrom);
+  const now = periodStats(jobs, r.from, r.to), before = periodStats(jobs, r.prevFrom, r.prevTo);
+  const cn = await names(sb, 'clients', 'name', now.top_clients.map((c) => c.key));
+  return { period: r.label, from: r.from, to: r.to, jobs: now.jobs, contract_value: now.value, before: { from: r.prevFrom, to: r.prevTo, jobs: before.jobs, contract_value: before.value }, change_pct_value: pctChange(now.value, before.value), by_service: now.by_service, top_clients: now.top_clients.map((c) => ({ client: cn[c.key] ?? '', jobs: c.jobs, value: c.value })), note: 'contract value of jobs scheduled in the period, excluding cancelled; not cash received' };
+}
+async function dormant(sb: Db, months: unknown) {
+  const mo = Math.max(1, Math.min(36, Number(months) || 3)); const jobs = await allJobs(sb, addDays(today(), -1100));
+  const rows = dormantClients(jobs, today(), mo); if (!rows.length) return { months: mo, clients: [] };
+  const { data } = await sb.from('clients').select('id, name, mobile, email').in('id', rows.map((r) => r.client_id)).is('deleted_at', null);
+  const by = Object.fromEntries((data ?? []).map((c: Db) => [c.id, c]));
+  return { months: mo, clients: rows.filter((r) => by[r.client_id]).map((r) => ({ client: by[r.client_id].name, mobile: by[r.client_id].mobile, email: by[r.client_id].email, jobs: r.jobs, lifetime_value: r.lifetime_value, last_job: r.last_job, months_ago: r.months_ago })) };
+}
+async function followups(sb: Db) {
+  const t3 = new Date(Date.now() - 3 * 86400_000).toISOString(), t2 = new Date(Date.now() - 2 * 86400_000).toISOString();
+  const [q, i, rec] = await Promise.all([
+    sb.from('quotations').select('number, client_id, sent_at').is('deleted_at', null).eq('status', 'Sent').lt('sent_at', t3).order('sent_at').limit(10),
+    sb.from('inquiries').select('client_id, stage, source, details, created_at').is('deleted_at', null).in('stage', ['Inquiry', 'Ocular Visit']).lt('created_at', t2).order('created_at').limit(10),
+    getReceivables(sb)]);
+  const ids = [...(q.data ?? []), ...(i.data ?? [])].map((r: Db) => r.client_id);
+  const { data: cl } = ids.length ? await sb.from('clients').select('id, name, mobile, email').in('id', [...new Set(ids)]) : { data: [] };
+  const by = Object.fromEntries((cl ?? []).map((c: Db) => [c.id, c])); const who = (id: string) => { const c = by[id]; return c ? { client: c.name, mobile: c.mobile, email: c.email } : { client: '' }; };
+  const days = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / 86400_000);
+  return {
+    quotations_waiting_for_answer: (q.data ?? []).map((r: Db) => ({ number: r.number, days_waiting: days(r.sent_at), ...who(r.client_id) })),
+    inquiries_without_quotation: (i.data ?? []).map((r: Db) => ({ stage: r.stage, source: r.source, about: String(r.details ?? '').slice(0, 80), days_waiting: days(r.created_at), ...who(r.client_id) })),
+    overdue_invoices: { count: rec.overdue_count, total: rec.overdue_total, biggest: rec.top.filter((x: Db) => x.due < today()) },
+    how_to_use: 'For each item suggest one short follow-up message the owner can review and send himself. Nothing is sent by you.' };
+}
 async function getAttendance(sb: Db, date: string) {
   const { data } = await sb.from('attendance').select('employee_id, kind, late_min, clock_in').is('deleted_at', null).eq('date', date).limit(200);
   const rows = data ?? []; const en = await names(sb, 'employees', 'full_name', rows.map((r: Db) => r.employee_id));
@@ -307,6 +340,9 @@ const safe = async (p: Promise<unknown>) => { try { return await p; } catch (e) 
 
 /* ---------------- the AI ---------------- */
 const TOOLS = [
+  { name: 'get_business_stats', description: 'Business performance for a period, compared with the period before it: jobs, contract value, by service and the top clients. period: month (so far), last_month, quarter or year. Use it for "how are we doing", month vs last month, which service earns most.', input_schema: { type: 'object', properties: { period: { type: 'string', enum: ['month', 'last_month', 'quarter', 'year'] } }, required: ['period'] } },
+  { name: 'get_dormant_clients', description: 'Clients who booked before but not in the last N months (default 3), biggest lifetime value first, with their contact details. Use it to find who to win back.', input_schema: { type: 'object', properties: { months: { type: 'number' } } } },
+  { name: 'get_followups', description: 'The follow-up radar: quotations sent over 3 days ago with no answer, new inquiries with no quotation for 2+ days, and overdue invoices, each with the client and contact so a message can be drafted.', input_schema: { type: 'object', properties: {} } },
   { name: 'get_prices', description: 'The current service price list from the database (rate, unit, minimum quantity, package price, excess rate). Use it for any price question; never quote prices from memory.', input_schema: { type: 'object', properties: {} } },
   { name: 'find_client', description: 'Find a client by name or mobile number: their details, latest inquiries, quotations, jobs and job orders (numbers and statuses only).', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'get_job_order', description: 'One job (by job number like JOB-2026-0123) with its client, date, status, service, contract amount, crew count, and its Job Order versions and statuses.', input_schema: { type: 'object', properties: { number: { type: 'string' } }, required: ['number'] } },
@@ -332,6 +368,9 @@ async function runTool(sb: Db, name: string, a: Record<string, unknown>) {
     case 'find_client': return await findClient(sb, a.query);
     case 'get_job_order': return await getJobOrder(sb, a.number);
     case 'check_date': { const d = dateArg(a.date, today()); const jobs = await getJobs(sb, d, d); return { date: d, booked: jobs.length, jobs: jobs.map((j: Db) => ({ number: j.number, client: j.client, start: j.start, status: j.status })) }; }
+    case 'get_business_stats': return await businessStats(sb, a.period);
+    case 'get_dormant_clients': return await dormant(sb, a.months);
+    case 'get_followups': return await followups(sb);
     case 'get_attendance': return await getAttendance(sb, dateArg(a.date, today()));
     case 'get_pending_approvals': return await getPending(sb);
     case 'get_leads': return await getLeads(sb, clampDays(a.days));

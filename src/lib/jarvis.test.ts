@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { crewBonus, cityOf, parseProposals, weatherRisk, knowledgeBlock, pickSections, splitKnowledge, cleanNote, memoryBlock, addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, speakable } from '../../supabase/functions/jarvis/logic';
+import { periodStats, periodRange, dormantClients, pctChange, crewBonus, cityOf, parseProposals, weatherRisk, knowledgeBlock, pickSections, splitKnowledge, cleanNote, memoryBlock, addDays, alertIsInstant, alertLine, chunks, invoiceBalance, invoiceTotal, manilaDay, ownerIds, personaPrompt, speakable } from '../../supabase/functions/jarvis/logic';
 
 describe('jarvis helpers', () => {
   it('works in Manila time', () => {
@@ -105,5 +105,28 @@ describe('Jarvis crew bonus tool', () => {
     expect(crewBonus(60, 3)).toEqual({ each: 280, total: 840, threshold: 30, steps: 2 });
     expect(crewBonus(29, 3).each).toBe(0); expect(crewBonus(30, 3).each).toBe(140); expect(crewBonus(80, 4).each).toBe(280);
     expect(crewBonus(50, 2, 10, 200).each).toBe(400); expect(crewBonus(0, 3).each).toBe(0); expect(crewBonus(60, 0).total).toBe(0);
+  });
+});
+
+describe('business questions', () => {
+  const jobs = [
+    { client_id: 'a', contract_amount: 10000, start_at: '2026-11-03T09:00', status: 'Completed', service_codes: ['GLASS_EXT'] },
+    { client_id: 'a', contract_amount: 5000, start_at: '2026-11-10T09:00', status: 'Confirmed', service_codes: ['SOLAR'] },
+    { client_id: 'b', contract_amount: 7000, start_at: '2026-11-05T09:00', status: 'Cancelled', service_codes: ['GLASS_EXT'] },
+    { client_id: 'b', contract_amount: 4000, start_at: '2026-10-20T09:00', status: 'Completed', service_codes: ['GLASS_EXT'] },
+    { client_id: 'c', contract_amount: 9000, start_at: '2026-05-02T09:00', status: 'Completed', service_codes: ['ROOF'] },
+  ];
+  it('counts a period without cancelled jobs, by service and client', () => {
+    const s = periodStats(jobs, '2026-11-01', '2026-11-18');
+    expect(s.jobs).toBe(2); expect(s.value).toBe(15000); expect(s.top_clients[0]).toMatchObject({ key: 'a', value: 15000 }); expect(s.by_service.map((x) => x.key)).toEqual(['GLASS_EXT', 'SOLAR']);
+  });
+  it('knows the period before, including January and year ends', () => {
+    expect(periodRange('month', '2026-11-18')).toMatchObject({ from: '2026-11-01', prevFrom: '2026-10-01', prevTo: '2026-10-18' });
+    expect(periodRange('last_month', '2026-01-15')).toMatchObject({ from: '2025-12-01', to: '2025-12-31', prevFrom: '2025-11-01', prevTo: '2025-11-30' });
+    expect(periodRange('quarter', '2026-11-18')).toMatchObject({ from: '2026-10-01', prevFrom: '2026-07-01', prevTo: '2026-09-30' });
+  });
+  it('finds clients who stopped booking, biggest first', () => {
+    const d = dormantClients(jobs, '2026-11-18', 3); expect(d).toHaveLength(1); expect(d[0]).toMatchObject({ client_id: 'c', last_job: '2026-05-02', lifetime_value: 9000 });
+    expect(pctChange(15000, 4000)).toBe(275); expect(pctChange(5, 0)).toBeNull();
   });
 });

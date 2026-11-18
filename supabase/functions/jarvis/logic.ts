@@ -76,7 +76,7 @@ export function cleanNote(t: unknown): string | null {
   if (/\b(password|passcode|api[ -]?key|secret|token|pin code)\b/i.test(s)) return null;
   return s;
 }
-export const TOOL_TOPIC: Record<string, string> = { get_jobs: 'jobs and schedule', get_attendance: 'crew attendance', get_pending_approvals: 'approvals waiting', get_leads: 'new inquiries', get_receivables: 'unpaid invoices', get_money_in: 'money received', get_quotations_summary: 'quotations', get_handovers_waiting: 'handovers', web_search: 'general questions', get_weather: 'weather and job risks', calc_crew_bonus: 'crew bonus' };
+export const TOOL_TOPIC: Record<string, string> = { get_business_stats: 'business performance', get_dormant_clients: 'win-back clients', get_followups: 'follow-ups', get_prices: 'prices', find_client: 'client lookup', get_job_order: 'job orders', check_date: 'date availability', get_jobs: 'jobs and schedule', get_attendance: 'crew attendance', get_pending_approvals: 'approvals waiting', get_leads: 'new inquiries', get_receivables: 'unpaid invoices', get_money_in: 'money received', get_quotations_summary: 'quotations', get_handovers_waiting: 'handovers', web_search: 'general questions', get_weather: 'weather and job risks', calc_crew_bonus: 'crew bonus' };
 /** The memory section of Jarvis's instructions: saved notes (with ids so he can forget one) and what the owner asks about most. */
 export function memoryBlock(notes: { id: number; kind: string; text: string }[], topics: { topic: string; n: number }[]): string {
   const parts: string[] = [];
@@ -162,3 +162,38 @@ export function crewBonus(extraPanels: number, crew: number, step = 10, bonus = 
   const steps = ok ? Math.floor(extraPanels / threshold) : 0;
   return { each: steps * bonus, total: steps * bonus * Math.max(0, crew), threshold, steps };
 }
+
+/* ---------- business questions: pure helpers over rows the function reads (read-only) ---------- */
+export interface JobRow { client_id: string; contract_amount: number | string | null; start_at: string; status: string; service_codes?: string[] | null }
+const LIVE = (j: JobRow) => !['Cancelled', 'Declined', 'Draft'].includes(j.status);
+export const jobValue = (j: JobRow) => Number(j.contract_amount) || 0;
+/** Jobs and contract value in [from, to] (Manila dates), by service and the biggest clients. */
+export function periodStats(jobs: JobRow[], from: string, to: string, top = 8) {
+  const rows = jobs.filter((j) => LIVE(j) && j.start_at.slice(0, 10) >= from && j.start_at.slice(0, 10) <= to);
+  const byService: Record<string, { jobs: number; value: number }> = {}; const byClient: Record<string, { jobs: number; value: number }> = {};
+  for (const j of rows) {
+    const codes = j.service_codes?.length ? j.service_codes : ['OTHER'];
+    for (const c of codes) { const b = (byService[c] ??= { jobs: 0, value: 0 }); b.jobs++; b.value += jobValue(j) / codes.length; }
+    const c = (byClient[j.client_id] ??= { jobs: 0, value: 0 }); c.jobs++; c.value += jobValue(j);
+  }
+  const rank = (m: Record<string, { jobs: number; value: number }>) => Object.entries(m).map(([k, v]) => ({ key: k, jobs: v.jobs, value: round2(v.value) })).sort((a, b) => b.value - a.value);
+  return { from, to, jobs: rows.length, value: round2(rows.reduce((s, j) => s + jobValue(j), 0)), by_service: rank(byService), top_clients: rank(byClient).slice(0, top) };
+}
+/** [from, to] of a named period in Manila time, plus the period just before it (to compare against). */
+export function periodRange(kind: string, todayStr: string): { label: string; from: string; to: string; prevFrom: string; prevTo: string } {
+  const [y, m] = todayStr.split('-').map(Number); const pad = (n: number) => String(n).padStart(2, '0');
+  const eom = (yy: number, mm: number) => new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+  if (kind === 'last_month') { const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y, qm = pm === 1 ? 12 : pm - 1, qy = pm === 1 ? py - 1 : py; return { label: 'last month', from: `${py}-${pad(pm)}-01`, to: `${py}-${pad(pm)}-${eom(py, pm)}`, prevFrom: `${qy}-${pad(qm)}-01`, prevTo: `${qy}-${pad(qm)}-${eom(qy, qm)}` }; }
+  if (kind === 'year') return { label: 'this year', from: `${y}-01-01`, to: todayStr, prevFrom: `${y - 1}-01-01`, prevTo: `${y - 1}-${pad(m)}-${pad(Math.min(Number(todayStr.slice(8)), eom(y - 1, m)))}` };
+  if (kind === 'quarter') { const qs = Math.floor((m - 1) / 3) * 3 + 1; const pqs = qs === 1 ? 10 : qs - 3, pqy = qs === 1 ? y - 1 : y; return { label: 'this quarter', from: `${y}-${pad(qs)}-01`, to: todayStr, prevFrom: `${pqy}-${pad(pqs)}-01`, prevTo: `${pqy}-${pad(pqs + 2)}-${eom(pqy, pqs + 2)}` }; }
+  const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y;   // this month so far, against the same days last month
+  return { label: 'this month so far', from: `${y}-${pad(m)}-01`, to: todayStr, prevFrom: `${py}-${pad(pm)}-01`, prevTo: `${py}-${pad(pm)}-${pad(Math.min(Number(todayStr.slice(8)), eom(py, pm)))}` };
+}
+/** Clients who had work before but none in the last `months` months, biggest lifetime value first. */
+export function dormantClients(jobs: JobRow[], todayStr: string, months: number, max = 10) {
+  const cutoff = addDays(todayStr, -Math.round(months * 30.4));
+  const by: Record<string, { jobs: number; value: number; last: string }> = {};
+  for (const j of jobs.filter(LIVE)) { const b = (by[j.client_id] ??= { jobs: 0, value: 0, last: '' }); b.jobs++; b.value += jobValue(j); const d = j.start_at.slice(0, 10); if (d > b.last) b.last = d; }
+  return Object.entries(by).filter(([, b]) => b.last && b.last < cutoff).map(([id, b]) => ({ client_id: id, jobs: b.jobs, lifetime_value: round2(b.value), last_job: b.last, months_ago: Math.round((Date.parse(todayStr) - Date.parse(b.last)) / (30.4 * 86400_000)) })).sort((a, b) => b.lifetime_value - a.lifetime_value).slice(0, max);
+}
+export const pctChange = (now: number, before: number) => (before > 0 ? Math.round(((now - before) / before) * 1000) / 10 : null);
