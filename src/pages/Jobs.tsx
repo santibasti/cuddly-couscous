@@ -41,7 +41,7 @@ export default function Jobs() {
   const [form, setForm] = useState<{ start?: string; fromQuote?: string } | null>(null);
   const [ovForm, setOvForm] = useState<{ start?: string } | null>(null);
   const [ovOpen, setOvOpen] = useState<OcularVisit | null>(null);
-  const mineOnly = !can('jobs.all');
+  const mineOnly = !can('jobs.all'); const [exFrom, setExFrom] = useState(''); const [exTo, setExTo] = useState('');
   const myEmp = user?.employee_id;
   const edit = can('jobs.edit');
   const fromQuote = sp.get('fromQuote');
@@ -104,7 +104,7 @@ export default function Jobs() {
         { icon: '⏳', label: 'Next 7 days', value: jobs.filter((j) => j.start_at.slice(0, 10) > today() && j.start_at.slice(0, 10) <= addDays(today(), 7) && !isOff(j)).length, sub: 'upcoming bookings', tone: 'teal' },
         { icon: '📋', label: 'This month', value: jobs.filter((j) => j.start_at.startsWith(today().slice(0, 7)) && !isOff(j)).length, sub: 'jobs booked', tone: 'gold' },
       ]} title="Jobs & booking calendar" sub={mineOnly ? 'Your assigned jobs' : 'Schedule, assign crews and equipment. Drag a job to another day to reschedule — double-bookings are blocked.'}>
-        {can('followups.manage') && <button className="btn" title="Names, address, contact and final billing of every client with a job (CSV). Contains personal data: use it only where the customers agreed." onClick={() => attempt(() => exportCsv(clientJobsTable(db)))}>⬇ Export clients (CSV)</button>}
+        {can('followups.manage') && <span className="row" style={{ gap: 6, alignItems: 'center' }} title="Names, address, contact and final billing of every client with a job in the period (CSV). Billing is included whether or not the job is invoiced. Contains personal data: use it only where the customers agreed."><input type="date" aria-label="Jobs from" value={exFrom} onChange={(e) => setExFrom(e.target.value)} /><span className="muted small">to</span><input type="date" aria-label="Jobs to" value={exTo} onChange={(e) => setExTo(e.target.value)} /><button className="btn" onClick={() => attempt(() => exportCsv(clientJobsTable(db, { from: exFrom || undefined, to: exTo || undefined })))}>⬇ Export clients (CSV)</button></span>}
         {can('ocular.schedule') && <button className="btn" onClick={() => setOvForm({})}><Icon name="plus" />Schedule ocular visit</button>}
         {edit && <button className="btn primary" onClick={() => setForm({})}><Icon name="plus" />Book a job</button>}
       </PageHead>
