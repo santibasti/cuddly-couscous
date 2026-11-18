@@ -150,7 +150,7 @@ describe('a booking already made is never contradicted', () => {
 
 describe('language: English with po, or Taglish, never pure Tagalog', () => {
   it('the prompt and the fallback follow that rule', () => {
-    for (const lang of ['en', 'tl', 'taglish']) { const s = buildSystem({ sections: [], version: null, lang }); expect(s).toMatch(/write in English with a polite "po"/); expect(s).toMatch(/reply in Taglish/); expect(s).toMatch(/Never reply in pure Tagalog/); expect(s).not.toMatch(/Filipino with "po"/); }
+    for (const lang of ['en', 'tl', 'taglish']) { const s = buildSystem({ sections: [], version: null, lang }); expect(s).toMatch(/English or Taglish only, never pure Tagalog/); expect(s).toMatch(/reply in Taglish/); expect(s).toMatch(/English with a polite "po"/); expect(s).not.toMatch(/Filipino with "po"/); }
     expect(fallbackFor('tl')).toBe(fallbackFor('taglish')); expect(fallbackFor('tl')).not.toBe(fallbackFor('en'));
   });
 });
@@ -160,5 +160,12 @@ describe('no photos', () => {
   it('the AI never asks for photos, and the price tool texts do not either', () => {
     const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/NO PHOTOS: never ask the customer for photos/); expect(s).not.toMatch(/suggest photos|send photos of their windows/);
     for (const e of [estimate('Makati', 'gutter cleaning', 10), estimate('Makati', 'window cleaning', 10, 'commercial'), estimate('Atlantis', 'window cleaning', 10)]) expect(`${e.rates_en} ${e.rates_tl} ${e.rates_tglish}`).not.toMatch(/photo|litrato/i);
+  });
+});
+
+describe('short replies', () => {
+  it('the AI is told to keep replies short, and a long reply is flagged', () => {
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SHORT REPLIES/); expect(s).toMatch(/one to three short sentences/); expect(s).toMatch(/Do not over-explain/);
+    expect(guardReply('x'.repeat(900), { amounts: [], booked: false }).violations).toContain('is too long for a chat'); expect(guardReply('Sure po! Window cleaning in Makati starts at ₱4,799 for up to 31 panels.', { amounts: [4799], booked: false }).ok).toBe(true);
   });
 });
