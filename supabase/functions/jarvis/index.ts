@@ -223,6 +223,31 @@ async function getJobs(sb: Db, from: string, to: string) {
   return jobs.map((j: Db) => ({ number: j.number, client: cn[j.client_id] ?? '', day: String(j.start_at).slice(0, 10), start: String(j.start_at).slice(11, 16), status: j.status,
     leader: j.leader_id ? en[j.leader_id] ?? 'assigned' : 'NOT ASSIGNED', crew: Array.isArray(j.crew_ids) ? j.crew_ids.length : 0 }));
 }
+async function getPrices(sb: Db) {
+  const { data } = await sb.from('services').select('code, name, unit, rate, minimum_qty, package_price, package_qty, excess_rate, custom_quote').is('deleted_at', null).order('name').limit(60);
+  return { source: 'services table', services: (data ?? []).map((x: Db) => ({ code: x.code, name: x.name, unit: x.unit, rate: Number(x.rate), minimum_qty: Number(x.minimum_qty), package_price: x.package_price == null ? null : Number(x.package_price), package_qty: x.package_qty == null ? null : Number(x.package_qty), excess_rate: x.excess_rate == null ? null : Number(x.excess_rate), custom_quote: !!x.custom_quote })) };
+}
+async function findClient(sb: Db, query: unknown) {
+  const q = String(query ?? '').trim().replace(/[%,()]/g, ' ').slice(0, 60); if (q.length < 2) return { error: 'Give at least 2 characters of the name or mobile number.' };
+  const digits = q.replace(/\D/g, '');
+  const { data: cl } = await sb.from('clients').select('id, name, mobile, email, address, type, status').is('deleted_at', null).or(`name.ilike.%${q}%${digits.length >= 6 ? `,mobile.ilike.%${digits.slice(-9)}%` : ''}`).limit(5);
+  const out = [];
+  for (const c of cl ?? []) {
+    const [inq, qt, jb] = await Promise.all([
+      sb.from('inquiries').select('stage, source, details, created_at').eq('client_id', c.id).is('deleted_at', null).order('created_at', { ascending: false }).limit(3),
+      sb.from('quotations').select('number, status, created_at').eq('client_id', c.id).is('deleted_at', null).order('created_at', { ascending: false }).limit(3),
+      sb.from('jobs').select('id, number, status, start_at, contract_amount').eq('client_id', c.id).is('deleted_at', null).order('start_at', { ascending: false }).limit(4)]);
+    out.push({ client: { name: c.name, mobile: c.mobile, email: c.email, address: c.address, type: c.type, status: c.status }, inquiries: (inq.data ?? []).map((i: Db) => ({ stage: i.stage, source: i.source, about: String(i.details ?? '').slice(0, 90), on: String(i.created_at).slice(0, 10) })), quotations: (qt.data ?? []).map((x: Db) => `${x.number} (${x.status})`), jobs: (jb.data ?? []).map((j: Db) => ({ number: j.number, status: j.status, day: String(j.start_at).slice(0, 10), contract: Number(j.contract_amount) })) });
+  }
+  return out.length ? { matches: out } : { found: false };
+}
+async function getJobOrder(sb: Db, number: unknown) {
+  const n = String(number ?? '').trim().toUpperCase().slice(0, 40); if (!n) return { error: 'Give the job number.' };
+  const { data: j } = await sb.from('jobs').select('id, number, client_id, start_at, end_at, status, service_codes, contract_amount, leader_id, crew_ids').is('deleted_at', null).ilike('number', n).maybeSingle();
+  if (!j) return { found: false };
+  const [cn, { data: jo }] = await Promise.all([names(sb, 'clients', 'name', [j.client_id]), sb.from('job_orders').select('number, version, status, sent_at').eq('job_id', j.id).is('deleted_at', null).order('version')]);
+  return { job: { number: j.number, client: cn[j.client_id] ?? '', start: String(j.start_at).slice(0, 16), status: j.status, services: j.service_codes, contract_amount: Number(j.contract_amount), crew: Array.isArray(j.crew_ids) ? j.crew_ids.length : 0, leader_assigned: !!j.leader_id }, job_orders: (jo ?? []).map((o: Db) => ({ number: o.number, version: o.version, status: o.status, sent: o.sent_at ? String(o.sent_at).slice(0, 10) : null })) };
+}
 async function getAttendance(sb: Db, date: string) {
   const { data } = await sb.from('attendance').select('employee_id, kind, late_min, clock_in').is('deleted_at', null).eq('date', date).limit(200);
   const rows = data ?? []; const en = await names(sb, 'employees', 'full_name', rows.map((r: Db) => r.employee_id));
@@ -282,6 +307,10 @@ const safe = async (p: Promise<unknown>) => { try { return await p; } catch (e) 
 
 /* ---------------- the AI ---------------- */
 const TOOLS = [
+  { name: 'get_prices', description: 'The current service price list from the database (rate, unit, minimum quantity, package price, excess rate). Use it for any price question; never quote prices from memory.', input_schema: { type: 'object', properties: {} } },
+  { name: 'find_client', description: 'Find a client by name or mobile number: their details, latest inquiries, quotations, jobs and job orders (numbers and statuses only).', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
+  { name: 'get_job_order', description: 'One job (by job number like JOB-2026-0123) with its client, date, status, service, contract amount, crew count, and its Job Order versions and statuses.', input_schema: { type: 'object', properties: { number: { type: 'string' } }, required: ['number'] } },
+  { name: 'check_date', description: 'How many jobs are booked on one date (Manila YYYY-MM-DD) and which, to tell whether the day is busy.', input_schema: { type: 'object', properties: { date: { type: 'string' } }, required: ['date'] } },
   { name: 'get_jobs', description: 'Job orders starting between two dates (Manila dates, YYYY-MM-DD), with client, start time, status, leader and crew count.', input_schema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } }, required: ['from', 'to'] } },
   { name: 'get_attendance', description: 'Crew attendance for one date: how many present, who is absent, who was late.', input_schema: { type: 'object', properties: { date: { type: 'string' } }, required: ['date'] } },
   { name: 'get_pending_approvals', description: 'What waits for the owner: discount requests, expenses, payments to verify, quotations unanswered for over 3 days.', input_schema: { type: 'object', properties: {} } },
@@ -299,6 +328,10 @@ const dateArg = (v: unknown, d: string) => (typeof v === 'string' && /^\d{4}-\d{
 async function runTool(sb: Db, name: string, a: Record<string, unknown>) {
   switch (name) {
     case 'get_jobs': { const from = dateArg(a.from, today()); let to = dateArg(a.to, from); if (to < from) to = from; if (to > addDays(from, 31)) to = addDays(from, 31); return await getJobs(sb, from, to); }
+    case 'get_prices': return await getPrices(sb);
+    case 'find_client': return await findClient(sb, a.query);
+    case 'get_job_order': return await getJobOrder(sb, a.number);
+    case 'check_date': { const d = dateArg(a.date, today()); const jobs = await getJobs(sb, d, d); return { date: d, booked: jobs.length, jobs: jobs.map((j: Db) => ({ number: j.number, client: j.client, start: j.start, status: j.status })) }; }
     case 'get_attendance': return await getAttendance(sb, dateArg(a.date, today()));
     case 'get_pending_approvals': return await getPending(sb);
     case 'get_leads': return await getLeads(sb, clampDays(a.days));
@@ -332,8 +365,8 @@ async function claude(system: string, messages: { role: string; content: unknown
 const textOf = (c: { type: string; text?: string }[]) => c.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
 
 /** One conversation turn: the AI looks things up with its read-only tools and answers. Used by Telegram (with stored memory) and by the screen in the app (history sent by the page). */
-async function converse(sb: Db, history: Turn[], question: string, src = 'screen'): Promise<string> {
-  const system = `${persona()}\n${LEARN_RULES}${await memory(sb)}${knowledgeBlock(await loadKnowledge(sb))}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. For any question about a crew bonus for extra panels, call calc_crew_bonus rather than working it out yourself. ${webOn() ? 'If the question is not about the business, answer it helpfully, searching the web when you need current or outside facts.' : 'If the question is not about the business, answer briefly or say it is outside what you do.'}`;
+async function converse(sb: Db, history: Turn[], question: string, src = 'screen', sources?: string[]): Promise<string> {
+  const system = `${persona()}\n${LEARN_RULES}${await memory(sb)}${knowledgeBlock(await loadKnowledge(sb))}\nToday is ${today()} (Manila time). Use the tools to look things up; call several when needed. Prices come only from get_prices, never from memory. When asked to reply to a customer, write the draft message for a person to review: you cannot send anything, change a booking or touch money; say the draft still needs staff approval. Name where facts came from (price list, client record, job number). For any question about a crew bonus for extra panels, call calc_crew_bonus rather than working it out yourself. ${webOn() ? 'If the question is not about the business, answer it helpfully, searching the web when you need current or outside facts.' : 'If the question is not about the business, answer briefly or say it is outside what you do.'}`;
   const tools = webOn() ? [...TOOLS, WEB_SEARCH] : TOOLS;
   const messages: { role: string; content: unknown }[] = [...history, { role: 'user', content: question }];
   let reply = ''; let searched = false; const used: string[] = [];
@@ -350,6 +383,7 @@ async function converse(sb: Db, history: Turn[], question: string, src = 'screen
     messages.push({ role: 'user', content: results });
   }
   if (searched) await logEvent(sb, 'search', 'Web search used');
+  sources?.push(...new Set(used.filter(Boolean)));
   await countTopics(sb, used);
   await logTurn(sb, src, question, reply, used);
   await logEvent(sb, 'answer', `Question answered · ${src}`);
@@ -451,7 +485,8 @@ async function webRequest(req: Request): Promise<Response> {
     if (!env('ANTHROPIC_API_KEY')) return json({ error: 'The AI key is not set yet.' }, 400);
     const q = String(b.text ?? '').trim().slice(0, 2000); if (!q) return json({ error: 'Say or type something first.' }, 400);
     const history: Turn[] = (Array.isArray(b.history) ? b.history : []).filter((h) => (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string').slice(-8).map((h) => ({ role: h.role as Turn['role'], content: h.content.slice(0, 1500) }));
-    return json({ text: await converse(sb, history, q, 'screen') });
+    const sources: string[] = []; const text = await converse(sb, history, q, 'screen', sources);
+    return json({ text, sources });
   }
   if (b.action === 'knowledge_save') return json(await saveKnowledge(sb, String(b.text ?? '')));
   if (b.action === 'knowledge_clear') { const r = await sb.from('jarvis_knowledge').delete().gte('num', 0); return json({ ok: !r.error }); }

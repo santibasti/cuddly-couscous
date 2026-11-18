@@ -368,3 +368,6 @@ When a customer asks how panels are counted, or the AI explains it, the reply ca
 
 ## Remove from booking (migration 0131)
 Office only (`jobs.edit`): on a job's price card, **➖ Remove from booking** records that the client dropped part of the booking (e.g. 2 packages booked, 1 wanted). It is saved as an approved *reduction* variation: subtracted from the final bill, contract value and invoice (shown as a negative line), with who asked and why; the original quotation is never changed. Not allowed once invoiced (reverse the invoice first) or for more than the whole bill.
+
+## Jarvis as the staff Command Center, step 1 (read-only)
+Jarvis (owner login, Claude, read-only) gained four lookups: **get_prices** (live price list), **find_client** (client + inquiries, quotations, jobs), **get_job_order** (job + Job Order versions) and **check_date** (how busy a day is). Each answer shows "Looked at: …" (the lookups used); every question is already logged in `jarvis_turns`. It can write a *draft* customer reply for a person to review but cannot send anything, change a booking or touch money. Redeploy with `supabase.cmd functions deploy jarvis --no-verify-jwt`.

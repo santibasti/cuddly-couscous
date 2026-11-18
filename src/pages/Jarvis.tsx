@@ -64,7 +64,7 @@ export default function Jarvis() {
   const lastQ = useRef(''); const [rated, setRated] = useState<number | null>(null);
   const [panel, setPanel] = useState<JarvisPanel | null>(CLOUD ? null : DEMO_PANEL);
   const [err, setErr] = useState(''); const [mode, setMode] = useState<Mode>('idle');
-  const [say, setSay] = useState(''); const [text, setText] = useState(''); const [history, setHistory] = useState<Turn[]>([]);
+  const [say, setSay] = useState(''); const [sources, setSources] = useState<string[]>([]); const [text, setText] = useState(''); const [history, setHistory] = useState<Turn[]>([]);
   const [full, setFull] = useState(false); const [muted, setMuted] = useState(false);
   const [view, setView] = useState<'console' | 'panels'>(() => pref('topmop-jarvis-view', 'console', ['console', 'panels']));
   const [theme, setTheme] = useState<ConsoleTheme>(() => pref('topmop-jarvis-theme', 'blue', ['blue', 'cyan']));
@@ -98,10 +98,10 @@ export default function Jarvis() {
 
   const ask = useCallback(async (q: string) => {
     const question = q.trim(); if (!question) return;
-    setMode('thinking'); setSay(''); setErr(''); setRated(null); lastQ.current = question;
+    setMode('thinking'); setSay(''); setSources([]); setErr(''); setRated(null); lastQ.current = question;
     try {
-      const { text: reply } = await call<{ text: string }>({ action: 'chat', text: question, history });
-      setSay(reply); setHistory((h) => [...h, { role: 'user' as const, content: question }, { role: 'assistant' as const, content: reply }].slice(-8));
+      const { text: reply, sources: used } = await call<{ text: string; sources?: string[] }>({ action: 'chat', text: question, history });
+      setSources(used ?? []); setSay(reply); setHistory((h) => [...h, { role: 'user' as const, content: question }, { role: 'assistant' as const, content: reply }].slice(-8));
       await speak(reply);
     } catch (e) { setErr(e instanceof Error ? e.message : 'Jarvis could not answer.'); setMode('idle'); }
   }, [history, speak]);
@@ -197,6 +197,7 @@ export default function Jarvis() {
               <div className="jv-state">{STATUS[mode]}</div>
             </div>
           </div>
+          {sources.length > 0 && <div className="small muted" style={{ textAlign: 'center' }}>Looked at: {sources.map((x) => x.replace(/^get_|^find_|^check_/, '').replace(/_/g, ' ')).join(' · ')}</div>}
           <div className="jv-say">{sub ? <span key={sub} className="jv-sub">{sub}</span> : !say && mode === 'idle' ? (CLOUD ? 'Tap the core to talk, or type below.' : 'Tap the core to preview its states.') : ''}</div>
           <form className="jv-bar" onSubmit={submit}>
             <button type="button" className={`mic ${mode === 'listening' ? 'on' : ''}`} onClick={() => void listen()} aria-label="Microphone">🎙</button>
