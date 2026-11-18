@@ -15,7 +15,7 @@ type Turn = { role: 'user' | 'assistant'; content: string };
 const STATUS: Record<Mode, string> = { idle: 'STANDING BY', listening: 'LISTENING', thinking: 'THINKING', speaking: 'SPEAKING' };
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
-  const r = await fnFetch('jarvis', { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+  const r = await fnFetch('jarvis', { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(100_000) }).catch((e: unknown) => { throw new Error(e instanceof DOMException && e.name === 'TimeoutError' ? 'Jarvis took too long to answer. Please ask again, or try a simpler question.' : e instanceof Error ? e.message : 'Could not reach Jarvis.'); });
   const j = await r.json().catch(() => ({})) as T & { error?: string };
   if (!r.ok || (j as { error?: string }).error) throw new Error((j as { error?: string }).error ?? `Jarvis answered ${r.status}`);
   return j;

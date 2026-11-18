@@ -374,3 +374,5 @@ Jarvis (owner login, Claude, read-only) gained four lookups: **get_prices** (liv
 
 ## Jarvis business questions and follow-up radar (read-only)
 Three more lookups: **get_business_stats** (this month so far / last month / quarter / year against the period before: jobs, contract value, by service, top clients), **get_dormant_clients** (booked before, not in the last N months, with contact) and **get_followups** (quotations sent 3+ days ago without an answer, inquiries without a quotation for 2+ days, overdue invoices). Values are contract value of scheduled jobs (not cash). Jarvis drafts a follow-up message for each; nothing is sent. Redeploy: `supabase.cmd functions deploy jarvis --no-verify-jwt`.
+
+Jarvis speed: lookups now run side by side, the long instructions are cached between steps, each AI call stops after 45 s and the screen after 100 s with a clear message instead of "thinking" forever. For faster answers set `supabase.cmd secrets set JARVIS_MODEL=claude-haiku-5-5` (quicker and cheaper, slightly less sharp; remove the secret to go back to Sonnet).

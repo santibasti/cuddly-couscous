@@ -15,10 +15,10 @@ let _client: SupabaseClient | null = null;
 export const supabase = (): SupabaseClient => (_client ??= createClient(URL!, KEY!, { auth: { persistSession: true, autoRefreshToken: true } }));
 
 /** A direct call to an Edge Function as the signed-in user (for replies that are not JSON, such as audio). */
-export async function fnFetch(name: string, init: { body?: BodyInit; headers?: Record<string, string> }): Promise<Response> {
+export async function fnFetch(name: string, init: { body?: BodyInit; headers?: Record<string, string>; signal?: AbortSignal }): Promise<Response> {
   const { data } = await supabase().auth.getSession(); const token = data.session?.access_token;
   if (!token) throw new Error('Please sign in again.');
-  return fetch(`${URL}/functions/v1/${name}`, { method: 'POST', body: init.body, headers: { apikey: KEY!, Authorization: `Bearer ${token}`, ...(init.headers ?? {}) } });
+  return fetch(`${URL}/functions/v1/${name}`, { method: 'POST', body: init.body, headers: { apikey: KEY!, Authorization: `Bearer ${token}`, ...(init.headers ?? {}) }, signal: init.signal });
 }
 
 /** Tables copied between the app and Supabase, parents first (foreign keys). `users`, `notifications` and `audit` are handled separately. */

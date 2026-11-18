@@ -397,7 +397,8 @@ const persona = () => personaPrompt(env('JARVIS_ADDRESS'), env('JARVIS_SPEAK_NAM
 const WEB_SEARCH = { type: 'web_search_20250305', name: 'web_search', max_uses: 3, user_location: { type: 'approximate', country: 'PH', city: 'Manila', timezone: 'Asia/Manila' } };
 async function claude(system: string, messages: { role: string; content: unknown }[], tools?: unknown[]) {
   const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: env('JARVIS_MODEL') || 'claude-sonnet-5-5', max_tokens: 700, system, messages, ...(tools ? { tools } : {}) }) });
+    signal: AbortSignal.timeout(45_000),
+    body: JSON.stringify({ model: env('JARVIS_MODEL') || 'claude-sonnet-5-5', max_tokens: 700, system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }], messages, ...(tools ? { tools } : {}) }) });   // the long, unchanging instructions are cached so each step starts faster
   if (!res.ok) { const detail = (await res.text()).slice(0, 300); console.error('AI', res.status, detail); throw new Error(`AI ${res.status}: ${detail}`); }
   return await res.json() as { content: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[]; stop_reason: string };
 }
@@ -417,8 +418,7 @@ async function converse(sb: Db, history: Turn[], question: string, src = 'screen
     if (!uses.length) break;
     messages.push({ role: 'assistant', content: out.content });
     used.push(...uses.map((u) => u.name ?? ''));
-    const results = [];
-    for (const u of uses) results.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(await safe(runTool(sb, u.name ?? '', u.input ?? {}))).slice(0, 9000) });
+    const results = await Promise.all(uses.map(async (u) => ({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(await safe(runTool(sb, u.name ?? '', u.input ?? {}))).slice(0, 9000) })));   // the lookups run side by side, not one after another
     messages.push({ role: 'user', content: results });
   }
   if (searched) await logEvent(sb, 'search', 'Web search used');
