@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fallbackFor, honorificFor, BOOKING_HOWTO, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -167,5 +167,12 @@ describe('short replies', () => {
   it('the AI is told to keep replies short, and a long reply is flagged', () => {
     const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SHORT REPLIES/); expect(s).toMatch(/one to three short sentences/); expect(s).toMatch(/Do not over-explain/);
     expect(guardReply('x'.repeat(900), { amounts: [], booked: false }).violations).toContain('is too long for a chat'); expect(guardReply('Sure po! Window cleaning in Makati starts at ₱4,799 for up to 31 panels.', { amounts: [4799], booked: false }).ok).toBe(true);
+  });
+});
+
+describe('never ask for quantities', () => {
+  it('the AI does not ask how many panels or how much area, and says the team counts and measures on site', () => {
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/NEVER ASK QUANTITIES/); expect(s).toContain(ONSITE_COUNT);
+    expect(ONSITE_COUNT).toBe('Our team will conduct on-site glass and solar panel counting and wall and floor area measurement before they begin the cleaning session.'); expect(s).not.toMatch(/ask roughly how many glass PANELS/);
   });
 });
