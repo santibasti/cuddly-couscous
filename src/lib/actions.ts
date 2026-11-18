@@ -496,7 +496,7 @@ export function invoiceFromJob(jobId: string): Invoice {
   // approved variations are billed as extra lines; the original quotation lines are copied unchanged
   const fc = finalContract(db(), j);
   const varItems = db().variations.filter((v) => v.job_id === jobId && v.status === 'Approved' && !v.deleted_at)
-    .flatMap((v) => v.items.map((it, k) => ({ ...it, description: `${v.number}: ${it.description}`, discount: it.discount + (k === 0 ? v.discount : 0) })));
+    .flatMap((v) => v.kind === 'reduction' ? v.items.map((it) => ({ ...it, description: `${v.number}: ${it.description}`, qty: -it.qty, discount: 0 })) : v.items.map((it, k) => ({ ...it, description: `${v.number}: ${it.description}`, discount: it.discount + (k === 0 ? v.discount : 0) })));
   const wfr = db().workflows.find((w) => w.job_id === jobId && !w.deleted_at);
   const approvedVars = db().variations.filter((v) => v.job_id === jobId && v.status === 'Approved' && !v.deleted_at).map((v) => v.number);
   const notes = [approvedVars.length ? `Includes approved additional work: ${approvedVars.join(', ')}.` : '', wfr?.conf_deposit ? `Deposit / prior payment recorded at the site conforme: ${money(wfr.conf_deposit)}${wfr.conf_deposit_note ? ` (${wfr.conf_deposit_note})` : ''} — record the payment against this invoice.` : ''].filter(Boolean).join(' ');

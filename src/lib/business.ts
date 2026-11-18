@@ -658,7 +658,10 @@ export function quotedPanels(d: Pick<DB, 'services'>, q?: Quotation): number {
     return i.unit === 'package' ? i.qty * (i.package_qty ?? sv?.package_qty ?? 0) : i.unit === 'panel' ? i.qty : 0;
   });
 }
-export const variationTotals = (v: Pick<Variation, 'items' | 'discount' | 'vat_mode' | 'vat_rate'>) => docTotals(v.items, v.discount, v.vat_mode, v.vat_rate);
+export const variationTotals = (v: Pick<Variation, 'items' | 'discount' | 'vat_mode' | 'vat_rate'> & { kind?: 'reduction' }) => {
+  const t = docTotals(v.items, v.discount, v.vat_mode, v.vat_rate);
+  return v.kind === 'reduction' ? { gross: -t.gross, lineDiscount: -t.lineDiscount, discount: -t.discount, net: -t.net, vat: -t.vat, total: -t.total } : t;
+};
 /** Original quotation + approved variations − management-approved discount = final contract value (the original quotation is never modified). */
 export function finalContract(d: Pick<DB, 'quotations' | 'variations'> & Partial<Pick<DB, 'discount_requests'>>, job: Job) {
   const q = d.quotations.find((x) => x.id === job.quotation_id);

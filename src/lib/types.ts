@@ -578,6 +578,8 @@ export interface Variation extends Base {
   decided_by?: string; notes?: string;
   // Client Final Quote Review (step 4): additions offered at the site before the conforme is signed
   source?: 'final_review' | 'owner_added';
+  /** 'reduction': the office removed part of the booking (client dropped a package / service); its items are what was removed and its total is subtracted */
+  kind?: 'reduction';
   revision_open?: boolean; revision_note?: string; revision_at?: string;
   decided_at?: string;       // when the client approved / declined
   sign_lat?: number; sign_lng?: number; sign_gps_note?: string; sign_device?: string;

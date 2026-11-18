@@ -1476,6 +1476,20 @@ describe('Job Order Confirmation', () => {
     expect(after.variationsTotal).toBeGreaterThan(92 * 140 - 1);
     expect(db().jobs.find((j) => j.id === job.id)!.contract_amount).toBe(before.originalNet + 92 * 140);
   });
+  it('"Remove from booking" takes a dropped service off the bill (office only) and keeps the original quotation', async () => {
+    await as('owner@topmop.ph');
+    const { job } = scenario('RMBILL', db().employees[3].id);
+    const before = B.finalContract(db(), db().jobs.find((j) => j.id === job.id)!);
+    const cut = Math.max(1, Math.floor(before.payableTotal / 4)); const f = { description: 'Package 2', qty: 1, unit: 'lot', rate: cut, message: 'Client wants 1 package only', agreed_by: 'Ms. Reyes', agreed_via: 'In person' };
+    expect(() => W.reduceBill(job.id, { ...f, message: ' ' })).toThrow(/message/);
+    expect(() => W.reduceBill(job.id, { ...f, rate: before.payableTotal + 5000 })).toThrow(/whole bill/);
+    const v = W.reduceBill(job.id, f);
+    expect(v).toMatchObject({ status: 'Approved', kind: 'reduction' });
+    const after = B.finalContract(db(), db().jobs.find((j) => j.id === job.id)!);
+    expect(after.originalNet).toBe(before.originalNet);
+    expect(after.variationsNet).toBe(-cut);
+    expect(after.payableTotal).toBeLessThan(before.payableTotal);
+  });
 });
 
 describe('attendance approves itself at the site check-in', () => {

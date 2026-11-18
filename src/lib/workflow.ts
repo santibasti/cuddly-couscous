@@ -455,6 +455,28 @@ export function addToBill(jobId: string, f: BillAddInput): Variation {
   store.update('jobs', job.id, { contract_amount: contract }, 'update', `${job.number}: contract value ${job.contract_amount} + addition ${net} = ${contract}`);
   return v;
 }
+/** Owner / Operations (office only): the client dropped part of the booking (e.g. 2 packages booked, only 1 wanted). Saved as an approved reduction: it is taken off the final bill and the invoice, and the crew's Job Order shows what was removed. */
+export function reduceBill(jobId: string, f: BillAddInput): Variation {
+  store.require('jobs.edit');
+  const job = db().jobs.find((j) => j.id === jobId) ?? fail('Job not found.');
+  if (['Cancelled', 'Declined'].includes(job.status)) fail('This job is cancelled — nothing can be removed from its bill.');
+  if (jobHasInvoice(jobId)) fail('This job is already invoiced. Reverse the invoice first, remove the service, then invoice again.');
+  if (!f.description.trim()) fail('Enter what is being removed (for example "Package 2 — Solar panel cleaning").');
+  if (!(f.qty > 0)) fail('Enter how many are removed (quantity).');
+  if (!(f.rate > 0)) fail('Enter the rate per unit of what is removed.');
+  if (!f.message.trim()) fail('Add a short message so everyone knows why it was removed.');
+  if (!f.agreed_by.trim()) fail('Enter who at the client asked for it.');
+  const q = db().quotations.find((x) => x.id === job.quotation_id);
+  const items: QuoteItem[] = [{ service_code: job.service_codes[0] ?? 'OTHER', description: `REMOVED: ${f.description.trim()}`, qty: f.qty, unit: f.unit.trim() || 'lot', rate: f.rate, discount: 0 }];
+  const vat_mode = q?.vat_mode ?? 'exclusive', vat_rate = q?.vat_rate ?? db().settings.vat_rate ?? 12;
+  const gross = variationTotals({ items, discount: 0, vat_mode, vat_rate, kind: 'reduction' });
+  const fcNow = finalContract(db(), job);
+  if (-gross.total > fcNow.payableTotal + 0.005) fail('That is more than the whole bill. Cancel the job instead if the client dropped everything.');
+  const v = store.insert('variations', { job_id: jobId, number: varNumber(job), kind: 'reduction', reason: `Removed from the booking — ${f.message.trim()}`, items, discount: 0, vat_mode, vat_rate, panel_row_ids: [], status: 'Approved', source: 'owner_added', client_name: f.agreed_by.trim(), notes: `Asked by ${f.agreed_by.trim()} (${f.agreed_via})`, signed_at: new Date().toISOString(), decided_by: uidNow(), decided_at: new Date().toISOString() } as never, `${job.number}: removed from the booking — ${f.description.trim()} (${f.message.trim()})`) as Variation;
+  const fc = finalContract(db(), db().jobs.find((j) => j.id === job.id)!);
+  store.update('jobs', job.id, { contract_amount: q ? fc.finalNet : Math.round((job.contract_amount + gross.net) * 100) / 100 }, 'update', `${job.number}: contract value reduced to ${q ? fc.finalNet : job.contract_amount + gross.net}`);
+  return v;
+}
 export function rejectVariation(id: string, note: string) {
   const v = db().variations.find((x) => x.id === id) ?? fail('Variation not found.');
   needRun(db().jobs.find((j) => j.id === v.job_id)!);
