@@ -11,6 +11,7 @@ import { fmtDate } from '@/lib/util';
 const money = (n: number) => `₱${Math.round(n || 0).toLocaleString('en-PH')}`;
 
 type Mode = CoreMode;
+interface SpeechRec { continuous: boolean; interimResults: boolean; lang: string; start(): void; abort(): void; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null; onerror: ((e: { error: string }) => void) | null; onend: (() => void) | null }
 type Turn = { role: 'user' | 'assistant'; content: string };
 const STATUS: Record<Mode, string> = { idle: 'STANDING BY', listening: 'LISTENING', thinking: 'THINKING', speaking: 'SPEAKING' };
 
@@ -72,6 +73,7 @@ export default function Jarvis() {
   const finishBoot = useCallback(() => { setBooted(true); try { sessionStorage.setItem(BOOT_KEY, '1'); } catch { /* fine */ } }, []);
   const root = useRef<HTMLDivElement>(null); const stage = useRef<HTMLDivElement>(null);
   const audio = useRef<HTMLAudioElement | null>(null); const ctx = useRef<AudioContext | null>(null); const analyser = useRef<AnalyserNode | null>(null);
+  const [hands, setHands] = useState(() => { try { return localStorage.getItem('topmop-jarvis-hands') === '1'; } catch { return false; } });
   const rec = useRef<MediaRecorder | null>(null); const stream = useRef<MediaStream | null>(null); const raf = useRef(0);
 
   const load = useCallback(async () => {
@@ -130,6 +132,7 @@ export default function Jarvis() {
   const stopListening = () => { if (rec.current && rec.current.state !== 'inactive') rec.current.stop(); };
   const listen = async () => {
     if (!CLOUD) { const order: Mode[] = ['idle', 'listening', 'thinking', 'speaking']; const nx = order[(order.indexOf(mode) + 1) % 4]; setMode(nx); setRated(null); if (nx === 'speaking') lastQ.current = 'demo'; setSay(nx === 'speaking' ? 'Good morning. Two items need you: a discount request, and a handover still waiting for the client.' : ''); return; }
+    if (hands) { setHands(false); savePref('topmop-jarvis-hands', '0'); }
     if (mode === 'listening') return stopListening();
     if (!panel?.voice) { setErr('Voice needs a connected voice service. You can still type.'); return; }
     try {
@@ -150,8 +153,37 @@ export default function Jarvis() {
         } catch (e) { setErr(e instanceof Error ? e.message : 'I could not hear that.'); setMode('idle'); }
       };
       mr.start(); setMode('listening'); setTimeout(() => { if (mr.state !== 'inactive') mr.stop(); }, 30_000);
+      // finish by itself: once you have spoken and then stay quiet for about a second and a half, Jarvis goes on and answers (no second tap needed)
+      const buf = new Uint8Array(an.fftSize); let heard = false, quietSince = 0; const t0 = Date.now();
+      const vad = setInterval(() => {
+        if (mr.state === 'inactive') { clearInterval(vad); return; }
+        an.getByteTimeDomainData(buf); let peak = 0; for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
+        if (peak > 10) { heard = true; quietSince = 0; } else if (!quietSince) quietSince = Date.now();
+        if ((heard && quietSince && Date.now() - quietSince > 1500) || (!heard && Date.now() - t0 > 8000)) { clearInterval(vad); mr.stop(); }
+      }, 150);
     } catch { setErr('The microphone is blocked. Allow it in the browser, or type instead.'); setMode('idle'); }
   };
+  // Hands-free: say "Jarvis" followed by your question (or "Jarvis", then the question after he answers "Yes?"). The browser's own speech recognition listens for the name while the tab is open;
+  // when you pause, the question is sent and he answers out loud. While he thinks or speaks, listening is paused so he does not hear himself.
+  const busy = mode === 'thinking' || mode === 'speaking';
+  useEffect(() => {
+    if (!hands || busy || !CLOUD) return;
+    const SR = (window as unknown as { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec }).SpeechRecognition ?? (window as unknown as { webkitSpeechRecognition?: new () => SpeechRec }).webkitSpeechRecognition;
+    if (!SR) { setErr('Hands-free needs Chrome or Edge on a computer. You can still tap the core or type.'); setHands(false); return; }
+    let live = true, awake = false; const r = new SR(); r.continuous = true; r.interimResults = false; r.lang = 'en-PH';
+    const WAKE = /\b(?:hey |hi |ok |okay )?(?:jarvis|jarvus|jarvas|jarves)\b[\s,.!?:-]*/i;
+    r.onresult = (e) => {
+      const res = e.results[e.results.length - 1]; const said = (res[0]?.transcript ?? '').trim(); if (!res.isFinal || !said) return;
+      let q = '';
+      if (awake) q = said; else { const m = WAKE.exec(said); if (!m) return; q = said.slice(m.index + m[0].length).trim(); }
+      if (q.length < 3) { awake = true; setMode('listening'); setSay('Yes?'); return; }
+      live = false; r.onend = null; r.abort(); setText(''); void ask(q);
+    };
+    r.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { live = false; setErr('The microphone is blocked. Allow it in the browser, or type instead.'); setHands(false); savePref('topmop-jarvis-hands', '0'); } };
+    r.onend = () => { if (live) { try { r.start(); } catch { /* it restarts on the next change */ } } };   // the browser ends a session every so often: keep listening
+    try { r.start(); } catch { /* already started */ }
+    return () => { live = false; r.onend = null; try { r.abort(); } catch { /* fine */ } if (awake) setMode('idle'); };
+  }, [hands, busy, ask]);
   const submit = (e: React.FormEvent) => { e.preventDefault(); const q = text; setText(''); void ask(q); };
   const toggleFull = () => { if (document.fullscreenElement) void document.exitFullscreen(); else void root.current?.requestFullscreen?.(); };
 
@@ -166,7 +198,7 @@ export default function Jarvis() {
       <JarvisBackdrop /><div className="jv-scan" />
       {!booted && <Boot voice={panel ? panel.voice : null} live={CLOUD} done={finishBoot} />}
       <div className="jv-top"><span>J.A.R.V.I.S. · TOPMOP OPERATIONS</span><span className="jv-clock">{clock.toUpperCase()}</span>
-        <span className="jv-acts"><button className={view === 'console' ? 'on' : ''} onClick={() => { setView('console'); savePref('topmop-jarvis-view', 'console'); }} title="Console view">Console</button><button className={view === 'panels' ? 'on' : ''} onClick={() => { setView('panels'); savePref('topmop-jarvis-view', 'panels'); }} title="Panels view">Panels</button>{view === 'console' && <button onClick={() => { const n = theme === 'blue' ? 'cyan' : 'blue'; setTheme(n); savePref('topmop-jarvis-theme', n); }} title="Change colour">Colour</button>}<button onClick={() => void load()} title="Refresh">⟳</button><button onClick={() => setMuted((m) => !m)} title={muted ? 'Unmute voice' : 'Mute voice'}>{muted ? '🔇' : '🔊'}</button><button onClick={toggleFull} title="Full screen">{full ? '⤡' : '⤢'}</button></span></div>
+        <span className="jv-acts"><button className={hands ? 'on' : ''} onClick={() => { const v = !hands; setHands(v); savePref('topmop-jarvis-hands', v ? '1' : '0'); setErr(''); }} title='Say "Jarvis" and your question, no tapping'>Hands-free</button><button className={view === 'console' ? 'on' : ''} onClick={() => { setView('console'); savePref('topmop-jarvis-view', 'console'); }} title="Console view">Console</button><button className={view === 'panels' ? 'on' : ''} onClick={() => { setView('panels'); savePref('topmop-jarvis-view', 'panels'); }} title="Panels view">Panels</button>{view === 'console' && <button onClick={() => { const n = theme === 'blue' ? 'cyan' : 'blue'; setTheme(n); savePref('topmop-jarvis-theme', n); }} title="Change colour">Colour</button>}<button onClick={() => void load()} title="Refresh">⟳</button><button onClick={() => setMuted((m) => !m)} title={muted ? 'Unmute voice' : 'Mute voice'}>{muted ? '🔇' : '🔊'}</button><button onClick={toggleFull} title="Full screen">{full ? '⤡' : '⤢'}</button></span></div>
       {!CLOUD && <div className="jv-note">Demo data. On the live system Jarvis shows your real figures and talks.</div>}
       {err && <div className="jv-note err">{err}</div>}
       {view === 'console' && S && panel ? (
