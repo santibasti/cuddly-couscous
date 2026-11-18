@@ -161,6 +161,8 @@ describe('7-step workflow: normal recurring job', () => {
     expect(stat(sc.job.id)).toBe('Closed');
     expect(wfOf(sc.job.id)).toMatchObject({ rc_by: store.user!.id, closed_by: store.user!.id });
     expect(wfOf(sc.job.id).leave_at && wfOf(sc.job.id).hqa_at).toBeTruthy();
+    // the crew who were on site are clocked out by themselves at the leave-site time
+    for (const e of wfOf(sc.job.id).arr_crew_present ?? []) { const open = db().attendance.filter((a) => a.employee_id === e && a.clock_in && !a.clock_out && !a.deleted_at); expect(open).toHaveLength(0); }
     expect(() => store.update('workflows', wf.id, { hq_notes: 'x' } as never)).toThrow(/locked/);
     expect(B.workflowProgress(wfOf(sc.job.id)).every((p) => p.state === 'done')).toBe(true);
   });

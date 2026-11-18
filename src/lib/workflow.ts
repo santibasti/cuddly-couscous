@@ -11,7 +11,7 @@ import { isDone, ISSUE_CATEGORIES, RATING_STARS_FROM_QUESTIONS, needsFollowUp, o
 import { syncFollowUps } from './followups';
 import { jobSavedHooks, settleConfirmation, syncBackJobs, performRelease, performReturn, requestCheckout, runAutomations } from './actions';
 import { isoNow, nowLocal, today } from './util';
-import { computeTimes, openShift } from './business';
+import { computeTimes, openShift, shiftTimes, autoApproveOk } from './business';
 
 const db = (): DB => store.getDB();
 const fail = (m: string): never => { throw new RuleError(m); };
@@ -536,6 +536,19 @@ export function closeOutReady(d: DB, job: Job, wf?: JobWorkflow): CloseReady[] {
     { key: 'var', label: 'No variation waiting for client approval', ok: openVariations(d, job.id).length === 0 },
   ];
 }
+/** The crew who were on site are clocked out when the team leaves it, so nobody has to remember. On the live site the database does the same (migration 0130). */
+function autoClockOutCrew(wf: JobWorkflow, job: Job, leaveAt: string) {
+  if (CLOUD) return;
+  const d = db();
+  for (const empId of wf.arr_crew_present ?? ([job.leader_id, ...job.crew_ids].filter(Boolean) as string[])) {
+    const emp = d.employees.find((e) => e.id === empId); const rec = openShift(d.attendance, empId, leaveAt);
+    if (!emp || !rec || rec.kind !== 'Present' || !rec.clock_in || leaveAt < rec.clock_in) continue;
+    const sessions = rec.sessions?.length ? rec.sessions.map((s, i, all) => (i === all.length - 1 ? { ...s, out: leaveAt } : s)) : undefined;
+    const t = sessions ? shiftTimes(emp, sessions, d.settings.grace_minutes, d.settings.std_hours_per_day) : computeTimes(emp, rec.clock_in, leaveAt, d.settings.grace_minutes);
+    const clean = rec.approval === 'Pending' && autoApproveOk(t, d.settings);
+    store.update('attendance', rec.id, { clock_out: leaveAt, ...(sessions ? { sessions } : {}), ...t, ...(clean ? { approval: 'Approved' as const, approved_by: 'auto', approved_at: isoNow() } : {}) } as never, 'update', `${emp.full_name} clocked out automatically when the crew left the site (${job.number})`);
+  }
+}
 export function completeCloseOut(id: string, f: { items: CheckItem[]; leave_at?: string; hqa_at?: string; fuel?: FuelLevel; notes?: string; confirmed: boolean }): ReturnSummary {
   const wf = getWf(id); const job = jobOf(wf);
   needRun(job);
@@ -600,6 +613,7 @@ export function completeCloseOut(id: string, f: { items: CheckItem[]; leave_at?:
   const incidents = db().incidents.filter((x) => x.workflow_id === id).length - before;
   const now = nowLocal();
   store.update('workflows', id, { items, rc_at: now, rc_by: uidNow(), rc_notes: f.notes, leave_at: leave, leave_by: uidNow(), hqa_at: hqa, hqa_by: uidNow(), hqa_fuel: f.fuel, closed_at: now, closed_by: uidNow(), closed_notes: f.notes } as never, 'approve', `${job.number}: close-out confirmed — left site ${leave.slice(11)}, at HQ ${hqa.slice(11)}${incidents ? `, ${incidents} incident(s) raised` : ''}`);
+  autoClockOutCrew(db().workflows.find((w) => w.id === id)!, job, leave);
   const hold = !!openFollowUp(db(), job.id);
   if (!hold) setStatus(db().jobs.find((j) => j.id === job.id)!, 'Closed', `${job.number} closed`);
   runAutomations();
