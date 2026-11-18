@@ -242,7 +242,17 @@ function invoiceLedger(db, inv) {
 		available: round2(total - received - waiting)
 	};
 }
-const variationTotals = (v) => docTotals(v.items, v.discount, v.vat_mode, v.vat_rate);
+const variationTotals = (v) => {
+	const t = docTotals(v.items, v.discount, v.vat_mode, v.vat_rate);
+	return v.kind === "reduction" ? {
+		gross: -t.gross,
+		lineDiscount: -t.lineDiscount,
+		discount: -t.discount,
+		net: -t.net,
+		vat: -t.vat,
+		total: -t.total
+	} : t;
+};
 /** Original quotation + approved variations − management-approved discount = final contract value (the original quotation is never modified). */
 function finalContract(d, job) {
 	const q = d.quotations.find((x) => x.id === job.quotation_id);
