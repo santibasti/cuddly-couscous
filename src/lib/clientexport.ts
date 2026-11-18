@@ -26,9 +26,9 @@ export function clientJobsTable(db: DB, o: ClientExportOpts = {}): ExportTable {
   const period = o.from || o.to ? `jobs from ${o.from || 'the start'} to ${o.to || 'today and later'}` : 'all jobs';
   return {
     title: `Clients with jobs ${o.from || o.to ? `${o.from || 'start'} to ${o.to || 'end'}` : 'all dates'}`, subtitle: period,
-    headers: ['Name', 'Contact person', 'Address', 'Mobile', 'Email', 'Jobs', 'Last job', 'Invoiced (PHP)', 'Not yet invoiced (PHP)', 'Final billing (PHP)'],
-    types: ['text', 'text', 'text', 'text', 'text', 'num', 'text', 'money', 'money', 'money'],
-    rows: rows.map((r) => [r.c.name, r.c.contact_person ?? '', r.c.address || r.c.billing_address || '', r.c.mobile ?? '', r.c.email ?? '', r.jobs, r.last, r.invoiced, r.open, r.total]),
-    totals: ['Total', '', '', '', '', rows.reduce((s, r) => s + r.jobs, 0), '', money(rows.reduce((s, r) => s + r.invoiced, 0)), money(rows.reduce((s, r) => s + r.open, 0)), money(rows.reduce((s, r) => s + r.total, 0))],
+    headers: ['Name', 'Client type', 'Contact person', 'Address', 'Mobile', 'Email', 'Jobs', 'Last job', 'Invoiced (PHP)', 'Not yet invoiced (PHP)', 'Final billing (PHP)'],
+    types: ['text', 'text', 'text', 'text', 'text', 'text', 'num', 'text', 'money', 'money', 'money'],
+    rows: rows.map((r) => [r.c.name, r.c.type ?? '', r.c.contact_person ?? '', r.c.address || r.c.billing_address || '', r.c.mobile ?? '', r.c.email ?? '', r.jobs, r.last, r.invoiced, r.open, r.total]),
+    totals: ['Total', '', '', '', '', '', rows.reduce((s, r) => s + r.jobs, 0), '', money(rows.reduce((s, r) => s + r.invoiced, 0)), money(rows.reduce((s, r) => s + r.open, 0)), money(rows.reduce((s, r) => s + r.total, 0))],
   };
 }
