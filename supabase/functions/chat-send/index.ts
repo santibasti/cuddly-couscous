@@ -31,16 +31,18 @@ Deno.serve(async (req) => {
   const { data: conv } = await sb.from('chat_conversations').select('*').eq('id', msg.conversation_id).maybeSingle(); if (!conv) return json({ error: 'Conversation not found' }, 404);
 
   let text = String(b.text ?? msg.body).trim();
+  const original = msg.original_body ?? (msg.status === 'draft' && text !== String(msg.body ?? '').trim() ? msg.body : null);   // staff edited the AI's draft: keep what the AI wrote
+  const save = async (patch: Record<string, unknown>) => { let r = await sb.from('chat_messages').update({ ...patch, original_body: original }).eq('id', msg.id); if (r.error && /original_body/i.test(r.error.message)) r = await sb.from('chat_messages').update(patch).eq('id', msg.id); return r; };   // works before migration 0129 too
   if (msg.status === 'draft') {                                                                                                         // the queued actions run only once, on the first approval
     const exec = makeExec({ sb, base: env('SUPABASE_URL'), key: env('LEAD_INTAKE_KEY'), conv, lang: conv.lang ?? 'en' });
     for (const a of (msg.actions ?? []) as Action[]) { const o = await exec(a.type, a.input); if (a.type === 'book_date' && o.booked) text = o.booked.reply || text; }   // a booking's wording comes from the system, never from the draft
   }
   if (!text) return json({ error: 'Nothing to send' }, 400);
   const token = env('MANYCHAT_API_TOKEN');
-  if (!token) { await sb.from('chat_messages').update({ status: 'approved', body: text, actions: [], decided_by: who, decided_at: new Date().toISOString() }).eq('id', msg.id); return json({ ok: true, sent: false, text: flattenMessages(text), note: 'MANYCHAT_API_TOKEN is not set: copy this reply into the ManyChat live chat.' }); }
+  if (!token) { await save({ status: 'approved', body: text, actions: [], decided_by: who, decided_at: new Date().toISOString() }); return json({ ok: true, sent: false, text: flattenMessages(text), note: 'MANYCHAT_API_TOKEN is not set: copy this reply into the ManyChat live chat.' }); }
   const r = await fetch('https://api.manychat.com/fb/sending/sendContent', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: conv.subscriber_id, data: { version: 'v2', content: { messages: [...splitMessages(text).map((t) => ({ type: 'text', text: t })), ...(msg.card_url && b.send_card !== false ? [{ type: 'image', url: msg.card_url }] : [])] } } }) });
-  if (!r.ok) { const err = (await r.text()).slice(0, 250); await sb.from('chat_messages').update({ status: 'failed', body: text, actions: [], error: err, decided_by: who, decided_at: new Date().toISOString() }).eq('id', msg.id); return json({ error: `ManyChat did not accept the message: ${err}` }, 502); }
-  await sb.from('chat_messages').update({ status: 'sent', body: text, actions: [], error: null, decided_by: who, decided_at: new Date().toISOString() }).eq('id', msg.id);
+  if (!r.ok) { const err = (await r.text()).slice(0, 250); await save({ status: 'failed', body: text, actions: [], error: err, decided_by: who, decided_at: new Date().toISOString() }); return json({ error: `ManyChat did not accept the message: ${err}` }, 502); }
+  await save({ status: 'sent', body: text, actions: [], error: null, decided_by: who, decided_at: new Date().toISOString() });
   await sb.from('chat_conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id);
   return json({ ok: true, sent: true, text });
 });

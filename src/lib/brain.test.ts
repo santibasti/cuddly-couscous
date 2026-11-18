@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { honorificFor, BOOKING_HOWTO, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { fallbackFor, honorificFor, BOOKING_HOWTO, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -144,5 +144,12 @@ describe('a booking already made is never contradicted', () => {
   it('the prompt tells the AI the customer already has a confirmed booking', () => {
     const s = buildSystem({ sections: [], version: null, lang: 'en', booking: { number: 'JOB-2026-8296', date: '2026-11-20', status: 'Confirmed' } });
     expect(s).toContain('ALREADY HAS a confirmed booking, JOB-2026-8296, for 2026-11-20'); expect(s).toMatch(/never say it is full/); expect(buildSystem({ sections: [], version: null, lang: 'en' })).not.toMatch(/EXISTING BOOKING/);
+  });
+});
+
+describe('language: English with po, or Taglish, never pure Tagalog', () => {
+  it('the prompt and the fallback follow that rule', () => {
+    for (const lang of ['en', 'tl', 'taglish']) { const s = buildSystem({ sections: [], version: null, lang }); expect(s).toMatch(/write in English with a polite "po"/); expect(s).toMatch(/reply in Taglish/); expect(s).toMatch(/Never reply in pure Tagalog/); expect(s).not.toMatch(/Filipino with "po"/); }
+    expect(fallbackFor('tl')).toBe(fallbackFor('taglish')); expect(fallbackFor('tl')).not.toBe(fallbackFor('en'));
   });
 });

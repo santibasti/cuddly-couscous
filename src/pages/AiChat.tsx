@@ -8,7 +8,7 @@ import { callFn } from '@/lib/fnclient';
 import { fmtStamp } from '@/lib/util';
 
 interface Conv { id: string; channel: string; subscriber_id: string; name: string | null; lang: string | null; status: 'Open' | 'Needs a person' | 'Lead created' | 'Closed'; human_reason: string | null; last_message_at: string }
-interface Msg { id: string; direction: 'in' | 'out'; body: string; status: 'received' | 'draft' | 'approved' | 'sent' | 'failed' | 'discarded'; actions: { type: string; input: Record<string, unknown> }[]; flags: string[]; rulebook_version: number | null; error: string | null; created_at: string; card_url?: string | null }
+interface Msg { id: string; direction: 'in' | 'out'; body: string; status: 'received' | 'draft' | 'approved' | 'sent' | 'failed' | 'discarded'; actions: { type: string; input: Record<string, unknown> }[]; flags: string[]; rulebook_version: number | null; error: string | null; created_at: string; card_url?: string | null; original_body?: string | null }
 const SAMPLE_CONV: Conv[] = [{ id: 's1', channel: 'messenger', subscriber_id: 'sample', name: 'Sample customer', lang: 'taglish', status: 'Open', human_reason: null, last_message_at: new Date().toISOString() }];
 const SAMPLE_MSG: Msg[] = [
   { id: 'm1', direction: 'in', body: 'Magkano po window cleaning sa Makati? 21 panels lang po', status: 'received', actions: [], flags: [], rulebook_version: null, error: null, created_at: new Date().toISOString() },
@@ -57,7 +57,7 @@ export default function AiChat() {
                 {m.actions.length > 0 && <div className="muted small">On approval the system will: {m.actions.map(actionLabel).join(' · ')}. (A booking's wording comes from the system, not from this draft.)</div>}
                 {m.error && <div className="alert err">{m.error}</div>}
                 <div className="row" style={{ gap: 6 }}><button className="b primary" disabled={busy} onClick={() => act({ action: 'approve', message_id: m.id, text: edit[m.id] ?? m.body, send_card: noCard[m.id] !== true }, 'Sent')}>Approve & send</button><button className="b" disabled={busy} onClick={() => act({ action: 'discard', message_id: m.id }, 'Discarded')}>Discard</button></div>
-              </> : <div>{m.body}</div>}
+              </> : <div>{m.body}{m.original_body && <details className="aichat-edit" style={{ marginTop: 6 }}><summary className="muted small">✏️ Edited by staff — see what the AI wrote</summary><div className="muted small" style={{ whiteSpace: 'pre-wrap' }}>{m.original_body}</div></details>}</div>}
             </div>))}</div>
           {!cur && CLOUD && <p className="muted">Pick a conversation on the left.</p>}
         </Card>

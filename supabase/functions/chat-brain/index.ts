@@ -31,7 +31,8 @@ Deno.serve(async (req) => {
   const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle(); const cfg = (st?.data as Record<string, unknown> | undefined)?.chat_ai as { mode?: string; model?: string } | undefined; const mode = parseMode(cfg?.mode);
   let { data: conv } = await sb.from('chat_conversations').select('*').eq('channel', channel).eq('subscriber_id', sub).maybeSingle();
   if (!conv) { const { data: c, error } = await sb.from('chat_conversations').insert({ channel, subscriber_id: sub, name: clip(b.name, 120) || null }).select('*').single(); if (error) return json({ error: error.message }, 500); conv = c; }
-  const lang = parseLang(b.lang ?? conv.lang); if (conv.lang !== lang) await sb.from('chat_conversations').update({ lang }).eq('id', conv.id);
+  const lang0 = parseLang(b.lang ?? conv.lang), lang = lang0 === 'tl' ? 'taglish' : lang0;   // never pure Tagalog: English with po, or Taglish
+  if (conv.lang !== lang) await sb.from('chat_conversations').update({ lang }).eq('id', conv.id);
   const ext = clip(b.message_id, 120) || null;
   const { error: de } = await sb.from('chat_messages').insert({ conversation_id: conv.id, direction: 'in', body: text, status: 'received', external_id: ext });
   if (de) return de.code === '23505' ? json({ ok: true, status: 'duplicate', reply: '', mode }) : json({ error: de.message }, 500);   // the same message again (a retry): handled once

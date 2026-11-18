@@ -356,3 +356,8 @@ When a customer asks how panels are counted, or the AI explains it, the reply ca
 
 ## Price records follow the Master Service Pricing List of 13 Nov 2026 (migration 0128)
 `supabase.cmd db push` (answer Y) sets the service records to the list: glass base ₱4,799 / 31 panels with the packages ₱5,799 / 41, ₱6,799 / 41 and ₱12,799 / 51 (₱140 per extra panel); roof ₱145/sqm (min 100); exterior wall ₱125/sqm and floor / driveway ₱125/sqm (min 50); solar ₱245/panel (min 20); gutter, ACP and interior wall and ceiling stay custom quote (names follow the list). The city-to-package table of the chat and Quick booking (`_shared/rates.ts`) already matched the list. Existing quotations keep the prices they were made with. A test (`src/lib/pricelist.test.ts`) keeps the records and the chat estimates in step.
+
+## Edited drafts are kept (migration 0129) and the AI's language
+- When staff edit an AI draft before **Approve & send**, the sent message keeps what the AI originally wrote (`original_body`). In **AI Chat** such a message shows "✏️ Edited by staff — see what the AI wrote". Use it to spot corrections you make again and again, then turn them into rulebook rules (System → AI Rulebook). The edit itself only changes that one conversation; the AI does not learn from it by itself.
+- Language: the AI writes English with a polite "po"; if the customer writes Tagalog or Taglish it replies in Taglish; never in pure Tagalog (the Tagalog price and date texts of the chat functions are not used by the AI).
+- Deploy: `supabase.cmd db push` (answer Y), then `supabase.cmd functions deploy chat-brain --no-verify-jwt` and `supabase.cmd functions deploy chat-send --no-verify-jwt`.
