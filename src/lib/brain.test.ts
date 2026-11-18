@@ -139,3 +139,10 @@ describe('no repeated services list', () => {
     const f = buildSystem({ sections: [], version: null, lang: 'en', firstMessage: true }); expect(f).toMatch(/never list the services again/); expect(f).toMatch(/only asks what services we offer, write exactly NO_ANSWER/);
   });
 });
+
+describe('a booking already made is never contradicted', () => {
+  it('the prompt tells the AI the customer already has a confirmed booking', () => {
+    const s = buildSystem({ sections: [], version: null, lang: 'en', booking: { number: 'JOB-2026-8296', date: '2026-11-20', status: 'Confirmed' } });
+    expect(s).toContain('ALREADY HAS a confirmed booking, JOB-2026-8296, for 2026-11-20'); expect(s).toMatch(/never say it is full/); expect(buildSystem({ sections: [], version: null, lang: 'en' })).not.toMatch(/EXISTING BOOKING/);
+  });
+});

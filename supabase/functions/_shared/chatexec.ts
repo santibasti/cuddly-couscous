@@ -1,9 +1,10 @@
 // The tools of the AI brain run through the chat functions that already exist (estimate, availability, booking, lead): one set of rules for the price, the date and the booking, whoever asks.
 import type { ToolOutcome } from './brain.ts';
+import { manilaDay, parseWanted } from '../chat-availability/logic.ts';
 
 // deno-lint-ignore no-explicit-any
 type Sb = any;
-export interface ExecCtx { sb: Sb; base: string; key: string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null }; lang: string; context?: string }
+export interface ExecCtx { sb: Sb; base: string; key: string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null }; lang: string; context?: string; booking?: { number: string; date: string; status: string } | null }
 const post = async (c: ExecCtx, fn: string, body: Record<string, unknown>) => {
   const r = await fetch(`${c.base}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': c.key }, body: JSON.stringify({ ...body, lang: c.lang }) });
   const j = await r.json().catch(() => ({})) as Record<string, unknown>; if (!r.ok) throw new Error(String(j.error ?? `${fn} answered ${r.status}`)); return j;
@@ -18,6 +19,7 @@ export function makeExec(c: ExecCtx) {
         return { text: String(j.reply ?? ''), amounts: nums(j.estimate, j.package_price, j.extra_rate) };
       }
       if (name === 'check_date') {
+        if (c.booking && parseWanted(input.date, manilaDay(Date.now())) === c.booking.date) return { text: `This is the customer's own confirmed booking ${c.booking.number} for ${c.booking.date}. Do NOT say the date is full or that it is not confirmed: thank them and confirm it.` };
         const j = await post(c, 'chat-availability', { when: input.date });
         return { text: `status: ${j.status}. ${j.reply}` };
       }
