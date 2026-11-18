@@ -28,7 +28,7 @@ ${col(710, 'SMALL PANES', 'e.g. toilet windows', pane(35, 70, 60, 60) + pane(110
 <text x="540" y="1022" text-anchor="middle" ${f} font-size="33" font-weight="800" fill="#0d2a35">= 40 billable panels</text>
 <text x="90" y="1096" ${f} font-size="28" fill="#dff2ea">Tell us the total billable sides. The package covers the</text><text x="90" y="1136" ${f} font-size="28" fill="#dff2ea">included panels; each extra panel is charged per panel.</text>
 <text x="90" y="1196" ${f} font-size="28" font-weight="800" fill="#8fd6b0">Our crew confirms the final count and the bill</text><text x="90" y="1236" ${f} font-size="28" font-weight="800" fill="#8fd6b0">before cleaning starts.</text>
-<text x="540" y="1286" text-anchor="middle" ${f} font-size="21" fill="#b9d6c8">Not sure? Send photos of your windows and our team will review them.   www.topmop.ph</text>
+<text x="540" y="1286" text-anchor="middle" ${f} font-size="21" fill="#b9d6c8">Questions? Message us anytime and our team will gladly help.   www.topmop.ph</text>
 </svg>`;
 const fonts = ['400Regular', '700Bold', '800ExtraBold'].map((w) => `api/fonts/Inter_${w}.ttf`);
 writeFileSync('public/panel-guide.png', new Resvg(svg, { font: { fontFiles: fonts, loadSystemFonts: false, defaultFontFamily: 'Inter' }, fitTo: { mode: 'width', value: 1080 } }).render().asPng());

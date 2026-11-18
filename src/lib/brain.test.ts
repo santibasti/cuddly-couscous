@@ -154,3 +154,11 @@ describe('language: English with po, or Taglish, never pure Tagalog', () => {
     expect(fallbackFor('tl')).toBe(fallbackFor('taglish')); expect(fallbackFor('tl')).not.toBe(fallbackFor('en'));
   });
 });
+
+import { estimate } from '../../supabase/functions/_shared/estimate';
+describe('no photos', () => {
+  it('the AI never asks for photos, and the price tool texts do not either', () => {
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/NO PHOTOS: never ask the customer for photos/); expect(s).not.toMatch(/suggest photos|send photos of their windows/);
+    for (const e of [estimate('Makati', 'gutter cleaning', 10), estimate('Makati', 'window cleaning', 10, 'commercial'), estimate('Atlantis', 'window cleaning', 10)]) expect(`${e.rates_en} ${e.rates_tl} ${e.rates_tglish}`).not.toMatch(/photo|litrato/i);
+  });
+});
