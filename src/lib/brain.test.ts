@@ -150,7 +150,7 @@ describe('a booking already made is never contradicted', () => {
 
 describe('language: English with po, or Taglish, never pure Tagalog', () => {
   it('the prompt and the fallback follow that rule', () => {
-    for (const lang of ['en', 'tl', 'taglish']) { const s = buildSystem({ sections: [], version: null, lang }); expect(s).toMatch(/English or Taglish only, never pure Tagalog/); expect(s).toMatch(/reply in Taglish/); expect(s).toMatch(/English with a polite "po"/); expect(s).not.toMatch(/Filipino with "po"/); }
+    for (const lang of ['en', 'tl', 'taglish']) { const s = buildSystem({ sections: [], version: null, lang }); expect(s).toMatch(/English or Taglish only, never pure Tagalog/); expect(s).toMatch(/English-dominant/); expect(s).toMatch(/English with a polite "po"/); expect(s).not.toMatch(/Filipino with "po"/); }
     expect(fallbackFor('tl')).toBe(fallbackFor('taglish')); expect(fallbackFor('tl')).not.toBe(fallbackFor('en'));
   });
 });
