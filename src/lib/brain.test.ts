@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TOOLS, cleanPhone, contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, fallbackFor, honorificFor, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { TOOLS, PAYMENT_POLICY, cleanPhone, contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, fallbackFor, honorificFor, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -163,6 +163,10 @@ describe('V2 prompt: fifteen rules, known facts, no forced sentences', () => {
   it('hands over only for the real triggers, never for ordinary job details such as a gated village', () => {
     const s = sys(); expect(s).toMatch(/12\. HANDOVER: only for a request for a person, a complaint/); expect(s).toMatch(/gated village, weekday-only access, paint colour or age, rust, stains, duration\) are NOT a reason to hand over/); expect(s).not.toMatch(/If a tool fails or you are unsure, say the team will verify and use needs_human/);
     const tool = (TOOLS as { name: string; description: string }[]).find((t) => t.name === 'needs_human')!; expect(tool.description).toMatch(/ONLY for/); expect(tool.description).not.toMatch(/anything you are unsure about/); expect(tool.description).toMatch(/silences the assistant/);
+  });
+  it('knows the payment policy: no downpayment, payment on completion, four modes; a payment question is not a handover', () => {
+    const s = sys(); expect(PAYMENT_POLICY).toBe('No downpayment is required po. Payment is made upon completion of the job, by cash, GCash, bank transfer or cheque.'); expect(s).toContain(PAYMENT_POLICY); expect(s).toMatch(/A question about downpayment or how and when to pay is NOT a handover/); expect(s).toMatch(/never give account numbers/);
+    expect(s).not.toMatch(/contracts or payment terms/); expect((TOOLS as { name: string; description: string }[]).find((t) => t.name === 'needs_human')!.description).not.toMatch(/payment terms/);
   });
   it('no longer forces the counting sentence or the upsell, and is shorter than before', () => {
     const s = sys(); expect(s).not.toMatch(/UPSELL THE CORE SERVICES/); expect(s).not.toContain('Our team will conduct on-site glass and solar panel counting'); expect(s).not.toMatch(/a yes to the starting rates/); expect(s.length - 'You are TopMop.'.length).toBeLessThan(7000);

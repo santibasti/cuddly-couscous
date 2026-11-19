@@ -4,7 +4,7 @@ import { manilaDay, parseWanted } from '../chat-availability/logic.ts';
 
 // deno-lint-ignore no-explicit-any
 type Sb = any;
-export interface ExecCtx { sb: Sb; base: string; key: string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null }; lang: string; context?: string; booking?: { number: string; date: string; status: string } | null }
+export interface ExecCtx { sb: Sb; base: string; key: string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null }; lang: string; context?: string; noHumanAlert?: boolean; booking?: { number: string; date: string; status: string } | null }
 const post = async (c: ExecCtx, fn: string, body: Record<string, unknown>) => {
   const r = await fetch(`${c.base}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': c.key }, body: JSON.stringify({ ...body, lang: 'en' }) });   // the tools always answer in short English; the AI phrases the reply for the customer
   const j = await r.json().catch(() => ({})) as Record<string, unknown>; if (!r.ok) throw new Error(String(j.error ?? `${fn} answered ${r.status}`)); return j;
@@ -35,7 +35,7 @@ export function makeExec(c: ExecCtx) {
       }
       if (name === 'needs_human') {
         await c.sb.from('chat_conversations').update({ status: 'Needs a person', human_reason: String(input.reason ?? 'Needs a person').slice(0, 300) }).eq('id', c.conv.id);
-        await c.sb.from('alert_outbox').insert({ kind: 'chat', title: 'Chat needs a person', body: `${c.conv.name ?? 'A customer'} (${c.conv.channel}): ${String(input.reason ?? '').slice(0, 160)}`, link: '/ai-chat' });
+        if (!c.noHumanAlert) await c.sb.from('alert_outbox').insert({ kind: 'chat', title: 'Chat needs a person', body: `${c.conv.name ?? 'A customer'} (${c.conv.channel}): ${String(input.reason ?? '').slice(0, 160)}`, link: '/ai-chat' });
         return { text: 'A staff member has been notified.' };
       }
       return { text: 'Unknown tool.' };
