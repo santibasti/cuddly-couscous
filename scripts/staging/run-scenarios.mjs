@@ -10,8 +10,8 @@ if (/ghbumxivporzsalivgyg/.test(URL_)) { console.error('STOP: that is the PRODUC
 const H = { apikey: SVC, Authorization: `Bearer ${SVC}`, 'Content-Type': 'application/json' };
 const rest = async (p, init = {}) => { const r = await fetch(`${URL_}/rest/v1/${p}`, { headers: H, ...init }); const t = await r.text(); return t ? JSON.parse(t) : []; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const stamp = Date.now(); let n = 0; const sent = [];
-const post = (sub, text) => fetch(`${URL_}/functions/v1/chat-brain?key=${encodeURIComponent(KEY)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sub, first_name: 'StagingTest', last_input_text: text, message_id: `${sub}-${++n}` }) }).then((r) => r.json());
+const stamp = Date.now(); let n = 0; const sent = []; const diag = new Set();
+const post = (sub, text) => fetch(`${URL_}/functions/v1/chat-brain?key=${encodeURIComponent(KEY)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sub, first_name: 'StagingTest', last_input_text: text, message_id: `${sub}-${++n}` }) }).then(async (r) => { const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch { /* not json */ } if (!r.ok || !j) { diag.add(`chat-brain HTTP ${r.status}: ${t.slice(0, 300)}`); } return j; });
 const convOf = async (sub) => (await rest(`chat_conversations?subscriber_id=eq.${encodeURIComponent(sub)}&select=*`))[0];
 const outs = async (sub) => { const c = await convOf(sub); return c ? rest(`chat_messages?conversation_id=eq.${c.id}&direction=eq.out&order=created_at&select=body,status,flags,error,created_at`) : []; };
 const waitFor = async (sub, count, ms = 60000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const o = await outs(sub); if (o.length >= count) return o; await sleep(1500); } return outs(sub); };
@@ -22,7 +22,8 @@ const TL = new Set('ang ng sa mga ko mo ka ako ikaw siya kami tayo kayo sila nin
 const tagalog = (t) => { const w = t.toLowerCase().replace(/[^a-zñ\s'-]/g, ' ').split(/\s+/).filter(Boolean); return w.length >= 6 && w.filter((x) => TL.has(x) || /^(ma|mag|nag|pag|ipa|ire|i)-/.test(x)).length / w.length > 0.3; };
 const sentences = (t) => t.replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/).filter(Boolean);
 const base = (r) => ({ english: !tagalog(r), two_sentences: sentences(r).length <= 2, one_question: (r.match(/\?/g) ?? []).length <= 1, no_photo_ask: !/\b(send|share|upload)\b.{0,20}\b(photos?|pictures?|videos?)/i.test(r), no_quantity_ask: !/how many (glass |solar )?(panels|windows)|square met/i.test(r), not_the_fallback: !/refer this to our team so we can give you accurate|verify that for you/i.test(r) });
-const rows = []; const verdict = (name, reply, checks) => { const f = Object.entries(checks).filter(([, v]) => !v).map(([k]) => k); rows.push({ name, reply, fail: f }); console.log(`${f.length ? 'FAIL' : 'PASS'}  ${name}\n      reply: ${JSON.stringify(reply)}${f.length ? `\n      failed: ${f.join(', ')}` : ''}`); };
+const rows = []; const verdict = (name, reply, checks) => { if (!String(reply).replace(/[|\s]/g, '')) checks = { ...checks, got_a_reply: false }; const f = Object.entries(checks).filter(([, v]) => !v).map(([k]) => k); rows.push({ name, reply, fail: f }); console.log(`${f.length ? 'FAIL' : 'PASS'}  ${name}\n      reply: ${JSON.stringify(reply)}${f.length ? `\n      failed: ${f.join(', ')}` : ''}`); };
+const why = async (sub) => { const o = await outs(sub); const c = await convOf(sub); const m = c ? await rest(`chat_messages?conversation_id=eq.${c.id}&select=direction,status,error,handled_at&order=created_at`) : []; return JSON.stringify({ outs: o.map((x) => ({ status: x.status, error: x.error, flags: x.flags })), rows: m.map((x) => `${x.direction}:${x.status}:${x.handled_at ? 'handled' : 'pending'}${x.error ? ':' + String(x.error).slice(0, 120) : ''}`) }); };
 const S = (tag) => { const s = `stg-${stamp}-${tag}`; sent.push(s); return s; };
 
 let r = last(await talk(S('A'), ['Binondo', 'Wall Cleaning']));
@@ -44,5 +45,7 @@ r = last(fo2.at(-1)?.body ?? ''); verdict('F: five rapid messages: one reply, al
 const g = S('G'); r = last(await talk(g, ['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'cream paint', 'gated village', 'weekdays only', 'two coats', 'its old', 'any scratches?', 'and stains?', 'rust on some parts', 'how long does it take?', 'is it safe for the paint?', 'How much?']));
 verdict('G: 15 messages later the price still uses wall / exterior', r, { ...base(r), has_price: /₱\s?\d/.test(r), no_reasking: !/location|city|exterior or|interior|which service/i.test(r) });
 if (REAL_SUB) { await post(REAL_SUB, 'Staging delivery test: How much for window cleaning in Makati?'); console.log(`\nSent a test message as ManyChat contact ${REAL_SUB}. In Full mode the reply should arrive in that Messenger chat within ~15 seconds; check it by eye.`); }
+const empty = sent.length ? await Promise.all(sent.slice(0, 1).map(why)) : []; if (rows.some((x) => !x.reply)) console.log(`\nFirst conversation state (why replies may be empty):\n  ${empty[0]}`);
 for (const s of sent) { const c = await convOf(s); if (c) { await rest(`chat_messages?conversation_id=eq.${c.id}`, { method: 'DELETE' }); await rest(`chat_conversations?id=eq.${c.id}`, { method: 'DELETE' }); } }   // clean up the test rows (staging only)
+if (diag.size) console.log(`\nDIAGNOSTICS from the function:\n  ${[...diag].join('\n  ')}`);
 const failed = rows.filter((x) => x.fail.length); console.log(`\n${rows.length - failed.length}/${rows.length} passed`); process.exit(failed.length ? 1 : 0);
