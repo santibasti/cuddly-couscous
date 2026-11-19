@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -243,5 +243,15 @@ describe('returning customers', () => {
     expect(returningBlock(info)).toMatch(/NOT a new inquiry/); expect(returningBlock(info)).toContain('Maria Santos'); expect(returningBlock(info)).toContain('JOB-2026-0100');
     const s = buildSystem({ sections: [], version: null, lang: 'en', returning: info }); expect(s).toMatch(/RETURNING CUSTOMER/); expect(s).toMatch(/Welcome back po/); expect(s).toMatch(/Do not ask again for details we already have/);
     expect(buildSystem({ sections: [], version: null, lang: 'en' })).not.toMatch(/RETURNING CUSTOMER/);
+  });
+});
+
+describe('contacts from before the AI chat', () => {
+  it('reads the first-contact date from ManyChat fields in several shapes', () => {
+    expect(contactSince({ subscribed: '2025-03-04T10:00:00Z' })?.slice(0, 10)).toBe('2025-03-04'); expect(contactSince({ subscribed: 1741082400 })?.slice(0, 10)).toBe('2025-03-04'); expect(contactSince({ created_at: '2025-06-01' }, { subscribed: '2025-03-04' })?.slice(0, 10)).toBe('2025-03-04');
+    expect(contactSince({ name: 'x' }, null, undefined)).toBeUndefined();
+  });
+  it('treats a contact from before the AI started as returning, with a day of grace', () => {
+    expect(olderThanAi('2025-03-04T00:00:00Z', '2026-11-10T00:00:00Z')).toBe(true); expect(olderThanAi('2026-11-10T05:00:00Z', '2026-11-10T00:00:00Z')).toBe(false); expect(olderThanAi('2026-11-09T12:00:00Z', '2026-11-10T00:00:00Z')).toBe(false); expect(olderThanAi(undefined, '2026-11-10')).toBe(false);
   });
 });

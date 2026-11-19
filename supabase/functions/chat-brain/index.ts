@@ -4,7 +4,7 @@
 // Answer: { ok, status: "queued" | "reply" | "held" | "handover" | "duplicate" | "off", reply, mode } ("queued": the work continues after the answer because ManyChat waits only 10 seconds) — put `reply` in the chatbot's next message; when it is empty, send nothing (staff or a draft is handling it).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { cardForLog, explainsPanelCount, panelGuideUrl } from '../_shared/estimatecard.ts';
-import { mobileFrom, returningByTag, type ReturningInfo, BOOKING_HOWTO, BOOKING_SEND_FORM, PHOTO_MARKER, PHOTO_THANKS, isPhotoMessage, honorificFor, wantsToBook, buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
+import { contactSince, olderThanAi, mobileFrom, returningByTag, type ReturningInfo, BOOKING_HOWTO, BOOKING_SEND_FORM, PHOTO_MARKER, PHOTO_THANKS, isPhotoMessage, honorificFor, wantsToBook, buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
 import { makeExec } from '../_shared/chatexec.ts';
 import { findRate } from '../_shared/rates.ts';
 import { parseLang } from '../chat-availability/logic.ts';
@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
   if (!sub || !text) return json({ error: 'subscriber_id and text are required' }, 400);
 
   const sb = createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'));
-  const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle(); const cfg = (st?.data as Record<string, unknown> | undefined)?.chat_ai as { mode?: string; model?: string } | undefined; const mode = parseMode(cfg?.mode);
+  const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle(); const cfg = (st?.data as Record<string, unknown> | undefined)?.chat_ai as { mode?: string; model?: string; ai_started_on?: string } | undefined; const mode = parseMode(cfg?.mode);
   let { data: conv } = await sb.from('chat_conversations').select('*').eq('channel', channel).eq('subscriber_id', sub).maybeSingle();
   if (!conv) { const { data: c, error } = await sb.from('chat_conversations').insert({ channel, subscriber_id: sub, name: clip(b.name, 120) || null }).select('*').single(); if (error) return json({ error: error.message }, 500); conv = c; }
   const lang0 = parseLang(b.lang ?? conv.lang), lang = lang0 === 'tl' ? 'taglish' : lang0;   // never pure Tagalog: English with po, or Taglish
@@ -48,6 +48,22 @@ Deno.serve(async (req) => {
     let clientId = rc.client_id ?? undefined; let why = rc.returning_customer ? (rc.returning_note || 'Staff marked this customer as returning') : '';
     if (!why && mob) { const { data: cl } = await sb.from('clients').select('id, name').eq('mobile', mob).is('deleted_at', null).lt('created_at', (conv as { created_at?: string }).created_at ?? new Date().toISOString()).limit(1); if (cl?.length) { clientId = cl[0].id; why = `Matched existing client ${cl[0].name} by mobile number`; } }
     if (!why && tag) why = `ManyChat tag "${tag}"`;
+    // Ask ManyChat about the contact once (their first message here): its tags, and when they first became a contact. A contact from before the AI chat started was already dealing with our team.
+    if (!why && env('MANYCHAT_API_TOKEN')) {
+      const { count: inCount } = await sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('direction', 'in');
+      if ((inCount ?? 0) <= 1) {
+        const r = await fetch(`https://api.manychat.com/fb/subscriber/getInfo?subscriber_id=${encodeURIComponent(sub)}`, { headers: { Authorization: `Bearer ${env('MANYCHAT_API_TOKEN')}` }, signal: AbortSignal.timeout(3000) }).catch(() => null);
+        const info = r && r.ok ? ((await r.json().catch(() => ({}))) as { data?: Record<string, unknown> }).data : undefined;
+        if (info) {
+          const t2 = returningByTag(info.tags); const since = contactSince(b, c, info);
+          const { data: first } = await sb.from('chat_conversations').select('created_at').order('created_at', { ascending: true }).limit(1);
+          const startedOn = (cfg as { ai_started_on?: string } | undefined)?.ai_started_on || first?.[0]?.created_at;
+          if (t2) why = `ManyChat tag "${t2}"`; else if (olderThanAi(since, startedOn)) why = `A ManyChat contact since ${String(since).slice(0, 10)}, before the AI chat started`;
+          const { data: seen } = await sb.from('alert_outbox').select('id').eq('title', 'ManyChat contact fields').limit(1);
+          if (!seen?.length) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'ManyChat contact fields', body: `ManyChat sends these fields for a contact: ${Object.keys(info).join(', ')}. ${since ? `First-contact date found: ${since.slice(0, 10)}.` : 'No first-contact date was found, so old contacts cannot be recognised automatically (tags and mobile numbers still work).'}`, link: '/ai-chat' });
+        }
+      }
+    }
     if (why) {
       const info: ReturningInfo = { note: why };
       if (clientId) {

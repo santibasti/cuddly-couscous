@@ -79,6 +79,18 @@ export function returningByTag(tags: unknown): string | undefined {
   const list = Array.isArray(tags) ? tags : []; for (const t of list) { const n = String(typeof t === 'object' && t ? (t as { name?: unknown }).name ?? '' : t ?? ''); if (/existing|returning|regular|repeat|past (customer|client)/i.test(n) && !/new|lead|prospect/i.test(n)) return n; }
   return undefined;
 }
+/** The earliest date a ManyChat contact record carries (when they became a contact), read from the payload or ManyChat's getInfo; undefined when no such field is there. */
+export function contactSince(...objs: unknown[]): string | undefined {
+  const keys = ['subscribed', 'subscribed_at', 'subscribed_on', 'created_at', 'created', 'first_seen', 'date_created', 'optin_date'];
+  let best: string | undefined;
+  for (const o of objs) {
+    if (!o || typeof o !== 'object') continue;
+    for (const k of keys) { const v = (o as Record<string, unknown>)[k]; const t = typeof v === 'number' ? (v > 1e12 ? v : v * 1000) : Date.parse(String(v ?? '')); if (Number.isFinite(t) && t > 0) { const d = new Date(t).toISOString(); if (!best || d < best) best = d; } }
+  }
+  return best;
+}
+/** A contact who existed before the AI chat started was already dealing with the team. */
+export const olderThanAi = (since: string | undefined, aiStartedOn: string | undefined, graceDays = 1): boolean => !!since && !!aiStartedOn && Date.parse(since) < Date.parse(aiStartedOn) - graceDays * 86400_000;
 export interface ReturningInfo { note: string; client?: { name?: string; mobile?: string; email?: string; address?: string }; jobs?: string[]; inquiries?: string[] }
 /** Tells the AI this customer is not new. */
 export function returningBlock(r: ReturningInfo): string {
