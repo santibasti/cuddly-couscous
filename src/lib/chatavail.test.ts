@@ -63,8 +63,8 @@ describe('Taglish', () => {
     const r = checkAvailability('2026-11-21', today, DEFAULT_RULES, full); expect(pick(r, 'taglish')).toContain(`Sorry po, puno na po kami sa ${r.requested_label}.`); expect(pick(r, 'taglish')).toContain('Alin po ang okay sa inyo?'); for (const a of r.alternatives) expect(pick(r, 'taglish')).toContain(a.label);
     expect(pick(checkAvailability('2026-11-21', today, DEFAULT_RULES, facts()), 'taglish')).toMatch(/Mukhang open po/); expect(pick(checkAvailability(null, today, DEFAULT_RULES, facts()), 'taglish')).toMatch(/Anong date po/);
   });
-  it('the booked message is Taglish, carries the Job Order link only when given, and no price', () => {
-    const b = bookedReply('Sat, 21 Nov', 'JOB-2026-0007'); expect(b.reply_tglish).toContain('Noted po! Naka-book na po kayo sa Sat, 21 Nov (ref JOB-2026-0007)'); expect(b.reply_tglish).not.toContain('http');
-    const c = bookedReply('Sat, 21 Nov', 'JOB-2026-0007', 'https://x/#/jo/abc'); expect(c.reply_tglish).toContain('Ito po ang Job Order ninyo, kasama ang rates namin: https://x/#/jo/abc'); expect(c.reply_en).toContain('Job Order with our rates'); expect(c.reply_tglish).not.toMatch(/₱/);
+  it('the booked message is English-first for every language, carries the Job Order link only when given, and no price', () => {
+    const b = bookedReply('Sat, 21 Nov', 'JOB-2026-0007'); expect(b.reply_tglish).toContain('Your booking is set for Sat, 21 Nov (ref JOB-2026-0007)'); expect(b.reply_tglish).toBe(b.reply_en); expect(b.reply_tglish).not.toContain('http');
+    const c = bookedReply('Sat, 21 Nov', 'JOB-2026-0007', 'https://x/#/jo/abc'); expect(c.reply_tglish).toContain('Here is your Job Order with our rates: https://x/#/jo/abc'); expect(c.reply_en).toContain('Job Order with our rates'); expect(c.reply_tglish).not.toMatch(/₱/);
   });
 });

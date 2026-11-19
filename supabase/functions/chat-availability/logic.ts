@@ -75,9 +75,8 @@ export function checkAvailability(wanted: string | null, today: string, rules: R
 
 /** What the chat says after it really booked the date. Nothing about the price (the estimate sentence is added separately). With a Job Order link (automatic Job Order switched on) it also hands over the link. */
 export function bookedReply(label: string, number: string, link?: string, later = false): { reply_en: string; reply_tl: string; reply_tglish: string } {
+  // English-first for every language: the customer gets one short, clear confirmation (the Tagalog-heavy variants were retired in V2).
   const en = `Your booking is set for ${label} (ref ${number}). Our team will message you the arrival time and the final price after verifying the details. If you need to change the date, just tell us.`;
-  const tl = `Naka-book na po kayo sa ${label} (ref ${number}). Ime-message po kayo ng aming team ng oras ng dating at ng final na presyo pagkatapos ma-verify ang detalye. Kung gusto ninyong palitan ang petsa, sabihin lang po.`;
-  const tg = `Noted po! Naka-book na po kayo sa ${label} (ref ${number}). Ime-message po namin kayo ng arrival time at ng final price pagkatapos ma-verify ng team ang details. Kung gusto ninyong ilipat ang date, sabihin lang po.`;
-  if (!link) return later ? { reply_en: `${en} Your Job Order confirmation will follow in a few minutes.`, reply_tl: `${tl} Susunod po sa loob ng ilang minuto ang inyong Job Order confirmation.`, reply_tglish: `${tg} Susunod po ang Job Order confirmation ninyo in a few minutes.` } : { reply_en: en, reply_tl: tl, reply_tglish: tg };
-  return { reply_en: `${en} Here is your Job Order with our rates: ${link}`, reply_tl: `${tl} Narito po ang inyong Job Order kasama ang aming mga rate: ${link}`, reply_tglish: `${tg} Ito po ang Job Order ninyo, kasama ang rates namin: ${link}` };
+  const tail = link ? ` Here is your Job Order with our rates: ${link}` : later ? ' Your Job Order confirmation will follow in a few minutes.' : '';
+  const r = `${en}${tail}`; return { reply_en: r, reply_tl: r, reply_tglish: r };
 }

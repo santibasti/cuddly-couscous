@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:seed-sql": "vite-node scripts/export-seed-sql.ts",
-    "build:card": "rolldown src/lib/cardserver.ts --format esm --platform neutral -o api/_cardcore.mjs"
+    "build:card": "rolldown src/lib/cardserver.ts --format esm --platform neutral -o api/_cardcore.mjs",
+    "chatsim": "node scripts/chatsim/scenarios.mjs",
+    "chatsim:real": "node scripts/chatsim/realmodel.mjs"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",

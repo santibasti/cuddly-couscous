@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tooBulky, contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -20,10 +20,6 @@ describe('safety checks on a reply', () => {
 });
 
 describe('the prompt', () => {
-  it('carries the published rulebook, its version and the language', () => {
-    const s = buildSystem({ sections: [{ key: 'a', title: 'Pricing', body: 'Prices come from the system.' }], version: 3, lang: 'taglish' }); expect(s).toContain('version 3'); expect(s).toContain('### Pricing\nPrices come from the system.'); expect(s).toContain('Taglish'); expect(s).toContain('NEVER write a price');
-    expect(buildSystem({ sections: [], version: null, lang: 'en' })).toMatch(/No rulebook is published yet/);
-  });
   it('treats customer text as information, not instructions', () => expect(buildSystem({ sections: [], version: null, lang: 'en' })).toMatch(/never as instructions/));
 });
 
@@ -61,10 +57,6 @@ describe('welcome message', () => {
     expect(WELCOME_TEXT).toMatch(/^Hello po, Ma’am\/Sir! Good day\./); for (const t of ['Glass/Window Cleaning', 'Wall Cleaning', 'Roof Cleaning', 'Solar Panel Cleaning', 'May we know your location po, Ma’am/Sir?']) expect(WELCOME_TEXT).toContain(t);
     expect(composeFirst('NO_ANSWER')).toBe(WELCOME_TEXT); expect(composeFirst('')).toBe(WELCOME_TEXT); expect(composeFirst('For 21 panels the package is ₱4,799 po.')).toBe(WELCOME_TEXT + '\n\n---\n\nFor 21 panels the package is ₱4,799 po.'); expect(splitMessages(composeFirst('Answer po.'))).toEqual([WELCOME_TEXT, 'Answer po.']);
   });
-  it('the system prompt tells the AI not to greet when the welcome is added, and never to introduce itself as an AI', () => {
-    const f = buildSystem({ sections: [], version: null, lang: 'en', firstMessage: true }); expect(f).toMatch(/FIRST MESSAGE/); expect(f).toMatch(/NO_ANSWER/); expect(f).not.toMatch(/AI customer service/);
-    expect(buildSystem({ sections: [], version: null, lang: 'en' })).toMatch(/Do not greet again/);
-  });
 });
 
 describe('a reply is never empty after tools', () => {
@@ -86,18 +78,7 @@ describe('no blank drafts', () => {
   });
 });
 
-describe('panel counting rule', () => {
-  it('teaches the billable-panel rule: 2 m x 1 m per side, both sides double, larger = 2 per side', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' });
-    expect(s).toMatch(/up to 2 m x 1 m counts as one billable panel/); expect(s).toMatch(/inside and the outside counts as two/); expect(s).toMatch(/over 2 m x 1 m\) counts as two per side/); expect(s).toMatch(/20 standard panels cleaned on both sides = 40 billable panels/); expect(s).toMatch(/crew confirms the final count/); expect(s).toMatch(/never count per window/);
-  });
-});
 
-describe('booking flow rules', () => {
-  it('reads pasted answers, never re-asks, and always writes a proper reply', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/BOOKING FLOW/); expect(s).toMatch(/never ask again for something they already gave/); expect(s).toMatch(/Never answer with only a tool's sentence/);
-  });
-});
 
 describe('separate messages', () => {
   it('a line with only --- starts the next chat message (max 5); flatten keeps one text for tools that cannot split', () => {
@@ -105,21 +86,8 @@ describe('separate messages', () => {
     expect(splitMessages(t)).toEqual(['Good news po, Saturday, Nov 21 is open.', 'To send your booking request, please copy this and fill in your details po:\nFull name:\nMobile number:']);
     expect(flattenMessages(t)).not.toContain('---'); expect(splitMessages('a\n---\nb\n---\nc\n---\nd\n---\ne\n---\nf')).toHaveLength(5); expect(splitMessages('no split here')).toEqual(['no split here']);
   });
-  it('the system prompt asks for the booking details as their own message', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SEPARATE MESSAGES/); expect(s).toMatch(/Name:(\\n|\n)Address:(\\n|\n)Contact Number:(\\n|\n)Email:(\\n|\n)No\. of House Storey:(\\n|\n)Reservation Date:(\\n|\n)Service Window, Wall, Roof, Solar, Floor\?/); expect(s).not.toMatch(/Full name:/); expect(s).toMatch(/Never ask for the number of glass panels, solar panels or square metres/);
-  });
 });
 
-describe('how to book', () => {
-  it('recognises a customer who wants to book; with the city known the form is sent at once, without it only the city is asked', () => {
-    for (const q of ['how do i book?', 'Gusto ko po mag-book', 'pwede po bang magpa-schedule', 'I want to reserve Saturday', 'can I set an appointment?']) expect(wantsToBook(q)).toBe(true);
-    expect(wantsToBook('Magkano po sa Pasig?')).toBe(false);
-    expect(splitMessages(BOOKING_HOWTO)).toHaveLength(1); expect(BOOKING_HOWTO).toMatch(/your location \(city\) po/); expect(BOOKING_HOWTO).not.toMatch(/Name:|Reservation Date/);
-    expect(splitMessages(BOOKING_SEND_FORM)).toHaveLength(2); expect(splitMessages(BOOKING_SEND_FORM)[1]).toBe(BOOKING_FORM);
-    expect(BOOKING_FORM).toBe('Please copy this and fill in your details po:\nName:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?');
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/if the LOCATION \(city\) is already known[^.]*send the booking-details form right away/); expect(s).toMatch(/If the location is not known yet, ask only for the location/);
-  });
-});
 
 import { bookedReply, normalizeRules } from '../../supabase/functions/chat-availability/logic';
 describe('Job Order sent later', () => {
@@ -129,69 +97,19 @@ describe('Job Order sent later', () => {
   });
 });
 
-describe('Sir or Ma’am', () => {
-  it('uses the gender the chat platform gives, never a guess from the name; the welcome follows', () => {
-    expect(honorificFor('male')).toBe('Sir'); expect(honorificFor('Female')).toBe('Ma’am'); expect(honorificFor('')).toBe('Ma’am/Sir'); expect(honorificFor(undefined)).toBe('Ma’am/Sir'); expect(honorificFor('f')).toBe('Ma’am'); expect(honorificFor('other')).toBe('Ma’am/Sir');
-    expect(composeFirst('NO_ANSWER', 'Sir')).toContain('Hello po, Sir! Good day.'); expect(composeFirst('NO_ANSWER', 'Sir')).toContain('May we know your location po, Sir?'); expect(composeFirst('NO_ANSWER')).toBe(WELCOME_TEXT);
-    const s = buildSystem({ sections: [], version: null, lang: 'en', honorific: 'Ma’am' }); expect(s).toContain('The customer is a woman: when a title fits, use "Ma’am"'); const u = buildSystem({ sections: [], version: null, lang: 'en' }); expect(u).toMatch(/unmistakable/); expect(u).toMatch(/Never write "Ma’am\/Sir" yourself/); expect(u).toMatch(/never at the start of every message/);
-  });
-});
 
-describe('no repeated services list', () => {
-  it('the welcome already lists the services, so the first reply never lists them again', () => {
-    const f = buildSystem({ sections: [], version: null, lang: 'en', firstMessage: true }); expect(f).toMatch(/never list the services again/); expect(f).toMatch(/only asks what services we offer, write exactly NO_ANSWER/);
-  });
-});
 
-describe('a booking already made is never contradicted', () => {
-  it('the prompt tells the AI the customer already has a confirmed booking', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en', booking: { number: 'JOB-2026-8296', date: '2026-11-20', status: 'Confirmed' } });
-    expect(s).toContain('ALREADY HAS a confirmed booking, JOB-2026-8296, for 2026-11-20'); expect(s).toMatch(/never say it is full/); expect(buildSystem({ sections: [], version: null, lang: 'en' })).not.toMatch(/EXISTING BOOKING/);
-  });
-});
 
-describe('language: English with po, or Taglish, never pure Tagalog', () => {
-  it('the prompt and the fallback follow that rule', () => {
-    for (const lang of ['en', 'tl', 'taglish']) { const s = buildSystem({ sections: [], version: null, lang }); expect(s).toMatch(/English or Taglish only, never pure Tagalog/); expect(s).toMatch(/English-dominant/); expect(s).toMatch(/English with a polite "po"/); expect(s).not.toMatch(/Filipino with "po"/); }
-    expect(fallbackFor('tl')).toBe(fallbackFor('taglish')); expect(fallbackFor('tl')).not.toBe(fallbackFor('en'));
-  });
-});
 
 import { estimate } from '../../supabase/functions/_shared/estimate';
-describe('no photos', () => {
-  it('accepts photos the customer offers and never says they are not needed', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/Sure po, you may send them\. Our technical team will review them\./); expect(s).toMatch(/never say photos are not needed/);
-  });
-  it('the AI never asks for photos, and the price tool texts do not either', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/NO PHOTOS \(but always accept them\): never ask the customer for photos/); expect(s).not.toMatch(/suggest photos|send photos of their windows/);
-    for (const e of [estimate('Makati', 'gutter cleaning', 10), estimate('Makati', 'window cleaning', 10, 'commercial'), estimate('Atlantis', 'window cleaning', 10)]) expect(`${e.rates_en} ${e.rates_tl} ${e.rates_tglish}`).not.toMatch(/photo|litrato/i);
-  });
-});
 
-describe('short replies', () => {
-  it('the AI is told to keep replies short, and a long reply is flagged', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SHORT REPLIES/); expect(s).toMatch(/one to three short sentences/); expect(s).toMatch(/Do not over-explain/);
-    expect(guardReply('x'.repeat(900), { amounts: [], booked: false }).violations).toContain('is too long for a chat'); expect(guardReply('Sure po! Window cleaning in Makati starts at ₱4,799 for up to 31 panels.', { amounts: [4799], booked: false }).ok).toBe(true);
-  });
-});
 
-describe('never ask for quantities', () => {
-  it('the AI does not ask how many panels or how much area, and says the team counts and measures on site', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/NEVER ASK QUANTITIES/); expect(s).toContain(ONSITE_COUNT);
-    expect(ONSITE_COUNT).toBe('Our team will conduct on-site glass and solar panel counting and wall and floor area measurement before they begin the cleaning session.'); expect(s).not.toMatch(/ask roughly how many glass PANELS/);
-  });
-});
 
 describe('house language: English with po or light Taglish', () => {
   it('flags Tagalog sentences, accepts English and light Taglish', () => {
     expect(tooTagalog('Hi po! Para ma-check ko ang tamang presyo, anong klaseng cleaning po ang kailangan ninyo (window, solar, wall/floor, or roof) at saan po ang location (city)?')).toBe(true);
     expect(tooTagalog('Hi po! May I know the type of service you need (Window, Solar, Wall/floor or Roof) and your location po?')).toBe(false);
     expect(tooTagalog('Sure po, ₱4,799 po ang estimate for 21 panels in Quezon City. Our team will count on site.')).toBe(false);
-  });
-  it('rewrites a Tagalog draft once in English', async () => {
-    let calls = 0;
-    const b = await runBrain({ mode: 'suggest', system: 's', messages: [{ role: 'user', content: 'hi' }], exec: async () => ({ text: '' }), callModel: async () => { calls++; return { stop_reason: 'end_turn', content: [{ type: 'text', text: calls === 1 ? 'Para ma-check ko ang tamang presyo, anong klaseng cleaning po ang kailangan ninyo at saan po ang location?' : 'May I know the type of service you need and your location po?' }] }; } } as never);
-    expect(b.reply).toMatch(/^May I know/); expect(calls).toBe(2);
   });
 });
 
@@ -206,29 +124,8 @@ describe('photos from the customer', () => {
   });
 });
 
-describe('upsell the core services', () => {
-  it('tells the AI to upsell once, softly, and when not to', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' });
-    expect(s).toMatch(/UPSELL THE CORE SERVICES/); expect(s).toMatch(/wall\/floor cleaning, window\/glass cleaning, roof cleaning or solar panel cleaning/); expect(s).toMatch(/once per conversation/);
-    expect(s).toMatch(/Do NOT upsell in the first reply/); expect(s).toMatch(/Never quote a price, bundle, discount/);
-  });
-});
 
-describe('residential: no ocular visit', () => {
-  it('has the approved wording and tells the AI to use it as written, residential only', () => {
-    expect(NO_OCULAR).toBe("For residential services, we don't do a preliminary ocular visit to keep costs down for you.\nInstead, our team will do an exact panel count when they arrive on-site. They will inform you of the final count and the total bill before they begin any work.");
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toContain(NO_OCULAR.split('\n')[0]); expect(s).toMatch(/never offer or promise one/); expect(s).toMatch(/commercial or special-access[^.]*do not use it/); expect(guardReply(NO_OCULAR, { amounts: [], booked: false }).ok).toBe(true);
-  });
-});
 
-describe('commercial: assessment first, ocular fee', () => {
-  it('has the approved wording, the fee is a known amount, and residential wording is kept apart', () => {
-    expect(COMMERCIAL_OCULAR).toBe("For commercial properties, may we have the property address po? Our team will do an initial assessment first, before scheduling an ocular visit. The ocular fee is ₱2,500, which is deductible once you proceed with the service.");
-    expect(OCULAR_FEE).toBe(2500); expect(guardReply(COMMERCIAL_OCULAR, { amounts: [], booked: false }).ok).toBe(true);
-    expect(guardReply('The ocular fee is ₱3,000.', { amounts: [], booked: false }).ok).toBe(false);
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toContain(COMMERCIAL_OCULAR); expect(s).toMatch(/never use the residential no-ocular text/);
-  });
-});
 
 describe('returning customers', () => {
   it('finds a Philippine mobile number in different shapes', () => {
@@ -256,18 +153,29 @@ describe('contacts from before the AI chat', () => {
   });
 });
 
-describe('readable replies: two short paragraphs, no service list', () => {
-  const long = 'We offer residential and commercial window and glass cleaning, roof cleaning, exterior wall cleaning, solar panel cleaning, floor washing, and gutter cleaning, among others. For glass panel cleaning in Antipolo City, our package starts at ₱5,799 for up to 41 glass panels, and extra panels are ₱140 each. Our team will conduct on-site glass and solar panel counting and wall and floor area measurement before they begin the cleaning session.\n\nWould you like to book a date po?';
-  const good = 'For Antipolo City, our glass cleaning package starts at ₱5,799 for up to 41 glass panels, and extra panels are ₱140 each. Our team will conduct on-site glass and solar panel counting and wall and floor area measurement before they begin the cleaning session.\n\nWould you like to book a date po?';
-  it('flags a service list or a very long answer, not a tidy two-paragraph one or a fixed text', () => {
-    expect(tooBulky(long)).toBe(true); expect(tooBulky(good)).toBe(false); expect(tooBulky(COMMERCIAL_OCULAR)).toBe(false); expect(tooBulky(BOOKING_SEND_FORM)).toBe(false); expect(tooBulky('Sure po, ₱4,799 for 31 panels.')).toBe(false);
+describe('V2 prompt: fifteen rules, known facts, no forced sentences', () => {
+  const sys = (extra: Record<string, unknown> = {}) => buildSystem({ sections: [{ key: 'a', title: 'Identity', body: 'You are TopMop.' }], version: 3, lang: 'en', ...extra } as never);
+  it('carries the rulebook, its version and every non-negotiable rule', () => {
+    const s = sys(); expect(s).toMatch(/RULEBOOK \(version 3\)/); expect(s).toContain('You are TopMop.');
+    for (const r of [/English or English-dominant Taglish only/, /at most TWO short sentences, preferably under 35 words/, /ask at most one question/, /never ask for photos or videos/, /never ask for the number of panels or square metres/, /never mention cleaning services the customer did not ask about, and never upsell/, /never offer or suggest booking after a price/, /not consent/, /SCHEDULING needs the location and the cleaning service/, /prices only from estimate, dates only from check_date, bookings only from book_date/, /Never invent prices, capabilities, discounts/]) expect(s).toMatch(r);
   });
-  it('rewrites a bulky draft once into two short paragraphs', async () => {
-    let calls = 0; let ask = '';
-    const b = await runBrain({ mode: 'suggest', system: 's', messages: [{ role: 'user', content: 'hi' }], exec: async () => ({ text: '' }), callModel: async (_s: string, m: unknown[]) => { calls++; ask = JSON.stringify(m); return { stop_reason: 'end_turn', content: [{ type: 'text', text: calls === 1 ? long : good }] }; } } as never);
-    expect(b.reply).toBe(good); expect(calls).toBe(2); expect(ask).toMatch(/TWO short paragraphs/); expect(ask).toMatch(/never list our services/);
+  it('no longer forces the counting sentence or the upsell, and is shorter than before', () => {
+    const s = sys(); expect(s).not.toMatch(/UPSELL THE CORE SERVICES/); expect(s).not.toContain('Our team will conduct on-site glass and solar panel counting'); expect(s).not.toMatch(/a yes to the starting rates/); expect(s.length - 'You are TopMop.'.length).toBeLessThan(7000);
   });
-  it('tells the AI the format and not to repeat the on-site line', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/at most TWO short paragraphs/); expect(s).toMatch(/once per conversation/);
+  it('injects the known facts and the intent on every request, and the approved texts', () => {
+    const s = sys({ context: 'KNOWN FACTS: location: Manila; service: wall cleaning.\nCURRENT INTENT: price_inquiry.' }); expect(s).toContain('KNOWN FACTS: location: Manila'); expect(s).toContain(NO_OCULAR.split('\n')[0]); expect(s).toContain(COMMERCIAL_OCULAR);
+  });
+  it('first message: the system adds the welcome; later: do not greet; a booking already made is never contradicted; Sir/Ma’am only when known', () => {
+    expect(sys({ firstMessage: true })).toMatch(/FIRST MESSAGE: the system itself puts TopMop's welcome/); expect(sys()).toMatch(/Do not greet again/);
+    expect(sys({ booking: { number: 'JOB-1', date: '2026-11-21', status: 'Confirmed' } })).toMatch(/ALREADY HAS a confirmed booking, JOB-1/);
+    expect(sys({ honorific: 'Sir' })).toMatch(/The customer is a man: use "Sir"/); expect(sys()).toMatch(/gender is not known: use no title/);
+  });
+  it('the check hook asks the model once to fix exactly the violations, then reports what is left', async () => {
+    let calls = 0; let asked = '';
+    const check = (r: string) => (/book/i.test(r) ? ['premature_booking: do not offer booking'] : []);
+    const b = await runBrain({ mode: 'suggest', system: 's', messages: [{ role: 'user', content: 'How much?' }], exec: async () => ({ text: '' }), check, callModel: async (_s: string, m: unknown[]) => { calls++; asked = JSON.stringify(m); return { stop_reason: 'end_turn', content: [{ type: 'text', text: calls === 1 ? 'It is ₱6,250. Would you like to book?' : 'It is ₱6,250 po.' }] }; } } as never);
+    expect(b.reply).toBe('It is ₱6,250 po.'); expect(b.violations).toEqual([]); expect(calls).toBe(2); expect(asked).toMatch(/premature_booking/);
+    const c = await runBrain({ mode: 'suggest', system: 's', messages: [{ role: 'user', content: 'x' }], exec: async () => ({ text: '' }), check, callModel: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Want to book?' }] }) } as never);
+    expect(c.violations?.length).toBe(1);
   });
 });

@@ -100,7 +100,26 @@ const ALIASES = {
 	"Parañaque": ["paranaque"],
 	"Las Piñas": ["las pinas"],
 	"Dasmariñas": ["dasmarinas", "dasma"],
-	"San Jose del Monte": ["san jose del monte", "sjdm"]
+	"San Jose del Monte": ["san jose del monte", "sjdm"],
+	"Manila": [
+		"manila",
+		"binondo",
+		"intramuros",
+		"ermita",
+		"malate",
+		"paco",
+		"pandacan",
+		"quiapo",
+		"sampaloc",
+		"san miguel manila",
+		"san nicolas",
+		"santa cruz manila",
+		"santa ana manila",
+		"tondo",
+		"port area",
+		"sta mesa",
+		"santa mesa"
+	]
 };
 /** Finds the city (or province) in an address; the longest name wins and "Metro Manila" is never mistaken for the city of Manila. */
 function findRate(address) {
@@ -121,7 +140,7 @@ function classify(service) {
 }
 // supabase/functions/_shared/estimate.ts
 const peso$1 = (n) => `₱${n.toLocaleString("en-PH")}`;
-const NOTE_EN = "This is only an estimate: our crew does the final count on site, and the final amount follows that count.";
+const NOTE_EN = "The final amount is confirmed on site.";
 const NOTE_TL = "Estimate lang po ito: ang crew po namin ang gagawa ng final count sa site, at ang final na halaga ay base sa bilang na iyon.";
 const NOTE_TG = "Estimate lang po ito ha, kasi ang crew namin ang magbibilang ng final count sa site, at doon po ibabase ang final amount.";
 const VERIFY = {
@@ -137,9 +156,9 @@ const ASSESS = {
 		tg: "Ang service na ito po ay pini-presyuhan after ng assessment, kaya wala po akong fixed rate na masasabi. Ire-review po ng team namin ang details at gagawa sila ng quotation."
 	},
 	commercial: {
-		en: "Commercial properties are quoted after a short assessment, sometimes with an ocular visit, so I cannot give a package price here. May I have the company name, location, building height or floors po? Our team will prepare the quotation.",
-		tl: "Ang mga commercial na property po ay kino-quote pagkatapos ng maikling assessment, minsan may ocular visit, kaya hindi po ako makapagbibigay ng package price dito. Pakibigay po ang pangalan ng kumpanya, lokasyon, taas o bilang ng palapag ng gusali. Maghahanda po ang team ng quotation.",
-		tg: "Ang commercial properties po ay kino-quote after ng short assessment, minsan may ocular visit, kaya hindi po ako makakapagbigay ng package price dito. Paki-send po ang company name, location, taas o number of floors ng building. Gagawa po ang team namin ng quotation."
+		en: "For commercial properties, may we have the property address po? Our team will do an initial assessment first, before scheduling an ocular visit. The ocular fee is ₱2,500, which is deductible once you proceed with the service.",
+		tl: "",
+		tg: ""
 	}
 };
 const needsPerson = (kind) => ({
@@ -153,7 +172,18 @@ const needsPerson = (kind) => ({
 	estimate_tglish: ASSESS[kind].tg
 });
 /** The rates only apply to what the rate table covers: residential glass packages and the roof / wall / floor / solar rates. Commercial properties and everything else are quoted by a person. */
+/** Every language gets the same short English-first text (the Tagalog-heavy variants were retired in V2: they made the AI answer in Tagalog and too long). */
 function estimate(address, service, qty, property = "residential", withMain = false) {
+	const e = estimateEn(address, service, qty, property, withMain);
+	return {
+		...e,
+		rates_tl: e.rates_en,
+		rates_tglish: e.rates_en,
+		estimate_tl: e.estimate_en,
+		estimate_tglish: e.estimate_en
+	};
+}
+function estimateEn(address, service, qty, property = "residential", withMain = false) {
 	const q = Number.isFinite(Number(qty)) && Number(qty) > 0 ? Math.round(Number(qty)) : void 0;
 	if (/commercial|business|office|store|company|building|condo(minium)? ?(corp|association)|hotel|school|hospital|warehouse|factory/i.test(property)) return needsPerson("commercial");
 	const kindOf = classify(service);

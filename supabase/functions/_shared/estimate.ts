@@ -5,7 +5,7 @@ import { EXTRA_PANEL, OTHER, classify, findRate } from './rates.ts';
 const peso = (n: number) => `₱${n.toLocaleString('en-PH')}`;
 export type Kind = 'glass' | 'area' | 'solar' | 'unknown' | 'custom' | 'commercial';
 export interface Estimate { ok: boolean; kind: Kind; place?: string; package_price?: number; included?: number; extra_rate?: number; qty?: number; extra_qty?: number; estimate?: number; unit?: string; rates_en: string; rates_tl: string; rates_tglish: string; estimate_en: string; estimate_tl: string; estimate_tglish: string }
-const NOTE_EN = 'This is only an estimate: our crew does the final count on site, and the final amount follows that count.';
+const NOTE_EN = 'The final amount is confirmed on site.';
 const NOTE_TL = 'Estimate lang po ito: ang crew po namin ang gagawa ng final count sa site, at ang final na halaga ay base sa bilang na iyon.';
 const NOTE_TG = 'Estimate lang po ito ha, kasi ang crew namin ang magbibilang ng final count sa site, at doon po ibabase ang final amount.';
 const VERIFY = { en: 'Let me have our team verify the correct rate for your location po.', tl: 'Ipa-verify ko po sa aming team ang tamang rate para sa inyong lokasyon.', tg: 'Paki-verify ko po muna sa team namin ang tamang rate para sa location ninyo, para sigurado po tayo sa presyo.' };
@@ -13,11 +13,15 @@ const VERIFY = { en: 'Let me have our team verify the correct rate for your loca
 /** The starting rates (and, when a quantity is given, the estimate) for a service at an address. `qty` = glass panels, solar panels or square metres. */
 const ASSESS = {
   custom: { en: 'This service is priced after an assessment, so I do not have a fixed rate to quote. Our team will review the details and prepare a quotation po.', tl: 'Ang serbisyong ito po ay pini-presyuhan pagkatapos ng assessment, kaya wala po akong fixed na rate na masasabi. Susuriin po ng aming team ang detalye at maghahanda sila ng quotation.', tg: 'Ang service na ito po ay pini-presyuhan after ng assessment, kaya wala po akong fixed rate na masasabi. Ire-review po ng team namin ang details at gagawa sila ng quotation.' },
-  commercial: { en: 'Commercial properties are quoted after a short assessment, sometimes with an ocular visit, so I cannot give a package price here. May I have the company name, location, building height or floors po? Our team will prepare the quotation.', tl: 'Ang mga commercial na property po ay kino-quote pagkatapos ng maikling assessment, minsan may ocular visit, kaya hindi po ako makapagbibigay ng package price dito. Pakibigay po ang pangalan ng kumpanya, lokasyon, taas o bilang ng palapag ng gusali. Maghahanda po ang team ng quotation.', tg: 'Ang commercial properties po ay kino-quote after ng short assessment, minsan may ocular visit, kaya hindi po ako makakapagbigay ng package price dito. Paki-send po ang company name, location, taas o number of floors ng building. Gagawa po ang team namin ng quotation.' },
+  commercial: { en: 'For commercial properties, may we have the property address po? Our team will do an initial assessment first, before scheduling an ocular visit. The ocular fee is ₱2,500, which is deductible once you proceed with the service.', tl: '', tg: '' },
 };
 const needsPerson = (kind: 'custom' | 'commercial'): Estimate => ({ ok: false, kind, rates_en: ASSESS[kind].en, rates_tl: ASSESS[kind].tl, rates_tglish: ASSESS[kind].tg, estimate_en: ASSESS[kind].en, estimate_tl: ASSESS[kind].tl, estimate_tglish: ASSESS[kind].tg });
 /** The rates only apply to what the rate table covers: residential glass packages and the roof / wall / floor / solar rates. Commercial properties and everything else are quoted by a person. */
+/** Every language gets the same short English-first text (the Tagalog-heavy variants were retired in V2: they made the AI answer in Tagalog and too long). */
 export function estimate(address: string, service: string, qty?: number, property: string = 'residential', withMain = false): Estimate {
+  const e = estimateEn(address, service, qty, property, withMain); return { ...e, rates_tl: e.rates_en, rates_tglish: e.rates_en, estimate_tl: e.estimate_en, estimate_tglish: e.estimate_en };
+}
+function estimateEn(address: string, service: string, qty?: number, property: string = 'residential', withMain = false): Estimate {
   const q = Number.isFinite(Number(qty)) && Number(qty) > 0 ? Math.round(Number(qty)) : undefined;
   if (/commercial|business|office|store|company|building|condo(minium)? ?(corp|association)|hotel|school|hospital|warehouse|factory/i.test(property)) return needsPerson('commercial');
   const kindOf = classify(service); if (kindOf === 'custom') return needsPerson('custom');
