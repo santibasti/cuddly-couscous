@@ -11,9 +11,13 @@ export function mobileFrom(...parts: unknown[]): string | undefined {
   }
   return undefined;
 }
+/** The booking-details form (the customer copies it and fills it in). Sent as its own message after a short first line. */
+export const BOOKING_FORM = 'Please copy this and fill in your details po:\nName:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?';
+export const BOOKING_SEND_FORM = `Sure po, happy to help you book!\n\n---\n\n${BOOKING_FORM}`;
+export const isBookingForm = (t: string): boolean => /Reservation Date:/i.test(t ?? '') && /Contact Number:/i.test(t ?? '');
 export type Intent = 'general_inquiry' | 'service_qualification' | 'price_inquiry' | 'technical_question' | 'booking_request' | 'complaint' | 'human_assistance';
 export type Stage = 'understand' | 'assist' | 'confidence' | 'booking';
-export type Topic = 'location' | 'service' | 'surface' | 'property' | 'access' | 'date' | 'booking' | 'name' | 'mobile' | 'address' | 'contact' | 'other';
+export type Topic = 'location' | 'service' | 'surface' | 'property' | 'access' | 'date' | 'booking' | 'name' | 'mobile' | 'address' | 'contact' | 'form' | 'other';
 export interface Contact { name?: string; mobile?: string; email?: string; address?: string }
 export type ServiceKey = 'window' | 'wall' | 'roof' | 'solar' | 'floor' | 'gutter' | 'ceiling' | 'acp' | 'facade';
 export interface ChatContext {
@@ -24,6 +28,8 @@ export interface ChatContext {
   /** from delivered replies only */
   last_question?: Topic; explained: string[]; price_quoted?: boolean; booking_offered?: boolean;
   booking_requested?: boolean;
+  /** the booking-details form was delivered to the customer */
+  form_sent?: boolean;
 }
 export const emptyContext = (): ChatContext => ({ v: 1, intent: 'general_inquiry', stage: 'understand', explained: [] });
 /** Reads a stored context (jsonb) safely: anything missing or malformed becomes an empty field. */
@@ -36,7 +42,7 @@ export function readContext(raw: unknown): ChatContext {
   c.service = sv(r.service); c.services_seen = Array.isArray(r.services_seen) ? (r.services_seen as unknown[]).map(sv).filter(Boolean) as ServiceKey[] : undefined;
   if (r.surface === 'interior' || r.surface === 'exterior') c.surface = r.surface; if (r.property === 'residential' || r.property === 'commercial') c.property = r.property;
   if (typeof r.intent === 'string') c.intent = r.intent as Intent; if (typeof r.stage === 'string') c.stage = r.stage as Stage;
-  c.acknowledgment = r.acknowledgment === true; c.price_quoted = r.price_quoted === true; c.booking_offered = r.booking_offered === true; c.booking_requested = r.booking_requested === true;
+  c.acknowledgment = r.acknowledgment === true; c.price_quoted = r.price_quoted === true; c.booking_offered = r.booking_offered === true; c.booking_requested = r.booking_requested === true; c.form_sent = r.form_sent === true;
   if (typeof r.last_question === 'string') c.last_question = r.last_question as Topic; if (Array.isArray(r.explained)) c.explained = (r.explained as unknown[]).filter((x) => typeof x === 'string').slice(0, 20) as string[];
   return c;
 }
@@ -57,17 +63,31 @@ const YES = /^\s*(?:yes|yes please|yeah|yep|oo|opo|sige|sure|please do|go ahead|
 export const isAcknowledgment = (t: string) => ACK.test(String(t ?? ''));
 export const isYes = (t: string) => YES.test(String(t ?? '')) && !ACK.test(String(t ?? '').replace(/^\s*sige\b/i, 'sigex'));   // a bare "ok", "thanks" or "noted" is never a yes to a booking offer
 
+/** Reads the booking-details form the customer filled in ("Name: ...", "Reservation Date: ..."). Empty lines and the untouched template line give nothing. */
+export function parseForm(t: string): { name?: string; address?: string; mobile?: string; email?: string; storeys?: string; date?: string; service?: string } | null {
+  if (!/Reservation Date\s*:/i.test(t)) return null;
+  const out: Record<string, string> = {};
+  for (const raw of t.split(/\n/)) {
+    const m = /^\s*(name|full name|address|complete address|contact number|mobile|mobile number|contact|email|e-mail|no\.? of house storey|no\.? of storeys?|storeys?|reservation date|date|service)\s*[:\-]?\s*(.*)$/i.exec(raw); if (!m) continue;
+    const k = m[1].toLowerCase(); let v = m[2].trim().replace(/^[:\-]\s*/, ''); if (!v || /^(window, wall, roof, solar, floor\??)$/i.test(v) || /window,\s*wall,\s*roof,\s*solar,\s*floor/i.test(v)) continue;
+    const key = /name/.test(k) ? 'name' : /address/.test(k) ? 'address' : /contact|mobile/.test(k) ? 'mobile' : /mail/.test(k) ? 'email' : /stor/.test(k) ? 'storeys' : /date/.test(k) ? 'date' : 'service';
+    if (key === 'mobile') { const mob = mobileFrom(v); v = mob ?? v; }
+    out[key] = v.slice(0, 200);
+  }
+  return out;
+}
 export interface Facts { location?: string; service?: ServiceKey; surface?: 'interior' | 'exterior'; property?: 'residential' | 'commercial'; access?: string; schedule?: string; contact?: Contact }
 /** What one customer message adds to what we know. `lastQuestion` = what we asked last (so a bare "Binondo" after "your location?" is read as a location). */
 export function extractFacts(text: string, lastQuestion?: Topic, known: Facts & { booking_requested?: boolean } = {}): Facts {
   const t = String(text ?? '').trim(); const f: Facts = {}; if (!t) return f;
+  const form = parseForm(t);
   const place = findRate(t)?.place; if (place) f.location = place;
   else {
     const m = /\b(?:in|sa|at|from|taga)\s+([A-ZÑ][\p{L}.'-]+(?:\s+[A-ZÑ][\p{L}.'-]+){0,2})/u.exec(t);
     if (m && !NOT_PLACE.test(m[1])) f.location = m[1].trim();
     else if (!servicesIn(t).length && /^[\p{L}.'\- ]{3,30}$/u.test(t) && t.split(/\s+/).length <= 3 && !NOT_PLACE.test(t) && !wantsToBook(t) && !ACK.test(t) && (lastQuestion === 'location' || (!known.location && /^[A-ZÑ]/.test(t)))) f.location = t.replace(/\s+/g, ' ');   // a bare word is a place only when we just asked for it, or when no place is known yet and it is written like a name
   }
-  const sv = servicesIn(t); if (sv.length) f.service = sv[0];
+  const sv = form ? servicesIn(form.service ?? '') : servicesIn(t); if (sv.length) f.service = sv[0];
   if (/\b(exterior|outside|outdoor|labas|external)\b/i.test(t)) f.surface = 'exterior'; else if (/\b(interior|inside|indoor|loob|internal)\b/i.test(t)) f.surface = 'interior';
   if (COMMERCIAL.test(t)) f.property = 'commercial'; else if (RESIDENTIAL.test(t)) f.property = 'residential';
   const acc = /\b(ground floor|1st floor|first floor|2nd floor|second floor|3rd floor|third floor|bungalow|single[- ]storey|two[- ]storey|three[- ]storey|\d{1,2}[- ]?(?:storey|story|floors?|levels?)|\d{1,2}(?:st|nd|rd|th) floor|penthouse|rooftop)\b/i.exec(t); if (acc) f.access = acc[0].toLowerCase();
@@ -76,12 +96,13 @@ export function extractFacts(text: string, lastQuestion?: Topic, known: Facts & 
   const ct: Contact = {};
   const mob = mobileFrom(t); if (mob) ct.mobile = mob;
   const em = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/.exec(t); if (em) ct.email = em[0];
-  const nm = /(?:^|\n)\s*(?:full\s+)?name\s*[:\-]\s*([^\n]{2,60})|\b(?:my name is|i am|i'm|this is|ako si|ako po si)\s+([A-ZÑ][\p{L}.'-]+(?:\s+[A-ZÑ][\p{L}.'-]+){0,3})/iu.exec(t);
+  const nm = /(?:^|\n)\s*(?:full\s+)?name[ \t]*[:\-][ \t]*([^\n]{2,60})|\b(?:my name is|i am|i'm|this is|ako si|ako po si)\s+([A-ZÑ][\p{L}.'-]+(?:\s+[A-ZÑ][\p{L}.'-]+){0,3})/iu.exec(t);
   if (nm) ct.name = (nm[1] ?? nm[2]).trim().replace(/[.,]+$/, '');
   else if (lastQuestion === 'name' && /^[\p{L}.'\- ]{2,50}$/u.test(t) && t.split(/\s+/).length <= 5 && !ACK.test(t) && !YES.test(t) && !NOT_PLACE.test(t)) ct.name = t.replace(/\s+/g, ' ');
-  const ad = /(?:^|\n)\s*(?:complete\s+)?(?:service\s+|property\s+|home\s+)?address(?:\s*\(with city\))?\s*[:\-]\s*([^\n]{4,200})/i.exec(t);
+  const ad = /(?:^|\n)\s*(?:complete\s+)?(?:service\s+|property\s+|home\s+)?address(?:\s*\(with city\))?[ \t]*[:\-][ \t]*([^\n]{4,200})/i.exec(t);
   if (ad) ct.address = ad[1].trim(); else if (lastQuestion === 'address' && t.length >= 6 && !ACK.test(t) && !YES.test(t)) ct.address = t.replace(/\s+/g, ' ').slice(0, 200);
   if (lastQuestion === 'mobile' && !ct.mobile && /^[\d+\s()-]{7,20}$/.test(t)) ct.mobile = t.trim();
+  if (form) { if (form.name) ct.name = form.name; if (form.address) ct.address = form.address; if (form.mobile) ct.mobile = form.mobile; if (form.email) ct.email = form.email; if (form.storeys) f.access = form.storeys.toLowerCase(); if (form.date) f.schedule = form.date; }
   if (Object.keys(ct).length) f.contact = ct;
   return f;
 }
@@ -139,20 +160,22 @@ export function questionTopic(q: string): Topic {
 }
 export const lastQuestionOf = (text: string): string | undefined => { const qs = String(text ?? '').split(/(?<=[.!?])\s+/).filter((x) => x.includes('?')); return qs.length ? qs[qs.length - 1].trim() : undefined; };
 /** From the replies the customer really received (oldest first). */
-export function analyzeDelivered(replies: string[]): { explained: string[]; lastQuestion?: Topic; priceQuoted: boolean; bookingOffered: boolean } {
-  const ex = new Set<string>(); let priceQuoted = false, bookingOffered = false;
+export function analyzeDelivered(replies: string[]): { explained: string[]; lastQuestion?: Topic; priceQuoted: boolean; bookingOffered: boolean; formSent: boolean } {
+  const ex = new Set<string>(); let priceQuoted = false, bookingOffered = false, formSent = false;
   for (const r of replies) {
     if (/TopMop offers professional exterior cleaning/i.test(r)) ex.add('welcome');
     if (/(on-?site|exact panel count|final count|counting).{0,80}(count|measure|bill)|panels? (is|are)? ?counted|one side of a (glass )?panel/i.test(r)) ex.add('counting');
     if (/preliminary ocular visit/i.test(r)) ex.add('ocular_residential'); if (/ocular fee/i.test(r)) ex.add('ocular_commercial');
     if (/₱\s?\d/.test(r)) priceQuoted = true;
+    if (isBookingForm(r)) formSent = true;
     if (/(would you like to|ready to|want to) (book|schedule|reserve)|book a date|set an? appointment|booking details|Reservation Date:/i.test(r)) bookingOffered = true;
   }
-  const last = replies.length ? lastQuestionOf(replies[replies.length - 1]) : undefined;
-  return { explained: [...ex], lastQuestion: last ? questionTopic(last) : undefined, priceQuoted, bookingOffered };
+  const lastReply = replies.length ? replies[replies.length - 1] : '';
+  const last = lastReply ? lastQuestionOf(lastReply) : undefined;
+  return { explained: [...ex], lastQuestion: isBookingForm(lastReply) ? 'form' : last ? questionTopic(last) : undefined, priceQuoted, bookingOffered, formSent };
 }
 export function applyDelivered(ctx: ChatContext, d: ReturnType<typeof analyzeDelivered>): ChatContext {
-  const c = { ...ctx, explained: d.explained, last_question: d.lastQuestion, price_quoted: d.priceQuoted || ctx.price_quoted, booking_offered: d.bookingOffered };
+  const c = { ...ctx, explained: d.explained, last_question: d.lastQuestion, price_quoted: d.priceQuoted || ctx.price_quoted, booking_offered: d.bookingOffered, form_sent: d.formSent || ctx.form_sent };
   return { ...c, stage: deriveStage(c) };
 }
 
@@ -175,18 +198,17 @@ const NEXT: Record<Intent, string> = {
   service_qualification: 'Acknowledge what they told you and, only if still needed, ask the ONE most useful next question (see SUGGESTED NEXT QUESTION). Do not quote a price unless asked and do not mention booking.',
   price_inquiry: 'If the location and the service are known, call estimate and give the price plainly. If one is missing, ask only for the missing one. Do not mention booking.',
   technical_question: 'Answer the question directly and briefly from the rulebook. No sales, no booking.',
-  booking_request: 'The customer wants to book. Arrange it as a short conversation: one natural question at a time (see NEXT BOOKING QUESTION). Never send a form or a list of questions.',
+  booking_request: 'The customer wants to book. Booking uses the booking-details form that the system sends once the city is known (see BOOKING FORM / NEXT BOOKING QUESTION). Do not write the form yourself.',
   complaint: 'Apologise in one short sentence and use needs_human. Do not argue, offer refunds or sell anything.',
   human_assistance: 'Use needs_human and tell the customer a team member will take over.',
 };
-/** Booking is a short conversation, not a form: one natural question at a time, in this order. `null` = everything needed is known. */
+/** Booking uses the booking-details form: once the city is known the form goes out as its own message; the customer fills it in and only what is still missing is asked for. `null` = everything needed is known. */
+const FORM_LABEL = (c: ChatContext): string[] => [!c.service && 'the service (window, wall, roof, solar or floor)', !c.schedule && 'your reservation date', !c.contact?.name && 'your full name', !c.contact?.mobile && 'your contact number', !c.contact?.address && 'the complete address'].filter(Boolean) as string[];
+const joinList = (a: string[]): string => a.length <= 1 ? (a[0] ?? '') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`;
 export function nextBookingQuestion(c: ChatContext): { topic: Topic; text: string } | null {
   if (!c.location) return { topic: 'location', text: 'May I know your location (city) po?' };
-  if (!c.service) return { topic: 'service', text: 'Which cleaning service would you like to book po?' };
-  if (!c.schedule) return { topic: 'date', text: 'What date would you prefer po?' };
-  if (!c.contact?.name) return { topic: 'name', text: 'May I have your full name po?' };
-  if (!c.contact?.mobile) return { topic: 'mobile', text: 'What is the best mobile number to reach you po?' };
-  if (!c.contact?.address) return { topic: 'address', text: 'What is the complete address of the property po?' };
+  if (!c.form_sent) return { topic: 'form', text: BOOKING_SEND_FORM };
+  const miss = FORM_LABEL(c); if (miss.length) return { topic: 'contact', text: `Thank you po! To complete the booking, may I also have ${joinList(miss)}?` };
   return null;
 }
 export function contextBlock(c: ChatContext): string {
@@ -198,6 +220,6 @@ export function contextBlock(c: ChatContext): string {
     c.explained.length ? `ALREADY EXPLAINED to the customer (do not repeat): ${c.explained.join(', ')}.` : '',
     c.price_quoted ? 'A price was already given to the customer.' : '',
     `CURRENT INTENT: ${c.intent}${c.acknowledgment ? ' (a simple acknowledgment)' : ''}. STAGE: ${c.stage}. ${NEXT[c.intent]}`,
-    c.intent === 'booking_request' || c.booking_requested ? (() => { const q = nextBookingQuestion(c); return q ? `NEXT BOOKING QUESTION (ask exactly this one, nothing else; for the date, check it with check_date first and, if it is not open, offer the nearest open dates instead): ${q.text}` : 'ALL BOOKING DETAILS ARE KNOWN: call book_date with the service, date, name, mobile and address (the system writes the confirmation).'; })() : hint ? `SUGGESTED NEXT QUESTION (only if it is really needed): ${hint}` : '',
+    c.intent === 'booking_request' || c.booking_requested ? (() => { const q = nextBookingQuestion(c); return q ? (q.topic === 'form' ? 'BOOKING FORM: the system sends the booking-details form by itself; do not write the form and do not ask for the details one by one.' : `NEXT BOOKING QUESTION (ask exactly this one, nothing else): ${q.text}`) : 'ALL BOOKING DETAILS ARE KNOWN (the form is filled in): first check the reservation date with check_date. If it is open call book_date with the service, date, name, mobile, address, email and storeys (the system writes the confirmation); if it is not open, say so and offer the nearest open dates, and ask which one they prefer.'; })() : hint ? `SUGGESTED NEXT QUESTION (only if it is really needed): ${hint}` : '',
   ].filter(Boolean).join('\n');
 }

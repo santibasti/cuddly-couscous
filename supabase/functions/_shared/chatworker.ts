@@ -2,7 +2,7 @@
 // Shared by chat-brain (a customer message) and chat-recover (a message that was left unanswered because a worker stopped or crashed).
 import { cardForLog, explainsPanelCount, panelGuideUrl } from './estimatecard.ts';
 import { type ReturningInfo, type Mode, type Honorific, type Brain, PHOTO_MARKER, PHOTO_THANKS, MSG_SPLIT, isPhotoMessage, buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, runBrain, fallbackFor } from './brain.ts';
-import { questionTopic, analyzeDelivered, applyDelivered, contextBlock, foldMessages, isAcknowledgment, readContext, type ChatContext } from './chatcontext.ts';
+import { BOOKING_SEND_FORM, questionTopic, analyzeDelivered, applyDelivered, contextBlock, foldMessages, isAcknowledgment, readContext, type ChatContext } from './chatcontext.ts';
 import { ackReply, fallbackReply, repairReply, validateReply, type Check } from './validate.ts';
 import { buildHistory } from './chathistory.ts';
 import { makeExec } from './chatexec.ts';
@@ -49,6 +49,8 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
       const allAck = texts.every((t) => isAcknowledgment(t));
       if (ctx.intent === 'complaint' || ctx.intent === 'human_assistance') {                                               // no model needed: a person takes over
         const f = fallbackReply(vctx(first)); brain = { ...brain, reply: f.text, humanReason: ctx.intent === 'complaint' ? 'The customer has a complaint' : 'The customer asked for a person', actions: [{ type: 'needs_human', input: { reason: ctx.intent } }] };
+      } else if (ctx.intent === 'booking_request' && ctx.location && !ctx.form_sent && !photo && !texts.some((t) => /\b(how much|magkano|price|presyo|rate|ocular)\b/i.test(t))) {   // the customer wants to book and the city is known: the booking-details form goes out as its own message (no model needed)
+        brain = { ...brain, reply: BOOKING_SEND_FORM };
       } else if (allAck && ctx.intent !== 'booking_request' && !first && !photo) {                                         // "okay", "thanks": a brief acknowledgment, no model, no booking offer
         brain = { ...brain, reply: ackReply() };
       } else {

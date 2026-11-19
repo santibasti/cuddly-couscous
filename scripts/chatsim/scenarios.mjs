@@ -27,18 +27,20 @@ reset('auto'); queue(false); state.script = () => text('Exterior wall cleaning i
 await send('Binondo'); await send('Wall Cleaning'); await send('How much?'); const before = modelCalls.length; const r = await send('Okay, thank you.');
 ok('C: a brief acknowledgment, no AI call, no booking offer', modelCalls.length === before && /You're welcome/.test(r.reply) && !/book|date|schedule/i.test(r.reply), r.reply);
 
-// D. "Can I schedule tomorrow?" -> location and service checked first
-reset('suggest'); queue(false); state.script = (b) => text(/location \(city\)/.test(b.messages.at(-1).content) ? '' : '');
+// D. Booking uses the booking-details form: city first, then the form as its own message, then only what is missing
+reset('suggest'); queue(false); state.script = () => text('');
 await send('Can I schedule tomorrow?'); const d1 = ctxOf();
-ok('D: booking intent is recognised and the schedule is remembered', d1.intent === 'booking_request' && d1.schedule === 'tomorrow', JSON.stringify({ intent: d1.intent, schedule: d1.schedule, location: d1.location ?? null, service: d1.service ?? null }));
-ok('D: the welcome already asks the location, so the AI part does not ask it a second time', (drafts().at(-1).body.match(/location/g) ?? []).length === 1 && /happy to help you book/.test(drafts().at(-1).body), JSON.stringify(drafts().at(-1).body.slice(-90)));
-deliver(); await send('Makati'); await send('window cleaning');
-ok('D: "tomorrow" was remembered, location and service are known: the next booking question is the name, never a form', /location: Makati/.test(lastSystem()) && /window\/glass cleaning/.test(lastSystem()) && /preferred schedule: tomorrow/.test(lastSystem()) && /CURRENT INTENT: booking_request/.test(lastSystem()) && /NEXT BOOKING QUESTION[^:]*: May I have your full name po\?/.test(lastSystem()) && /Never send a form/.test(lastSystem()), (lastSystem().split('\n').find((l) => l.startsWith('NEXT BOOKING')) ?? '').slice(0, 130));
-await send('Saturday'); ok('D: a new date replaces the old one; still one question at a time (the name)', /preferred schedule: saturday/.test(lastSystem()) && /NEXT BOOKING QUESTION[^:]*: May I have your full name po\?/.test(lastSystem()));
-deliver(); state.script = () => text('May I have your full name po?'); await send('ok'); deliver();   // "ok" is not consent and not a name
-ok('D: a bare "ok" while booking is not taken as the name', !ctxOf().contact?.name);
-deliver(); await send('Maria Santos'); ok('D: the name is taken only as the answer to the name question, then the mobile number', ctxOf().contact?.name === 'Maria Santos' && /NEXT BOOKING QUESTION[^:]*: What is the best mobile number/.test(lastSystem()));
-state.script = () => text('What is the best mobile number to reach you po?'); await send('Maria Santos'); deliver(); await send('0917 123 4567'); state.script = () => text('What is the complete address of the property po?'); await send('ok'); deliver(); ctxOf(); await send('12 Maple St, Makati'); ok('D: with date, name, mobile and address known the AI is told to book (the system writes the confirmation)', /ALL BOOKING DETAILS ARE KNOWN/.test(lastSystem()) && ctxOf().contact?.mobile === '09171234567', JSON.stringify(ctxOf().contact));
+ok('D: booking intent is recognised and the schedule is remembered', d1.intent === 'booking_request' && d1.schedule === 'tomorrow', JSON.stringify({ intent: d1.intent, schedule: d1.schedule, location: d1.location ?? null }));
+ok('D: no city yet: the welcome already asks for it, no form is sent', !/Reservation Date:/.test(drafts().at(-1).body), JSON.stringify(drafts().at(-1).body.slice(-90)));
+deliver(); const callsBefore = modelCalls.length; await send('Makati');
+const f1 = drafts().at(-1).body;
+ok('D: the city is known: the form goes out by itself as its own message (no model call), exactly as approved', /Sure po, happy to help you book!/.test(f1) && f1.includes('Name:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?') && modelCalls.length === callsBefore, JSON.stringify(f1.slice(-120)));
+deliver(); state.script = () => text('Thank you po! To complete the booking, may I also have the complete address?');
+await send('Name: Maria Santos\nAddress:\nContact Number: 0917 555 1212\nEmail:\nNo. of House Storey: 2\nReservation Date: Saturday\nService Window');
+ok('D: a half-filled form is read: only the address is still missing and the form is not sent again', ctxOf().contact?.name === 'Maria Santos' && ctxOf().contact?.mobile === '09175551212' && ctxOf().service === 'window' && /NEXT BOOKING QUESTION[^:]*: Thank you po! To complete the booking, may I also have the complete address\?/.test(lastSystem()) && !/Reservation Date:/.test(drafts().at(-1).body), JSON.stringify(ctxOf().contact));
+deliver(); state.script = () => text('');
+await send('Address: 12 Maple St, Brgy. Bahay Toro, Makati');
+ok('D: with the form complete the AI is told to check the date and then book (the system writes the confirmation)', /ALL BOOKING DETAILS ARE KNOWN/.test(lastSystem()) && /check_date/.test(lastSystem()) && /Bahay Toro/.test(ctxOf().contact?.address ?? ''), JSON.stringify(ctxOf().contact));
 
 // E. Pure Tagalog -> English / English-dominant Taglish (AI's Tagalog draft is rewritten once, else replaced)
 reset('suggest'); queue(false); let calls = 0;

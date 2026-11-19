@@ -3,7 +3,7 @@ import { type ChatContext, type Intent, type ServiceKey, lastQuestionOf, questio
 import { tooTagalog } from './brain.ts';
 
 export interface Check { ctx: ChatContext; intent: Intent; customerText: string; previousAi: string[]; first?: boolean }
-const FIXED = /ocular|^\s*Thank you po! Our technical team|^\s*Sure po, you may send them|^\s*Your booking is set for|TopMop offers professional exterior cleaning/i;
+const FIXED = /Reservation Date:|ocular|^\s*Thank you po! Our technical team|^\s*Sure po, you may send them|^\s*Your booking is set for|TopMop offers professional exterior cleaning/i;
 // Abbreviations in addresses and titles ("Brgy. Bahay Toro", "Maple St. Extension") do not end a sentence; splitting there cut a booking confirmation in the middle of the address.
 const ABBR = /\b(brgy|st|ave|blvd|rd|bldg|apt|hwy|dist|mt|mr|mrs|dr|sr|jr)\./gi;
 export const sentences = (t: string): string[] => String(t ?? '').replace(/\s+/g, ' ').trim().replace(ABBR, '$1\u0001').split(/(?<=[.!?])\s+/).map((x) => x.replace(/\u0001/g, '.')).filter(Boolean);
@@ -39,7 +39,7 @@ export function validateReply(reply: string, v: Check): string[] {
   if (q) {                                                                                                   // contact details belong to a booking, and come after the basics
     const topic = questionTopic(q); const need = nextBookingQuestion(v.ctx);
     if (['name', 'mobile', 'address'].includes(topic) && !bookingOk) out.push('premature_contact: do not ask for name, number or address unless the customer is booking');
-    else if (['name', 'mobile', 'address'].includes(topic) && need && ['location', 'service', 'date'].includes(need.topic)) out.push(`wrong_order: ask for the ${need.topic} first`);
+    else if (['name', 'mobile', 'address'].includes(topic) && need && need.topic === 'location') out.push('wrong_order: ask for the location first');
   }
   if (ASKS_PHOTO.test(t)) out.push('photos: never ask for photos or videos');
   if (ASKS_QTY.test(t)) out.push('quantities: never ask for panel counts or measurements');

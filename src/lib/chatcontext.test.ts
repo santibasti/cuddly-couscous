@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeDelivered, applyDelivered, classifyIntent, contextBlock, emptyContext, extractFacts, foldMessages, isAcknowledgment, isYes, nextBookingQuestion, nextQuestionHint, questionTopic, readContext } from '../../supabase/functions/_shared/chatcontext';
+import { analyzeDelivered, applyDelivered, classifyIntent, contextBlock, emptyContext, extractFacts, foldMessages, isAcknowledgment, isYes, nextBookingQuestion, BOOKING_FORM, BOOKING_SEND_FORM, isBookingForm, nextQuestionHint, questionTopic, readContext } from '../../supabase/functions/_shared/chatcontext';
 
 describe('what a customer message tells us', () => {
   it('finds a location (a known city, a Manila district, a place after "in")', () => {
@@ -60,20 +60,24 @@ describe('only delivered replies count as said', () => {
   });
 });
 
-describe('booking is a conversation, not a form', () => {
-  it('asks for one thing at a time, in order: location, service, date, name, mobile, address', () => {
+describe('booking uses the booking-details form', () => {
+  it('asks for the city first, then the form goes out once, then only what is missing is asked for', () => {
     let c = foldMessages(emptyContext(), ['I want to book']); expect(nextBookingQuestion(c)?.topic).toBe('location');
-    c = foldMessages(c, ['Makati']); expect(nextBookingQuestion(c)?.topic).toBe('service');
-    c = foldMessages(c, ['window cleaning']); expect(nextBookingQuestion(c)?.topic).toBe('date');
-    c = foldMessages(c, ['Saturday']); expect(c.schedule).toBe('saturday'); expect(nextBookingQuestion(c)?.topic).toBe('name');
-    c = foldMessages({ ...c, last_question: 'name' }, ['Maria Santos']); expect(c.contact?.name).toBe('Maria Santos'); expect(nextBookingQuestion(c)?.topic).toBe('mobile');
-    c = foldMessages({ ...c, last_question: 'mobile' }, ['0917 123 4567']); expect(c.contact?.mobile).toBe('09171234567'); expect(nextBookingQuestion(c)?.topic).toBe('address');
-    c = foldMessages({ ...c, last_question: 'address' }, ['12 Maple St, Brgy. San Antonio, Makati']); expect(c.contact?.address).toContain('Maple St'); expect(nextBookingQuestion(c)).toBeNull();
-    expect(contextBlock(c)).toMatch(/ALL BOOKING DETAILS ARE KNOWN/); expect(contextBlock(foldMessages(emptyContext(), ['I want to book']))).toMatch(/NEXT BOOKING QUESTION[^:]*: May I know your location/);
+    c = foldMessages(c, ['Makati']); expect(nextBookingQuestion(c)).toEqual({ topic: 'form', text: BOOKING_SEND_FORM }); expect(contextBlock(c)).toMatch(/BOOKING FORM: the system sends/);
+    expect(BOOKING_SEND_FORM).toContain('Name:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?');
+    const sent = applyDelivered(c, analyzeDelivered([BOOKING_SEND_FORM])); expect(sent.form_sent).toBe(true); expect(sent.last_question).toBe('form');
+    const half = foldMessages(sent, ['Name: Maria Santos\nAddress:\nContact Number: 0917 555 1212\nEmail:\nNo. of House Storey: 2\nReservation Date: Saturday\nService Window']);
+    expect(half.contact).toMatchObject({ name: 'Maria Santos', mobile: '09175551212' }); expect(half).toMatchObject({ service: 'window', schedule: 'Saturday', access: '2' });
+    expect(nextBookingQuestion(half)?.text).toBe('Thank you po! To complete the booking, may I also have the complete address?');
+    const done = foldMessages(half, ['Address: 12 Maple St, Brgy. Bahay Toro, Quezon City']); expect(nextBookingQuestion(done)).toBeNull(); expect(contextBlock(done)).toMatch(/ALL BOOKING DETAILS ARE KNOWN.*first check the reservation date with check_date/);
+  });
+  it('the untouched template line gives no service, and the form is recognised', () => {
+    const f = foldMessages(applyDelivered(foldMessages(emptyContext(), ['Makati', 'book']), analyzeDelivered([BOOKING_SEND_FORM])), ['Name: Ana\nAddress: 5 Rizal Ave, Pasig\nContact Number: 09981112222\nEmail: ana@mail.com\nNo. of House Storey: 1\nReservation Date: Dec 5\nService Window, Wall, Roof, Solar, Floor?']);
+    expect(f.service).toBeUndefined(); expect(nextBookingQuestion(f)?.text).toMatch(/the service \(window, wall, roof, solar or floor\)/); expect(isBookingForm(BOOKING_FORM)).toBe(true); expect(isBookingForm('Name: x')).toBe(false);
   });
   it('takes details the customer volunteers in any order, and a pasted labelled block', () => {
     const c = foldMessages(emptyContext(), ['Hi, my name is Jig Narciso, text me at 0917-555-1212, Quezon City window cleaning, can I book Friday?']);
-    expect(c).toMatchObject({ location: 'Quezon City', service: 'window', schedule: 'friday', intent: 'booking_request' }); expect(c.contact).toMatchObject({ name: 'Jig Narciso', mobile: '09175551212' }); expect(nextBookingQuestion(c)?.topic).toBe('address');
+    expect(c).toMatchObject({ location: 'Quezon City', service: 'window', schedule: 'friday', intent: 'booking_request' }); expect(c.contact).toMatchObject({ name: 'Jig Narciso', mobile: '09175551212'}); expect(nextBookingQuestion(c)?.topic).toBe('form');
     const b = foldMessages(emptyContext(), ['Name: Ana Reyes\nAddress: 5 Rizal Ave, Pasig\nContact Number: 09981112222\nEmail: ana@mail.com']); expect(b.contact).toEqual({ name: 'Ana Reyes', address: '5 Rizal Ave, Pasig', mobile: '09981112222', email: 'ana@mail.com' });
   });
   it('a bare answer is only a name or address when we just asked for it; "okay" is never booking consent', () => {

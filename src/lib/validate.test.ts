@@ -38,7 +38,7 @@ describe('reply validation', () => {
     expect(fixed).toContain('Brgy. Bahay Toro'); expect(fixed).toContain('12 Maple St. Extension'); expect(fixed).not.toContain('Thank you po');
   });
   it('has a safe fallback for each situation', () => {
-    expect(fallbackReply(v('hi', emptyContext(), 'booking_request')).text).toMatch(/location \(city\)/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'I want to book']), 'booking_request')).text).toMatch(/Which cleaning service/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'window', 'I want to book']), 'booking_request')).text).toMatch(/What date/);
+    expect(fallbackReply(v('hi', emptyContext(), 'booking_request')).text).toMatch(/location \(city\)/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'I want to book']), 'booking_request')).text).toMatch(/Reservation Date:/);
     expect(fallbackReply(v('How much?', ctx), 'integration')).toEqual({ text: 'Let me have our team verify that for you po.', handover: true }); expect(fallbackReply(v('You damaged it', ctx, 'complaint')).handover).toBe(true);
     expect(fallbackReply(v('How much?', emptyContext(), 'price_inquiry')).text).toMatch(/location/); expect(ackReply()).toMatch(/You're welcome/);
   });
@@ -47,8 +47,8 @@ describe('reply validation', () => {
 describe('booking questions are validated', () => {
   const b = foldMessages(emptyContext(), ['Makati', 'window cleaning', 'I want to book']); const vb = (t: string, c = b) => ({ ctx: c, intent: c.intent, customerText: t, previousAi: [] as string[] });
   it('allows the next booking question, blocks contact questions outside a booking and out of order', () => {
-    expect(validateReply('What date would you prefer po?', vb('I want to book'))).toEqual([]);
-    expect(validateReply('May I have your full name po?', vb('I want to book')).join()).toMatch(/wrong_order: ask for the date first/);
+    expect(validateReply('Sure po, happy to help you book!\n\n---\n\nPlease copy this and fill in your details po:\nName:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?', vb('I want to book'))).toEqual([]);
+    const nocity = foldMessages(emptyContext(), ['I want to book']); expect(validateReply('May I have your full name po?', vb('I want to book', nocity)).join()).toMatch(/wrong_order: ask for the location first/);
     const p = foldMessages(emptyContext(), ['Makati', 'window cleaning', 'How much?']); expect(validateReply('May I have your full name po?', vb('How much?', p)).join()).toMatch(/premature_contact/);
     const ready = foldMessages(b, ['Saturday']); expect(validateReply('May I have your full name po?', vb('Saturday', ready))).toEqual([]); expect(validateReply('What date would you prefer po?', vb('Saturday', ready)).join()).toMatch(/repeated_question/);
   });
