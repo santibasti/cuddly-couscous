@@ -53,7 +53,7 @@ node scripts/staging/run-scenarios.mjs
 It refuses to run against the production project, creates its own test conversations (subscriber ids starting `stg-`), prints every reply with pass/fail checks (A to G, plus a full the booking form) and removes its own rows at the end. Save the output and send it back.
 
 ## 8. Optional: actual delivery to a ManyChat test contact
-Only with a ManyChat **test contact** (for example your own Messenger account): set `MANYCHAT_API_TOKEN` on the staging function, set `chat_ai.mode` to `auto` on staging, pass `$env:STAGING_SUBSCRIBER="<that contact's ManyChat id>"` and run the script; the reply must arrive in that Messenger chat. Switch the mode back to `suggest` afterwards and remove the token.
+Only with a ManyChat **test contact** (for example your own Messenger account): set `MANYCHAT_API_TOKEN` on the staging function, set `chat_ai.mode` to `auto` on staging, pass `STAGING_SUBSCRIBER` (your own ManyChat contact id) and run `node scripts/staging/send-as.mjs`; type customer messages there and the replies must arrive in that Messenger chat. Switch the mode back to `suggest` afterwards and remove the token.
 
 ## Vercel checklist (cannot be verified from the repository)
 - Project, Settings, Git: the **Production Branch** is `claude/topmop-operations-app-fas1zc`. `vercel.json` on `staging/ai-v2` sets `git.deploymentEnabled` to `false` for that branch, so it is not built at all.
