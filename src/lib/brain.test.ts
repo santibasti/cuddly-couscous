@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { tooBulky, contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -253,5 +253,21 @@ describe('contacts from before the AI chat', () => {
   });
   it('treats a contact from before the AI started as returning, with a day of grace', () => {
     expect(olderThanAi('2025-03-04T00:00:00Z', '2026-11-10T00:00:00Z')).toBe(true); expect(olderThanAi('2026-11-10T05:00:00Z', '2026-11-10T00:00:00Z')).toBe(false); expect(olderThanAi('2026-11-09T12:00:00Z', '2026-11-10T00:00:00Z')).toBe(false); expect(olderThanAi(undefined, '2026-11-10')).toBe(false);
+  });
+});
+
+describe('readable replies: two short paragraphs, no service list', () => {
+  const long = 'We offer residential and commercial window and glass cleaning, roof cleaning, exterior wall cleaning, solar panel cleaning, floor washing, and gutter cleaning, among others. For glass panel cleaning in Antipolo City, our package starts at ₱5,799 for up to 41 glass panels, and extra panels are ₱140 each. Our team will conduct on-site glass and solar panel counting and wall and floor area measurement before they begin the cleaning session.\n\nWould you like to book a date po?';
+  const good = 'For Antipolo City, our glass cleaning package starts at ₱5,799 for up to 41 glass panels, and extra panels are ₱140 each. Our team will conduct on-site glass and solar panel counting and wall and floor area measurement before they begin the cleaning session.\n\nWould you like to book a date po?';
+  it('flags a service list or a very long answer, not a tidy two-paragraph one or a fixed text', () => {
+    expect(tooBulky(long)).toBe(true); expect(tooBulky(good)).toBe(false); expect(tooBulky(COMMERCIAL_OCULAR)).toBe(false); expect(tooBulky(BOOKING_SEND_FORM)).toBe(false); expect(tooBulky('Sure po, ₱4,799 for 31 panels.')).toBe(false);
+  });
+  it('rewrites a bulky draft once into two short paragraphs', async () => {
+    let calls = 0; let ask = '';
+    const b = await runBrain({ mode: 'suggest', system: 's', messages: [{ role: 'user', content: 'hi' }], exec: async () => ({ text: '' }), callModel: async (_s: string, m: unknown[]) => { calls++; ask = JSON.stringify(m); return { stop_reason: 'end_turn', content: [{ type: 'text', text: calls === 1 ? long : good }] }; } } as never);
+    expect(b.reply).toBe(good); expect(calls).toBe(2); expect(ask).toMatch(/TWO short paragraphs/); expect(ask).toMatch(/never list our services/);
+  });
+  it('tells the AI the format and not to repeat the on-site line', () => {
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/at most TWO short paragraphs/); expect(s).toMatch(/once per conversation/);
   });
 });
