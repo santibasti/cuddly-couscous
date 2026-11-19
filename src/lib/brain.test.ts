@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -211,5 +211,12 @@ describe('upsell the core services', () => {
     const s = buildSystem({ sections: [], version: null, lang: 'en' });
     expect(s).toMatch(/UPSELL THE CORE SERVICES/); expect(s).toMatch(/wall\/floor cleaning, window\/glass cleaning, roof cleaning or solar panel cleaning/); expect(s).toMatch(/once per conversation/);
     expect(s).toMatch(/Do NOT upsell in the first reply/); expect(s).toMatch(/Never quote a price, bundle, discount/);
+  });
+});
+
+describe('residential: no ocular visit', () => {
+  it('has the approved wording and tells the AI to use it as written, residential only', () => {
+    expect(NO_OCULAR).toBe("For residential services, we don't do a preliminary ocular visit to keep costs down for you.\nInstead, our team will do an exact panel count when they arrive on-site. They will inform you of the final count and the total bill before they begin any work.");
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toContain(NO_OCULAR.split('\n')[0]); expect(s).toMatch(/never offer or promise one/); expect(s).toMatch(/commercial or special-access[^.]*do not use it/); expect(guardReply(NO_OCULAR, { amounts: [], booked: false }).ok).toBe(true);
   });
 });
