@@ -74,5 +74,10 @@
     "api/estimate-card.js": {
       "includeFiles": "api/fonts/**"
     }
+  },
+  "git": {
+    "deploymentEnabled": {
+      "staging/ai-v2": false
+    }
   }
 }

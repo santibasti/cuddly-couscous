@@ -1,9 +1,9 @@
 // Checks a reply before it goes to ManyChat, repairs it when it can, and falls back to a safe sentence when it cannot. Pure logic, no network.
-import { type ChatContext, type Intent, type ServiceKey, lastQuestionOf, questionTopic, servicesIn, nextQuestionHint } from './chatcontext.ts';
+import { type ChatContext, type Intent, type ServiceKey, lastQuestionOf, questionTopic, servicesIn, nextQuestionHint, nextBookingQuestion } from './chatcontext.ts';
 import { tooTagalog } from './brain.ts';
 
 export interface Check { ctx: ChatContext; intent: Intent; customerText: string; previousAi: string[]; first?: boolean }
-const FIXED = /ocular|Please copy this and fill in your details|^\s*Sure po, happy to help you book|^\s*Thank you po! Our technical team|^\s*Sure po, you may send them|^\s*Your booking is set for|TopMop provides professional exterior cleaning/i;
+const FIXED = /ocular|^\s*Thank you po! Our technical team|^\s*Sure po, you may send them|^\s*Your booking is set for|TopMop offers professional exterior cleaning/i;
 const sentences = (t: string) => String(t ?? '').replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/).filter(Boolean);
 const wordsIn = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 const BOOKING_OFFER = /(would you like|want|ready|interested|shall we|can i|may i|let me|i can) .{0,25}(to )?(book|schedule|reserve|set (?:up )?an? (?:appointment|booking|date))|book(?:ing)? a date|set an? appointment|available dates?|reservation/i;
@@ -23,7 +23,7 @@ export function validateReply(reply: string, v: Check): string[] {
   const q = lastQuestionOf(t);
   if (q) {
     const topic = questionTopic(q); const c = v.ctx;
-    const known = (topic === 'location' && c.location) || (topic === 'service' && c.service) || (topic === 'surface' && c.surface) || (topic === 'property' && c.property) || (topic === 'access' && c.access) || (topic === 'date' && c.schedule);
+    const known = (topic === 'location' && c.location) || (topic === 'service' && c.service) || (topic === 'surface' && c.surface) || (topic === 'property' && c.property) || (topic === 'access' && c.access) || (topic === 'date' && c.schedule) || (topic === 'name' && c.contact?.name) || (topic === 'mobile' && c.contact?.mobile) || (topic === 'address' && c.contact?.address);
     if (known) out.push(`repeated_question: the customer already told us the ${topic}; do not ask it again`);
     const prev = v.previousAi.length ? lastQuestionOf(v.previousAi[v.previousAi.length - 1]) : undefined;
     if (prev && prev.toLowerCase().replace(/\W+/g, ' ') === q.toLowerCase().replace(/\W+/g, ' ')) out.push('repeated_question: this is the same question we just asked');
@@ -34,6 +34,11 @@ export function validateReply(reply: string, v: Check): string[] {
   if (COUNT_TALK.test(t) && !COUNT_TALK.test(v.customerText) && !/\b(count|measure|how many|panels?|sqm|square|how .{0,20}(compute|bill|final|charged)|final (amount|price|bill))\b/i.test(v.customerText)) out.push('measurement: do not explain counting or measuring unless the customer asked');
   const bookingOk = v.intent === 'booking_request' || v.ctx.booking_requested;
   if (BOOKING_OFFER.test(t) && !bookingOk) out.push('premature_booking: do not offer or suggest booking; the customer has not asked to book');
+  if (q) {                                                                                                   // contact details belong to a booking, and come after the basics
+    const topic = questionTopic(q); const need = nextBookingQuestion(v.ctx);
+    if (['name', 'mobile', 'address'].includes(topic) && !bookingOk) out.push('premature_contact: do not ask for name, number or address unless the customer is booking');
+    else if (['name', 'mobile', 'address'].includes(topic) && need && ['location', 'service', 'date'].includes(need.topic)) out.push(`wrong_order: ask for the ${need.topic} first`);
+  }
   if (ASKS_PHOTO.test(t)) out.push('photos: never ask for photos or videos');
   if (ASKS_QTY.test(t)) out.push('quantities: never ask for panel counts or measurements');
   return out;
@@ -60,7 +65,7 @@ export function fallbackReply(v: Check, why: 'empty' | 'integration' | 'invalid'
   const c = v.ctx;
   if (v.intent === 'complaint' || v.intent === 'human_assistance') return { text: "I'm sorry for the inconvenience po. I'll refer this to our team right away.", handover: true };
   if (why === 'integration') return { text: 'Let me have our team verify that for you po.', handover: true };
-  if (v.intent === 'booking_request') { if (!c.location) return { text: 'Sure po, happy to help you book! May I know your location (city) po?', handover: false }; if (!c.service) return { text: 'Sure po! Which cleaning service would you like to book?', handover: false }; }
+  if (v.intent === 'booking_request' || c.booking_requested) { const q = nextBookingQuestion(c); if (q) return { text: q.topic === 'location' || q.topic === 'service' ? `Sure po, happy to help you book! ${q.text}` : q.text, handover: false }; return { text: 'Thank you po! Our team will confirm your booking details shortly.', handover: true }; }
   if (v.intent === 'price_inquiry') { if (!c.location) return { text: 'May I know your location (city) po so I can check the rate?', handover: false }; if (!c.service) return { text: 'Which cleaning service do you need po?', handover: false }; return { text: 'Our team will verify the exact rate for you po.', handover: true }; }
   if (c.acknowledgment) return { text: "You're welcome po!", handover: false };
   const hint = nextQuestionHint(c); if (hint) return { text: hint, handover: false };

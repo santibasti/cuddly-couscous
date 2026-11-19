@@ -1,0 +1,48 @@
+// Real-model scenario run against a DEPLOYED STAGING project: real chat-brain Edge Function, real Claude, real Supabase (staging), real price/date functions.
+// Run on your PC (Node 20+):
+//   $env:STAGING_URL="https://<staging-ref>.supabase.co"; $env:STAGING_KEY="<LEAD_INTAKE_KEY of staging>"; $env:STAGING_SERVICE_KEY="<service role key of staging>"
+//   node scripts/staging/run-scenarios.mjs
+// Optional actual delivery to a ManyChat TEST contact: put the AI in Full mode on staging, set MANYCHAT_API_TOKEN on the staging function, and pass  $env:STAGING_SUBSCRIBER="<your test contact's ManyChat id>"
+// It refuses to run against production, uses subscriber ids that start with "stg-", and deletes its own test rows at the end (staging only).
+const URL_ = (process.env.STAGING_URL || '').replace(/\/$/, ''), KEY = process.env.STAGING_KEY, SVC = process.env.STAGING_SERVICE_KEY, REAL_SUB = process.env.STAGING_SUBSCRIBER;
+if (!URL_ || !KEY || !SVC) { console.error('Set STAGING_URL, STAGING_KEY and STAGING_SERVICE_KEY.'); process.exit(2); }
+if (/ghbumxivporzsalivgyg/.test(URL_)) { console.error('STOP: that is the PRODUCTION project. This script only runs on staging.'); process.exit(3); }
+const H = { apikey: SVC, Authorization: `Bearer ${SVC}`, 'Content-Type': 'application/json' };
+const rest = async (p, init = {}) => { const r = await fetch(`${URL_}/rest/v1/${p}`, { headers: H, ...init }); const t = await r.text(); return t ? JSON.parse(t) : []; };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const stamp = Date.now(); let n = 0; const sent = [];
+const post = (sub, text) => fetch(`${URL_}/functions/v1/chat-brain?key=${encodeURIComponent(KEY)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sub, first_name: 'StagingTest', last_input_text: text, message_id: `${sub}-${++n}` }) }).then((r) => r.json());
+const convOf = async (sub) => (await rest(`chat_conversations?subscriber_id=eq.${encodeURIComponent(sub)}&select=*`))[0];
+const outs = async (sub) => { const c = await convOf(sub); return c ? rest(`chat_messages?conversation_id=eq.${c.id}&direction=eq.out&order=created_at&select=body,status,flags,error,created_at`) : []; };
+const waitFor = async (sub, count, ms = 60000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const o = await outs(sub); if (o.length >= count) return o; await sleep(1500); } return outs(sub); };
+const approve = async (sub) => { const c = await convOf(sub); if (c) await rest(`chat_messages?conversation_id=eq.${c.id}&direction=eq.out&status=eq.draft`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) }); };   // stands in for staff approval in AI Chat
+const talk = async (sub, msgs) => { let i = 0; for (const m of msgs) { await post(sub, m); i++; await waitFor(sub, i); await approve(sub); } return (await outs(sub)).at(-1)?.body ?? ''; };
+const last = (b) => b.split('\n\n---\n\n').pop().trim();
+const TL = new Set('ang ng sa mga ko mo ka ako ikaw siya kami tayo kayo sila ninyo niyo namin natin nila ito iyan iyon yung ay at para kung kapag pag saan ano anong anu alin paano bakit kailan magkano mayroon meron wala hindi huwag lang naman din rin na pa nang kasi pero dahil tamang presyo klaseng kailangan gusto pwede puwede salamat opo oo sige muna ba nga daw raw'.split(' '));
+const tagalog = (t) => { const w = t.toLowerCase().replace(/[^a-zñ\s'-]/g, ' ').split(/\s+/).filter(Boolean); return w.length >= 6 && w.filter((x) => TL.has(x) || /^(ma|mag|nag|pag|ipa|ire|i)-/.test(x)).length / w.length > 0.3; };
+const sentences = (t) => t.replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/).filter(Boolean);
+const base = (r) => ({ english: !tagalog(r), two_sentences: sentences(r).length <= 2, one_question: (r.match(/\?/g) ?? []).length <= 1, no_photo_ask: !/\b(send|share|upload)\b.{0,20}\b(photos?|pictures?|videos?)/i.test(r), no_quantity_ask: !/how many (glass |solar )?(panels|windows)|square met/i.test(r), not_the_fallback: !/refer this to our team so we can give you accurate|verify that for you/i.test(r) });
+const rows = []; const verdict = (name, reply, checks) => { const f = Object.entries(checks).filter(([, v]) => !v).map(([k]) => k); rows.push({ name, reply, fail: f }); console.log(`${f.length ? 'FAIL' : 'PASS'}  ${name}\n      reply: ${JSON.stringify(reply)}${f.length ? `\n      failed: ${f.join(', ')}` : ''}`); };
+const S = (tag) => { const s = `stg-${stamp}-${tag}`; sent.push(s); return s; };
+
+let r = last(await talk(S('A'), ['Binondo', 'Wall Cleaning']));
+verdict('A: remembers Binondo, asks the wall type, no booking, no location re-ask', r, { ...base(r), no_booking_offer: !/book|schedule|appointment|reserv/i.test(r), no_location_reask: !/location|city|where/i.test(r), wall_question: /exterior|interior/i.test(r) });
+r = last(await talk(S('B'), ['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?']));
+verdict('B: all facts remembered; a verified price comes back', r, { ...base(r), has_price: /₱\s?\d/.test(r), no_reasking: !/location|city|exterior or|interior|which service|what floor|how many floors/i.test(r), no_booking_offer: !/book|schedule|appointment|reserv/i.test(r) });
+r = last(await talk(S('C'), ['Makati', 'window cleaning', 'How much?', 'Okay, thank you.']));
+verdict('C: "Okay, thank you." brief, no booking offer', r, { ...base(r), no_booking_offer: !/book|schedule|appointment|reserv|date/i.test(r), brief: r.split(/\s+/).length <= 15 });
+const d1 = S('D1'); r = last(await talk(d1, ['Can I schedule tomorrow?']));
+verdict('D1: nothing known: asks only for the missing location (the welcome already did) or service', r, { english: !tagalog(r), no_form: !/Reservation Date:|Name:/i.test(r), no_two_questions: (r.match(/\?/g) ?? []).length <= 1 });
+const d2 = S('D2'); r = last(await talk(d2, ['Makati', 'window cleaning', 'Can I schedule tomorrow?']));
+verdict('D2: location and service known: the date is checked, then the next single question (name) or a date answer', r, { ...base(r), booking_step: /tomorrow|open|available|name|date|full name/i.test(r), no_form: !/Reservation Date:/i.test(r) });
+const d3 = S('D3'); for (const [i, m] of ['Quezon City', 'window cleaning', 'I want to book for Saturday', 'Maria Santos', '0917 555 1212', '12 Maple St, Brgy. Bahay Toro'].entries()) { await post(d3, m); await waitFor(d3, i + 1); await approve(d3); }
+const d3o = await outs(d3); verdict('D3: full progressive booking: one question per reply, never a form', d3o.map((o) => last(o.body)).join(' || '), { one_question_each: d3o.every((o) => (o.body.match(/\?/g) ?? []).length <= 2), no_form: d3o.every((o) => !/Reservation Date:/i.test(o.body)), asked_name: d3o.some((o) => /name/i.test(o.body)), asked_mobile: d3o.some((o) => /mobile|number/i.test(o.body)), asked_address: d3o.some((o) => /address/i.test(o.body)) });
+r = last(await talk(S('E'), ['Magkano po magpalinis ng bintana namin sa bahay sa Makati?']));
+verdict('E: pure Tagalog question: English / English-dominant Taglish reply with the Makati price', r, { ...base(r), has_price: /₱\s?4,?799/.test(r) });
+const f = S('F'); await Promise.all(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?'].map((t, i) => sleep(i * 300).then(() => post(f, t)))); const fo = await waitFor(f, 1, 90000); await sleep(8000); const fo2 = await outs(f);
+r = last(fo2.at(-1)?.body ?? ''); verdict('F: five rapid messages: one reply, all facts used', r, { one_reply: fo2.length === 1, ...base(r), has_price: /₱\s?\d/.test(r) });
+const g = S('G'); r = last(await talk(g, ['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'cream paint', 'gated village', 'weekdays only', 'two coats', 'its old', 'any scratches?', 'and stains?', 'rust on some parts', 'how long does it take?', 'is it safe for the paint?', 'How much?']));
+verdict('G: 15 messages later the price still uses wall / exterior', r, { ...base(r), has_price: /₱\s?\d/.test(r), no_reasking: !/location|city|exterior or|interior|which service/i.test(r) });
+if (REAL_SUB) { await post(REAL_SUB, 'Staging delivery test: How much for window cleaning in Makati?'); console.log(`\nSent a test message as ManyChat contact ${REAL_SUB}. In Full mode the reply should arrive in that Messenger chat within ~15 seconds; check it by eye.`); }
+for (const s of sent) { const c = await convOf(s); if (c) { await rest(`chat_messages?conversation_id=eq.${c.id}`, { method: 'DELETE' }); await rest(`chat_conversations?id=eq.${c.id}`, { method: 'DELETE' }); } }   // clean up the test rows (staging only)
+const failed = rows.filter((x) => x.fail.length); console.log(`\n${rows.length - failed.length}/${rows.length} passed`); process.exit(failed.length ? 1 : 0);

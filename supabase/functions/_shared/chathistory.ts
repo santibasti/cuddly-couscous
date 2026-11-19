@@ -10,7 +10,7 @@ export function buildHistory(rows: HistRow[], maxChars = 7000): Turn[] {
     const delivered = r.direction === 'in' ? r.status === 'received' : r.status === 'sent' || r.status === 'approved'; if (!delivered) continue;
     const role: Turn['role'] = r.direction === 'in' ? 'user' : 'assistant';
     let body = isPhotoMessage(r.body) ? PHOTO_MARKER : String(r.body ?? '').trim(); if (!body) continue;
-    if (role === 'assistant' && /TopMop provides professional exterior cleaning/i.test(body)) { const rest = body.includes(MSG_SPLIT) ? body.split(MSG_SPLIT).slice(1).join(MSG_SPLIT).trim() : ''; body = rest ? `[TopMop welcome message was sent] ${rest}` : '[TopMop welcome message was sent]'; }   // the long welcome is not repeated in every request
+    if (role === 'assistant' && /TopMop offers professional exterior cleaning/i.test(body)) { const rest = body.includes(MSG_SPLIT) ? body.split(MSG_SPLIT).slice(1).join(MSG_SPLIT).trim() : ''; body = rest ? `[TopMop welcome message was sent] ${rest}` : '[TopMop welcome message was sent]'; }   // the long welcome is not repeated in every request
     const last = turns[turns.length - 1]; if (last && last.role === role) last.content += `\n${body}`; else turns.push({ role, content: body });
   }
   while (turns.length && turns[0].role !== 'user') turns.shift();                       // never start on an assistant turn

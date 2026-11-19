@@ -3,14 +3,23 @@
 // and what we have already said to them (explained, last question) read ONLY from replies that were really delivered, never from unsent drafts.
 import { findRate } from './rates.ts';
 
+/** A Philippine mobile number in a message or field: 09171234567, +63 917 123 4567, 639171234567 -> 09171234567 (undefined when there is none). */
+export function mobileFrom(...parts: unknown[]): string | undefined {
+  for (const raw of parts) {
+    const t = String(raw ?? ''); const m = /(?:\+?63|0)?\s?9\d{2}[\s-]?\d{3}[\s-]?\d{4}/.exec(t); if (!m) continue;
+    const d = m[0].replace(/\D/g, ''); if (/^09\d{9}$/.test(d)) return d; if (/^639\d{9}$/.test(d)) return `0${d.slice(2)}`; if (/^9\d{9}$/.test(d)) return `0${d}`;
+  }
+  return undefined;
+}
 export type Intent = 'general_inquiry' | 'service_qualification' | 'price_inquiry' | 'technical_question' | 'booking_request' | 'complaint' | 'human_assistance';
 export type Stage = 'understand' | 'assist' | 'confidence' | 'booking';
-export type Topic = 'location' | 'service' | 'surface' | 'property' | 'access' | 'date' | 'booking' | 'contact' | 'other';
+export type Topic = 'location' | 'service' | 'surface' | 'property' | 'access' | 'date' | 'booking' | 'name' | 'mobile' | 'address' | 'contact' | 'other';
+export interface Contact { name?: string; mobile?: string; email?: string; address?: string }
 export type ServiceKey = 'window' | 'wall' | 'roof' | 'solar' | 'floor' | 'gutter' | 'ceiling' | 'acp' | 'facade';
 export interface ChatContext {
   v: 1;
   location?: string; service?: ServiceKey; services_seen?: ServiceKey[]; surface?: 'interior' | 'exterior'; property?: 'residential' | 'commercial';
-  access?: string; schedule?: string;
+  access?: string; schedule?: string; contact?: Contact;
   intent: Intent; acknowledgment?: boolean; stage: Stage;
   /** from delivered replies only */
   last_question?: Topic; explained: string[]; price_quoted?: boolean; booking_offered?: boolean;
@@ -22,6 +31,7 @@ export function readContext(raw: unknown): ChatContext {
   const c = emptyContext(); if (!raw || typeof raw !== 'object') return c; const r = raw as Record<string, unknown>;
   const str = (v: unknown, n = 80) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : undefined);
   c.location = str(r.location); c.access = str(r.access); c.schedule = str(r.schedule);
+  if (r.contact && typeof r.contact === 'object') { const k = r.contact as Record<string, unknown>; const ct: Contact = { name: str(k.name, 80), mobile: str(k.mobile, 20), email: str(k.email, 80), address: str(k.address, 200) }; if (Object.values(ct).some(Boolean)) c.contact = ct; }
   const sv = (v: unknown) => (['window', 'wall', 'roof', 'solar', 'floor', 'gutter', 'ceiling', 'acp', 'facade'].includes(String(v)) ? (v as ServiceKey) : undefined);
   c.service = sv(r.service); c.services_seen = Array.isArray(r.services_seen) ? (r.services_seen as unknown[]).map(sv).filter(Boolean) as ServiceKey[] : undefined;
   if (r.surface === 'interior' || r.surface === 'exterior') c.surface = r.surface; if (r.property === 'residential' || r.property === 'commercial') c.property = r.property;
@@ -47,9 +57,9 @@ const YES = /^\s*(?:yes|yes please|yeah|yep|oo|opo|sige|sure|please do|go ahead|
 export const isAcknowledgment = (t: string) => ACK.test(String(t ?? ''));
 export const isYes = (t: string) => YES.test(String(t ?? '')) && !ACK.test(String(t ?? '').replace(/^\s*sige\b/i, 'sigex'));   // a bare "ok", "thanks" or "noted" is never a yes to a booking offer
 
-export interface Facts { location?: string; service?: ServiceKey; surface?: 'interior' | 'exterior'; property?: 'residential' | 'commercial'; access?: string; schedule?: string }
+export interface Facts { location?: string; service?: ServiceKey; surface?: 'interior' | 'exterior'; property?: 'residential' | 'commercial'; access?: string; schedule?: string; contact?: Contact }
 /** What one customer message adds to what we know. `lastQuestion` = what we asked last (so a bare "Binondo" after "your location?" is read as a location). */
-export function extractFacts(text: string, lastQuestion?: Topic, known: Facts = {}): Facts {
+export function extractFacts(text: string, lastQuestion?: Topic, known: Facts & { booking_requested?: boolean } = {}): Facts {
   const t = String(text ?? '').trim(); const f: Facts = {}; if (!t) return f;
   const place = findRate(t)?.place; if (place) f.location = place;
   else {
@@ -61,7 +71,18 @@ export function extractFacts(text: string, lastQuestion?: Topic, known: Facts = 
   if (/\b(exterior|outside|outdoor|labas|external)\b/i.test(t)) f.surface = 'exterior'; else if (/\b(interior|inside|indoor|loob|internal)\b/i.test(t)) f.surface = 'interior';
   if (COMMERCIAL.test(t)) f.property = 'commercial'; else if (RESIDENTIAL.test(t)) f.property = 'residential';
   const acc = /\b(ground floor|1st floor|first floor|2nd floor|second floor|3rd floor|third floor|bungalow|single[- ]storey|two[- ]storey|three[- ]storey|\d{1,2}[- ]?(?:storey|story|floors?|levels?)|\d{1,2}(?:st|nd|rd|th) floor|penthouse|rooftop)\b/i.exec(t); if (acc) f.access = acc[0].toLowerCase();
-  const sch = /\b(today|tomorrow|bukas|ngayon|next week|this week|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\b/i.exec(t); if (sch && wantsToBook(t) || (sch && /\b(can|pwede|available|schedule|come|visit)\b/i.test(t))) f.schedule = sch[0];
+  const sch = /\b(today|tomorrow|bukas|ngayon|next week|this week|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\b/i.exec(t); if (sch && (wantsToBook(t) || lastQuestion === 'date' || known.booking_requested || /\b(can|pwede|available|schedule|come|visit)\b/i.test(t))) f.schedule = sch[0].toLowerCase();
+  // contact details, for a booking: labelled ("Name: ..."), said outright ("my name is ..."), or the answer to the question we just asked
+  const ct: Contact = {};
+  const mob = mobileFrom(t); if (mob) ct.mobile = mob;
+  const em = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/.exec(t); if (em) ct.email = em[0];
+  const nm = /(?:^|\n)\s*(?:full\s+)?name\s*[:\-]\s*([^\n]{2,60})|\b(?:my name is|i am|i'm|this is|ako si|ako po si)\s+([A-ZÑ][\p{L}.'-]+(?:\s+[A-ZÑ][\p{L}.'-]+){0,3})/iu.exec(t);
+  if (nm) ct.name = (nm[1] ?? nm[2]).trim().replace(/[.,]+$/, '');
+  else if (lastQuestion === 'name' && /^[\p{L}.'\- ]{2,50}$/u.test(t) && t.split(/\s+/).length <= 5 && !ACK.test(t) && !YES.test(t) && !NOT_PLACE.test(t)) ct.name = t.replace(/\s+/g, ' ');
+  const ad = /(?:^|\n)\s*(?:complete\s+)?(?:service\s+|property\s+|home\s+)?address(?:\s*\(with city\))?\s*[:\-]\s*([^\n]{4,200})/i.exec(t);
+  if (ad) ct.address = ad[1].trim(); else if (lastQuestion === 'address' && t.length >= 6 && !ACK.test(t) && !YES.test(t)) ct.address = t.replace(/\s+/g, ' ').slice(0, 200);
+  if (lastQuestion === 'mobile' && !ct.mobile && /^[\d+\s()-]{7,20}$/.test(t)) ct.mobile = t.trim();
+  if (Object.keys(ct).length) f.contact = ct;
   return f;
 }
 const HUMAN = /\b(speak|talk|connect|transfer|call)\b.{0,30}\b(person|human|agent|staff|admin|manager|someone|owner|representative)\b|\b(real person|human agent|your manager|owner)\b|kausapin|tao\b/i;
@@ -83,6 +104,7 @@ export function classifyIntent(text: string, ctx: ChatContext, facts: Facts = {}
 /** Adds what a message told us to what we knew. The newest value wins (a correction replaces the old one); a field the message does not mention is kept. */
 export function mergeFacts(ctx: ChatContext, f: Facts): ChatContext {
   const n: ChatContext = { ...ctx, explained: [...ctx.explained] };
+  if (f.contact) n.contact = { ...(n.contact ?? {}), ...f.contact };
   if (f.location) n.location = f.location; if (f.surface) n.surface = f.surface; if (f.property) n.property = f.property; if (f.access) n.access = f.access; if (f.schedule) n.schedule = f.schedule;
   if (f.service) { if (n.service && n.service !== f.service) n.surface = f.surface; n.service = f.service; n.services_seen = [...new Set([...(n.services_seen ?? []), f.service])]; }   // a different service: the surface answered for the old one no longer applies
   return n;
@@ -92,7 +114,7 @@ export const deriveStage = (c: ChatContext): Stage => c.booking_requested || c.i
 export function foldMessages(ctx: ChatContext, texts: string[]): ChatContext {
   let c = ctx;
   for (const t of texts) {
-    const f = extractFacts(t, c.last_question, { location: c.location }); c = mergeFacts(c, f); const i = classifyIntent(t, c, f);
+    const f = extractFacts(t, c.last_question, { location: c.location, booking_requested: c.booking_requested }); c = mergeFacts(c, f); const i = classifyIntent(t, c, f);
     const stay = c.booking_requested && !i.acknowledgment && (i.intent === 'service_qualification' || i.intent === 'general_inquiry');   // while a booking is being arranged, the customer's answers belong to it
     c = { ...c, intent: stay ? 'booking_request' : i.intent, acknowledgment: i.acknowledgment, booking_requested: c.booking_requested || i.intent === 'booking_request' };   // once the customer asked to book, scheduling talk stays allowed
   }
@@ -102,14 +124,17 @@ export function foldMessages(ctx: ChatContext, texts: string[]): ChatContext {
 /* ---------- what we have already told the customer (delivered replies only) ---------- */
 export function questionTopic(q: string): Topic {
   const s = q.toLowerCase();
-  if (/\b(reservation date|what date|which date|preferred date|when would|what day)\b/.test(s)) return 'date';
+  if (/\b(reservation date|what date|which date|preferred date|what day|when would|when do you want|date would you)\b/.test(s)) return 'date';
+  if (/\b(full name|your name|name po|may i have your name)\b/.test(s)) return 'name';
+  if (/\b(mobile|contact number|phone|number to reach|best number)\b/.test(s)) return 'mobile';
+  if (/\b(complete address|full address|street|house number|property address|address of)\b/.test(s)) return 'address';
   if (/\b(book|booking|reserve|reservation|appointment|schedule)\b/.test(s)) return 'booking';
-  if (/\b(location|city|where|address)\b/.test(s)) return 'location';
+  if (/\b(location|city|where)\b/.test(s)) return 'location';
   if (/\b(interior|exterior|inside|outside|indoor|outdoor)\b/.test(s)) return 'surface';
   if (/\b(residential|commercial|house|business|property type|home or)\b/.test(s)) return 'property';
   if (/\b(floor|storey|story|level|access|height|how tall|how high)\b/.test(s)) return 'access';
   if (/\b(which|what|type of)\b.{0,25}\b(service|cleaning)\b|\bservice (do you|would you|you need)/.test(s)) return 'service';
-  if (/\b(name|mobile|number|email|contact)\b/.test(s)) return 'contact';
+  if (/\b(name|email)\b/.test(s)) return 'contact';
   return 'other';
 }
 export const lastQuestionOf = (text: string): string | undefined => { const qs = String(text ?? '').split(/(?<=[.!?])\s+/).filter((x) => x.includes('?')); return qs.length ? qs[qs.length - 1].trim() : undefined; };
@@ -117,7 +142,7 @@ export const lastQuestionOf = (text: string): string | undefined => { const qs =
 export function analyzeDelivered(replies: string[]): { explained: string[]; lastQuestion?: Topic; priceQuoted: boolean; bookingOffered: boolean } {
   const ex = new Set<string>(); let priceQuoted = false, bookingOffered = false;
   for (const r of replies) {
-    if (/TopMop provides professional exterior cleaning/i.test(r)) ex.add('welcome');
+    if (/TopMop offers professional exterior cleaning/i.test(r)) ex.add('welcome');
     if (/(on-?site|exact panel count|final count|counting).{0,80}(count|measure|bill)|panels? (is|are)? ?counted|one side of a (glass )?panel/i.test(r)) ex.add('counting');
     if (/preliminary ocular visit/i.test(r)) ex.add('ocular_residential'); if (/ocular fee/i.test(r)) ex.add('ocular_commercial');
     if (/₱\s?\d/.test(r)) priceQuoted = true;
@@ -150,12 +175,22 @@ const NEXT: Record<Intent, string> = {
   service_qualification: 'Acknowledge what they told you and, only if still needed, ask the ONE most useful next question (see SUGGESTED NEXT QUESTION). Do not quote a price unless asked and do not mention booking.',
   price_inquiry: 'If the location and the service are known, call estimate and give the price plainly. If one is missing, ask only for the missing one. Do not mention booking.',
   technical_question: 'Answer the question directly and briefly from the rulebook. No sales, no booking.',
-  booking_request: 'The customer wants to book. If the location or the service is missing ask only for the missing one. When both are known check the date with check_date (if they gave one) and then send the booking form.',
+  booking_request: 'The customer wants to book. Arrange it as a short conversation: one natural question at a time (see NEXT BOOKING QUESTION). Never send a form or a list of questions.',
   complaint: 'Apologise in one short sentence and use needs_human. Do not argue, offer refunds or sell anything.',
   human_assistance: 'Use needs_human and tell the customer a team member will take over.',
 };
+/** Booking is a short conversation, not a form: one natural question at a time, in this order. `null` = everything needed is known. */
+export function nextBookingQuestion(c: ChatContext): { topic: Topic; text: string } | null {
+  if (!c.location) return { topic: 'location', text: 'May I know your location (city) po?' };
+  if (!c.service) return { topic: 'service', text: 'Which cleaning service would you like to book po?' };
+  if (!c.schedule) return { topic: 'date', text: 'What date would you prefer po?' };
+  if (!c.contact?.name) return { topic: 'name', text: 'May I have your full name po?' };
+  if (!c.contact?.mobile) return { topic: 'mobile', text: 'What is the best mobile number to reach you po?' };
+  if (!c.contact?.address) return { topic: 'address', text: 'What is the complete address of the property po?' };
+  return null;
+}
 export function contextBlock(c: ChatContext): string {
-  const known = [c.location && `location: ${c.location}`, c.service && `service: ${serviceName(c.service)}`, c.surface && `surface: ${c.surface}`, c.property && `property: ${c.property}`, c.access && `building level/access: ${c.access}`, c.schedule && `preferred schedule: ${c.schedule}`].filter(Boolean);
+  const known = [c.location && `location: ${c.location}`, c.service && `service: ${serviceName(c.service)}`, c.surface && `surface: ${c.surface}`, c.property && `property: ${c.property}`, c.access && `building level/access: ${c.access}`, c.schedule && `preferred schedule: ${c.schedule}`, c.contact?.name && `customer name: ${c.contact.name}`, c.contact?.mobile && `mobile: ${c.contact.mobile}`, c.contact?.address && `property address: ${c.contact.address}`, c.contact?.email && `email: ${c.contact.email}`].filter(Boolean);
   const hint = nextQuestionHint(c);
   return [
     `KNOWN FACTS (from the customer's own messages; never ask for these again): ${known.length ? known.join('; ') : 'nothing yet'}.`,
@@ -163,11 +198,6 @@ export function contextBlock(c: ChatContext): string {
     c.explained.length ? `ALREADY EXPLAINED to the customer (do not repeat): ${c.explained.join(', ')}.` : '',
     c.price_quoted ? 'A price was already given to the customer.' : '',
     `CURRENT INTENT: ${c.intent}${c.acknowledgment ? ' (a simple acknowledgment)' : ''}. STAGE: ${c.stage}. ${NEXT[c.intent]}`,
-    c.intent !== 'booking_request' && !c.booking_requested && hint ? `SUGGESTED NEXT QUESTION (only if it is really needed): ${hint}` : '',
+    c.intent === 'booking_request' || c.booking_requested ? (() => { const q = nextBookingQuestion(c); return q ? `NEXT BOOKING QUESTION (ask exactly this one, nothing else; for the date, check it with check_date first and, if it is not open, offer the nearest open dates instead): ${q.text}` : 'ALL BOOKING DETAILS ARE KNOWN: call book_date with the service, date, name, mobile and address (the system writes the confirmation).'; })() : hint ? `SUGGESTED NEXT QUESTION (only if it is really needed): ${hint}` : '',
   ].filter(Boolean).join('\n');
-}
-/** The booking form, without the lines the customer already answered. */
-export function bookingForm(c: ChatContext): string {
-  const lines = ['Name:', 'Address:', 'Contact Number:', 'Email:', ...(c.access ? [] : ['No. of House Storey:']), ...(c.schedule ? [] : ['Reservation Date:']), ...(c.service ? [] : ['Service Window, Wall, Roof, Solar, Floor?'])];
-  return `Please copy this and fill in your details po:\n${lines.join('\n')}`;
 }

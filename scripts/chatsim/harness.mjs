@@ -7,9 +7,9 @@ const here = path.dirname(new URL(import.meta.url).pathname); const root = path.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chatsim-')); const out = path.join(tmp, 'bundle.mjs');
 execSync(`npx rolldown supabase/functions/chat-brain/index.ts --format esm --platform node -o ${out} --external 'npm:@supabase/supabase-js@2'`, { cwd: root, stdio: 'pipe' });
 fs.writeFileSync(out, fs.readFileSync(out, 'utf8').replaceAll('npm:@supabase/supabase-js@2', pathToFileURL(path.join(here, 'fakesb.mjs')).href));
-let handler; const envs = { LEAD_INTAKE_KEY: 'sim-key', SUPABASE_URL: 'https://sim.invalid', SUPABASE_SERVICE_ROLE_KEY: 'x', ANTHROPIC_API_KEY: process.env.CHATSIM_REAL ? (process.env.ANTHROPIC_API_KEY || '') : 'sim', CHAT_DEBOUNCE_MS: '0' };
+const handlers = []; let handler; const envs = { LEAD_INTAKE_KEY: 'sim-key', SUPABASE_URL: 'https://sim.invalid', SUPABASE_SERVICE_ROLE_KEY: 'x', ANTHROPIC_API_KEY: process.env.CHATSIM_REAL ? (process.env.ANTHROPIC_API_KEY || '') : 'sim', CHAT_DEBOUNCE_MS: '0' };
 export const envs_ = envs;
-globalThis.Deno = { env: { get: (k) => envs[k] }, serve: (h) => { handler = h; } };
+globalThis.Deno = { env: { get: (k) => envs[k] }, serve: (h) => { handlers.push(h); handler = handlers[0]; } };
 export const modelCalls = []; export const state = { script: null }; export const waits = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, init) => {
@@ -33,6 +33,12 @@ const tools = async (u, init) => {
   return new Response(JSON.stringify({ ok: false, error: 'not simulated' }), { status: 500 });
 };
 await import(pathToFileURL(out).href);
+// the recovery function (answers messages a stopped worker left behind)
+const outRec = path.join(tmp, 'recover.mjs');
+execSync(`npx rolldown supabase/functions/chat-recover/index.ts --format esm --platform node -o ${outRec} --external 'npm:@supabase/supabase-js@2'`, { cwd: root, stdio: 'pipe' });
+fs.writeFileSync(outRec, fs.readFileSync(outRec, 'utf8').replaceAll('npm:@supabase/supabase-js@2', pathToFileURL(path.join(here, 'fakesb.mjs')).href));
+await import(pathToFileURL(outRec).href);
+export const recover = async (ageMs = 60_000) => { for (const m of DB.chat_messages) if (m.direction === 'in' && !m.handled_at) m.created_at = new Date(Date.now() - ageMs).toISOString(); const r = await handlers[1](new Request('https://sim.invalid/', { method: 'POST', body: '{}' })); return r.json(); };
 export const rb = (sections) => [{ status: 'published', version: 1, sections }];
 export const reset = (mode = 'suggest', sections = [{ key: 'a', title: 'Identity', body: 'You are TopMop customer service.' }]) => { for (const k of Object.keys(DB)) DB[k].length = 0; DB.settings = [{ id: 'main', data: { chat_ai: { mode }, company: { phone: '0000' } } }]; DB.ai_rulebook = rb(sections); modelCalls.length = 0; state.script = null; state.tools = null; };
 let n = 0;

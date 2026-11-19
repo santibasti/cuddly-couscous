@@ -25,7 +25,6 @@ describe('reply validation', () => {
     const b = foldMessages(ctx, ['Can I schedule tomorrow?']); expect(validateReply('Tomorrow is open po. What time suits you?', v('Can I schedule tomorrow?', b)).join()).not.toMatch(/premature/);
     expect(validateReply('The team counts the panels on site and confirms the final count before work starts po.', v('How do you count the panels?')).join()).not.toMatch(/measurement/);
     expect(validateReply("For residential services, we don't do a preliminary ocular visit to keep costs down for you.\nInstead, our team will do an exact panel count when they arrive on-site. They will inform you of the final count and the total bill before they begin any work.", v('Do you do ocular?'))).toEqual([]);
-    expect(validateReply('Please copy this and fill in your details po:\nName:\nAddress:', v('book'))).toEqual([]);
   });
   it('repairs by removing the bad sentences', () => {
     const bad = 'Exterior wall cleaning in Manila is ₱125 per sqm. Our team will conduct on-site glass and solar panel counting and wall and floor area measurement. Would you like to book a date po?';
@@ -34,8 +33,18 @@ describe('reply validation', () => {
     expect(repairReply('Is it exterior? Is it ground floor?', ['one_question'], v('hi'))).toBe('Is it exterior?');
   });
   it('has a safe fallback for each situation', () => {
-    expect(fallbackReply(v('hi', emptyContext(), 'booking_request')).text).toMatch(/location \(city\)/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'I want to book']), 'booking_request')).text).toMatch(/Which cleaning service/);
+    expect(fallbackReply(v('hi', emptyContext(), 'booking_request')).text).toMatch(/location \(city\)/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'I want to book']), 'booking_request')).text).toMatch(/Which cleaning service/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'window', 'I want to book']), 'booking_request')).text).toMatch(/What date/);
     expect(fallbackReply(v('How much?', ctx), 'integration')).toEqual({ text: 'Let me have our team verify that for you po.', handover: true }); expect(fallbackReply(v('You damaged it', ctx, 'complaint')).handover).toBe(true);
     expect(fallbackReply(v('How much?', emptyContext(), 'price_inquiry')).text).toMatch(/location/); expect(ackReply()).toMatch(/You're welcome/);
+  });
+});
+
+describe('booking questions are validated', () => {
+  const b = foldMessages(emptyContext(), ['Makati', 'window cleaning', 'I want to book']); const vb = (t: string, c = b) => ({ ctx: c, intent: c.intent, customerText: t, previousAi: [] as string[] });
+  it('allows the next booking question, blocks contact questions outside a booking and out of order', () => {
+    expect(validateReply('What date would you prefer po?', vb('I want to book'))).toEqual([]);
+    expect(validateReply('May I have your full name po?', vb('I want to book')).join()).toMatch(/wrong_order: ask for the date first/);
+    const p = foldMessages(emptyContext(), ['Makati', 'window cleaning', 'How much?']); expect(validateReply('May I have your full name po?', vb('How much?', p)).join()).toMatch(/premature_contact/);
+    const ready = foldMessages(b, ['Saturday']); expect(validateReply('May I have your full name po?', vb('Saturday', ready))).toEqual([]); expect(validateReply('What date would you prefer po?', vb('Saturday', ready)).join()).toMatch(/repeated_question/);
   });
 });

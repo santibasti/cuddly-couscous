@@ -100,26 +100,7 @@ const ALIASES = {
 	"Parañaque": ["paranaque"],
 	"Las Piñas": ["las pinas"],
 	"Dasmariñas": ["dasmarinas", "dasma"],
-	"San Jose del Monte": ["san jose del monte", "sjdm"],
-	"Manila": [
-		"manila",
-		"binondo",
-		"intramuros",
-		"ermita",
-		"malate",
-		"paco",
-		"pandacan",
-		"quiapo",
-		"sampaloc",
-		"san miguel manila",
-		"san nicolas",
-		"santa cruz manila",
-		"santa ana manila",
-		"tondo",
-		"port area",
-		"sta mesa",
-		"santa mesa"
-	]
+	"San Jose del Monte": ["san jose del monte", "sjdm"]
 };
 /** Finds the city (or province) in an address; the longest name wins and "Metro Manila" is never mistaken for the city of Manila. */
 function findRate(address) {

@@ -18,23 +18,10 @@ export const TOOLS = [
 export const READ_TOOLS = ['estimate', 'check_date'];
 
 const firstName = (n?: string | null) => { const w = String(n ?? '').trim().split(/\s+/)[0] ?? ''; return /^[\p{L}'.-]{2,30}$/u.test(w) ? w : ''; };
-/** The first message of every conversation starts with this welcome (written by TopMop, added by the system, never by the AI) so every customer sees all four services, even one who only asked about windows. */
-export const WELCOME_TEXT = `Hello po, Ma’am/Sir! Good day.
-TopMop provides professional exterior cleaning and property-care services—helping keep your home clean, presentable, and well-maintained.
-
-🪟 External & Internal Glass/Window Cleaning
-Using our Water-Fed Pole and RO/DI Infinity Series System for a clear, spot-free finish—without the need for scaffolding on most standard areas.
-
-🧼 Wall Cleaning
-Safe and effective cleaning for exterior walls to remove accumulated dirt and organic buildup.
-
-🏠 Roof Cleaning
-Removes dirt, debris, algae, and stains to restore a cleaner and more well-maintained roof appearance.
-
-☀️ Solar Panel Cleaning
-Gentle, residue-free cleaning to help panels receive maximum sunlight exposure.
-
-May we know your location po, Ma’am/Sir?`;
+/** The first message of every conversation starts with this short welcome (written by TopMop, added by the system, never by the AI): the four services and the question about the location. */
+export const WELCOME_TEXT = `Hello po, good day!
+TopMop offers professional exterior cleaning: 🪟 windows and glass, 🧼 walls, 🏠 roofs and ☀️ solar panels.
+May we know your location po?`;
 /** The first reply: the welcome, then the answer to what the customer actually asked (if anything). */
 /** A reply can be several chat messages: a line with only --- starts the next one (the customer sees them as separate bubbles; at most 5). */
 export const MSG_SPLIT = '\n\n---\n\n';
@@ -43,15 +30,9 @@ export const flattenMessages = (t: string): string => splitMessages(t).join('\n\
 /** How to address the customer: Sir or Ma’am when the chat platform tells us the customer's gender, otherwise Ma’am/Sir. Never guessed from a name. */
 export type Honorific = 'Sir' | 'Ma’am' | 'Ma’am/Sir';
 export const honorificFor = (gender: unknown): Honorific => { const g = String(gender ?? '').trim().toLowerCase(); return /^(m$|male|man|lalaki|boy)/.test(g) ? 'Sir' : /^(f$|female|woman|babae|girl)/.test(g) ? 'Ma’am' : 'Ma’am/Sir'; };
-export const composeFirst = (ai: string, h: Honorific = 'Ma’am/Sir') => { const w = WELCOME_TEXT.split('Ma’am/Sir').join(h); const a = (ai ?? '').trim(); return !a || /^NO_ANSWER\W*$/i.test(a) ? w : `${w}${MSG_SPLIT}${a}`; };
+export const composeFirst = (ai: string) => { const a = (ai ?? '').trim(); return !a || /^NO_ANSWER\W*$/i.test(a) ? WELCOME_TEXT : `${WELCOME_TEXT}${MSG_SPLIT}${a}`; };
 /** A customer who asks how to book, or wants to book: the booking-details request goes out as its own message. */
-export { wantsToBook } from './chatcontext.ts';
-/** The booking-details form (the customer copies it and fills it in). Sent as its own message. */
-export const BOOKING_FORM = 'Please copy this and fill in your details po:\nName:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?';
-/** The customer wants to book but we do not know the city yet: ask only for it. */
-export const BOOKING_HOWTO = 'Sure po, happy to help you book! May I know your location (city) po?';
-/** The customer wants to book and the city is known: a short first message, then the form as its own message. */
-export const BOOKING_SEND_FORM = `Sure po, happy to help you book!${MSG_SPLIT}${BOOKING_FORM}`;
+export { wantsToBook, mobileFrom } from './chatcontext.ts';
 /** A customer's photo arrives as a link to the picture (or the marker sentence). Same test as src/lib/photomsg.ts. */
 export const PHOTO_MARKER = '[The customer sent a photo or attachment]';
 export const isPhotoMessage = (t: string): boolean => {
@@ -66,14 +47,6 @@ export const NO_OCULAR = "For residential services, we don't do a preliminary oc
 export const OCULAR_FEE = 2500;
 export const COMMERCIAL_OCULAR = "For commercial properties, may we have the property address po? Our team will do an initial assessment first, before scheduling an ocular visit. The ocular fee is ₱2,500, which is deductible once you proceed with the service.";
 
-/** A Philippine mobile number in a message or field: 09171234567, +63 917 123 4567, 639171234567 -> 09171234567 (undefined when there is none). */
-export function mobileFrom(...parts: unknown[]): string | undefined {
-  for (const raw of parts) {
-    const t = String(raw ?? ''); const m = /(?:\+?63|0)?\s?9\d{2}[\s-]?\d{3}[\s-]?\d{4}/.exec(t); if (!m) continue;
-    const d = m[0].replace(/\D/g, ''); if (/^09\d{9}$/.test(d)) return d; if (/^639\d{9}$/.test(d)) return `0${d.slice(2)}`; if (/^9\d{9}$/.test(d)) return `0${d}`;
-  }
-  return undefined;
-}
 /** ManyChat tags (best effort: the field may be missing): a tag such as "Existing customer" or "Returning" marks a returning customer. */
 export function returningByTag(tags: unknown): string | undefined {
   const list = Array.isArray(tags) ? tags : []; for (const t of list) { const n = String(typeof t === 'object' && t ? (t as { name?: unknown }).name ?? '' : t ?? ''); if (/existing|returning|regular|repeat|past (customer|client)/i.test(n) && !/new|lead|prospect/i.test(n)) return n; }
@@ -98,6 +71,11 @@ export function returningBlock(r: ReturningInfo): string {
   const hist = [r.jobs?.length ? `Jobs: ${r.jobs.join('; ')}.` : '', r.inquiries?.length ? `Earlier inquiries: ${r.inquiries.join('; ')}.` : ''].filter(Boolean).join(' ');
   return `- RETURNING CUSTOMER: this is NOT a new inquiry. ${r.note}.${known} ${hist} Do not treat them as new and do not use the welcome message. In your first reply open with a short "Welcome back po!" (never repeat it later), then answer what they asked. Do not ask again for details we already have on file (name, mobile, address, email); in the booking form leave those lines out, or ask them to confirm in one short line. If you do not know what was discussed before, say the team will check, and use needs_human when the customer refers to a past conversation or quote you cannot see.`;
 }
+/** A company phone from Settings, or nothing: a placeholder (0000, 123456, all one digit) or a text that is not a phone number is never shown to customers. */
+export function cleanPhone(v: unknown): string | undefined {
+  const t = String(v ?? '').trim(); const d = t.replace(/\D/g, ''); if (d.length < 7 || d.length > 15) return undefined; if (/^(\d)\1+$/.test(d) || /^0+/.test(d) && /^0+\d{0,2}$/.test(d) || /^1234567|^0123456/.test(d)) return undefined;
+  return t.slice(0, 40);
+}
 export function buildSystem(a: { sections: Section[]; version: number | null; lang: string; companyPhone?: string; customerName?: string | null; firstMessage?: boolean; honorific?: Honorific; booking?: { number: string; date: string; status: string } | null; returning?: ReturningInfo | null; context?: string }): string {
   const rule = a.sections.length ? a.sections.map((s) => `### ${s.title}\n${s.body}`).join('\n\n') : '(No rulebook is published yet. Be brief, do not give prices, and hand over to a person for anything beyond a greeting.)';
   const title = a.honorific && a.honorific !== 'Ma’am/Sir' ? `The customer is a ${a.honorific === 'Sir' ? 'man' : 'woman'}: use "${a.honorific}" only occasionally.` : 'The customer\'s gender is not known: use no title, just "po". Never write "Ma’am/Sir".';
@@ -112,7 +90,7 @@ ${a.context ? a.context + '\n\n' : ''}RULES (follow every one, every time):
 6. NO QUANTITY QUESTIONS: never ask for the number of panels or square metres. Do not mention counting or measuring unless the customer asks how the price or count works; then say in one sentence that the team confirms the count on site before work starts.
 7. ONLY WHAT WAS ASKED: never mention cleaning services the customer did not ask about, and never upsell.
 8. NO BOOKING PUSH: never offer or suggest booking after a price or any other answer. "Okay", "thanks", interest or a price question are not consent. Start scheduling only when the customer clearly asks to book or schedule, or says yes to an explicit offer.
-9. SCHEDULING needs the location and the cleaning service. If one is missing, ask only for it. When both are known, check a date the customer gave with check_date (never say a date is free without it), then send the booking form as its own message: a short first line, then a line containing only ---, then the form exactly as: "Please copy this and fill in your details po:\nName:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?" (leave out lines the customer already answered).
+9. SCHEDULING (only when the customer clearly asks to book): arrange it as a short conversation, one natural question at a time, in this order: location, cleaning service, preferred date (check it with check_date; never say a date is free without it, and if it is not open offer the nearest open dates), full name, mobile number, complete address. Follow NEXT BOOKING QUESTION. Never send a form or a list of questions. When everything is known call book_date; the system writes the confirmation.
 10. FACTS ONLY FROM TOOLS: prices only from estimate, dates only from check_date, bookings only from book_date (the system writes the confirmation; never say a booking is confirmed yourself). Never invent prices, capabilities, discounts, free items, results or schedules. Commercial or custom-quote work: no price from you.
 11. NATURAL QUESTIONS: ask service-specific questions the way a helpful person would (for walls: exterior or interior; for roofs: house or building; for windows: how many storeys), one at a time, only when the answer changes what you can say.
 12. HANDOVER: complaints, refunds, discounts, contracts, unsafe or unusual work, or a request for a person: use needs_human. If a tool fails or you are unsure, say the team will verify and use needs_human.
@@ -126,7 +104,7 @@ ${a.booking ? `- EXISTING BOOKING: this customer ALREADY HAS a confirmed booking
 ${a.returning ? returningBlock(a.returning) : ''}
 
 RULEBOOK${a.version ? ` (version ${a.version})` : ''}:
-${rule}${a.companyPhone ? `\n\nCompany phone: ${a.companyPhone}.` : ''}`;
+${rule}${cleanPhone(a.companyPhone) ? `\n\nCompany phone (give it only if the customer asks for it): ${cleanPhone(a.companyPhone)}.` : ''}`;
 }
 
 // ---- safety checks on the reply text

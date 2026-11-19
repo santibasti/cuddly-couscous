@@ -13,7 +13,7 @@ describe('building the history the model sees', () => {
     expect(h).toEqual([{ role: 'user', content: 'Binondo\nWall Cleaning' }]);
   });
   it('shortens the welcome and shows a photo as a marker', () => {
-    const h = buildHistory([inb('hi'), out('Hello po, Ma’am/Sir! Good day.\nTopMop provides professional exterior cleaning and property-care services.\n\n---\n\nMay I know your city po?'), inb('https://scontent.xx.fbcdn.net/v/a.jpg')]);
+    const h = buildHistory([inb('hi'), out('Hello po, good day!\nTopMop offers professional exterior cleaning: windows, walls, roofs and solar panels.\nMay we know your location po?\n\n---\n\nMay I know your city po?'), inb('https://scontent.xx.fbcdn.net/v/a.jpg')]);
     expect(h[1].content).toBe('[TopMop welcome message was sent] May I know your city po?'); expect(h[2].content).toBe('[The customer sent a photo or attachment]');
   });
   it('trims the oldest turns when the chat is long but keeps a user turn first (the facts live in the context)', () => {

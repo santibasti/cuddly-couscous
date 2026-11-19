@@ -22,9 +22,7 @@ export const OTHER: { match: RegExp; code: 'ROOF' | 'SOLAR' | 'FLOOR' | 'WALL'; 
 ];
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/ñ/g, 'n');
-const ALIASES: Record<string, string[]> = { 'Rodriguez (Montalban)': ['rodriguez', 'montalban'], 'Quezon City': ['quezon city', 'qc'], 'Cavite City': ['cavite city'], 'Parañaque': ['paranaque'], 'Las Piñas': ['las pinas'], 'Dasmariñas': ['dasmarinas', 'dasma'], 'San Jose del Monte': ['san jose del monte', 'sjdm'],
-  // districts of the City of Manila are charged the Manila rate
-  'Manila': ['manila', 'binondo', 'intramuros', 'ermita', 'malate', 'paco', 'pandacan', 'quiapo', 'sampaloc', 'san miguel manila', 'san nicolas', 'santa cruz manila', 'santa ana manila', 'tondo', 'port area', 'sta mesa', 'santa mesa'] };
+const ALIASES: Record<string, string[]> = { 'Rodriguez (Montalban)': ['rodriguez', 'montalban'], 'Quezon City': ['quezon city', 'qc'], 'Cavite City': ['cavite city'], 'Parañaque': ['paranaque'], 'Las Piñas': ['las pinas'], 'Dasmariñas': ['dasmarinas', 'dasma'], 'San Jose del Monte': ['san jose del monte', 'sjdm'] };
 /** Finds the city (or province) in an address; the longest name wins and "Metro Manila" is never mistaken for the city of Manila. */
 export function findRate(address: string): Rate | undefined {
   const t = ' ' + norm(address).replace(/metro manila|ncr|national capital region/g, ' ').replace(/[^a-z0-9]+/g, ' ') + ' ';

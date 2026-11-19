@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { cleanPhone, contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, fallbackFor, honorificFor, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -54,7 +54,8 @@ describe('the run loop and the modes', () => {
 
 describe('welcome message', () => {
   it('the first reply starts with the TopMop welcome (all four services), then the answer; NO_ANSWER gives the welcome alone', () => {
-    expect(WELCOME_TEXT).toMatch(/^Hello po, Ma’am\/Sir! Good day\./); for (const t of ['Glass/Window Cleaning', 'Wall Cleaning', 'Roof Cleaning', 'Solar Panel Cleaning', 'May we know your location po, Ma’am/Sir?']) expect(WELCOME_TEXT).toContain(t);
+    expect(WELCOME_TEXT).toMatch(/^Hello po, good day!/); for (const t of ['windows and glass', 'walls', 'roofs', 'solar panels', 'May we know your location po?']) expect(WELCOME_TEXT).toContain(t);
+    expect(WELCOME_TEXT).not.toMatch(/Ma’am|Sir/); expect(WELCOME_TEXT.length).toBeLessThan(200);   // short: the long descriptions are gone
     expect(composeFirst('NO_ANSWER')).toBe(WELCOME_TEXT); expect(composeFirst('')).toBe(WELCOME_TEXT); expect(composeFirst('For 21 panels the package is ₱4,799 po.')).toBe(WELCOME_TEXT + '\n\n---\n\nFor 21 panels the package is ₱4,799 po.'); expect(splitMessages(composeFirst('Answer po.'))).toEqual([WELCOME_TEXT, 'Answer po.']);
   });
 });
@@ -157,7 +158,7 @@ describe('V2 prompt: fifteen rules, known facts, no forced sentences', () => {
   const sys = (extra: Record<string, unknown> = {}) => buildSystem({ sections: [{ key: 'a', title: 'Identity', body: 'You are TopMop.' }], version: 3, lang: 'en', ...extra } as never);
   it('carries the rulebook, its version and every non-negotiable rule', () => {
     const s = sys(); expect(s).toMatch(/RULEBOOK \(version 3\)/); expect(s).toContain('You are TopMop.');
-    for (const r of [/English or English-dominant Taglish only/, /at most TWO short sentences, preferably under 35 words/, /ask at most one question/, /never ask for photos or videos/, /never ask for the number of panels or square metres/, /never mention cleaning services the customer did not ask about, and never upsell/, /never offer or suggest booking after a price/, /not consent/, /SCHEDULING needs the location and the cleaning service/, /prices only from estimate, dates only from check_date, bookings only from book_date/, /Never invent prices, capabilities, discounts/]) expect(s).toMatch(r);
+    for (const r of [/English or English-dominant Taglish only/, /at most TWO short sentences, preferably under 35 words/, /ask at most one question/, /never ask for photos or videos/, /never ask for the number of panels or square metres/, /never mention cleaning services the customer did not ask about, and never upsell/, /never offer or suggest booking after a price/, /not consent/, /SCHEDULING \(only when the customer clearly asks to book\): arrange it as a short conversation, one natural question at a time/, /Never send a form or a list of questions/, /prices only from estimate, dates only from check_date, bookings only from book_date/, /Never invent prices, capabilities, discounts/]) expect(s).toMatch(r);
   });
   it('no longer forces the counting sentence or the upsell, and is shorter than before', () => {
     const s = sys(); expect(s).not.toMatch(/UPSELL THE CORE SERVICES/); expect(s).not.toContain('Our team will conduct on-site glass and solar panel counting'); expect(s).not.toMatch(/a yes to the starting rates/); expect(s.length - 'You are TopMop.'.length).toBeLessThan(7000);
@@ -177,5 +178,14 @@ describe('V2 prompt: fifteen rules, known facts, no forced sentences', () => {
     expect(b.reply).toBe('It is ₱6,250 po.'); expect(b.violations).toEqual([]); expect(calls).toBe(2); expect(asked).toMatch(/premature_booking/);
     const c = await runBrain({ mode: 'suggest', system: 's', messages: [{ role: 'user', content: 'x' }], exec: async () => ({ text: '' }), check, callModel: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Want to book?' }] }) } as never);
     expect(c.violations?.length).toBe(1);
+  });
+});
+
+describe('company phone is verified or omitted', () => {
+  it('shows only a plausible number from Settings; placeholders are dropped', () => {
+    expect(cleanPhone('0000')).toBeUndefined(); expect(cleanPhone('000-0000')).toBeUndefined(); expect(cleanPhone('1234567')).toBeUndefined(); expect(cleanPhone('xxx')).toBeUndefined(); expect(cleanPhone(undefined)).toBeUndefined(); expect(cleanPhone('')).toBeUndefined();
+    expect(cleanPhone('+63 2 8123 4567')).toBe('+63 2 8123 4567'); expect(cleanPhone('0917 123 4567')).toBe('0917 123 4567');
+    const base = { sections: [], version: null, lang: 'en' };
+    expect(buildSystem({ ...base, companyPhone: '0000' })).not.toMatch(/Company phone/); expect(buildSystem({ ...base })).not.toMatch(/Company phone/); expect(buildSystem({ ...base, companyPhone: '+63 2 8123 4567' })).toContain('Company phone (give it only if the customer asks for it): +63 2 8123 4567.');
   });
 });

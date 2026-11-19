@@ -20,5 +20,18 @@ end $$;
 create or replace function public.chat_unlock(p_conv text) returns void language sql security definer set search_path = public as $$
   update public.chat_conversations set busy_until = null where id = p_conv;
 $$;
-revoke all on function public.chat_lock(text, integer), public.chat_unlock(text) from public, anon, authenticated;
-grant execute on function public.chat_lock(text, integer), public.chat_unlock(text) to service_role;
+-- Saves the AI's reply and marks the customer messages it answered as handled in ONE transaction: after a crash the messages are either still unhandled (retried) or answered (never both lost and duplicated).
+create or replace function public.chat_answer(p_ids text[], p_row jsonb) returns text language plpgsql security definer set search_path = public as $$
+declare mid text; has_card boolean;
+begin
+  select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'chat_messages' and column_name = 'card_url') into has_card;
+  insert into public.chat_messages (conversation_id, direction, body, status, actions, flags, model, rulebook_version, tool_log, error)
+  values (p_row ->> 'conversation_id', 'out', coalesce(p_row ->> 'body', ''), coalesce(p_row ->> 'status', 'sent'), coalesce(p_row -> 'actions', '[]'::jsonb), coalesce(p_row -> 'flags', '[]'::jsonb), p_row ->> 'model', nullif(p_row ->> 'rulebook_version', '')::integer, p_row -> 'tool_log', p_row ->> 'error')
+  returning id into mid;
+  if has_card and nullif(p_row ->> 'card_url', '') is not null then execute 'update public.chat_messages set card_url = $1 where id = $2' using p_row ->> 'card_url', mid; end if;
+  update public.chat_messages set handled_at = now() where id = any (p_ids) and direction = 'in' and handled_at is null;
+  return mid;
+end $$;
+revoke all on function public.chat_lock(text, integer), public.chat_unlock(text), public.chat_answer(text[], jsonb) from public, anon, authenticated;
+grant execute on function public.chat_lock(text, integer), public.chat_unlock(text), public.chat_answer(text[], jsonb) to service_role;
+-- The every-minute recovery job (chat-recover) is scheduled per environment with supabase/cron/chat-recover.sql, so no project address is hard-coded here.

@@ -1,7 +1,7 @@
 // An in-memory stand-in for Supabase, just enough for chat-brain. Test only.
 export const DB = {};
-export const flags = { noMigration: false };   // simulates a database where migration 0133 has not been applied
-let seq = 0; const now = () => new Date(Date.UTC(2026, 10, 19, 9, 0, 0) + (seq++) * 1000).toISOString();
+export const flags = { noMigration: false, crashBeforeAnswer: false };   // simulates a database where migration 0133 has not been applied
+let seq = 0; const now = () => new Date(Date.now() + (seq++)).toISOString();
 const uid = () => `id-${++seq}`;
 const T = (n) => (DB[n] ??= []);
 class Q {
@@ -49,6 +49,7 @@ class Q {
 const rpc = async (name, a) => {
   if (flags.noMigration) return { data: null, error: { message: 'function does not exist' } };
   if (name === 'chat_lock') { const c = T('chat_conversations').find((x) => x.id === a.p_conv); const t = Date.now(); if (!c) return { data: false, error: null }; if (c.busy_until && c.busy_until > t) return { data: false, error: null }; c.busy_until = t + (a.p_secs ?? 90) * 1000; return { data: true, error: null }; }
+  if (name === 'chat_answer') { if (flags.crashBeforeAnswer) throw new Error('worker crashed before saving the answer'); const row = { id: uid(), created_at: now(), direction: 'out', ...a.p_row }; T('chat_messages').push(row); for (const m of T('chat_messages')) if (a.p_ids.includes(m.id) && m.direction === 'in' && !m.handled_at) m.handled_at = now(); return { data: row.id, error: null }; }
   if (name === 'chat_unlock') { const c = T('chat_conversations').find((x) => x.id === a.p_conv); if (c) c.busy_until = null; return { data: null, error: null }; }
   return { data: null, error: { message: `unknown function ${name}` } };
 };

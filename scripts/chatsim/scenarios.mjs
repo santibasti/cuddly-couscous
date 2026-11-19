@@ -1,6 +1,6 @@
 // Automated scenarios A-G for TopMop AI V2 with a SCRIPTED model (deterministic: it tests the memory, the validation and the delivery plumbing, not the wording of a real model).
 // Run:  node scripts/chatsim/scenarios.mjs        (real-model run: CHATSIM_REAL=1 node scripts/chatsim/realmodel.mjs)
-import { send, reset, deliver, modelCalls, state, DB, queue, flush, setEnv, flags } from './harness.mjs';
+import { send, reset, deliver, modelCalls, state, DB, queue, flush, setEnv, flags, recover } from './harness.mjs';
 const results = []; const ok = (name, pass, evidence) => { results.push({ name, pass: !!pass, evidence }); console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${evidence ? `\n      ${evidence}` : ''}`); };
 const lastSystem = () => modelCalls[modelCalls.length - 1]?.system ?? '';
 const text = (t) => ({ content: [{ type: 'text', text: t }], stop_reason: 'end_turn' });
@@ -11,15 +11,15 @@ const ctxOf = () => DB.chat_conversations[0]?.context ?? {};
 reset('suggest'); queue(false);
 state.script = (b, n) => text(n === 1 ? 'NO_ANSWER' : 'Is it for the exterior or the interior walls po?');
 await send('Binondo'); await send('Wall Cleaning');
-ok('A: context keeps location (Binondo -> Manila) and service (wall)', ctxOf().location === 'Manila' && ctxOf().service === 'wall', JSON.stringify({ location: ctxOf().location, service: ctxOf().service, stage: ctxOf().stage, intent: ctxOf().intent }));
-ok('A: the prompt carries the known facts and suggests the wall type, no booking', /location: Manila/.test(lastSystem()) && /service: wall cleaning/.test(lastSystem()) && /exterior or the interior walls/.test(lastSystem()) && !/CURRENT INTENT: booking/.test(lastSystem()));
+ok('A: context keeps location (Binondo is kept as the place named) and service (wall)', ctxOf().location === 'Binondo' && ctxOf().service === 'wall', JSON.stringify({ location: ctxOf().location, service: ctxOf().service, stage: ctxOf().stage, intent: ctxOf().intent }));
+ok('A: the prompt carries the known facts and suggests the wall type, no booking', /location: Binondo/.test(lastSystem()) && /service: wall cleaning/.test(lastSystem()) && /exterior or the interior walls/.test(lastSystem()) && !/CURRENT INTENT: booking/.test(lastSystem()));
 ok('A: the draft asks the wall type and does not offer booking', /exterior or the interior/.test(drafts().at(-1).body) && !/book/i.test(drafts().at(-1).body), drafts().at(-1).body);
 
 // B. Exterior, Ground floor, How much? -> all facts present, price intent
 reset('auto'); queue(false);
 state.script = () => text('Exterior wall cleaning in Manila is ₱125 per sqm with a 50 sqm minimum po.');
 for (const t of ['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?']) await send(t);
-ok('B: all four facts and the price intent are in the prompt at "How much?"', ['location: Manila', 'service: wall cleaning', 'surface: exterior', 'building level/access: ground floor', 'CURRENT INTENT: price_inquiry'].every((x) => lastSystem().includes(x)), lastSystem().split('\n').find((l) => l.startsWith('KNOWN FACTS')));
+ok('B: all four facts and the price intent are in the prompt at "How much?"', ['location: Binondo', 'service: wall cleaning', 'surface: exterior', 'building level/access: ground floor', 'CURRENT INTENT: price_inquiry'].every((x) => lastSystem().includes(x)), lastSystem().split('\n').find((l) => l.startsWith('KNOWN FACTS')));
 ok('B: the final reply carries the (stubbed) verified price and no booking offer', /₱125/.test(drafts().at(-1).body) && !/book/i.test(drafts().at(-1).body));
 
 // C. "Okay, thank you." -> brief acknowledgment, no model call, no booking offer
@@ -33,7 +33,12 @@ await send('Can I schedule tomorrow?'); const d1 = ctxOf();
 ok('D: booking intent is recognised and the schedule is remembered', d1.intent === 'booking_request' && d1.schedule === 'tomorrow', JSON.stringify({ intent: d1.intent, schedule: d1.schedule, location: d1.location ?? null, service: d1.service ?? null }));
 ok('D: the welcome already asks the location, so the AI part does not ask it a second time', (drafts().at(-1).body.match(/location/g) ?? []).length === 1 && /happy to help you book/.test(drafts().at(-1).body), JSON.stringify(drafts().at(-1).body.slice(-90)));
 deliver(); await send('Makati'); await send('window cleaning');
-ok('D: when both are known the booking prompt asks for the date check and the form', /location: Makati/.test(lastSystem()) && /window\/glass cleaning/.test(lastSystem()) && /CURRENT INTENT: booking_request/.test(lastSystem()) && /check the date with check_date/.test(lastSystem()));
+ok('D: "tomorrow" was remembered, location and service are known: the next booking question is the name, never a form', /location: Makati/.test(lastSystem()) && /window\/glass cleaning/.test(lastSystem()) && /preferred schedule: tomorrow/.test(lastSystem()) && /CURRENT INTENT: booking_request/.test(lastSystem()) && /NEXT BOOKING QUESTION[^:]*: May I have your full name po\?/.test(lastSystem()) && /Never send a form/.test(lastSystem()), (lastSystem().split('\n').find((l) => l.startsWith('NEXT BOOKING')) ?? '').slice(0, 130));
+await send('Saturday'); ok('D: a new date replaces the old one; still one question at a time (the name)', /preferred schedule: saturday/.test(lastSystem()) && /NEXT BOOKING QUESTION[^:]*: May I have your full name po\?/.test(lastSystem()));
+deliver(); state.script = () => text('May I have your full name po?'); await send('ok'); deliver();   // "ok" is not consent and not a name
+ok('D: a bare "ok" while booking is not taken as the name', !ctxOf().contact?.name);
+deliver(); await send('Maria Santos'); ok('D: the name is taken only as the answer to the name question, then the mobile number', ctxOf().contact?.name === 'Maria Santos' && /NEXT BOOKING QUESTION[^:]*: What is the best mobile number/.test(lastSystem()));
+state.script = () => text('What is the best mobile number to reach you po?'); await send('Maria Santos'); deliver(); await send('0917 123 4567'); state.script = () => text('What is the complete address of the property po?'); await send('ok'); deliver(); ctxOf(); await send('12 Maple St, Makati'); ok('D: with date, name, mobile and address known the AI is told to book (the system writes the confirmation)', /ALL BOOKING DETAILS ARE KNOWN/.test(lastSystem()) && ctxOf().contact?.mobile === '09171234567', JSON.stringify(ctxOf().contact));
 
 // E. Pure Tagalog -> English / English-dominant Taglish (AI's Tagalog draft is rewritten once, else replaced)
 reset('suggest'); queue(false); let calls = 0;
@@ -59,7 +64,7 @@ const burst = await Promise.all(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground
 const inbound = DB.chat_messages.filter((m) => m.direction === 'in');
 ok('F: all five messages are stored, none rejected', inbound.length === 5 && burst.every((x) => x.status === 'queued'), burst.map((x) => x.status ?? x.error).join(','));
 ok('F: exactly one AI call and one draft for the whole burst', modelCalls.length === 1 && drafts().length === 1, `modelCalls=${modelCalls.length} drafts=${drafts().length}`);
-ok('F: every fact reached the model, and all five messages are marked handled', ['location: Manila', 'surface: exterior', 'building level/access: ground floor', 'CURRENT INTENT: price_inquiry'].every((x) => lastSystem().includes(x)) && inbound.every((m) => m.handled_at), '');
+ok('F: every fact reached the model, and all five messages are marked handled', ['location: Binondo', 'surface: exterior', 'building level/access: ground floor', 'CURRENT INTENT: price_inquiry'].every((x) => lastSystem().includes(x)) && inbound.every((m) => m.handled_at), '');
 // F2. a burst on a brand-new conversation used to lose messages (unique-key race)
 reset('suggest'); queue(true, 60); state.script = () => text('Okay po.');
 const nb = await Promise.all(['Binondo', 'Wall Cleaning', 'Exterior'].map((t) => send(t, {}, 'MC-NEW'))); await flush();
@@ -76,7 +81,7 @@ const talk = ['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'cream pai
 for (const t of talk) await send(t, {}, 'MC-G');
 const hist = modelCalls.at(-1).messages; const joined = JSON.stringify(hist);
 ok('G: after 18 messages the old facts are no longer in the transcript window...', !joined.includes('Binondo') || hist.length < 36, `${hist.length} turns in the window`);
-ok('G: ...but location, service and surface are still injected from the stored context', ['location: Manila', 'service: wall cleaning', 'surface: exterior', 'building level/access: ground floor'].every((x) => lastSystem().includes(x)), lastSystem().split('\n').find((l) => l.startsWith('KNOWN FACTS')));
+ok('G: ...but location, service and surface are still injected from the stored context', ['location: Binondo', 'service: wall cleaning', 'surface: exterior', 'building level/access: ground floor'].every((x) => lastSystem().includes(x)), lastSystem().split('\n').find((l) => l.startsWith('KNOWN FACTS')));
 ok('G: the history starts on a customer turn and never repeats the current message at the top', hist[0].role === 'user' && !(hist[0].content === 'How much?' && hist.length > 1), `first turn: ${JSON.stringify(String(hist[0].content).slice(0, 40))}`);
 
 // Delivered-only history (Suggest mode): an unsent draft is not treated as said
@@ -95,6 +100,30 @@ ok('Empty AI answer: a safe sentence, never a blank draft', drafts().at(-1).body
 // complaint -> handover without selling
 reset('suggest'); queue(false); state.script = () => text('SHOULD NOT BE CALLED'); await send('Your team damaged my window, I want a refund', {}, 'MC-Z');
 ok('Complaint: handed to a person with an apology, no AI sales answer', DB.chat_conversations[0].status === 'Needs a person' && /sorry/i.test(drafts().at(-1).body) && modelCalls.length === 0, drafts().at(-1)?.body);
+
+// Crash safety: messages are marked handled only together with the saved answer, and a recovery pass answers what a stopped worker left behind
+reset('suggest'); queue(true, 20); let seenUnhandled = null; state.script = () => { seenUnhandled = DB.chat_messages.filter((m) => m.direction === 'in').every((m) => !m.handled_at); return text('Exterior wall cleaning is ₱125 per sqm po.'); };
+await send('Wall cleaning in Makati how much?', {}, 'MC-R0'); await flush();
+ok('Crash safety: a message is not marked handled while the AI is still working on it', seenUnhandled === true && DB.chat_messages.filter((m) => m.direction === 'in').every((m) => m.handled_at) && drafts().length === 1, `unhandled during the model call: ${seenUnhandled}`);
+reset('suggest'); queue(true, 20); flags.crashBeforeAnswer = true; state.script = () => text('Exterior wall cleaning is ₱125 per sqm po.');
+await send('Wall cleaning in Makati how much?', {}, 'MC-R1'); await flush(); flags.crashBeforeAnswer = false;
+const stuck = DB.chat_messages.filter((m) => m.direction === 'in' && !m.handled_at).length;
+ok('Crash safety: a worker that crashes before saving its answer leaves the message unhandled and unanswered (nothing lost, nothing half-saved)', stuck === 1 && drafts().length === 0, `unhandled=${stuck} drafts=${drafts().length}`);
+DB.chat_conversations[0].busy_until = Date.now() + 60_000; const blocked = await recover();
+ok('Recovery respects a live worker: while the lock is held nothing is answered twice', drafts().length === 0 && blocked.ok, JSON.stringify(blocked));
+DB.chat_conversations[0].busy_until = null; const rec = await recover();
+ok('Recovery: the stuck message is answered once, marked handled, and the context is rebuilt', rec.recovered === 1 && drafts().length === 1 && DB.chat_messages.filter((m) => m.direction === 'in').every((m) => m.handled_at) && ctxOf().service === 'wall', JSON.stringify(rec));
+const again = await recover(); ok('Recovery is idempotent: running it again changes nothing', again.recovered === 0 && drafts().length === 1, JSON.stringify(again));
+reset('suggest'); queue(true, 20); let boom = true; state.script = () => { if (boom) { boom = false; throw new Error('AI error 503'); } return text('Exterior wall cleaning is ₱125 per sqm po.'); };
+await send('Wall cleaning in Makati how much?', {}, 'MC-R2'); await flush();
+ok('Crash safety: when the AI service is busy (503) nothing is saved or marked; the customer is not handed over yet', DB.chat_messages.some((m) => m.direction === 'in' && !m.handled_at) && drafts().length === 0 && DB.chat_conversations[0].status !== 'Needs a person', `conversation status: ${DB.chat_conversations[0].status}`);
+const r2 = await recover(); ok('Recovery after an AI failure: answered on the next pass', r2.recovered === 1 && drafts().length >= 1 && DB.chat_messages.filter((m) => m.direction === 'in').every((m) => m.handled_at), JSON.stringify(r2));
+reset('suggest'); queue(true, 20); state.script = () => { throw new Error('AI error 401'); }; await send('Wall cleaning in Makati how much?', {}, 'MC-R4'); await flush();
+ok('A configuration error (401) is not retried: the customer is handed to a person at once, with an alert', DB.chat_conversations[0].status === 'Needs a person' && DB.chat_messages.filter((m) => m.direction === 'in').every((m) => m.handled_at) && DB.alert_outbox.some((a) => /needs a person/i.test(a.title)), `status=${DB.chat_conversations[0].status}`);
+reset('suggest'); queue(true, 20); state.script = () => { throw new Error('AI error 503'); }; await send('Wall cleaning in Makati how much?', {}, 'MC-R5'); await flush(); await recover(11 * 60_000);
+ok('After 10 minutes of a failing AI service the customer is handed to a person (no endless retries)', DB.chat_conversations[0].status === 'Needs a person' && DB.chat_messages.filter((m) => m.direction === 'in').every((m) => m.handled_at), `status=${DB.chat_conversations[0].status}`);
+reset('auto'); queue(true, 20); flags.crashBeforeAnswer = true; await send('Makati window cleaning how much?', {}, 'MC-R3'); await flush(); flags.crashBeforeAnswer = false; setEnv('MANYCHAT_API_TOKEN', '');
+const r3 = await recover(); ok('Recovery in full mode without a ManyChat token saves a DRAFT for staff instead of sending', r3.recovered === 1 && drafts().at(-1).status === 'draft', `${drafts().at(-1)?.status}`);
 
 // Rollout safety: code deployed before migration 0133 is applied still answers (the old single-message behaviour, no stored context)
 reset('suggest'); queue(false); flags.noMigration = true; state.script = () => text('Is it for the exterior or the interior walls po?');
