@@ -1,6 +1,7 @@
 // AI Chat: what the customer-service AI is doing in ManyChat (Messenger, Instagram, WhatsApp). In "suggest" mode every reply waits here for approval; staff can edit, approve (the reply is sent), discard, or take the conversation over.
 // Live system only: the conversations come from the chat functions. The demo build shows how the screen works with a sample.
 import { useCallback, useEffect, useState } from 'react';
+import { isPhotoMessage } from '@/lib/photomsg';
 import { Badge, Card, PageHead, attempt, toast } from '@/components/ui';
 import { useAuth } from '@/lib/store';
 import { CLOUD, supabase } from '@/lib/cloud';
@@ -57,7 +58,7 @@ export default function AiChat() {
                 {m.actions.length > 0 && <div className="muted small">On approval the system will: {m.actions.map(actionLabel).join(' · ')}. (A booking's wording comes from the system, not from this draft.)</div>}
                 {m.error && <div className="alert err">{m.error}</div>}
                 <div className="row" style={{ gap: 6 }}><button className="b primary" disabled={busy} onClick={() => act({ action: 'approve', message_id: m.id, text: edit[m.id] ?? m.body, send_card: noCard[m.id] !== true }, 'Sent')}>Approve & send</button><button className="b" disabled={busy} onClick={() => act({ action: 'discard', message_id: m.id }, 'Discarded')}>Discard</button></div>
-              </> : <div>{m.body}{m.original_body && <details className="aichat-edit" style={{ marginTop: 6 }}><summary className="muted small">✏️ Edited by staff — see what the AI wrote</summary><div className="muted small" style={{ whiteSpace: 'pre-wrap' }}>{m.original_body}</div></details>}</div>}
+              </> : <div>{isPhotoMessage(m.body) && /^https:/i.test(m.body) ? <a href={m.body} target="_blank" rel="noreferrer noopener"><img src={m.body} alt="Photo from the customer" style={{ maxWidth: 220, borderRadius: 10, display: 'block' }} loading="lazy" /><span className="small">📷 Photo from the customer — open</span></a> : m.body}{m.original_body && <details className="aichat-edit" style={{ marginTop: 6 }}><summary className="muted small">✏️ Edited by staff — see what the AI wrote</summary><div className="muted small" style={{ whiteSpace: 'pre-wrap' }}>{m.original_body}</div></details>}</div>}
             </div>))}</div>
           {!cur && CLOUD && <p className="muted">Pick a conversation on the left.</p>}
         </Card>

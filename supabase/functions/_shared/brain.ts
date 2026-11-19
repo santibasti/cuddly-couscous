@@ -52,6 +52,14 @@ export const BOOKING_FORM = 'Please copy this and fill in your details po:\nName
 export const BOOKING_HOWTO = 'Sure po, happy to help you book! May I know your location (city) po?';
 /** The customer wants to book and the city is known: a short first message, then the form as its own message. */
 export const BOOKING_SEND_FORM = `Sure po, happy to help you book!${MSG_SPLIT}${BOOKING_FORM}`;
+/** A customer's photo arrives as a link to the picture (or the marker sentence). Same test as src/lib/photomsg.ts. */
+export const PHOTO_MARKER = '[The customer sent a photo or attachment]';
+export const isPhotoMessage = (t: string): boolean => {
+  const s = String(t ?? '').trim(); if (!s) return false; if (s === PHOTO_MARKER) return true;
+  if (!/^https:\/\/[^\s]+$/i.test(s)) return false;
+  return /(fbcdn\.net|fbsbx\.com|cdninstagram\.com|manychat\.com|chatfuel|\.(jpe?g|png|gif|webp|heic|mp4|mov)(\?|$))/i.test(s);
+};
+export const PHOTO_THANKS = 'Thank you po! Our technical team will review your photo.';
 /** What we say instead of asking for quantities: the team counts and measures on site. */
 export const ONSITE_COUNT = 'Our team will conduct on-site glass and solar panel counting and wall and floor area measurement before they begin the cleaning session.';
 export function buildSystem(a: { sections: Section[]; version: number | null; lang: string; companyPhone?: string; customerName?: string | null; firstMessage?: boolean; honorific?: Honorific; booking?: { number: string; date: string; status: string } | null }): string {

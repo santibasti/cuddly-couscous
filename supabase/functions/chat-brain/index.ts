@@ -4,7 +4,7 @@
 // Answer: { ok, status: "queued" | "reply" | "held" | "handover" | "duplicate" | "off", reply, mode } ("queued": the work continues after the answer because ManyChat waits only 10 seconds) — put `reply` in the chatbot's next message; when it is empty, send nothing (staff or a draft is handling it).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { cardForLog, explainsPanelCount, panelGuideUrl } from '../_shared/estimatecard.ts';
-import { BOOKING_HOWTO, BOOKING_SEND_FORM, honorificFor, wantsToBook, buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
+import { BOOKING_HOWTO, BOOKING_SEND_FORM, PHOTO_MARKER, PHOTO_THANKS, isPhotoMessage, honorificFor, wantsToBook, buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
 import { makeExec } from '../_shared/chatexec.ts';
 import { findRate } from '../_shared/rates.ts';
 import { parseLang } from '../chat-availability/logic.ts';
@@ -38,6 +38,8 @@ Deno.serve(async (req) => {
   const { error: de } = await sb.from('chat_messages').insert({ conversation_id: conv.id, direction: 'in', body: text, status: 'received', external_id: ext });
   if (de) return de.code === '23505' ? json({ ok: true, status: 'duplicate', reply: '', mode }) : json({ error: de.message }, 500);   // the same message again (a retry): handled once
   await sb.from('chat_conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id);
+  const photo = isPhotoMessage(text);
+  if (photo) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Customer sent a photo', body: `${conv.name ?? 'A customer'} (${channel}) sent a photo. Technical team: please review it.`, link: '/ai-chat' });   // the AI promises the technical team will look at it
   if (mode === 'off') return json({ ok: true, status: 'off', reply: '', mode });
   if (conv.status === 'Needs a person') return json({ ok: true, status: 'handover', reply: '', mode });                    // a person has this conversation: the AI stays silent
   if (!env('ANTHROPIC_API_KEY')) return json({ ok: true, status: 'held', reply: '', mode, note: 'ANTHROPIC_API_KEY is not set' });
@@ -49,8 +51,8 @@ Deno.serve(async (req) => {
     sb.from('ai_rulebook').select('version, sections').eq('status', 'published').maybeSingle(),
   ]);
   const messages: { role: 'user' | 'assistant'; content: unknown }[] = [];
-  for (const m of (hist ?? []).reverse()) { const role = m.direction === 'in' ? 'user' : 'assistant'; if (messages.length && messages[messages.length - 1].role === role) messages[messages.length - 1].content += `\n${m.body}`; else messages.push({ role, content: m.body }); }
-  if (!messages.length || messages[0].role !== 'user') messages.unshift({ role: 'user', content: text });
+  for (const m of (hist ?? []).reverse()) { const role = m.direction === 'in' ? 'user' : 'assistant'; const body = isPhotoMessage(m.body) ? PHOTO_MARKER : m.body; if (messages.length && messages[messages.length - 1].role === role) messages[messages.length - 1].content += `\n${body}`; else messages.push({ role, content: body }); }
+  if (!messages.length || messages[0].role !== 'user') messages.unshift({ role: 'user', content: photo ? PHOTO_MARKER : text });
   const model = cfg?.model || env('CHAT_AI_MODEL') || 'claude-haiku-5-5';
   const { count: sentBefore } = await sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('direction', 'out').in('status', ['sent', 'approved', 'draft']); const first = (sentBefore ?? 0) === 0;   // the first reply of a conversation starts with the welcome
   let booking: { number: string; date: string; status: string } | null = null;                                              // a booking this chat already made for the customer: the AI must never contradict it
@@ -62,7 +64,8 @@ Deno.serve(async (req) => {
   };
   const exec = makeExec({ booking, sb, base: env('SUPABASE_URL'), key, conv, lang, context: [...(hist ?? []).filter((m) => m.direction === 'in').map((m) => String(m.body ?? '')), text].join(' ').slice(-600) });
   const brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3 });
-  if (!brain.reply.trim() && !brain.error && wantsToBook(text)) { brain.reply = findRate([...(hist ?? []).filter((m) => m.direction === 'in').map((m) => String(m.body ?? '')), text].join(' ')) ? BOOKING_SEND_FORM : BOOKING_HOWTO; brain.note = undefined; }   // the model wrote nothing but the customer wants to book: send the booking-details request
+  if (!brain.reply.trim() && !brain.error && photo) { brain.reply = PHOTO_THANKS; brain.note = undefined; }   // a photo with nothing else to answer: thank them, the technical team reviews it
+  else if (!brain.reply.trim() && !brain.error && wantsToBook(text)) { brain.reply = findRate([...(hist ?? []).filter((m) => m.direction === 'in').map((m) => String(m.body ?? '')), text].join(' ')) ? BOOKING_SEND_FORM : BOOKING_HOWTO; brain.note = undefined; }   // the model wrote nothing but the customer wants to book: send the booking-details request
   const d0 = decide(mode, brain, lang); const d = first && (d0.kind === 'draft' || d0.kind === 'send') ? { ...d0, text: composeFirst(d0.text, honorific) } : d0; const flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked }).violations;
   const appUrl = env('APP_URL') || 'https://ops.topmop.ph'; const card = d.kind === 'send' || d.kind === 'draft' ? (cardForLog(brain.log, appUrl) ?? (explainsPanelCount(text, brain.reply) ? panelGuideUrl(appUrl) : null)) : null;   // one picture per reply: the estimate card, else the panel-counting guide
   const common = { card_url: card, conversation_id: conv.id, direction: 'out', model, rulebook_version: rb?.version ?? null, tool_log: brain.log, error: brain.error ?? (brain.reply.trim() ? (brain.note ? brain.note.slice(0, 240) : null) : `The AI wrote no text: ${brain.note ?? ''}`.slice(0, 240)) };

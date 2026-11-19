@@ -154,6 +154,7 @@ Deno.serve(async (req) => {
     for (const entry of body.entry ?? []) for (const ev of entry.messaging ?? []) {
       if (!ev.message || ev.message.is_echo || !ev.sender?.id) continue;
       const text = ev.message.text ?? (ev.message.attachments?.length ? '[The customer sent a photo or attachment]' : '');
+      if (ev.message.attachments?.length) { try { await db().from('alert_outbox').insert({ kind: 'chat', title: 'Customer sent a photo', body: 'A customer sent a photo or attachment on Messenger. Technical team: please review it.', link: '/ai-chat' }); } catch { /* the alert must never stop the chat */ } }
       if (text) await handle(String(ev.sender.id), text, ev.message.mid, ev.timestamp);
     }
   } catch (e) { console.error('fb-webhook', (e as Error).message); }

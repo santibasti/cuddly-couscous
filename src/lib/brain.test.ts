@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -192,5 +192,16 @@ describe('house language: English with po or light Taglish', () => {
     let calls = 0;
     const b = await runBrain({ mode: 'suggest', system: 's', messages: [{ role: 'user', content: 'hi' }], exec: async () => ({ text: '' }), callModel: async () => { calls++; return { stop_reason: 'end_turn', content: [{ type: 'text', text: calls === 1 ? 'Para ma-check ko ang tamang presyo, anong klaseng cleaning po ang kailangan ninyo at saan po ang location?' : 'May I know the type of service you need and your location po?' }] }; } } as never);
     expect(b.reply).toMatch(/^May I know/); expect(calls).toBe(2);
+  });
+});
+
+describe('photos from the customer', () => {
+  const urls = ['https://scontent.xx.fbcdn.net/v/t1.15752-9/123_n.jpg?x=1', 'https://cdn.fbsbx.com/v/abc', 'https://example.com/pic.PNG', 'https://x.manychat.com/file/1', '[The customer sent a photo or attachment]'];
+  const not = ['Magkano po?', 'https://topmop.ph', 'see https://x.com/a.jpg please', ''];
+  it('recognises a photo message and agrees with the app copy of the test', async () => {
+    const { isPhotoMessage: photoB } = await import('./photomsg');
+    for (const u of urls) { expect(photoA(u)).toBe(true); expect(photoB(u)).toBe(true); }
+    for (const u of not) { expect(photoA(u)).toBe(false); expect(photoB(u)).toBe(false); }
+    expect(PHOTO_THANKS).toMatch(/technical team will review/);
   });
 });

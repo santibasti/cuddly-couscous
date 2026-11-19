@@ -379,3 +379,6 @@ Jarvis speed: lookups now run side by side, the long instructions are cached bet
 
 ## Booking form (Messenger chat)
 When a customer asks to book or reserve and the city is already known, the AI sends two messages: a short "Sure po, happy to help you book!" and, on its own, the form (Name, Address, Contact Number, Email, No. of House Storey, Reservation Date, Service Window/Wall/Roof/Solar/Floor?). If the city is not known it asks only for the city first. Email and storeys are saved with the booking (the inquiry notes). Redeploy `chat-brain`, `chat-book` after pulling.
+
+## Photo alert (chat)
+When a customer sends a photo, `chat-brain` (ManyChat passes the picture's link as the message) and `fb-webhook` (direct Messenger) queue an alert "Customer sent a photo — technical team: please review it" (Telegram / app alert, link to AI Chat). In AI Chat the picture shows as a thumbnail you can open. The AI is told the photo arrived and answers "Thank you po! Our technical team will review your photo." Redeploy `chat-brain` and `fb-webhook`.
