@@ -47,3 +47,12 @@ describe('what the rate table does not cover', () => {
     expect(estimate('Makati', 'salamin / bintana', 10).kind).toBe('glass'); expect(estimate('Makati', 'driveway pressure washing', 60).kind).toBe('area'); expect(estimate('Makati', 'Solar Panel Cleaning', 25).estimate).toBe(6125); expect(estimate('Makati', 'solar', 1).estimate_en).toMatch(/For 1 panel /);
   });
 });
+
+describe('Laguna and Batangas are province-level rates (the price list asks for the municipality to be verified)', () => {
+  it('quotes the province rate and says the team confirms the municipality; city rates are unchanged', () => {
+    const l = estimate('Calamba, Laguna', 'window cleaning'); expect(l.rates_en).toContain('₱12,799'); expect(l.rates_en).toMatch(/province rate; our team will confirm your exact municipality and coverage/);
+    expect(estimate('San Pablo, Laguna', 'window cleaning', 60).estimate_en).toMatch(/municipality/); expect(estimate('Lipa, Batangas', 'window cleaning').rates_tglish).toMatch(/municipality/);
+    expect(estimate('Makati', 'window cleaning').rates_en).not.toMatch(/municipality/); expect(estimate('Tagaytay', 'window cleaning').rates_en).not.toMatch(/municipality/);
+  });
+});
+
