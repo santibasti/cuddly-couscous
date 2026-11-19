@@ -214,9 +214,15 @@ function estimateEn(address, service, qty, property = "residential", withMain = 
 		estimate_tglish: VERIFY.tg
 	};
 	const extra = Math.max(0, (q ?? 0) - rate.panels), total = rate.price + extra * 140;
-	const rates_en = `Our window cleaning package in ${rate.place} starts at ${peso$1(rate.price)}, covering up to ${rate.panels} glass panels. Additional panels are ${peso$1(140)} each.`;
-	const rates_tl = `Ang window cleaning package po namin sa ${rate.place} ay nagsisimula sa ${peso$1(rate.price)}, para sa hanggang ${rate.panels} glass panels. Ang karagdagang panel po ay ${peso$1(140)} bawat isa.`;
-	const rates_tglish = `Hi po! Sa ${rate.place}, ang window cleaning package namin ay nagsisimula sa ${peso$1(rate.price)} para sa hanggang ${rate.panels} glass panels. Ang additional panel ay ${peso$1(140)} each po.`;
+	const prov = rate.group === "Province-level rate";
+	const PV = {
+		en: prov ? ` This is our ${rate.place} province rate; our team will confirm your exact municipality and coverage.` : "",
+		tl: prov ? ` Ito po ang province rate namin sa ${rate.place}; kokumpirmahin po ng aming team ang eksaktong munisipyo at coverage.` : "",
+		tg: prov ? ` Ito ang province rate namin sa ${rate.place}; ico-confirm po ng team ang exact municipality at coverage.` : ""
+	};
+	const rates_en = `Our window cleaning package in ${rate.place} starts at ${peso$1(rate.price)}, covering up to ${rate.panels} glass panels. Additional panels are ${peso$1(140)} each.${PV.en}`;
+	const rates_tl = `Ang window cleaning package po namin sa ${rate.place} ay nagsisimula sa ${peso$1(rate.price)}, para sa hanggang ${rate.panels} glass panels. Ang karagdagang panel po ay ${peso$1(140)} bawat isa.${PV.tl}`;
+	const rates_tglish = `Hi po! Sa ${rate.place}, ang window cleaning package namin ay nagsisimula sa ${peso$1(rate.price)} para sa hanggang ${rate.panels} glass panels. Ang additional panel ay ${peso$1(140)} each po.${PV.tg}`;
 	const base = {
 		ok: true,
 		kind: "glass",
@@ -236,15 +242,15 @@ function estimateEn(address, service, qty, property = "residential", withMain = 
 	};
 	const how_en = extra ? `the ${peso$1(rate.price)} package plus ${extra} additional panel${extra > 1 ? "s" : ""} at ${peso$1(140)}` : `within the ${peso$1(rate.price)} package, with no additional panels`;
 	const how_tl = extra ? `ang ${peso$1(rate.price)} na package at ${extra} karagdagang panel na ${peso$1(140)} bawat isa` : `sakop ng ${peso$1(rate.price)} na package, walang karagdagang panel`;
-	const tg = extra ? `Para sa around ${q} panels, ang estimated total po ay ${peso$1(total)} (${peso$1(rate.price)} package + ${extra} additional panel${extra > 1 ? "s" : ""} na ${peso$1(140)} each). ${NOTE_TG}` : `Para sa ${q} panels ninyo, sakop pa po siya ng package, so ang estimate ay ${peso$1(total)}. ${NOTE_TG}`;
+	const tg = extra ? `Para sa around ${q} panels, ang estimated total po ay ${peso$1(total)} (${peso$1(rate.price)} package + ${extra} additional panel${extra > 1 ? "s" : ""} na ${peso$1(140)} each). ${NOTE_TG}${PV.tg}` : `Para sa ${q} panels ninyo, sakop pa po siya ng package, so ang estimate ay ${peso$1(total)}. ${NOTE_TG}${PV.tg}`;
 	return {
 		...base,
 		qty: q,
 		extra_qty: extra,
 		estimate: total,
 		estimate_tglish: tg,
-		estimate_en: `For about ${q} panels, the estimated total is ${peso$1(total)} (${how_en}). ${NOTE_EN}`,
-		estimate_tl: `Para sa humigit-kumulang ${q} panels, ang estimated total po ay ${peso$1(total)} (${how_tl}). ${NOTE_TL}`
+		estimate_en: `For about ${q} panels, the estimated total is ${peso$1(total)} (${how_en}). ${NOTE_EN}${PV.en}`,
+		estimate_tl: `Para sa humigit-kumulang ${q} panels, ang estimated total po ay ${peso$1(total)} (${how_tl}). ${NOTE_TL}${PV.tl}`
 	};
 }
 // supabase/functions/_shared/logoimg.ts
