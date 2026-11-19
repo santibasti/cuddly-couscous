@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -218,5 +218,14 @@ describe('residential: no ocular visit', () => {
   it('has the approved wording and tells the AI to use it as written, residential only', () => {
     expect(NO_OCULAR).toBe("For residential services, we don't do a preliminary ocular visit to keep costs down for you.\nInstead, our team will do an exact panel count when they arrive on-site. They will inform you of the final count and the total bill before they begin any work.");
     const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toContain(NO_OCULAR.split('\n')[0]); expect(s).toMatch(/never offer or promise one/); expect(s).toMatch(/commercial or special-access[^.]*do not use it/); expect(guardReply(NO_OCULAR, { amounts: [], booked: false }).ok).toBe(true);
+  });
+});
+
+describe('commercial: assessment first, ocular fee', () => {
+  it('has the approved wording, the fee is a known amount, and residential wording is kept apart', () => {
+    expect(COMMERCIAL_OCULAR).toBe("For commercial properties, may we have the property address po? Our team will do an initial assessment first, before scheduling an ocular visit. The ocular fee is ₱2,500, which is deductible once you proceed with the service.");
+    expect(OCULAR_FEE).toBe(2500); expect(guardReply(COMMERCIAL_OCULAR, { amounts: [], booked: false }).ok).toBe(true);
+    expect(guardReply('The ocular fee is ₱3,000.', { amounts: [], booked: false }).ok).toBe(false);
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toContain(COMMERCIAL_OCULAR); expect(s).toMatch(/never use the residential no-ocular text/);
   });
 });
