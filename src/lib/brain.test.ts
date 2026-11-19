@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -106,16 +106,18 @@ describe('separate messages', () => {
     expect(flattenMessages(t)).not.toContain('---'); expect(splitMessages('a\n---\nb\n---\nc\n---\nd\n---\ne\n---\nf')).toHaveLength(5); expect(splitMessages('no split here')).toEqual(['no split here']);
   });
   it('the system prompt asks for the booking details as their own message', () => {
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SEPARATE MESSAGES/); expect(s).toMatch(/Full name:/); expect(s).toMatch(/Complete service address \(with city\):(\\n|\n)Reservation Date:(\\n|\n)Type of Service \(Window, Solar, Wall\/floor or Roof\):/); expect(s).not.toMatch(/Number of glass panels:/); expect(s).toMatch(/Never ask for the number of glass panels in the booking details/); expect(s).toMatch(/line containing only ---/);
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/SEPARATE MESSAGES/); expect(s).toMatch(/Name:(\\n|\n)Address:(\\n|\n)Contact Number:(\\n|\n)Email:(\\n|\n)No\. of House Storey:(\\n|\n)Reservation Date:(\\n|\n)Service Window, Wall, Roof, Solar, Floor\?/); expect(s).not.toMatch(/Full name:/); expect(s).toMatch(/Never ask for the number of glass panels, solar panels or square metres/);
   });
 });
 
 describe('how to book', () => {
-  it('recognises a customer who wants to book; the answer first asks for the service and the location, not the details form', () => {
+  it('recognises a customer who wants to book; with the city known the form is sent at once, without it only the city is asked', () => {
     for (const q of ['how do i book?', 'Gusto ko po mag-book', 'pwede po bang magpa-schedule', 'I want to reserve Saturday', 'can I set an appointment?']) expect(wantsToBook(q)).toBe(true);
     expect(wantsToBook('Magkano po sa Pasig?')).toBe(false);
-    expect(splitMessages(BOOKING_HOWTO)).toHaveLength(1); expect(BOOKING_HOWTO).toMatch(/type of service you need \(Window, Solar, Wall\/floor or Roof\) and your location/); expect(BOOKING_HOWTO).not.toMatch(/Full name:|Reservation Date:/);
-    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/do NOT send the booking-details form yet/); expect(s).toMatch(/only after the service and the location are known and the date is open/); expect(s).toMatch(/only after the type of service and the location are known/);
+    expect(splitMessages(BOOKING_HOWTO)).toHaveLength(1); expect(BOOKING_HOWTO).toMatch(/your location \(city\) po/); expect(BOOKING_HOWTO).not.toMatch(/Name:|Reservation Date/);
+    expect(splitMessages(BOOKING_SEND_FORM)).toHaveLength(2); expect(splitMessages(BOOKING_SEND_FORM)[1]).toBe(BOOKING_FORM);
+    expect(BOOKING_FORM).toBe('Please copy this and fill in your details po:\nName:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?');
+    const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toMatch(/if the LOCATION \(city\) is already known[^.]*send the booking-details form right away/); expect(s).toMatch(/If the location is not known yet, ask only for the location/);
   });
 });
 
