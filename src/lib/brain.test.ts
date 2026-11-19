@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanPhone, contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, fallbackFor, honorificFor, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { TOOLS, cleanPhone, contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, fallbackFor, honorificFor, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -159,6 +159,10 @@ describe('V2 prompt: fifteen rules, known facts, no forced sentences', () => {
   it('carries the rulebook, its version and every non-negotiable rule', () => {
     const s = sys(); expect(s).toMatch(/RULEBOOK \(version 3\)/); expect(s).toContain('You are TopMop.');
     for (const r of [/English or English-dominant Taglish only/, /at most TWO short sentences, preferably under 35 words/, /ask at most one question/, /never ask for photos or videos/, /never ask for the number of panels or square metres/, /never mention cleaning services the customer did not ask about, and never upsell/, /never offer or suggest booking after a price/, /not consent/, /SCHEDULING \(only when the customer clearly asks to book\): booking uses the booking-details form/, /never write or paraphrase the form yourself/, /prices only from estimate, dates only from check_date, bookings only from book_date/, /Never invent prices, capabilities, discounts/]) expect(s).toMatch(r);
+  });
+  it('hands over only for the real triggers, never for ordinary job details such as a gated village', () => {
+    const s = sys(); expect(s).toMatch(/12\. HANDOVER: only for a request for a person, a complaint/); expect(s).toMatch(/gated village, weekday-only access, paint colour or age, rust, stains, duration\) are NOT a reason to hand over/); expect(s).not.toMatch(/If a tool fails or you are unsure, say the team will verify and use needs_human/);
+    const tool = (TOOLS as { name: string; description: string }[]).find((t) => t.name === 'needs_human')!; expect(tool.description).toMatch(/ONLY for/); expect(tool.description).not.toMatch(/anything you are unsure about/); expect(tool.description).toMatch(/silences the assistant/);
   });
   it('no longer forces the counting sentence or the upsell, and is shorter than before', () => {
     const s = sys(); expect(s).not.toMatch(/UPSELL THE CORE SERVICES/); expect(s).not.toContain('Our team will conduct on-site glass and solar panel counting'); expect(s).not.toMatch(/a yes to the starting rates/); expect(s.length - 'You are TopMop.'.length).toBeLessThan(7000);
