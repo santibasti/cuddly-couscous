@@ -4,7 +4,9 @@ import { tooTagalog } from './brain.ts';
 
 export interface Check { ctx: ChatContext; intent: Intent; customerText: string; previousAi: string[]; first?: boolean }
 const FIXED = /ocular|^\s*Thank you po! Our technical team|^\s*Sure po, you may send them|^\s*Your booking is set for|TopMop offers professional exterior cleaning/i;
-const sentences = (t: string) => String(t ?? '').replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/).filter(Boolean);
+// Abbreviations in addresses and titles ("Brgy. Bahay Toro", "Maple St. Extension") do not end a sentence; splitting there cut a booking confirmation in the middle of the address.
+const ABBR = /\b(brgy|st|ave|blvd|rd|bldg|apt|hwy|dist|mt|mr|mrs|dr|sr|jr)\./gi;
+export const sentences = (t: string): string[] => String(t ?? '').replace(/\s+/g, ' ').trim().replace(ABBR, '$1\u0001').split(/(?<=[.!?])\s+/).map((x) => x.replace(/\u0001/g, '.')).filter(Boolean);
 const wordsIn = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 const BOOKING_OFFER = /(would you like|want|ready|interested|shall we|can i|may i|let me|i can) .{0,25}(to )?(book|schedule|reserve|set (?:up )?an? (?:appointment|booking|date))|book(?:ing)? a date|set an? appointment|available dates?|reservation/i;
 const COUNT_TALK = /(on-?site|onsite).{0,70}(count|measure)|counting and .{0,40}measurement|final count|panel count|exact panel|count(?:s|ed)? the panels|square met(?:er|re)s/i;

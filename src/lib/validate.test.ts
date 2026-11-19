@@ -32,6 +32,11 @@ describe('reply validation', () => {
     const fixed = repairReply(bad, viol, v('How much?')); expect(fixed).toBe('Exterior wall cleaning in Manila is ₱125 per sqm.'); expect(validateReply(fixed, v('How much?'))).toEqual([]);
     expect(repairReply('Is it exterior? Is it ground floor?', ['one_question'], v('hi'))).toBe('Is it exterior?');
   });
+  it('does not cut an address at "Brgy." or "St." when keeping two sentences', () => {
+    const t = 'Your booking request has been forwarded for Saturday, Nov 21, window cleaning at 12 Maple St. Extension, Brgy. Bahay Toro. Our team will confirm the schedule. Thank you po.';
+    const fixed = repairReply(t, ['length: too long'], v('ok'));
+    expect(fixed).toContain('Brgy. Bahay Toro'); expect(fixed).toContain('12 Maple St. Extension'); expect(fixed).not.toContain('Thank you po');
+  });
   it('has a safe fallback for each situation', () => {
     expect(fallbackReply(v('hi', emptyContext(), 'booking_request')).text).toMatch(/location \(city\)/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'I want to book']), 'booking_request')).text).toMatch(/Which cleaning service/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'window', 'I want to book']), 'booking_request')).text).toMatch(/What date/);
     expect(fallbackReply(v('How much?', ctx), 'integration')).toEqual({ text: 'Let me have our team verify that for you po.', handover: true }); expect(fallbackReply(v('You damaged it', ctx, 'complaint')).handover).toBe(true);
