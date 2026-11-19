@@ -171,6 +171,7 @@ describe('V2 prompt: fifteen rules, known facts, no forced sentences', () => {
   it('knows there is no transportation fee, without claiming there are no other charges', () => {
     const s = sys(); expect(NO_TRANSPORT_FEE).toBe('There is no transportation fee po.'); expect(s).toContain(NO_TRANSPORT_FEE); expect(s).toMatch(/never say there are no other charges/);
   });
+  it('says "Our team will confirm that po" instead of "I don\'t have the details"', () => { const s = sys(); expect(s).toContain('say "Our team will confirm that po."'); expect(s).toMatch(/Never say "I don't have" or "I'm not able to" about details/); });
   it('no longer forces the counting sentence or the upsell, and is shorter than before', () => {
     const s = sys(); expect(s).not.toMatch(/UPSELL THE CORE SERVICES/); expect(s).not.toContain('Our team will conduct on-site glass and solar panel counting'); expect(s).not.toMatch(/a yes to the starting rates/); expect(s.length - 'You are TopMop.'.length).toBeLessThan(7000);
   });
