@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TOOLS, PAYMENT_POLICY, cleanPhone, contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, fallbackFor, honorificFor, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { TOOLS, PAYMENT_POLICY, NO_TRANSPORT_FEE, cleanPhone, contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, fallbackFor, honorificFor, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -167,6 +167,9 @@ describe('V2 prompt: fifteen rules, known facts, no forced sentences', () => {
   it('knows the payment policy: no downpayment, payment on completion, four modes; a payment question is not a handover', () => {
     const s = sys(); expect(PAYMENT_POLICY).toBe('No downpayment is required po. Payment is made upon completion of the job, by cash, GCash, bank transfer or cheque.'); expect(s).toContain(PAYMENT_POLICY); expect(s).toMatch(/A question about downpayment or how and when to pay is NOT a handover/); expect(s).toMatch(/never give account numbers/);
     expect(s).not.toMatch(/contracts or payment terms/); expect((TOOLS as { name: string; description: string }[]).find((t) => t.name === 'needs_human')!.description).not.toMatch(/payment terms/);
+  });
+  it('knows there is no transportation fee, without claiming there are no other charges', () => {
+    const s = sys(); expect(NO_TRANSPORT_FEE).toBe('There is no transportation fee po.'); expect(s).toContain(NO_TRANSPORT_FEE); expect(s).toMatch(/never say there are no other charges/);
   });
   it('no longer forces the counting sentence or the upsell, and is shorter than before', () => {
     const s = sys(); expect(s).not.toMatch(/UPSELL THE CORE SERVICES/); expect(s).not.toContain('Our team will conduct on-site glass and solar panel counting'); expect(s).not.toMatch(/a yes to the starting rates/); expect(s.length - 'You are TopMop.'.length).toBeLessThan(7000);

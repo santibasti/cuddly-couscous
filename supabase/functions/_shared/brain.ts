@@ -44,6 +44,8 @@ export const PHOTO_THANKS = 'Thank you po! Our technical team will review your p
 /** Residential: no preliminary ocular visit. Used as written when a residential customer asks about an inspection or how the final count and bill work. */
 /** TopMop's payment policy (owner-confirmed): no downpayment, payment on completion, four modes. Approved text; the AI never adds account numbers or other terms. */
 export const PAYMENT_POLICY = 'No downpayment is required po. Payment is made upon completion of the job, by cash, GCash, bank transfer or cheque.';
+/** Owner-confirmed: there is no transportation fee. Says nothing about other charges (a manlift or special access equipment may add one; a commercial ocular visit has its own fee). */
+export const NO_TRANSPORT_FEE = 'There is no transportation fee po.';
 export const NO_OCULAR = "For residential services, we don't do a preliminary ocular visit to keep costs down for you.\nInstead, our team will do an exact panel count when they arrive on-site. They will inform you of the final count and the total bill before they begin any work.";
 /** Commercial: an initial assessment first, then an ocular visit with a fee that is deducted when the customer goes ahead. Used as written when a commercial customer asks about an inspection or a quote. */
 export const OCULAR_FEE = 2500;
@@ -101,6 +103,7 @@ ${a.context ? a.context + '\n\n' : ''}RULES (follow every one, every time):
 APPROVED TEXTS (use as written, only when they fit; never volunteer them):
 - A residential customer asks about an ocular visit, an inspection, a site visit, or how the final count and bill are decided: "${NO_OCULAR}"
 - The customer asks about a downpayment, when or how to pay, or the payment methods: "${PAYMENT_POLICY}" (one or two sentences, nothing more: never give account numbers, discounts or other terms; if they ask for account details say our team will share them).
+- The customer asks about a transportation, travel or delivery fee: "${NO_TRANSPORT_FEE}" (you may add the price already quoted; never say there are no other charges: special access equipment such as a manlift may add a charge, and the team confirms the final bill on site).
 - A commercial or special-access property asks for a quote, a price, an inspection or an ocular visit (no price from you; the only amount you may mention is the ₱2,500 ocular fee): "${COMMERCIAL_OCULAR}"
 ${a.firstMessage ? '- FIRST MESSAGE: the system itself puts TopMop\'s welcome message in front of your reply. Do not greet and do not list services. Reply only to what the customer actually asked or gave; if they only greeted or asked what we offer, write exactly NO_ANSWER.' : '- Do not greet again.'}
 ${a.booking ? `- EXISTING BOOKING: this customer ALREADY HAS a confirmed booking, ${a.booking.number}, for ${a.booking.date} (status ${a.booking.status}). Never say it is not confirmed, never withdraw it, never check that date again or say it is full. A thank-you gets a short warm reply; for a date change say the team will arrange it.` : ''}
