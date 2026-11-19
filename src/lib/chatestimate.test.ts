@@ -56,3 +56,10 @@ describe('Laguna and Batangas are province-level rates (the price list asks for 
   });
 });
 
+describe('Pampanga is a province-level rate too (owner: ₱12,799, 51 panels)', () => {
+  it('quotes the Pampanga rate with the municipality to be confirmed; other provinces still have no price', () => {
+    const e = estimate('Angeles, Pampanga', 'window cleaning'); expect(e).toMatchObject({ ok: true, place: 'Pampanga', package_price: 12799, included: 51 }); expect(e.rates_en).toMatch(/municipality/);
+    expect(estimate('Tarlac City', 'window cleaning').ok).toBe(false); expect(estimate('Dagupan, Pangasinan', 'window cleaning').ok).toBe(false);
+  });
+});
+

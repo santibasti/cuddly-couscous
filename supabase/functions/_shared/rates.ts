@@ -10,7 +10,7 @@ export const RATES: Rate[] = [
   ...mk('Cavite', [['Alfonso', C], ['Amadeo', C], ['Bacoor', B], ['Carmona', C], ['Cavite City', B], ['Dasmariñas', B], ['General Trias', P(6799, 41)], ['Imus', B], ['Silang', C], ['Tagaytay', C]]),
   ...mk('Bulacan', [['Bocaue', B], ['Marilao', B], ['San Jose del Monte', B], ['Santa Maria', B]]),
   ...mk('Rizal', [['Antipolo', B], ['Cainta', B], ['Rodriguez (Montalban)', B]]),
-  ...mk('Province-level rate', [['Laguna', C], ['Batangas', C]]),
+  ...mk('Province-level rate', [['Laguna', C], ['Batangas', C], ['Pampanga', C]]),
 ];
 export const EXTRA_PANEL = 140;
 /** Other services: rate, unit and minimum quantity (billed at the minimum until measured). */

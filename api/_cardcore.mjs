@@ -55,7 +55,11 @@ const RATES = [
 		["Cainta", B],
 		["Rodriguez (Montalban)", B]
 	]),
-	...mk("Province-level rate", [["Laguna", C], ["Batangas", C]])
+	...mk("Province-level rate", [
+		["Laguna", C],
+		["Batangas", C],
+		["Pampanga", C]
+	])
 ];
 /** Other services: rate, unit and minimum quantity (billed at the minimum until measured). */
 const OTHER = [
