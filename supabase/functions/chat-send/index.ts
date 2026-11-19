@@ -1,7 +1,7 @@
 // Staff act on the AI chat from the app (signed-in user with permission inbox.manage). POST JSON with the user's token:
 //   { action: "approve", message_id, text? }   run the queued actions (book, save the lead), then send the reply to the customer through ManyChat (secret MANYCHAT_API_TOKEN)
 //                                              — without that token the reply is marked "approved" and shown to copy into ManyChat's live chat
-//   { action: "discard", message_id }          { action: "takeover" | "release", conversation_id }
+//   { action: "discard", message_id }          { action: "takeover" | "release", conversation_id }   { action: "returning", conversation_id, on: true|false }
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { makeExec } from '../_shared/chatexec.ts';
 import { flattenMessages, splitMessages, type Action } from '../_shared/brain.ts';
@@ -23,6 +23,10 @@ Deno.serve(async (req) => {
     const { data: c } = await sb.from('chat_conversations').select('id, inquiry_id').eq('id', String(b.conversation_id ?? '')).maybeSingle(); if (!c) return json({ error: 'Conversation not found' }, 404);
     await sb.from('chat_conversations').update(action === 'takeover' ? { status: 'Needs a person', human_reason: 'A staff member took over' } : { status: c.inquiry_id ? 'Lead created' : 'Open', human_reason: null }).eq('id', c.id);
     return json({ ok: true });
+  }
+  if (action === 'returning') {
+    const on = b.on !== false; const { error } = await sb.from('chat_conversations').update({ returning_customer: on, returning_note: on ? 'Staff marked this customer as returning' : null }).eq('id', String(b.conversation_id ?? ''));
+    return error ? json({ error: error.message.includes('returning_customer') ? 'Run supabase db push first (migration 0132).' : error.message }, 400) : json({ ok: true });
   }
   const { data: msg } = await sb.from('chat_messages').select('*').eq('id', String(b.message_id ?? '')).maybeSingle(); if (!msg || msg.direction !== 'out') return json({ error: 'Message not found' }, 404);
   if (action === 'discard') { await sb.from('chat_messages').update({ status: 'discarded', decided_by: who, decided_at: new Date().toISOString() }).eq('id', msg.id); return json({ ok: true }); }

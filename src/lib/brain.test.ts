@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, ONSITE_COUNT, fallbackFor, honorificFor, BOOKING_HOWTO, BOOKING_FORM, BOOKING_SEND_FORM, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -227,5 +227,21 @@ describe('commercial: assessment first, ocular fee', () => {
     expect(OCULAR_FEE).toBe(2500); expect(guardReply(COMMERCIAL_OCULAR, { amounts: [], booked: false }).ok).toBe(true);
     expect(guardReply('The ocular fee is ₱3,000.', { amounts: [], booked: false }).ok).toBe(false);
     const s = buildSystem({ sections: [], version: null, lang: 'en' }); expect(s).toContain(COMMERCIAL_OCULAR); expect(s).toMatch(/never use the residential no-ocular text/);
+  });
+});
+
+describe('returning customers', () => {
+  it('finds a Philippine mobile number in different shapes', () => {
+    expect(mobileFrom('', 'my number is 0917 123 4567 po')).toBe('09171234567'); expect(mobileFrom('+63 917-123-4567')).toBe('09171234567'); expect(mobileFrom('639171234567')).toBe('09171234567'); expect(mobileFrom('9171234567')).toBe('09171234567');
+    expect(mobileFrom('Magkano po sa Makati? 21 panels')).toBeUndefined(); expect(mobileFrom(null, undefined)).toBeUndefined();
+  });
+  it('reads a ManyChat tag that marks an existing customer, not a new lead', () => {
+    expect(returningByTag([{ name: 'Existing customer' }])).toBe('Existing customer'); expect(returningByTag(['Returning'])).toBe('Returning'); expect(returningByTag([{ name: 'New lead' }])).toBeUndefined(); expect(returningByTag(undefined)).toBeUndefined();
+  });
+  it('tells the AI the customer is not new, skips the welcome and does not ask for details on file', () => {
+    const info = { note: 'Matched existing client Maria Santos by mobile number', client: { name: 'Maria Santos', mobile: '09171234567', address: 'Quezon City' }, jobs: ['JOB-2026-0100 (Completed, 2026-09-01)'] };
+    expect(returningBlock(info)).toMatch(/NOT a new inquiry/); expect(returningBlock(info)).toContain('Maria Santos'); expect(returningBlock(info)).toContain('JOB-2026-0100');
+    const s = buildSystem({ sections: [], version: null, lang: 'en', returning: info }); expect(s).toMatch(/RETURNING CUSTOMER/); expect(s).toMatch(/Welcome back po/); expect(s).toMatch(/Do not ask again for details we already have/);
+    expect(buildSystem({ sections: [], version: null, lang: 'en' })).not.toMatch(/RETURNING CUSTOMER/);
   });
 });

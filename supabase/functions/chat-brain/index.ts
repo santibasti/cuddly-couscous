@@ -4,7 +4,7 @@
 // Answer: { ok, status: "queued" | "reply" | "held" | "handover" | "duplicate" | "off", reply, mode } ("queued": the work continues after the answer because ManyChat waits only 10 seconds) — put `reply` in the chatbot's next message; when it is empty, send nothing (staff or a draft is handling it).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { cardForLog, explainsPanelCount, panelGuideUrl } from '../_shared/estimatecard.ts';
-import { BOOKING_HOWTO, BOOKING_SEND_FORM, PHOTO_MARKER, PHOTO_THANKS, isPhotoMessage, honorificFor, wantsToBook, buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
+import { mobileFrom, returningByTag, type ReturningInfo, BOOKING_HOWTO, BOOKING_SEND_FORM, PHOTO_MARKER, PHOTO_THANKS, isPhotoMessage, honorificFor, wantsToBook, buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, parseMode, runBrain, fallbackFor } from '../_shared/brain.ts';
 import { makeExec } from '../_shared/chatexec.ts';
 import { findRate } from '../_shared/rates.ts';
 import { parseLang } from '../chat-availability/logic.ts';
@@ -40,6 +40,32 @@ Deno.serve(async (req) => {
   await sb.from('chat_conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id);
   const photo = isPhotoMessage(text);
   if (photo) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Customer sent a photo', body: `${conv.name ?? 'A customer'} (${channel}) sent a photo. Technical team: please review it.`, link: '/ai-chat' });   // the AI promises the technical team will look at it
+  // A returning customer: staff marked them, their mobile number matches a client we already have, or a ManyChat tag says so. The AI then skips the welcome and does not treat them as a new inquiry.
+  let returning: ReturningInfo | null = null;
+  try {
+    const rc = conv as { returning_customer?: boolean; returning_note?: string | null; client_id?: string | null };
+    const mob = mobileFrom(pick('phone', 'optin_phone', 'mobile', 'mobile_number'), text); const tag = returningByTag(b.tags ?? c.tags);
+    let clientId = rc.client_id ?? undefined; let why = rc.returning_customer ? (rc.returning_note || 'Staff marked this customer as returning') : '';
+    if (!why && mob) { const { data: cl } = await sb.from('clients').select('id, name').eq('mobile', mob).is('deleted_at', null).lt('created_at', (conv as { created_at?: string }).created_at ?? new Date().toISOString()).limit(1); if (cl?.length) { clientId = cl[0].id; why = `Matched existing client ${cl[0].name} by mobile number`; } }
+    if (!why && tag) why = `ManyChat tag "${tag}"`;
+    if (why) {
+      const info: ReturningInfo = { note: why };
+      if (clientId) {
+        const [{ data: cl }, { data: jb }, { data: iq }] = await Promise.all([
+          sb.from('clients').select('name, mobile, email, address').eq('id', clientId).maybeSingle(),
+          sb.from('jobs').select('number, status, start_at').eq('client_id', clientId).is('deleted_at', null).order('start_at', { ascending: false }).limit(4),
+          sb.from('inquiries').select('stage, details, created_at').eq('client_id', clientId).is('deleted_at', null).order('created_at', { ascending: false }).limit(3)]);
+        if (cl) info.client = { name: cl.name, mobile: cl.mobile, email: cl.email, address: cl.address };
+        info.jobs = (jb ?? []).map((j: { number: string; status: string; start_at: string }) => `${j.number} (${j.status}, ${String(j.start_at).slice(0, 10)})`);
+        info.inquiries = (iq ?? []).map((q: { stage: string; details: string | null; created_at: string }) => `${String(q.created_at).slice(0, 10)} ${q.stage}: ${String(q.details ?? '').slice(0, 70)}`);
+      }
+      returning = info;
+      if (!rc.returning_customer) {                                                                         // newly recognised: remember it and tell the team once
+        const { error: re } = await sb.from('chat_conversations').update({ returning_customer: true, returning_note: why, ...(clientId && !rc.client_id ? { client_id: clientId } : {}) }).eq('id', conv.id);
+        if (!re) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Returning customer messaged', body: `${conv.name ?? 'A customer'} (${channel}): ${why}. The AI will not treat them as new.`, link: '/ai-chat' });
+      }
+    }
+  } catch (e) { console.error('returning check', (e as Error).message); }   // never stop the chat because of this check
   if (mode === 'off') return json({ ok: true, status: 'off', reply: '', mode });
   if (conv.status === 'Needs a person') return json({ ok: true, status: 'handover', reply: '', mode });                    // a person has this conversation: the AI stays silent
   if (!env('ANTHROPIC_API_KEY')) return json({ ok: true, status: 'held', reply: '', mode, note: 'ANTHROPIC_API_KEY is not set' });
@@ -54,10 +80,10 @@ Deno.serve(async (req) => {
   for (const m of (hist ?? []).reverse()) { const role = m.direction === 'in' ? 'user' : 'assistant'; const body = isPhotoMessage(m.body) ? PHOTO_MARKER : m.body; if (messages.length && messages[messages.length - 1].role === role) messages[messages.length - 1].content += `\n${body}`; else messages.push({ role, content: body }); }
   if (!messages.length || messages[0].role !== 'user') messages.unshift({ role: 'user', content: photo ? PHOTO_MARKER : text });
   const model = cfg?.model || env('CHAT_AI_MODEL') || 'claude-haiku-5-5';
-  const { count: sentBefore } = await sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('direction', 'out').in('status', ['sent', 'approved', 'draft']); const first = (sentBefore ?? 0) === 0;   // the first reply of a conversation starts with the welcome
+  const { count: sentBefore } = await sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('direction', 'out').in('status', ['sent', 'approved', 'draft']); const first = (sentBefore ?? 0) === 0 && !returning;   // the first reply of a conversation starts with the welcome
   let booking: { number: string; date: string; status: string } | null = null;                                              // a booking this chat already made for the customer: the AI must never contradict it
   if (conv.inquiry_id) { const { data: qs } = await sb.from('quotations').select('id').eq('inquiry_id', conv.inquiry_id).is('deleted_at', null); if (qs?.length) { const { data: js } = await sb.from('jobs').select('number, start_at, status').in('quotation_id', qs.map((x: { id: string }) => x.id)).is('deleted_at', null).not('status', 'in', '("Cancelled","Rescheduled")').order('created_at', { ascending: false }).limit(1); if (js?.length) booking = { number: js[0].number, date: String(js[0].start_at).slice(0, 10), status: js[0].status }; } }
-  const system = buildSystem({ booking, firstMessage: first, honorific, sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, customerName: (conv as { name?: string | null }).name, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
+  const system = buildSystem({ returning, booking, firstMessage: first, honorific, sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, customerName: (conv as { name?: string | null }).name, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
   const callModel = async (sys: string, msgs: unknown[], tools: unknown) => {
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 2500, system: sys, tools, messages: msgs }) });
     if (!r.ok) throw new Error(`AI error ${r.status}`); return await r.json();

@@ -382,3 +382,6 @@ When a customer asks to book or reserve and the city is already known, the AI se
 
 ## Photo alert (chat)
 When a customer sends a photo, `chat-brain` (ManyChat passes the picture's link as the message) and `fb-webhook` (direct Messenger) queue an alert "Customer sent a photo — technical team: please review it" (Telegram / app alert, link to AI Chat). In AI Chat the picture shows as a thumbnail you can open. The AI is told the photo arrived and answers "Thank you po! Our technical team will review your photo." Redeploy `chat-brain` and `fb-webhook`.
+
+## Returning customers in the chat (migration 0132)
+A customer who already dealt with the team is not treated as a new inquiry. A conversation is "returning" when staff press **Mark as returning customer** in AI Chat, when a mobile number in the message or the ManyChat contact matches a client that existed before the chat started, or when a ManyChat tag such as "Existing customer" / "Returning" arrives (best effort: check the External Request test output for a `tags` field). The AI then skips the welcome, opens with "Welcome back po!", gets the client's details and last jobs, and does not ask again for what is on file; the team gets one alert. Run `supabase.cmd db push`, then redeploy `chat-brain` and `chat-send`. Also set ManyChat Live Chat to pause automation while a person is replying.
