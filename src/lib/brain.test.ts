@@ -205,3 +205,11 @@ describe('photos from the customer', () => {
     expect(PHOTO_THANKS).toMatch(/technical team will review/);
   });
 });
+
+describe('upsell the core services', () => {
+  it('tells the AI to upsell once, softly, and when not to', () => {
+    const s = buildSystem({ sections: [], version: null, lang: 'en' });
+    expect(s).toMatch(/UPSELL THE CORE SERVICES/); expect(s).toMatch(/wall\/floor cleaning, window\/glass cleaning, roof cleaning or solar panel cleaning/); expect(s).toMatch(/once per conversation/);
+    expect(s).toMatch(/Do NOT upsell in the first reply/); expect(s).toMatch(/Never quote a price, bundle, discount/);
+  });
+});
