@@ -20,6 +20,8 @@ async function tg(method: string, body: Record<string, unknown>) {
   if (!r.ok || j.ok === false) throw new Error(`Telegram ${method}: ${j.description ?? r.status}`);
   return j.result;
 }
+/** What the crew sees when a save fails: the step and the short reason (never the bot token), so a fault can be found without opening the logs. */
+const failText = (e: unknown) => `⚠ I could not save that one (${String((e as Error)?.message ?? e).replace(/bot\d+:[\w-]+/g, 'bot***').replace(/\s+/g, ' ').slice(0, 110)}). Please try again, or upload it in the app.`;
 const say = (chat: number, text: string, extra: Record<string, unknown> = {}) => tg('sendMessage', { chat_id: chat, text, ...extra }).catch((e) => { console.error(String(e)); });
 
 interface Msg { voice?: { file_id: string; duration?: number }; audio?: { file_id: string; duration?: number }; message_id: number; date: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string; is_bot?: boolean }; text?: string; caption?: string;
@@ -66,7 +68,7 @@ async function saveMedia(db: Db, m: Msg, media: Media, emp: string, job: TgJob |
   const folder = job?.id ?? (ocular ? `ocular/${ocular.id}` : 'unsorted');
   const path = `${folder}/${id}.${ext}`;
   const up = await db.storage.from('job-photos').upload(path, bytes, { contentType: media.mime, upsert: false });
-  if (up.error) throw new Error(up.error.message);
+  if (up.error) throw new Error(`upload: ${up.error.message}`);
   // a small copy for the Photo Library grid (the original stays untouched for creatives)
   let thumb: string | null = null;
   if (media.thumbId) {
@@ -77,7 +79,7 @@ async function saveMedia(db: Db, m: Msg, media: Media, emp: string, job: TgJob |
   }
   const ins = await db.from('job_photos').insert({ id, job_id: job?.id ?? null, ocular_id: ocular?.id ?? null, client_id: job?.client_id ?? ocular?.client_id ?? null, path, thumb_path: thumb, kind: parsed.kind, caption: parsed.caption, tags: ['telegram'], width: media.w ?? null, height: media.h ?? null,
     taken_at: new Date(m.date * 1000).toISOString(), source: 'telegram', sent_by_employee_id: emp, media: media.media, tg_unique_id: media.uniqueId, size_bytes: bytes.length, uploaded_by: null });
-  if (ins.error) { await db.storage.from('job-photos').remove(thumb ? [path, thumb] : [path]); if (ins.error.code === '23505') return 'duplicate'; throw new Error(ins.error.message); }
+  if (ins.error) { await db.storage.from('job-photos').remove(thumb ? [path, thumb] : [path]); if (ins.error.code === '23505') return 'duplicate'; throw new Error(`save: ${ins.error.message}`); }
   return 'saved';
 }
 
@@ -166,7 +168,7 @@ async function onMessage(db: Db, m: Msg) {
   if (ocular && !canSendToOcular(ocular, emp)) return void await say(chat, `⚠ ${ocular.number} is not assigned to you, so I did not save that. Only the inspector assigned to the ocular visit can send photos to it.`, reply);
   if (ocular) {
     let ro: Awaited<ReturnType<typeof saveMedia>>;
-    try { ro = await saveMedia(db, m, media, emp, null, parsed, ocular); } catch (e) { console.error(String(e)); return void await say(chat, '⚠ I could not save that one. Please try again, or upload it in the app.', reply); }
+    try { ro = await saveMedia(db, m, media, emp, null, parsed, ocular); } catch (e) { console.error(String(e)); return void await say(chat, failText(e), reply); }
     if (ro === 'duplicate') return;
     if (ro === 'toobig') return void await say(chat, '⚠ That file is over 20 MB, which is more than I can fetch from Telegram. Please upload it in the app.', reply);
     if (m.media_group_id) { const { data: last } = await db.from('telegram_notice').select('at').eq('telegram_user_id', -from.id).maybeSingle(); if (last && Date.now() - new Date(last.at).getTime() < 60_000) return; await db.from('telegram_notice').upsert({ telegram_user_id: -from.id, at: new Date().toISOString() }); }
@@ -181,7 +183,7 @@ async function onMessage(db: Db, m: Msg) {
 
   const where = d.kind === 'job' ? d.job : null;
   let r: Awaited<ReturnType<typeof saveMedia>>;
-  try { r = await saveMedia(db, m, media, emp, where, parsed); } catch (e) { console.error(String(e)); return void await say(chat, '⚠ I could not save that one. Please try again, or upload it in the app.', reply); }
+  try { r = await saveMedia(db, m, media, emp, where, parsed); } catch (e) { console.error(String(e)); return void await say(chat, failText(e), reply); }
   if (r === 'duplicate') return;
   if (r === 'toobig') return void await say(chat, '⚠ That file is over 20 MB, which is more than I can fetch from Telegram. Please upload it in the app (Photo Library).', reply);
 
