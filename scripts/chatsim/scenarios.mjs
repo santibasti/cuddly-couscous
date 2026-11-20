@@ -178,4 +178,7 @@ ok('Bundle (full mode): a total the tool did not return (the AI adding wrongly) 
 m = await priced('How much for 10 solar panels in Makati?', { address: 'Makati', service: 'solar panels', qty: 10, with_main: true }, 'Solar cleaning is ₱245 per panel with a 20 panel minimum, so 10 panels is ₱4,900 po.', 'MC-I6');
 ok('Standalone: the model asking for a bundle waiver on a single service is ignored, the ₱4,900 minimum stands', /4,900/.test(m.body) && m.flags.length === 0, JSON.stringify(m.body.slice(0, 90)));
 
+m = await priced('Makati: 15 window panels, 10 solar panels and 60 sqm of roof. What is the total?', { address: 'Makati', items: [{ service: 'window cleaning', qty: 15 }, { service: 'solar panels', qty: 10 }, { service: 'roof cleaning', qty: 60 }] }, 'The total for all three is ₱15,949 po: the window package ₱4,799, solar ₱2,450 and roof ₱8,700. The final amount is confirmed on site.', 'MC-I7');
+ok('Bundle of three: window ₱4,799 (keeps its minimum) + solar ₱2,450 + roof ₱8,700 (no minimum) = ₱15,949, from the tool, no flag', /15,949/.test(m.body) && m.flags.length === 0, JSON.stringify(m.body.slice(0, 100)));
+
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);

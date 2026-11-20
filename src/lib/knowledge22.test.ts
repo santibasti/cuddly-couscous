@@ -26,8 +26,8 @@ describe('V2.2 knowledge is in the prompt', () => {
   it('6 roof: hybrid soft washing and regulated low pressure, depends on the roof, no promise about discoloration or paint', () => {
     expect(sys).toMatch(/hybrid approach of suitable soft washing and regulated low-pressure cleaning/); expect(sys).toMatch(/roof type, material, paint condition, structural condition, slope and safe access/); expect(sys).toMatch(/Never guarantee removal of permanent discoloration or restoration of faded paint/);
   });
-  it('7 bundle: the second service minimum is waived, never free, never a lower rate, never equipment charges; the estimate tool decides', () => {
-    for (const r of [/the FIRST service keeps its full minimum charge; the SECOND service has its minimum waived and is billed on the actual quantity at its approved per-sqm or per-panel rate/, /NOT a free service, NOT a lower unit rate and NOT a waiver of special-equipment charges/, /for two services call it with items/, /Do not use the words "discount" or "free"/]) expect(sys).toMatch(r);
+  it('7 bundle: every service after the first has its minimum waived, never free, never a lower rate, never equipment charges; the estimate tool decides', () => {
+    for (const r of [/the FIRST service \(the window package if there is one\) keeps its full minimum charge; EVERY OTHER service has its minimum waived and is billed on the actual quantity at its approved per-sqm or per-panel rate/, /NOT a free service, NOT a lower unit rate and NOT a waiver of special-equipment charges/, /for two or more services call it with items/, /Do not use the words "discount" or "free"/]) expect(sys).toMatch(r);
   });
   it('the communication rules: one topic at a time, own words, nothing volunteered; the V2.1 rules and approved texts are still there', () => {
     expect(sys).toMatch(/answer ONLY the topic the customer asked about, in your own short natural words/); expect(sys).toMatch(/not scripts; never bring up the other topics; never guarantee a result/);

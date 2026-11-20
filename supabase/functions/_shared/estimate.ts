@@ -57,7 +57,7 @@ function estimateEn(address: string, service: string, qty?: number, property: st
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------
 // MINIMUM CHARGES AND BUNDLES (owner rule). Every package has a minimum charge: below the allowance the customer still pays the full minimum (never prorated).
-// Two eligible services booked together: the FIRST keeps its full minimum, the SECOND has its minimum waived and is billed on the actual quantity at its unit rate (not free, not discounted).
+// Two or more eligible services booked together: the FIRST keeps its full minimum, every OTHER one has its minimum waived and is billed on the actual quantity at its unit rate (not free, not discounted).
 // Special equipment or access charges can still apply. The AI never decides or adds this: the code does, from the approved rate table.
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------
 const BUNDLE_NOTE = 'The final amount is confirmed on site, and special equipment or access charges may apply.';
@@ -76,22 +76,30 @@ export function bundleWaives(service: string, seen: readonly string[]): boolean 
   const idx = kinds.indexOf(k); if (idx < 0) return false;                                       // the service itself must be one the customer is talking about
   return kinds.some((x, i) => x !== k && (x === 'glass' || i < idx));                          // a glass package, or an earlier service, is the first one
 }
-/** The combined estimate of TWO services booked together. `items` in the order the customer named them; the glass package, when there is one, is always the first. */
+/**
+ * The combined estimate of TWO OR MORE services booked together (owner rule: when one package is taken, the rest have no minimum).
+ * `items` in the order the customer named them; the glass package, when there is one, is always the first. The first keeps its full minimum; every other service is billed on its actual quantity at its unit rate.
+ */
 export function estimateBundle(address: string, items: { service: string; qty?: number }[], property: string = 'residential'): Estimate {
   if (/commercial|business|office|store|company|building|condo(minium)? ?(corp|association)|hotel|school|hospital|warehouse|factory/i.test(property)) return needsPerson('commercial');
-  if (!Array.isArray(items) || items.length !== 2) return bundleNeedsPerson();
-  const kinds = items.map((i) => eligibleKind(i.service)); if (kinds.some((k) => !k) || kinds[0] === kinds[1]) return bundleNeedsPerson();
-  const order = kinds[1] === 'glass' ? [1, 0] : [0, 1]; const [first, second] = [items[order[0]], items[order[1]]];
-  const e1 = estimate(address, first.service, first.qty, property, false); if (!e1.ok) return e1;                   // unknown city etc.: a person verifies
-  const e2 = estimate(address, second.service, second.qty, property, true); if (!e2.ok) return e2;
-  const o1 = OTHER.find((o) => o.code === kinds[order[0]]), o2 = OTHER.find((o) => o.code === kinds[order[1]]);
-  const a1 = e1.estimate ?? (e1.kind === 'glass' ? e1.package_price : o1 ? o1.min * o1.rate : undefined);     // the first service never pays less than its minimum
-  const a2 = e2.estimate;
-  const lines: BundleLine[] = [{ service: first.service, role: 'first', qty: e1.qty, unit: e1.kind === 'glass' ? 'panel' : o1?.unit, rate: e1.kind === 'glass' ? e1.extra_rate : o1?.rate, amount: a1 }, { service: second.service, role: 'second', qty: e2.qty, unit: o2?.unit, rate: o2?.rate, amount: a2 }];
+  if (!Array.isArray(items) || items.length < 2 || items.length > 5) return bundleNeedsPerson();
+  const kinds = items.map((i) => eligibleKind(i.service)); if (kinds.some((k) => !k) || new Set(kinds).size !== kinds.length) return bundleNeedsPerson();   // every service eligible, none twice
+  const gi = kinds.indexOf('glass'); const order = items.map((_, i) => i); if (gi > 0) { order.splice(gi, 1); order.unshift(gi); }                      // the glass package is always first
+  const first = items[order[0]]; const e1 = estimate(address, first.service, first.qty, property, false); if (!e1.ok) return e1;                  // unknown city etc.: a person verifies
+  const o1 = OTHER.find((o) => o.code === kinds[order[0]]);
+  const a1 = e1.estimate ?? (e1.kind === 'glass' ? e1.package_price : o1 ? o1.min * o1.rate : undefined);                                          // the first service never pays less than its minimum
+  const lines: BundleLine[] = [{ service: first.service, role: 'first', qty: e1.qty, unit: e1.kind === 'glass' ? 'panel' : o1?.unit, rate: e1.kind === 'glass' ? e1.extra_rate : o1?.rate, amount: a1 }];
   const part1 = e1.kind === 'glass' ? `the ${e1.place} window package at ${peso(a1 ?? 0)} (up to ${e1.included} panels${e1.extra_qty ? `, plus ${e1.extra_qty} extra at ${peso(EXTRA_PANEL)}` : ''})` : `${o1!.name} at ${peso(a1 ?? 0)}${e1.qty && e1.qty < o1!.min ? ` (the ${o1!.min} ${o1!.unit} minimum applies)` : ''}`;
-  const part2 = a2 !== undefined ? `${e2.qty} ${o2!.unit}${e2.qty! > 1 ? 's' : ''} of ${o2!.name} at ${peso(o2!.rate)} each, ${peso(a2)} (no minimum for the second service)` : `${o2!.name} at ${peso(o2!.rate)} per ${o2!.unit}, with no minimum for the second service`;
-  const total = a1 !== undefined && a2 !== undefined ? a1 + a2 : undefined;
-  const rates = `Booked together: ${part1}, plus ${part2}. ${BUNDLE_NOTE}`;
-  const est = total !== undefined ? `For both services the estimate is ${peso(total)}: ${part1}, plus ${part2}. ${BUNDLE_NOTE}` : '';
+  const parts: string[] = []; let total: number | undefined = a1;
+  for (const idx of order.slice(1)) {
+    const it = items[idx]; const e = estimate(address, it.service, it.qty, property, true); if (!e.ok) return e;
+    const o = OTHER.find((x) => x.code === kinds[idx])!; const amt = e.estimate;
+    lines.push({ service: it.service, role: 'second', qty: e.qty, unit: o.unit, rate: o.rate, amount: amt });
+    parts.push(amt !== undefined ? `${e.qty} ${o.unit}${e.qty! > 1 ? 's' : ''} of ${o.name} at ${peso(o.rate)} each, ${peso(amt)} (no minimum)` : `${o.name} at ${peso(o.rate)} per ${o.unit}, with no minimum`);
+    total = total !== undefined && amt !== undefined ? total + amt : undefined;
+  }
+  const rest = parts.join(', plus ');
+  const rates = `Booked together: ${part1}, plus ${rest}. ${BUNDLE_NOTE}`;
+  const est = total !== undefined ? `For all services the estimate is ${peso(total)}: ${part1}, plus ${rest}. ${BUNDLE_NOTE}` : '';
   return { ok: true, kind: 'bundle', place: e1.place, estimate: total, lines, rates_en: rates, rates_tl: rates, rates_tglish: rates, estimate_en: est, estimate_tl: est, estimate_tglish: est };
 }

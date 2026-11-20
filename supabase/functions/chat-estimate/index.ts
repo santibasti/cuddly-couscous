@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
   const b = (await req.json().catch(() => null)) as Record<string, unknown> | null; if (!b) return json({ error: 'Send a JSON body' }, 400);
   const address = String(b.address ?? b.city ?? b.location ?? '').slice(0, 300);
   const e = Array.isArray(b.items)                                                                       // two services booked together: the combined total is computed here, never by the caller
-    ? estimateBundle(address, (b.items as { service?: unknown; qty?: unknown }[]).slice(0, 3).map((x) => ({ service: String(x?.service ?? '').slice(0, 200), qty: Number(x?.qty) })), String(b.property_type ?? b.type ?? ''))
+    ? estimateBundle(address, (b.items as { service?: unknown; qty?: unknown }[]).slice(0, 6).map((x) => ({ service: String(x?.service ?? '').slice(0, 200), qty: Number(x?.qty) })), String(b.property_type ?? b.type ?? ''))
     : estimate(address, String(b.service ?? '').slice(0, 200), Number(b.panels ?? b.qty ?? b.quantity), String(b.property_type ?? b.type ?? ''), [b.with_main, b.with_glass].some((v) => v === true || v === 'true')); const lang = parseLang(b.lang ?? b.language);
   const rates = lang === 'tl' ? e.rates_tl : lang === 'taglish' ? e.rates_tglish : e.rates_en, est = lang === 'tl' ? e.estimate_tl : lang === 'taglish' ? e.estimate_tglish : e.estimate_en;
   return json({ ...e, rates, estimate_text: est, reply: est || rates });                                  // reply = the estimate when a quantity was given, else the starting rates, in the customer's language

@@ -51,17 +51,35 @@ describe('bundled services: the first keeps its minimum, the second is billed on
     const b = bundle([{ service: 'window cleaning', qty: 15 }, { service: 'solar panels', qty: 10 }]); const [f, sec] = b.lines!; expect(sec.amount).toBe(sec.qty! * sec.rate!); expect(sec.amount).toBeGreaterThan(0); expect(sec.rate).toBe(245); expect(f.amount).toBeGreaterThanOrEqual(4799);
     expect(b.estimate_en + b.rates_en).not.toMatch(/free|discount|% off|libre/i);
   });
-  it('the text says the second service has no minimum and that special equipment or access charges may apply', () => { const b = bundle([{ service: 'window cleaning', qty: 15 }, { service: 'solar panels', qty: 10 }]); expect(b.estimate_en).toMatch(/no minimum for the second service/); expect(b.estimate_en).toMatch(/special equipment or access charges may apply/); expect(b.estimate_en).toContain('₱7,249'); });
-  it('only eligible services bundle: custom services, three items, the same service twice, an unknown city, a commercial property are priced by a person', () => {
+  it('the text says the second service has no minimum and that special equipment or access charges may apply', () => { const b = bundle([{ service: 'window cleaning', qty: 15 }, { service: 'solar panels', qty: 10 }]); expect(b.estimate_en).toMatch(/no minimum\)/); expect(b.estimate_en).toMatch(/special equipment or access charges may apply/); expect(b.estimate_en).toContain('₱7,249'); });
+  it('only eligible services bundle: custom services in the list, a single service, six items, the same service twice, an unknown city, a commercial property are priced by a person', () => {
     expect(bundle([{ service: 'gutter cleaning', qty: 10 }, { service: 'solar panels', qty: 10 }]).ok).toBe(false);
-    expect(bundle([{ service: 'window cleaning' }, { service: 'solar panels', qty: 10 }, { service: 'roof cleaning', qty: 60 }]).ok).toBe(false);
+    expect(bundle([{ service: 'window cleaning' }, { service: 'solar panels', qty: 10 }, { service: 'gutter cleaning', qty: 5 }]).ok).toBe(false);
+    expect(bundle([{ service: 'window cleaning' }]).ok).toBe(false); expect(bundle([{ service: 'window cleaning' }, { service: 'roof cleaning', qty: 60 }, { service: 'solar panels', qty: 10 }, { service: 'wall cleaning', qty: 20 }, { service: 'floor cleaning', qty: 20 }, { service: 'window cleaning' }]).ok).toBe(false);
     expect(bundle([{ service: 'roof cleaning', qty: 60 }, { service: 'roof cleaning', qty: 60 }]).ok).toBe(false);
     expect(bundle([{ service: '', qty: 10 }, { service: 'solar panels', qty: 10 }]).ok).toBe(false);
     expect(bundle([{ service: 'window cleaning' }, { service: 'solar panels', qty: 10 }], 'Baguio').ok).toBe(false);
     expect(estimateBundle('Makati', [{ service: 'window cleaning' }, { service: 'solar panels', qty: 10 }], 'office building').kind).toBe('commercial');
     expect(bundle([{ service: 'window cleaning' }, { service: 'solar panels', qty: 10 }], 'Baguio').estimate).toBeUndefined();
   });
-  it('without the second quantity there is no total, only the rate and the waived minimum', () => { const b = bundle([{ service: 'window cleaning' }, { service: 'solar panels' }]); expect(b.ok).toBe(true); expect(b.estimate).toBeUndefined(); expect(b.rates_en).toMatch(/₱245 per panel, with no minimum for the second service/); });
+  it('without the second quantity there is no total, only the rate and the waived minimum', () => { const b = bundle([{ service: 'window cleaning' }, { service: 'solar panels' }]); expect(b.ok).toBe(true); expect(b.estimate).toBeUndefined(); expect(b.rates_en).toMatch(/₱245 per panel, with no minimum/); });
+});
+
+describe('three or more services: when one package is taken, every other package has no minimum (owner)', () => {
+  it('windows + 10 solar panels + 60 sqm of roof = ₱4,799 + ₱2,450 + ₱8,700 = ₱15,949', () => {
+    const b = bundle([{ service: 'window cleaning', qty: 15 }, { service: 'solar panels', qty: 10 }, { service: 'roof cleaning', qty: 60 }]); expect(b.ok).toBe(true); expect(b.estimate).toBe(4799 + 2450 + 8700);
+    expect(b.lines!.map((l) => [l.role, l.amount])).toEqual([['first', 4799], ['second', 2450], ['second', 8700]]);
+    expect(b.estimate_en).toContain('₱15,949'); expect(b.estimate_en + b.rates_en).not.toMatch(/free|discount|% off|libre/i);
+  });
+  it('only the first keeps its minimum, wherever the window package is listed; all five eligible services can bundle', () => {
+    expect(bundle([{ service: 'roof cleaning', qty: 60 }, { service: 'solar panels', qty: 10 }, { service: 'wall cleaning', qty: 20 }]).estimate).toBe(14500 + 2450 + 2500);
+    expect(bundle([{ service: 'solar panels', qty: 10 }, { service: 'roof cleaning', qty: 60 }, { service: 'window cleaning', qty: 40 }]).estimate).toBe(6059 + 2450 + 8700);
+    expect(bundle([{ service: 'window cleaning' }, { service: 'roof cleaning', qty: 60 }, { service: 'solar panels', qty: 10 }, { service: 'wall cleaning', qty: 20 }, { service: 'floor cleaning', qty: 20 }]).estimate).toBe(4799 + 8700 + 2450 + 2500 + 2500);
+  });
+  it('bundleWaives: every service after the first is waived, the first never is', () => {
+    expect(bundleWaives('solar', ['window', 'solar', 'roof'])).toBe(true); expect(bundleWaives('roof', ['window', 'solar', 'roof'])).toBe(true); expect(bundleWaives('window', ['window', 'solar', 'roof'])).toBe(false);
+    expect(bundleWaives('roof', ['roof', 'solar', 'wall'])).toBe(false); expect(bundleWaives('solar', ['roof', 'solar', 'wall'])).toBe(true); expect(bundleWaives('wall', ['roof', 'solar', 'wall'])).toBe(true);
+  });
 });
 
 describe('bundleWaives: the code, not the AI, decides who qualifies', () => {
@@ -103,7 +121,7 @@ describe('the reply checks and the prompt', () => {
   });
   it('the prompt states the mandatory minimum, the first/second rule, the tool and the equipment note', () => {
     const sys = buildSystem({ sections: [{ key: 'a', title: 'I', body: 'You are TopMop.' }], version: 4, lang: 'en' } as never);
-    for (const r of [/every service package has a minimum charge/, /never prorate it/, /15 panels is still ₱4,799/, /60 sqm is ₱14,500/, /20 sqm is ₱6,250/, /10 panels is ₱4,900/, /the FIRST service keeps its full minimum charge; the SECOND service has its minimum waived/, /₱4,799 plus 10 solar panels × ₱245 = ₱2,450, a combined ₱7,249/, /Never apply it to a single service or to the first service/, /for two services call it with items/, /Special equipment or access charges may still apply/, /never your own arithmetic/]) expect(sys).toMatch(r);
+    for (const r of [/every service package has a minimum charge/, /never prorate it/, /15 panels is still ₱4,799/, /60 sqm is ₱14,500/, /20 sqm is ₱6,250/, /10 panels is ₱4,900/, /the FIRST service \(the window package if there is one\) keeps its full minimum charge; EVERY OTHER service has its minimum waived/, /₱4,799 plus 10 solar panels × ₱245 = ₱2,450, a combined ₱7,249/, /Never apply it to a single service or to the first service/, /for two or more services call it with items/, /Special equipment or access charges may still apply/, /never your own arithmetic/]) expect(sys).toMatch(r);
     const t = (TOOLS as unknown as { name: string; description: string; input_schema: { properties: Record<string, unknown> } }[]).find((x) => x.name === 'estimate')!; expect(t.input_schema.properties.items).toBeTruthy(); expect(t.description).toMatch(/applies the minimum charge of every package/); expect(t.description).toMatch(/never calculate, prorate or add amounts yourself/);
   });
 });
