@@ -75,6 +75,19 @@ describe('a commercial quote question always gets the three assessment options (
   });
 });
 
+describe('found in a real-model run: invitations to send photos and a third sentence on commercial answers', () => {
+  const ask = 'We have an office building. Can you give us a quote?';
+  it('"you may send photos (optional)" is an invitation and is rejected; "photos are optional" is a statement and passes', () => {
+    expect(check('For commercial projects po, we can assess from your address on Google Maps, or you may send photos (optional). An onsite ocular inspection is ₱2,500, deductible when you proceed.', ask).join()).toMatch(/photos/);
+    expect(check('You may also send photos po.', 'what do you need before the visit?').join()).toMatch(/photos/);
+    clean(COMMERCIAL_OCULAR, ask); expect(COMMERCIAL_OCULAR).toMatch(/photos are optional/);
+  });
+  it('a commercial answer is limited to two short sentences like every other answer (only the verbatim residential text is exempt)', () => {
+    expect(check(`${COMMERCIAL_OCULAR} What is the property address po?`, ask).join()).toMatch(/length/);
+    expect(check(NO_OCULAR, 'Do you do an ocular visit for my house?')).toEqual([]);
+  });
+});
+
 describe('the wrong answers are caught', () => {
   it('acid rain: no promise, no "we will assess it", no prevention claim; the policy answer is the safe fallback', () => {
     const ask = 'Can you remove acid rain marks on my glass?';

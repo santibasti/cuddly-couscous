@@ -29,7 +29,7 @@ const S = (tag) => { const s = `stg-${stamp}-${tag}`; sent.push(s); return s; };
 let r = last(await talk(S('A'), ['Binondo', 'Wall Cleaning']));
 verdict('A: remembers Binondo, asks the wall type, no booking, no location re-ask', r, { ...base(r), no_booking_offer: !/book|schedule|appointment|reserv/i.test(r), no_location_reask: !/location|city|where/i.test(r), wall_question: /exterior|interior/i.test(r) });
 r = last(await talk(S('B'), ['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?']));
-verdict('B: all facts remembered; a verified price comes back', r, { ...base(r), has_price: /₱\s?\d/.test(r), no_reasking: !/location|city|exterior or|interior|which service|what floor|how many floors/i.test(r), no_booking_offer: !/book|schedule|appointment|reserv/i.test(r) });
+verdict('B: all facts remembered; a verified price comes back', r, { ...base(r), has_price: /₱\s?\d/.test(r), no_reasking: !(r.match(/[^.?!]*\?/g) ?? []).some((q) => /location|city|exterior or|interior|which service|what floor|how many floors/i.test(q)), no_booking_offer: !/book|schedule|appointment|reserv/i.test(r) });
 r = last(await talk(S('C'), ['Makati', 'window cleaning', 'How much?', 'Okay, thank you.']));
 verdict('C: "Okay, thank you." brief, no booking offer', r, { ...base(r), no_booking_offer: !/book|schedule|appointment|reserv|date/i.test(r), brief: r.split(/\s+/).length <= 15 });
 const d1 = S('D1'); r = last(await talk(d1, ['Can I schedule tomorrow?']));

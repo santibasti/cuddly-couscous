@@ -3,7 +3,7 @@ import { type ChatContext, type Intent, type ServiceKey, lastQuestionOf, questio
 import { tooTagalog, ACID_RAIN_REPLY, COMMERCIAL_OCULAR } from './brain.ts';
 
 export interface Check { ctx: ChatContext; intent: Intent; customerText: string; previousAi: string[]; first?: boolean }
-const FIXED = /Reservation Date:|ocular|^\s*Thank you po! Our technical team|^\s*Sure po, you may send them|^\s*Your booking is set for|TopMop offers professional exterior cleaning/i;
+const FIXED = /Reservation Date:|preliminary ocular visit|^\s*Thank you po! Our technical team|^\s*Sure po, you may send them|^\s*Your booking is set for|TopMop offers professional exterior cleaning/i;
 // Abbreviations in addresses and titles ("Brgy. Bahay Toro", "Maple St. Extension") do not end a sentence; splitting there cut a booking confirmation in the middle of the address.
 const ABBR = /\b(brgy|st|ave|blvd|rd|bldg|apt|hwy|dist|mt|mr|mrs|dr|sr|jr)\./gi;
 export const sentences = (t: string): string[] => String(t ?? '').replace(/\s+/g, ' ').trim().replace(ABBR, '$1\u0001').split(/(?<=[.!?])\s+/).map((x) => x.replace(/\u0001/g, '.')).filter(Boolean);
@@ -13,7 +13,7 @@ const COUNT_TALK = /(on-?site|onsite).{0,70}(count|measure)|counting and .{0,40}
 const ASKS_QTY = /how many (glass |solar )?(panels?|windows?)|how big|square met(?:er|re)s?\b.*\?|\bsqm\b.*\?|what(?:'s| is) the (?:size|area)|measurements? of/i;
 const ASKS_PHOTO = /\b(send|share|upload|provide|attach|take)\b.{0,25}\b(photos?|pictures?|pics?|videos?|images?)\b/i;
 /** "photos are optional" / "if you like" is a statement, not a request. */
-const PHOTO_OPTIONAL = /\b(optional|voluntar\w*|if you (like|want|wish|prefer)|no need|(not|isn'?t|aren'?t|never) (required|needed|necessary|mandatory))\b/i;
+const PHOTO_OPTIONAL = /\b(photos?|pictures?)\b[^.?!]{0,40}\b(are|is|being)\b[^.?!]{0,12}\b(optional|not required|not needed|not necessary|voluntary)\b|\boptional (photos?|pictures?)\b|\bif you (like|want|wish|prefer|have (some|any))\b|\bno need (for|to)\b|\bnot required\b/i;   // a statement ("photos are optional"), never an invitation ("you may send photos")
 const REQUIRES_PHOTO = /\b(photos?|pictures?|videos?)\b.{0,25}\b(required|mandatory|needed|necessary|must)\b|\b(need|require[sd]?|must (send|have|provide)|have to (send|provide))\b.{0,25}\b(photos?|pictures?|videos?)\b/i;
 const NOT_REQUIRED = /\b(not|no|never|n't)\b.{0,12}\b(required|mandatory|needed|necessary)\b/i;
 const photoViolation = (t: string): string | null => (sentences(t).some((x) => (ASKS_PHOTO.test(x) && !PHOTO_OPTIONAL.test(x)) || (REQUIRES_PHOTO.test(x) && !NOT_REQUIRED.test(x))) ? 'photos: never ask for or require photos or videos (they are optional and only welcomed when the customer offers)' : null);
