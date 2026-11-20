@@ -37,6 +37,13 @@ describe('reply validation', () => {
     const fixed = repairReply(t, ['length: too long'], v('ok'));
     expect(fixed).toContain('Brgy. Bahay Toro'); expect(fixed).toContain('12 Maple St. Extension'); expect(fixed).not.toContain('Thank you po');
   });
+  it('naming the services is the answer to "what services do you offer?" (production draft 11-20 02:51), but a window price may not mention roofs', () => {
+    const list = 'We clean windows and glass, walls, roofs and solar panels po. Which one are you interested in?';
+    expect(validateReply(list, v('What services do you offer?', emptyContext(), 'general_inquiry')).join()).not.toMatch(/unrelated_services/);
+    expect(validateReply(list, v('Ano po ang services ninyo?', emptyContext(), 'general_inquiry')).join()).not.toMatch(/unrelated_services/);
+    const wc = foldMessages(emptyContext(), ['Makati', 'window cleaning']); expect(validateReply('Our Makati window package is ₱4,799. We also clean roofs po.', v('How much for window cleaning?', wc, 'price_inquiry')).join()).toMatch(/unrelated_services/);
+    expect(validateReply('Our Makati window package is ₱4,799. We also clean roofs po.', v('What window cleaning price is it?', wc, 'price_inquiry')).join()).toMatch(/unrelated_services/);
+  });
   it('has a safe fallback for each situation', () => {
     expect(fallbackReply(v('hi', emptyContext(), 'booking_request')).text).toMatch(/location \(city\)/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'I want to book']), 'booking_request')).text).toMatch(/Reservation Date:/);
     expect(fallbackReply(v('How much?', ctx), 'integration')).toEqual({ text: 'Let me have our team verify that for you po.', handover: true }); expect(fallbackReply(v('You damaged it', ctx, 'complaint')).handover).toBe(true);

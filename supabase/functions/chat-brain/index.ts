@@ -53,6 +53,8 @@ Deno.serve(async (req) => {
     let clientId = rc.client_id ?? undefined; let why = rc.returning_customer ? (rc.returning_note || 'Staff marked this customer as returning') : '';
     if (!why && mob) { const { data: cl } = await sb.from('clients').select('id, name').eq('mobile', mob).is('deleted_at', null).lt('created_at', (conv as { created_at?: string }).created_at ?? new Date().toISOString()).limit(1); if (cl?.length) { clientId = cl[0].id; why = `Matched existing client ${cl[0].name} by mobile number`; } }
     if (!why && tag) why = `ManyChat tag "${tag}"`;
+    const aiStart = (cfg as { ai_started_on?: string } | undefined)?.ai_started_on;   // set once by the owner: when the AI first answered real customers
+    if (!why && aiStart && olderThanAi((conv as { created_at?: string }).created_at, aiStart, 0)) why = 'This conversation started before the AI chat was switched on; our team handled it';   // works without the ManyChat token, on every message
     // Ask ManyChat about the contact once (their first message here): its tags, and when they first became a contact. A contact from before the AI chat started was already dealing with our team.
     if (!why && env('MANYCHAT_API_TOKEN')) {
       const { count: inCount } = await sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('direction', 'in');

@@ -57,7 +57,7 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
         const system = buildSystem({ returning, booking, firstMessage: first, honorific, context: contextBlock(ctx), sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, customerName: (conv as { name?: string | null }).name, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
         const callModel = async (sys: string, msgs: unknown[], tools: unknown) => {
           const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 1200, system: sys, tools, messages: msgs }) });
-          if (!r.ok) throw new Error(`AI error ${r.status}`); return await r.json();
+          if (!r.ok) { const body = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 220); throw new Error(`AI error ${r.status}${body ? `: ${body}` : ''}`); } return await r.json();
         };
         const exec = makeExec({ noHumanAlert: true, booking, sb, base: env('SUPABASE_URL'), key, conv, lang, context: [ctx.location ?? '', ...texts].join(' ').slice(-600) });
         brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3, check: (r) => (/^NO_ANSWER\W*$/i.test(r.trim()) ? [] : validateReply(r, vctx(first))) });

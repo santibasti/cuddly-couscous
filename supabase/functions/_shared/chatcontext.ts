@@ -49,7 +49,7 @@ export function readContext(raw: unknown): ChatContext {
 
 /* ---------- what the customer said ---------- */
 const SERVICES: [ServiceKey, RegExp][] = [
-  ['solar', /\bsolar\b/i], ['window', /\b(windows?|glass|salamin|bintana|panes?|curtain\s*wall)\b/i], ['wall', /\b(walls?|pader|exterior wall)\b/i], ['roof', /\b(roof(?:ing)?|bubong)\b/i],
+  ['solar', /\bsolar\b/i], ['window', /\b(windows?|glass|salamin|bintana|panes?|curtain\s*wall)\b/i], ['wall', /\b(walls?|pader|exterior wall)\b/i], ['roof', /\b(roof(?:s|ing)?|bubong)\b/i],
   ['floor', /\b(floors?|driveway|hardscape|sahig|pressure wash(?:ing)?)\b/i], ['gutter', /\bgutters?\b/i], ['ceiling', /\bceilings?\b/i], ['acp', /\b(acp|cladding)\b/i], ['facade', /\b(fa[cç]ade)\b/i],
 ];
 const LEVELS = /\b(?:ground|first|second|third|fourth|top|upper|lower|\d{1,2}(?:st|nd|rd|th)?|one|two|three|four|five)[- ]?(?:floors?|storey|story|storeys|stories|levels?)\b|\bfloors?\s*(?:level|number|no\.?)?\s*\d{1,2}\b/gi;   // "ground floor" is a building level, not floor cleaning

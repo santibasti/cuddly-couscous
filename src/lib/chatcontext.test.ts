@@ -86,3 +86,8 @@ describe('booking uses the booking-details form', () => {
     expect(questionTopic('May I have your full name po?')).toBe('name'); expect(questionTopic('What is the best mobile number to reach you po?')).toBe('mobile'); expect(questionTopic('What is the complete address of the property po?')).toBe('address'); expect(questionTopic('What date would you prefer po?')).toBe('date');
   });
 });
+
+describe('plural services and the pre-AI contacts', () => {
+  it('"roofs" is the roof service', () => { expect(extractFacts('Do you clean roofs?').service).toBe('roof'); });
+});
+

@@ -171,13 +171,16 @@ export async function runBrain(a: { mode: Mode; system: string; messages: { role
     if (a.check && out.reply.trim() && !out.error) {                                                          // validate; on a violation ask the model once to fix exactly that, then check again
       let v = a.check(out.reply);
       if (v.length) {
-        try { const fix = await a.callModel(a.system, [...messages, { role: 'assistant', content: out.reply }, { role: 'user', content: `Rewrite that reply to fix these problems: ${v.join('; ')}. Keep every price and fact exactly as given, add nothing new, at most two short sentences. Reply with only the new text.` }], []); const t = fix.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim(); if (t) { out.reply = t; v = a.check(t); } } catch { /* keep the first answer */ }
+        try { const fix = await a.callModel(a.system, [...messages, { role: 'assistant', content: out.reply }, { role: 'user', content: `Rewrite that reply to fix these problems: ${v.join('; ')}. Keep every price and fact exactly as given, add nothing new, at most two short sentences. Reply with only the new text.` }], []); const t = fix.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim(); if (t && !isRewriteChatter(t)) { out.reply = t; v = a.check(t); } } catch { /* keep the first answer */ }
       }
       out.violations = v;
     }
   } catch (e) { out.error = (e as Error).message; }
   return out;
 }
+
+/** True when the model answered the "rewrite that reply" request with talk about the rewrite ("I can't rewrite it...", "Here is the revised reply") instead of a reply: such text must never reach a customer. */
+export const isRewriteChatter = (t: string): boolean => /^\s*(i (can'?t|cannot|can not|won'?t|don'?t think)\b|i(?: a|')m (unable|not able)\b|sorry,? i (can'?t|cannot)|unable to|here(?:'s| is| are)\b|revised\b|rewritten\b|(sure|certainly|of course|okay|ok)[,!.]? (here|i)\b)/i.test(t) || /\b(rewrit(e|ten|ing)|the (problems|violations) (you|listed|above)|as (requested|instructed))\b/i.test(t);
 
 /** What to do with the answer. Suggest: always a draft for staff (nothing is sent). Auto: send it, unless a safety check failed (then a person takes over). */
 export type Decision = { kind: 'draft'; text: string } | { kind: 'send'; text: string } | { kind: 'handover'; text: string; reason: string };

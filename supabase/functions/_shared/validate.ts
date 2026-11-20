@@ -12,7 +12,8 @@ const BOOKING_OFFER = /(would you like|want|ready|interested|shall we|can i|may 
 const COUNT_TALK = /(on-?site|onsite).{0,70}(count|measure)|counting and .{0,40}measurement|final count|panel count|exact panel|count(?:s|ed)? the panels|square met(?:er|re)s/i;
 const ASKS_QTY = /how many (glass |solar )?(panels?|windows?)|how big|square met(?:er|re)s?\b.*\?|\bsqm\b.*\?|what(?:'s| is) the (?:size|area)|measurements? of/i;
 const ASKS_PHOTO = /\b(send|share|upload|provide|attach|take)\b.{0,25}\b(photos?|pictures?|pics?|videos?|images?)\b/i;
-const SERVICE_WORDS: [ServiceKey, RegExp][] = [['window', /\b(window|glass)\b/i], ['wall', /\bwalls?\b/i], ['roof', /\broof(?:ing)?\b/i], ['solar', /\bsolar\b/i], ['floor', /\b(floor|driveway)\s*(?:cleaning|washing)\b|\bfloor and\b/i], ['gutter', /\bgutters?\b/i]];
+const ASKS_SERVICES = /\b(what|which|ano(ng)?|anu)\b.{0,30}\b(services?|serbisyo|offer(s|ed)?)\b|\bwhat (do|does) (you|topmop|top mop)\b.{0,20}\b(do|offer|clean)\b|\bservices? (do )?(you|po|ninyo|nyo)\b|\bwhat can you (clean|do)\b|\blist of services\b/i;
+const SERVICE_WORDS: [ServiceKey, RegExp][] = [['window', /\b(window|glass)\b/i], ['wall', /\bwalls?\b/i], ['roof', /\broof(?:s|ing)?\b/i], ['solar', /\bsolar\b/i], ['floor', /\b(floor|driveway)\s*(?:cleaning|washing)\b|\bfloor and\b/i], ['gutter', /\bgutters?\b/i]];
 
 /** Machine-readable violations; an empty list means the reply may go out. */
 export function validateReply(reply: string, v: Check): string[] {
@@ -31,7 +32,7 @@ export function validateReply(reply: string, v: Check): string[] {
     if (prev && prev.toLowerCase().replace(/\W+/g, ' ') === q.toLowerCase().replace(/\W+/g, ' ')) out.push('repeated_question: this is the same question we just asked');
   }
   const asked = new Set<ServiceKey>([...servicesIn(v.customerText), ...(v.ctx.services_seen ?? []), ...(v.ctx.service ? [v.ctx.service] : [])]);
-  const stray = SERVICE_WORDS.filter(([k, re]) => re.test(t) && !asked.has(k)).map(([k]) => k);
+  const stray = ASKS_SERVICES.test(v.customerText) ? [] : SERVICE_WORDS.filter(([k, re]) => re.test(t) && !asked.has(k)).map(([k]) => k);   // "what services do you offer?": naming the services IS the answer
   if (stray.length) out.push(`unrelated_services: do not mention ${stray.join(', ')} (the customer did not ask about them)`);
   if (COUNT_TALK.test(t) && !COUNT_TALK.test(v.customerText) && !/\b(count|measure|how many|panels?|sqm|square|how .{0,20}(compute|bill|final|charged)|final (amount|price|bill))\b/i.test(v.customerText)) out.push('measurement: do not explain counting or measuring unless the customer asked');
   const bookingOk = v.intent === 'booking_request' || v.ctx.booking_requested;

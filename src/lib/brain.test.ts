@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TOOLS, PAYMENT_POLICY, NO_TRANSPORT_FEE, cleanPhone, contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, fallbackFor, honorificFor, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
+import { TOOLS, PAYMENT_POLICY, NO_TRANSPORT_FEE, isRewriteChatter, cleanPhone, contactSince, olderThanAi, mobileFrom, returningByTag, returningBlock, COMMERCIAL_OCULAR, OCULAR_FEE, NO_OCULAR, isPhotoMessage as photoA, PHOTO_THANKS, tooTagalog, fallbackFor, honorificFor, wantsToBook, WELCOME_TEXT, composeFirst, splitMessages, flattenMessages, buildSystem, decide, guardReply, parseMode, runBrain, type ModelOut, type ToolOutcome } from '../../supabase/functions/_shared/brain';
 
 describe('safety checks on a reply', () => {
   const ok = { amounts: [6059], booked: false };
@@ -172,6 +172,10 @@ describe('V2 prompt: fifteen rules, known facts, no forced sentences', () => {
     const s = sys(); expect(NO_TRANSPORT_FEE).toBe('There is no transportation fee po.'); expect(s).toContain(NO_TRANSPORT_FEE); expect(s).toMatch(/never say there are no other charges/);
   });
   it('says "Our team will confirm that po" instead of "I don\'t have the details"', () => { const s = sys(); expect(s).toContain('say "Our team will confirm that po."'); expect(s).toMatch(/Never say "I don't have" or "I'm not able to" about details/); });
+  it('a rewrite answer that only talks about the rewrite never replaces the reply (production draft 11-20 02:51)', () => {
+    for (const t of ["I can't rewrite it to remove those services, since they are the answer to your question.", 'Here is the revised reply: Exterior wall cleaning is ₱125 per sqm po.', "Sorry, I cannot do that.", "I'm unable to shorten it without losing the price.", 'Rewritten: it is ₱125 per sqm po.', 'Sure, here you go: ₱125 per sqm po.']) expect(isRewriteChatter(t), t).toBe(true);
+    for (const t of ['Exterior wall cleaning is ₱125 per sqm, with a 50 sqm minimum po.', "You're welcome po! Just message us anytime.", "I'm sorry for the inconvenience po. I'll refer this to our team right away.", 'Our team will confirm that po.']) expect(isRewriteChatter(t), t).toBe(false);
+  });
   it('no longer forces the counting sentence or the upsell, and is shorter than before', () => {
     const s = sys(); expect(s).not.toMatch(/UPSELL THE CORE SERVICES/); expect(s).not.toContain('Our team will conduct on-site glass and solar panel counting'); expect(s).not.toMatch(/a yes to the starting rates/); expect(s.length - 'You are TopMop.'.length).toBeLessThan(7000);
   });
