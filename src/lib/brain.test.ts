@@ -162,11 +162,11 @@ describe('V2 prompt: fifteen rules, known facts, no forced sentences', () => {
   });
   it('hands over only for the real triggers, never for ordinary job details such as a gated village', () => {
     const s = sys(); expect(s).toMatch(/12\. HANDOVER: only for a request for a person, a complaint/); expect(s).toMatch(/gated village, weekday-only access, paint colour or age, rust, stains, duration\) are NOT a reason to hand over/); expect(s).not.toMatch(/If a tool fails or you are unsure, say the team will verify and use needs_human/);
-    const tool = (TOOLS as { name: string; description: string }[]).find((t) => t.name === 'needs_human')!; expect(tool.description).toMatch(/ONLY for/); expect(tool.description).not.toMatch(/anything you are unsure about/); expect(tool.description).toMatch(/silences the assistant/);
+    const tool = (TOOLS as unknown as { name: string; description: string }[]).find((t) => t.name === 'needs_human')!; expect(tool.description).toMatch(/ONLY for/); expect(tool.description).not.toMatch(/anything you are unsure about/); expect(tool.description).toMatch(/silences the assistant/);
   });
   it('knows the payment policy: no downpayment, payment on completion, four modes; a payment question is not a handover', () => {
     const s = sys(); expect(PAYMENT_POLICY).toBe('No downpayment is required po. Payment is made upon completion of the job, by cash, GCash, bank transfer or cheque.'); expect(s).toContain(PAYMENT_POLICY); expect(s).toMatch(/A question about downpayment or how and when to pay is NOT a handover/); expect(s).toMatch(/never give account numbers/);
-    expect(s).not.toMatch(/contracts or payment terms/); expect((TOOLS as { name: string; description: string }[]).find((t) => t.name === 'needs_human')!.description).not.toMatch(/payment terms/);
+    expect(s).not.toMatch(/contracts or payment terms/); expect((TOOLS as unknown as { name: string; description: string }[]).find((t) => t.name === 'needs_human')!.description).not.toMatch(/payment terms/);
   });
   it('knows there is no transportation fee, without claiming there are no other charges', () => {
     const s = sys(); expect(NO_TRANSPORT_FEE).toBe('There is no transportation fee po.'); expect(s).toContain(NO_TRANSPORT_FEE); expect(s).toMatch(/never say there are no other charges/);
