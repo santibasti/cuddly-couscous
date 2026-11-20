@@ -16,6 +16,8 @@ export interface WorkerDeps {
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** A failure that is worth trying again later (the AI service is busy or unreachable) rather than handing the customer to a person at once. */
+/** JSON.stringify writes only a LONE surrogate half (an emoji cut in two) as an escape sequence; the Anthropic API rejects it with a 400. A real emoji and a typed backslash text are left alone. */
+export const dropLoneSurrogates = (json: string): string => json.replace(/(?<!\\)\\ud[89a-f][0-9a-f]{2}/gi, '');
 export const isTransientError = (m: string) => /AI error (408|409|425|429|5\d\d)|timed? ?out|fetch failed|network|econn|aborted|temporarily/i.test(String(m ?? ''));
 const GIVE_UP_MIN = 10;   // after this long without an answer a transient failure becomes a handover to a person
 
@@ -56,7 +58,7 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
       } else {
         const system = buildSystem({ returning, booking, firstMessage: first, honorific, context: contextBlock(ctx), sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, customerName: (conv as { name?: string | null }).name, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
         const callModel = async (sys: string, msgs: unknown[], tools: unknown) => {
-          const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 1200, system: sys, tools, messages: msgs }) });
+          const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: dropLoneSurrogates(JSON.stringify({ model, max_tokens: 1200, system: sys, tools, messages: msgs })) });
           if (!r.ok) { const body = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 220); throw new Error(`AI error ${r.status}${body ? `: ${body}` : ''}`); } return await r.json();
         };
         const exec = makeExec({ noHumanAlert: true, booking, sb, base: env('SUPABASE_URL'), key, conv, lang, context: [ctx.location ?? '', ...texts].join(' ').slice(-600) });

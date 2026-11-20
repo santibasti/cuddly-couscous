@@ -30,6 +30,8 @@ export interface ChatContext {
   booking_requested?: boolean;
   /** the booking-details form was delivered to the customer */
   form_sent?: boolean;
+  /** the ManyChat contact lookup for returning customers has been done for this conversation */
+  returning_checked?: boolean;
 }
 export const emptyContext = (): ChatContext => ({ v: 1, intent: 'general_inquiry', stage: 'understand', explained: [] });
 /** Reads a stored context (jsonb) safely: anything missing or malformed becomes an empty field. */
@@ -42,7 +44,7 @@ export function readContext(raw: unknown): ChatContext {
   c.service = sv(r.service); c.services_seen = Array.isArray(r.services_seen) ? (r.services_seen as unknown[]).map(sv).filter(Boolean) as ServiceKey[] : undefined;
   if (r.surface === 'interior' || r.surface === 'exterior') c.surface = r.surface; if (r.property === 'residential' || r.property === 'commercial') c.property = r.property;
   if (typeof r.intent === 'string') c.intent = r.intent as Intent; if (typeof r.stage === 'string') c.stage = r.stage as Stage;
-  c.acknowledgment = r.acknowledgment === true; c.price_quoted = r.price_quoted === true; c.booking_offered = r.booking_offered === true; c.booking_requested = r.booking_requested === true; c.form_sent = r.form_sent === true;
+  c.acknowledgment = r.acknowledgment === true; c.price_quoted = r.price_quoted === true; c.booking_offered = r.booking_offered === true; c.booking_requested = r.booking_requested === true; c.form_sent = r.form_sent === true; c.returning_checked = r.returning_checked === true;
   if (typeof r.last_question === 'string') c.last_question = r.last_question as Topic; if (Array.isArray(r.explained)) c.explained = (r.explained as unknown[]).filter((x) => typeof x === 'string').slice(0, 20) as string[];
   return c;
 }

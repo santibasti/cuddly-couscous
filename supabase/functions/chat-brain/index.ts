@@ -6,6 +6,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { contactSince, olderThanAi, mobileFrom, returningByTag, type ReturningInfo, isPhotoMessage, honorificFor, parseMode } from '../_shared/brain.ts';
 import { createWorker } from '../_shared/chatworker.ts';
+import { readContext } from '../_shared/chatcontext.ts';
 import { parseLang } from '../chat-availability/logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
@@ -56,12 +57,13 @@ Deno.serve(async (req) => {
     const aiStart = (cfg as { ai_started_on?: string } | undefined)?.ai_started_on;   // set once by the owner: when the AI first answered real customers
     if (!why && aiStart && olderThanAi((conv as { created_at?: string }).created_at, aiStart, 0)) why = 'This conversation started before the AI chat was switched on; our team handled it';   // works without the ManyChat token, on every message
     // Ask ManyChat about the contact once (their first message here): its tags, and when they first became a contact. A contact from before the AI chat started was already dealing with our team.
+    const prevCtx = readContext((conv as { context?: unknown }).context);
     if (!why && env('MANYCHAT_API_TOKEN')) {
-      const { count: inCount } = await sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('direction', 'in');
-      if ((inCount ?? 0) <= 1) {
+      if (!prevCtx.returning_checked) {   // once per conversation (not only on the first message: conversations that existed before this check are looked at on their next message)
         const r = await fetch(`https://api.manychat.com/fb/subscriber/getInfo?subscriber_id=${encodeURIComponent(sub)}`, { headers: { Authorization: `Bearer ${env('MANYCHAT_API_TOKEN')}` }, signal: AbortSignal.timeout(3000) }).catch(() => null);
         const info = r && r.ok ? ((await r.json().catch(() => ({}))) as { data?: Record<string, unknown> }).data : undefined;
         if (info) {
+          await sb.from('chat_conversations').update({ context: { ...prevCtx, returning_checked: true } }).eq('id', conv.id);
           const t2 = returningByTag(info.tags); const since = contactSince(b, c, info);
           const { data: first } = await sb.from('chat_conversations').select('created_at').order('created_at', { ascending: true }).limit(1);
           const startedOn = (cfg as { ai_started_on?: string } | undefined)?.ai_started_on || first?.[0]?.created_at;
