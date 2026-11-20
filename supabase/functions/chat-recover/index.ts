@@ -1,6 +1,6 @@
 // Safety net for the customer-service chat: answers customer messages that were left unanswered because a background worker stopped or crashed.
 // Called every minute by the database (see supabase/cron/chat-recover.sql). If WEBHOOK_SECRET is set the caller must send it as header x-webhook-secret (the database does).
-// It only touches conversations that have a customer message older than 45 seconds with no answer, respects the per-conversation lock (a live worker is never disturbed) and the AI mode
+// It only touches conversations that have a customer message older than 45 seconds (and younger than 30 minutes: older ones are closed and reported to the team) with no answer, respects the per-conversation lock (a live worker is never disturbed) and the AI mode
 // (off = nothing; a "Needs a person" conversation stays silent). In full mode without MANYCHAT_API_TOKEN a recovered answer is saved as a DRAFT for staff instead of being sent.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { parseMode } from '../_shared/brain.ts';
@@ -16,7 +16,12 @@ Deno.serve(async (req) => {
   const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle(); const cfg = (st?.data as Record<string, unknown> | undefined)?.chat_ai as { mode?: string; model?: string } | undefined; const mode = parseMode(cfg?.mode);
   if (mode === 'off' || !env('ANTHROPIC_API_KEY')) return json({ ok: true, recovered: 0, note: 'AI is off or has no key' });
   const cutoff = new Date(Date.now() - 45_000).toISOString();
-  const { data: stale, error } = await sb.from('chat_messages').select('conversation_id').eq('direction', 'in').is('handled_at', null).lt('created_at', cutoff).order('created_at', { ascending: true }).limit(100);
+  // A message that has waited longer than this is NOT answered any more: a reply hours late reads badly. It is closed and the team is told once, so a person can write to the customer.
+  const maxMin = Math.max(5, Number(env('CHAT_RECOVER_MAX_MIN')) || 30); const tooOld = new Date(Date.now() - maxMin * 60_000).toISOString();
+  const { data: lost, error: le } = await sb.from('chat_messages').update({ handled_at: new Date().toISOString() }).eq('direction', 'in').is('handled_at', null).lt('created_at', tooOld).select('id, conversation_id');
+  if (le) return json({ ok: true, recovered: 0, note: 'migration 0133 is not applied yet' });
+  if (lost?.length) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Customer messages were left unanswered', body: `${lost.length} customer message(s) in ${new Set(lost.map((x: { conversation_id: string }) => x.conversation_id)).size} conversation(s) waited more than ${maxMin} minutes with no AI answer, so the AI will not answer them now. Please look at them in AI Chat and reply yourself.`, link: '/ai-chat' });
+  const { data: stale, error } = await sb.from('chat_messages').select('conversation_id').eq('direction', 'in').is('handled_at', null).lt('created_at', cutoff).gte('created_at', tooOld).order('created_at', { ascending: true }).limit(100);
   if (error) return json({ ok: true, recovered: 0, note: 'migration 0133 is not applied yet' });
   const ids = [...new Set((stale ?? []).map((r: { conversation_id: string }) => r.conversation_id))].slice(0, 5);
   const token = env('MANYCHAT_API_TOKEN'); const eff = mode === 'auto' && !token ? 'suggest' : mode; let recovered = 0;
