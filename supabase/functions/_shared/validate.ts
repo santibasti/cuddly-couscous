@@ -80,6 +80,7 @@ export function validateReply(reply: string, v: Check): string[] {
 const dropAll = (list: string[], re: RegExp) => list.filter((x) => !re.test(x));
 /** Removes the offending sentences, keeps at most two and one question. Returns '' when nothing sensible is left. */
 export function repairReply(reply: string, violations: string[], v: Check): string {
+  if (ACID_ASK.test(v.customerText) && REMOVAL_ASK.test(v.customerText)) return ACID_RAIN_REPLY;   // an acid rain removal question always gets the approved answer, never a trimmed model draft (it once added unrelated dates and "permanent etching")
   let s = sentences(reply);
   const has = (k: string) => violations.some((x) => x.startsWith(k));
   if (has('premature_booking')) s = dropAll(s, BOOKING_OFFER);

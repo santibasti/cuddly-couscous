@@ -145,3 +145,12 @@ describe('the commercial text has one source of truth', () => {
     expect(COMMERCIAL_OCULAR).toMatch(/Google Maps/); expect(COMMERCIAL_OCULAR).toMatch(/photos are optional/); expect(COMMERCIAL_OCULAR).toMatch(/₱2,500/); expect(COMMERCIAL_OCULAR).toMatch(/deductible/);
   });
 });
+
+describe('V2.2 repair of an acid rain removal question', () => {
+  it('uses the approved answer, not a trimmed model draft with unrelated dates', async () => {
+    const { repairReply } = await import('../../supabase/functions/_shared/validate');
+    const { ACID_RAIN_REPLY } = await import('../../supabase/functions/_shared/brain');
+    const out = repairReply("We don't offer acid rain mark removal po, since the damage varies and some marks are permanent etching. Nov 22 is fully booked, but Tue, Dec 1 or Wed, Dec 2 are open. Anything else?", ['length: too long'], { customerText: 'Can you remove acid rain marks on my windows?', ctx: {} } as never);
+    expect(out).toBe(ACID_RAIN_REPLY);
+  });
+});
