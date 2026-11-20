@@ -53,6 +53,28 @@ describe('the approved examples and natural variants pass the reply checks', () 
   it('an acid rain mention while asking a price needs no policy sentence (only an actual removal question does)', () => { clean('Our Makati window package is ₱4,799 for up to 31 glass panels, with extra panels at ₱140 each.', 'How much for windows? They have some acid rain marks'); });
 });
 
+describe('a commercial quote question always gets the three assessment options (found in a real-model run: the ₱2,500 option was left out)', () => {
+  const ask = 'We have an office building. Can you give us a quote?';
+  it('a reply with only Google Maps and "our team will follow up" is rejected', () => {
+    const short = "For commercial projects po, we can start with an initial assessment using your building's address on Google Maps, and photos are optional. Our team will follow up on your quote from there po.";
+    expect(check(short, ask).join()).toMatch(/commercial: give the three assessment options/);
+    expect(check('Our team will prepare a quote for your office po.', ask).join()).toMatch(/commercial: give the three assessment options/);
+    expect(check('How much is the quote for our warehouse?', 'How much is the quote for our warehouse?')).toBeTruthy();
+  });
+  it('the approved text, and natural paraphrases with all three options, pass', () => {
+    clean(COMMERCIAL_OCULAR, ask);
+    clean("For commercial projects po, we can first assess from your address on Google Maps, and photos are optional. An onsite ocular inspection is ₱2,500, deductible once you proceed.", ask);
+    clean('We can start from your property address on Google Maps (photos only if you like), or do an onsite ocular for ₱2,500, deductible if you proceed po.', 'Can you quote our school building?');
+  });
+  it('the safe fallback is the approved commercial answer, and it is valid', () => {
+    const f = fallbackReply({ ctx, intent: ctx.intent, customerText: ask, previousAi: [] }); expect(f.text).toBe(COMMERCIAL_OCULAR); expect(f.handover).toBe(false); expect(check(f.text, ask)).toEqual([]);
+  });
+  it('a house or a plain question is not treated as commercial', () => {
+    clean('Our Makati window package is ₱4,799 for up to 31 glass panels, with extra panels at ₱140 each.', 'How much for windows in my house in Makati?');
+    clean(CREW_REPLY, 'How many people will come to the office?');
+  });
+});
+
 describe('the wrong answers are caught', () => {
   it('acid rain: no promise, no "we will assess it", no prevention claim; the policy answer is the safe fallback', () => {
     const ask = 'Can you remove acid rain marks on my glass?';
@@ -67,16 +89,16 @@ describe('the wrong answers are caught', () => {
     expect(check("We can't restore faded paint po, but we can clean the roof surface.", 'Can you restore my faded roof paint?')).toEqual([]);
   });
   it('commercial photos are optional: never requested, never required', () => {
-    expect(check('Please send photos of the building po so we can quote.', 'quote for our office').join()).toMatch(/photos/);
-    expect(check('Photos are required for commercial quotes po.', 'quote for our office').join()).toMatch(/photos/);
+    expect(check('Please send photos of the building po so we can quote.', 'what do you need before the visit?').join()).toMatch(/photos/);
+    expect(check('Photos are required for commercial quotes po.', 'what do you need before the visit?').join()).toMatch(/photos/);
     expect(check('We need photos of the roof first po.', 'how much for roof cleaning?').join()).toMatch(/photos/);
     expect(check('Could you send photos of your windows po?', 'how much for windows?').join()).toMatch(/photos/);
-    expect(check('Photos are optional po, and not required for the initial assessment.', 'quote for our office')).toEqual([]);
-    expect(check('You can share photos if you like po.', 'quote for our office')).toEqual([]);
-    expect(check('A photo is not required po.', 'quote for our office')).toEqual([]);
+    expect(check('Photos are optional po, and not required for the initial assessment.', 'what do you need before the visit?')).toEqual([]);
+    expect(check('You can share photos if you like po.', 'what do you need before the visit?')).toEqual([]);
+    expect(check('A photo is not required po.', 'what do you need before the visit?')).toEqual([]);
     expect(check('Sure po, you may send them. Our technical team will review them.', 'can I send pictures?')).toEqual([]);
   });
-  it('a reply with the ocular text still cannot ask for photos', () => { expect(check(`${COMMERCIAL_OCULAR} Please send photos po.`, 'quote for our office').join()).toMatch(/photos/); });
+  it('a reply with the ocular text still cannot ask for photos', () => { expect(check(`${COMMERCIAL_OCULAR} Please send photos po.`, 'what do you need before the visit?').join()).toMatch(/photos/); });
   it('bundle: never a free second service, a lower rate or "no other charges"', () => {
     for (const bad of ['The second service is free po.', 'You get 50% off the second service po.', 'The second service gets a discount po.', 'The second service has a lower rate po.', 'There are no other charges po.']) {
       const g = guardReply(bad, { amounts: [], booked: false }).violations; const v = check(bad, 'what if I book two services together?'); expect([...g, ...v].length, bad).toBeGreaterThan(0);

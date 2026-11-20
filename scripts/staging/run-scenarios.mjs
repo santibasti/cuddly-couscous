@@ -57,7 +57,7 @@ verdict('K: payment questions are answered from the policy (no downpayment, on c
 const l = S('L'); const lo = await (async () => { await talk(l, ['Makati', 'window cleaning', 'may transportation fee ba?']); return outs(l); })(); const l1 = last(lo.at(-1)?.body ?? '');
 verdict('L: transportation fee: there is none, and the AI does not claim there are no other charges', l1, { ...base(l1), says_none: /no (transportation|travel|transport)/i.test(l1), no_blanket_claim: !/no (other|additional|hidden) (charges|fees)|wala nang iba/i.test(l1), not_handed_over: !/refer this to our team|inconvenience/i.test(l1) });
 // V2.2 company knowledge (real model): each topic answered on its own, in short natural words
-const V = async (tag, msgs) => last(await talk(S(tag), msgs)); const noBook = (x) => !/book|schedule|appointment|reserv/i.test(x);
+const V = async (tag, msgs) => last(await talk(S(tag), msgs)); const noBook = (x) => !/(would you like|want|ready|shall we|can i|may i|let me|i can|we can) .{0,25}(to )?(book|schedule|reserve|set (up )?an? (appointment|booking))|book(ing)? a date|set an? appointment|available dates?/i.test(x);   // an OFFER to book, not the word "booking"
 r = await V('M', ['Can you remove acid rain marks on my windows?']);
 verdict('M: acid rain: no removal or restoration is offered, nothing promised, regular cleaning only maintains the glass', r, { ...base(r), says_no_removal: /(don'?t|do not|cannot|can'?t|unable|not)\b.{0,45}\b(offer|provide|remov\w*|restor\w*)/i.test(r), no_promise: !/\b(we('ll| will| can)) (try|remove|restore|fix|polish)/i.test(r), no_prevention_claim: !/\bprevent/i.test(r) || /(cannot|can'?t|not)\b.{0,30}prevent/i.test(r), no_booking_offer: noBook(r) });
 r = await V('N', ['How many people will come to clean?']);

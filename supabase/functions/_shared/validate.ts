@@ -1,6 +1,6 @@
 // Checks a reply before it goes to ManyChat, repairs it when it can, and falls back to a safe sentence when it cannot. Pure logic, no network.
 import { type ChatContext, type Intent, type ServiceKey, lastQuestionOf, questionTopic, servicesIn, nextQuestionHint, nextBookingQuestion } from './chatcontext.ts';
-import { tooTagalog, ACID_RAIN_REPLY } from './brain.ts';
+import { tooTagalog, ACID_RAIN_REPLY, COMMERCIAL_OCULAR } from './brain.ts';
 
 export interface Check { ctx: ChatContext; intent: Intent; customerText: string; previousAi: string[]; first?: boolean }
 const FIXED = /Reservation Date:|ocular|^\s*Thank you po! Our technical team|^\s*Sure po, you may send them|^\s*Your booking is set for|TopMop offers professional exterior cleaning/i;
@@ -30,6 +30,11 @@ const BUNDLE_BAD = /\b(second|2nd|extra|additional|other) (service|one)\b.{0,30}
 const PRORATE = /\b(pro-?rat\w*|(only )?pay(ing)? (only )?for (the )?(actual|exact|what)|charged? (only )?for (the )?(actual|exact) (count|panels?|area|quantity|sqm)|(no|without (a|any)) minimum)\b/i;
 const BUNDLE_CONTEXT = /\b(second|bundl\w*|together|eligible|add(ed|itional)?)\b/i;
 const minimumViolation = (x: string) => PRORATE.test(x) && !BUNDLE_CONTEXT.test(x);
+// Commercial customers asking for a quote or an assessment get all three options (Google Maps from the address, optional photos, the ₱2,500 ocular inspection): never a bare "our team will follow up".
+const COMMERCIAL_WORDS = /\b(commercial|office|offices|warehouse|hotel|hospital|school|mall|factory|company|business|store|restaurant|resort|corporate|condo(minium)? (corp|association))\b/i;
+const QUOTE_WORDS = /\b(quote|quotation|price|prices|how much|cost|estimate|rate|rates|assess\w*|inspect\w*|ocular|magkano)\b/i;
+const commercialAsk = (customerText: string, property?: string) => (property === 'commercial' || COMMERCIAL_WORDS.test(customerText)) && QUOTE_WORDS.test(customerText);
+const HAS_COMMERCIAL_OPTIONS = (t: string) => /2,500/.test(t) && /google maps/i.test(t);
 const NEGATES = /\b(not|n't|cannot|can't|don't|do not|never|unable|no)\b/i;
 const ASKS_SERVICES = /\b(what|which|ano(ng)?|anu)\b.{0,30}\b(services?|serbisyo|offer(s|ed)?)\b|\bwhat (do|does) (you|topmop|top mop)\b.{0,20}\b(do|offer|clean)\b|\bservices? (do )?(you|po|ninyo|nyo)\b|\bwhat can you (clean|do)\b|\blist of services\b/i;
 const SERVICE_WORDS: [ServiceKey, RegExp][] = [['window', /\b(window|glass)\b/i], ['wall', /\bwalls?\b/i], ['roof', /\broof(?:s|ing)?\b/i], ['solar', /\bsolar\b/i], ['floor', /\b(floor|driveway)\s*(?:cleaning|washing)\b|\bfloor and\b/i], ['gutter', /\bgutters?\b/i]];
@@ -64,6 +69,7 @@ export function validateReply(reply: string, v: Check): string[] {
   }
   if (pv) out.push(pv);
   if (sentences(t).some(minimumViolation)) out.push('minimum: every package has a minimum charge that is never prorated; a lower quantity still pays the full minimum (only the second service of a bundle has its minimum waived)');
+  if (commercialAsk(v.customerText, v.ctx.property) && !HAS_COMMERCIAL_OPTIONS(t)) out.push('commercial: give the three assessment options in two short sentences (an initial assessment from the address on Google Maps, photos only if the customer likes, and an onsite ocular inspection for ₱2,500, deductible when they proceed)');
   if (BUNDLE_BAD.test(t)) out.push('bundle: only the minimum of the second service is waived; never say it is free, discounted or at a lower rate, and never say there are no other charges');
   if (sentences(t).some((x) => PROMISES.test(x) && !NEGATES.test(x) && MARK_WORDS.test(x))) out.push('overpromise: never promise to remove marks, etching, stains or discolouration, or to prevent damage; say what we can and cannot do');
   if (ACID_ASK.test(v.customerText) && REMOVAL_ASK.test(v.customerText) && !SAYS_NO_REMOVAL.test(t)) out.push('policy: TopMop does not offer acid rain mark removal; say so kindly (damage varies, treatment can make it worse; regular cleaning only maintains the glass)');
@@ -96,6 +102,7 @@ export function fallbackReply(v: Check, why: 'empty' | 'integration' | 'invalid'
   if (v.intent === 'complaint' || v.intent === 'human_assistance') return { text: "I'm sorry for the inconvenience po. I'll refer this to our team right away.", handover: true };
   if (why === 'integration') return { text: 'Let me have our team verify that for you po.', handover: true };
   if (ACID_ASK.test(v.customerText) && REMOVAL_ASK.test(v.customerText)) return { text: ACID_RAIN_REPLY, handover: false };   // the approved policy answer, always safe
+  if (commercialAsk(v.customerText, v.ctx.property)) return { text: COMMERCIAL_OCULAR, handover: false };   // the approved commercial answer, always safe
   if (v.intent === 'booking_request' || c.booking_requested) { const q = nextBookingQuestion(c); if (q) return { text: q.topic === 'location' || q.topic === 'service' ? `Sure po, happy to help you book! ${q.text}` : q.text, handover: false }; return { text: 'Thank you po! Our team will confirm your booking details shortly.', handover: true }; }
   if (v.intent === 'price_inquiry') { if (!c.location) return { text: 'May I know your location (city) po so I can check the rate?', handover: false }; if (!c.service) return { text: 'Which cleaning service do you need po?', handover: false }; return { text: 'Our team will verify the exact rate for you po.', handover: true }; }
   if (c.acknowledgment) return { text: "You're welcome po!", handover: false };
