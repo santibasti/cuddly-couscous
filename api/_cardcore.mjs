@@ -141,7 +141,7 @@ const ASSESS = {
 		tg: "Ang service na ito po ay pini-presyuhan after ng assessment, kaya wala po akong fixed rate na masasabi. Ire-review po ng team namin ang details at gagawa sila ng quotation."
 	},
 	commercial: {
-		en: "For commercial properties, may we have the property address po? Our team will do an initial assessment first, before scheduling an ocular visit. The ocular fee is ₱2,500, which is deductible once you proceed with the service.",
+		en: "For commercial projects po, we can initially assess using your address on Google Maps; photos are optional. An onsite ocular inspection is ₱2,500, deductible when you proceed.",
 		tl: "",
 		tg: ""
 	}

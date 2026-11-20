@@ -1,10 +1,11 @@
 // The tools of the AI brain run through the chat functions that already exist (estimate, availability, booking, lead): one set of rules for the price, the date and the booking, whoever asks.
 import type { ToolOutcome } from './brain.ts';
 import { manilaDay, parseWanted } from '../chat-availability/logic.ts';
+import { bundleWaives } from './estimate.ts';
 
 // deno-lint-ignore no-explicit-any
 type Sb = any;
-export interface ExecCtx { sb: Sb; base: string; key: string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null }; lang: string; context?: string; noHumanAlert?: boolean; booking?: { number: string; date: string; status: string } | null }
+export interface ExecCtx { sb: Sb; base: string; key: string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null }; lang: string; context?: string; services?: string[]; noHumanAlert?: boolean; booking?: { number: string; date: string; status: string } | null }
 const post = async (c: ExecCtx, fn: string, body: Record<string, unknown>) => {
   const r = await fetch(`${c.base}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': c.key }, body: JSON.stringify({ ...body, lang: 'en' }) });   // the tools always answer in short English; the AI phrases the reply for the customer
   const j = await r.json().catch(() => ({})) as Record<string, unknown>; if (!r.ok) throw new Error(String(j.error ?? `${fn} answered ${r.status}`)); return j;
@@ -14,9 +15,15 @@ export function makeExec(c: ExecCtx) {
   return async (name: string, input: Record<string, unknown>): Promise<ToolOutcome> => {
     try {
       if (name === 'estimate') {
-        let j = await post(c, 'chat-estimate', { address: input.address, service: input.service, qty: input.qty, property_type: input.property_type, with_main: input.with_main });
-        if (j.ok === false && j.kind === 'unknown' && c.context) j = await post(c, 'chat-estimate', { address: `${String(input.address ?? '')} ${c.context}`.slice(0, 300), service: input.service, qty: input.qty, property_type: input.property_type, with_main: input.with_main });   // the street alone has no city: look for it in what the customer wrote
-        return { text: String(j.reply ?? ''), amounts: nums(j.estimate, j.package_price, j.extra_rate) };
+        // Two services booked together: the code works out the combined total (first service keeps its minimum, the second has it waived). The AI never adds the amounts itself.
+        const items = Array.isArray(input.items) ? (input.items as { service?: unknown; qty?: unknown }[]).slice(0, 3).map((x) => ({ service: String(x?.service ?? ''), qty: Number(x?.qty) })) : null;
+        // A single service: the minimum is waived ONLY when the model says it is a bundle AND the conversation really has another eligible first service (never for a standalone service).
+        const withMain = !items && input.with_main === true && bundleWaives(String(input.service ?? ''), c.services ?? []);
+        const body = (address: unknown) => (items ? { address, items, property_type: input.property_type } : { address, service: input.service, qty: input.qty, property_type: input.property_type, with_main: withMain });
+        let j = await post(c, 'chat-estimate', body(input.address));
+        if (j.ok === false && j.kind === 'unknown' && c.context) j = await post(c, 'chat-estimate', body(`${String(input.address ?? '')} ${c.context}`.slice(0, 300)));   // the street alone has no city: look for it in what the customer wrote
+        const lineAmounts = Array.isArray(j.lines) ? (j.lines as { amount?: unknown; rate?: unknown }[]).flatMap((l) => [l.amount, l.rate]) : [];
+        return { text: String(j.reply ?? ''), amounts: nums(j.estimate, j.package_price, j.extra_rate, ...lineAmounts) };
       }
       if (name === 'check_date') {
         if (c.booking && parseWanted(input.date, manilaDay(Date.now())) === c.booking.date) return { text: `This is the customer's own confirmed booking ${c.booking.number} for ${c.booking.date}. Do NOT say the date is full or that it is not confirmed: thank them and confirm it.` };

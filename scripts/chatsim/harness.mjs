@@ -28,7 +28,7 @@ execSync(`npx rolldown scripts/chatsim/toolshim.ts --format esm --platform node 
 const T = await import(pathToFileURL(path.join(tmp, 'toolshim.mjs')).href);
 const tools = async (u, init) => {
   const b = JSON.parse(init.body); const lang = T.parseLang(b.lang); const j = (o) => new Response(JSON.stringify(o), { status: 200 });
-  if (u.endsWith('/chat-estimate')) { const e = T.estimate(String(b.address ?? '').slice(0, 300), String(b.service ?? ''), Number(b.panels ?? b.qty), String(b.property_type ?? ''), b.with_main === true); return j({ ...e, reply: e.estimate_en || e.rates_en }); }
+  if (u.endsWith('/chat-estimate')) { const e = Array.isArray(b.items) ? T.estimateBundle(String(b.address ?? '').slice(0, 300), b.items, String(b.property_type ?? '')) : T.estimate(String(b.address ?? '').slice(0, 300), String(b.service ?? ''), Number(b.panels ?? b.qty), String(b.property_type ?? ''), b.with_main === true); return j({ ...e, reply: e.estimate_en || e.rates_en }); }
   if (u.endsWith('/chat-availability')) { const today = T.manilaDay(Date.now()); const r = T.checkAvailability(T.parseWanted(b.when ?? b.date, today), today, T.DEFAULT_RULES, { jobs: [], field: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, tier: 'Crew', status: 'active', department: 'Field Operations' })), vehicles: [], holidays: [] }); return j({ ...r, reply: T.pick(r, lang) }); }
   return new Response(JSON.stringify({ ok: false, error: 'not simulated' }), { status: 500 });
 };

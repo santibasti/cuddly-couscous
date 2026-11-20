@@ -61,7 +61,7 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
           const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: dropLoneSurrogates(JSON.stringify({ model, max_tokens: 1200, system: sys, tools, messages: msgs })) });
           if (!r.ok) { const body = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 220); throw new Error(`AI error ${r.status}${body ? `: ${body}` : ''}`); } return await r.json();
         };
-        const exec = makeExec({ noHumanAlert: true, booking, sb, base: env('SUPABASE_URL'), key, conv, lang, context: [ctx.location ?? '', ...texts].join(' ').slice(-600) });
+        const exec = makeExec({ noHumanAlert: true, services: ctx.services_seen ?? [], booking, sb, base: env('SUPABASE_URL'), key, conv, lang, context: [ctx.location ?? '', ...texts].join(' ').slice(-600) });
         brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3, check: (r) => (/^NO_ANSWER\W*$/i.test(r.trim()) ? [] : validateReply(r, vctx(first))) });
       }
       const isNoAnswer = /^NO_ANSWER\W*$/i.test(brain.reply.trim());

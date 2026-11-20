@@ -132,4 +132,48 @@ reset('suggest'); queue(false); flags.noMigration = true; state.script = () => t
 const lg = await send('Wall cleaning in Makati', {}, 'MC-L'); flags.noMigration = false;
 ok('Migration 0133 missing: the chat still answers (draft saved), nothing crashes', lg.status === 'held' && drafts().length === 1, `${lg.status}; context stored: ${JSON.stringify(ctxOf())}`);
 
+// H. V2.2 company knowledge through the whole reply path (scripted model: validation, repair, safe fallback and delivery are real code)
+const policy = async (customer, scripted, id) => { reset('suggest'); queue(false); state.script = () => text('NO_ANSWER'); await send('Hello', {}, id); deliver(); let calls = 0; state.script = () => { calls++; return text(Array.isArray(scripted) ? scripted[Math.min(calls - 1, scripted.length - 1)] : scripted); }; await send(customer, {}, id); const d = drafts().at(-1); return { d, calls }; };
+const ACID = "We don't offer acid rain mark removal po, since glass damage varies and treatment may sometimes make it worse. Regular cleaning helps maintain your glass, but cannot reverse existing damage.";
+let h = await policy('Can you remove acid rain marks on my windows?', ACID, 'MC-H1');
+ok('V2.2 acid rain: the approved answer goes out as written, no handover, no flag', h.d.body === ACID && h.d.flags.length === 0, JSON.stringify(h.d.body.slice(0, 70)) + ' flags=' + JSON.stringify(h.d.flags));
+h = await policy('Can you remove acid rain marks on my windows?', "We'll try our best to remove the acid rain marks po.", 'MC-H2');
+ok('V2.2 acid rain: a promise to remove the marks never reaches the customer (replaced by the policy answer, flagged for staff)', !/try our best|remove the acid/i.test(h.d.body) && /don't offer acid rain mark removal/.test(h.d.body) && h.d.flags.some((f) => /safe sentence|repaired/.test(f)), `${JSON.stringify(h.d.body.slice(0, 80))} flags=${JSON.stringify(h.d.flags).slice(0, 120)}`);
+h = await policy('Can you remove acid rain marks on my windows?', 'Our team will assess the acid rain marks on site po.', 'MC-H3');
+ok('V2.2 acid rain: "our team will assess it" (the old draft) is replaced by the policy answer', /don't offer acid rain mark removal/.test(h.d.body), JSON.stringify(h.d.body.slice(0, 80)));
+h = await policy('How many people will come to clean?', 'We usually deploy 3–5 professional cleaning crew per service po, depending on the job requirements.', 'MC-H4');
+ok('V2.2 crew: 3–5 crew answers in one short sentence, no flag, no booking offer', /3–5/.test(h.d.body) && h.d.flags.length === 0 && !/book|schedule/i.test(h.d.body), JSON.stringify(h.d.body.slice(0, 70)));
+h = await policy('We have an office building, can you give a quote?', 'For commercial projects po, we can initially assess using your address on Google Maps; photos are optional. An onsite ocular inspection is ₱2,500, deductible when you proceed.', 'MC-H5');
+ok('V2.2 commercial: Google Maps, optional photos, ₱2,500 deductible ocular; no price, no handover, no flag', /Google Maps/.test(h.d.body) && /optional/.test(h.d.body) && /₱2,500/.test(h.d.body) && h.d.flags.length === 0, JSON.stringify(h.d.body.slice(0, 80)));
+h = await policy('We have an office building, can you give a quote?', ['Please send photos of the building po so we can quote.', 'Please send photos of the building po so we can quote.'], 'MC-H6');
+ok('V2.2 commercial: a reply that REQUIRES or asks for photos is never sent as is (photos stay optional)', !/send photos/i.test(h.d.body), JSON.stringify(h.d.body.slice(0, 90)));
+h = await policy('What do you use to clean the glass?', 'For exterior glass po, we use purified deionized water with our water-fed pole system. For interior glass, we use traditional professional cleaning methods.', 'MC-H7');
+ok('V2.2 glass methods: exterior deionized water and water-fed poles, interior traditional methods, no flag', /deionized/.test(h.d.body) && /traditional/.test(h.d.body) && h.d.flags.length === 0, JSON.stringify(h.d.body.slice(0, 70)));
+h = await policy('What do you need from us at the house?', 'We bring our own cleaning equipment po. We only need access to a water source and electricity if required for the equipment.', 'MC-H8');
+ok('V2.2 site needs: own equipment, only water and (if needed) electricity, no flag', /water source/.test(h.d.body) && /electricity/.test(h.d.body) && h.d.flags.length === 0, JSON.stringify(h.d.body.slice(0, 70)));
+h = await policy('How do you clean roofs?', "We use a hybrid cleaning method po, combining soft washing and carefully regulated pressure when suitable. The approach depends on your roof's material and condition.", 'MC-H9');
+ok('V2.2 roof method: hybrid soft washing and regulated pressure, depends on the roof, no flag', /hybrid/.test(h.d.body) && /soft washing/.test(h.d.body) && h.d.flags.length === 0, JSON.stringify(h.d.body.slice(0, 70)));
+h = await policy('Can you restore my faded roof paint?', 'Yes po, we can restore the faded paint on your roof.', 'MC-H10');
+ok('V2.2 roof: a promise to restore faded paint never reaches the customer', !/restore the faded/i.test(h.d.body), JSON.stringify(h.d.body.slice(0, 90)));
+h = await policy('What if I book roof cleaning together with my windows? Is there still a minimum?', 'When you bundle eligible cleaning services po, we waive the minimum requirement for the second service. The regular per-panel or per-sqm rate still applies.', 'MC-H11');
+ok('V2.2 bundle: the second service minimum is waived, the regular rate applies; no flag, no booking offer', /waive the minimum/.test(h.d.body) && /regular/.test(h.d.body) && h.d.flags.length === 0 && !/book|schedule/i.test(h.d.body), JSON.stringify(h.d.body.slice(0, 80)));
+h = await policy('What if I book roof cleaning together with my windows? Is there still a minimum?', ['The second service is free po.', 'The second service is free po.'], 'MC-H12');
+ok('V2.2 bundle: "the second service is free" / a lower rate is never sent', !/\bfree\b/i.test(h.d.body), JSON.stringify(h.d.body.slice(0, 90)));
+
+// I. Minimum charges and bundles through the real tool path (scripted model asks the estimate tool; the code computes; the guard checks every amount)
+const asksTool = (input, finalText) => { let step = 0; state.script = () => { step++; return step === 1 ? { content: [{ type: 'tool_use', id: 't1', name: 'estimate', input }], stop_reason: 'tool_use' } : text(finalText); }; };
+const priced = async (customer, input, finalText, id, mode = 'suggest') => { reset(mode); queue(false); state.script = () => text('NO_ANSWER'); await send('Hello', {}, id); deliver(); asksTool(input, finalText); await send(customer, {}, id); return drafts().at(-1); };
+let m = await priced('Roof cleaning in Makati, about 60 sqm. How much?', { address: 'Makati', service: 'roof cleaning', qty: 60 }, 'Roof cleaning is ₱145 per sqm with a 100 sqm minimum, so 60 sqm comes to ₱14,500 po.', 'MC-I1');
+ok('Minimum: 60 sqm of roof is quoted at the full ₱14,500 minimum, no flag', /14,500/.test(m.body) && m.flags.length === 0, JSON.stringify(m.body.slice(0, 90)));
+m = await priced('Roof cleaning in Makati, about 60 sqm. How much?', { address: 'Makati', service: 'roof cleaning', qty: 60 }, 'For 60 sqm it comes to ₱8,700 po.', 'MC-I2', 'auto');
+ok('Minimum (full mode): a prorated amount (60 sqm × rate = ₱8,700) is never sent to the customer: the amount no tool returned is caught and a person takes over', !/8,700/.test(m.body) && m.flags.some((f) => /no tool returned|safe sentence|repaired/.test(f)), `${JSON.stringify(m.body.slice(0, 80))} flags=${JSON.stringify(m.flags).slice(0, 100)}`);
+m = await priced('Windows in Makati, 15 panels. How much?', { address: 'Makati', service: 'window cleaning', qty: 15 }, 'Our Makati window package is ₱4,799 for up to 31 panels, so 15 panels is still ₱4,799 po.', 'MC-I3');
+ok('Minimum: 15 window panels in Makati are still ₱4,799', /4,799/.test(m.body) && m.flags.length === 0, JSON.stringify(m.body.slice(0, 90)));
+m = await priced('Makati windows 15 panels plus 10 solar panels, total?', { address: 'Makati', items: [{ service: 'window cleaning', qty: 15 }, { service: 'solar panels', qty: 10 }] }, 'For both services the estimate is ₱7,249 po: the window package ₱4,799 plus 10 solar panels at ₱245 each. The final amount is confirmed on site.', 'MC-I4');
+ok('Bundle: windows + 10 solar panels = ₱7,249 (₱4,799 + 10 × ₱245), the total comes from the tool, no flag', /7,249/.test(m.body) && m.flags.length === 0, JSON.stringify(m.body.slice(0, 100)));
+m = await priced('Makati windows 15 panels plus 10 solar panels, total?', { address: 'Makati', items: [{ service: 'window cleaning', qty: 15 }, { service: 'solar panels', qty: 10 }] }, 'For both services it comes to ₱7,000 po.', 'MC-I5', 'auto');
+ok('Bundle (full mode): a total the tool did not return (the AI adding wrongly) never reaches the customer', !/7,000/.test(m.body) && m.flags.length > 0, `${JSON.stringify(m.body.slice(0, 80))} flags=${JSON.stringify(m.flags).slice(0, 100)}`);
+m = await priced('How much for 10 solar panels in Makati?', { address: 'Makati', service: 'solar panels', qty: 10, with_main: true }, 'Solar cleaning is ₱245 per panel with a 20 panel minimum, so 10 panels is ₱4,900 po.', 'MC-I6');
+ok('Standalone: the model asking for a bundle waiver on a single service is ignored, the ₱4,900 minimum stands', /4,900/.test(m.body) && m.flags.length === 0, JSON.stringify(m.body.slice(0, 90)));
+
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);

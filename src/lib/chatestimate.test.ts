@@ -40,7 +40,7 @@ describe('what the rate table does not cover', () => {
     for (const svc of ['gutter cleaning', 'ACP cladding', 'ceiling cleaning', 'indoor wall cleaning', 'facade cleaning', 'post-construction cleaning', 'swimming pool', 'rope access high-rise']) { const e = estimate('Makati', svc, 40); expect(e.ok).toBe(false); expect(e.kind).toBe('custom'); expect(e.estimate).toBeUndefined(); expect(e.estimate_en).toMatch(/assessment/); }
   });
   it('a commercial property is quoted by a person, not from the residential packages', () => {
-    for (const p of ['Commercial', 'office building', 'warehouse']) { const e = estimate('Makati', 'window cleaning', 80, p); expect(e.ok).toBe(false); expect(e.kind).toBe('commercial'); expect(e.estimate).toBeUndefined(); expect(e.estimate_en).toMatch(/ocular fee is ₱2,500/); }
+    for (const p of ['Commercial', 'office building', 'warehouse']) { const e = estimate('Makati', 'window cleaning', 80, p); expect(e.ok).toBe(false); expect(e.kind).toBe('commercial'); expect(e.estimate).toBeUndefined(); expect(e.estimate_en).toMatch(/onsite ocular inspection is ₱2,500, deductible when you proceed/); }
     expect(estimate('Makati', 'window cleaning', 40, 'Residential').estimate).toBe(6059);
   });
   it('glass words, floors and solar still get their rates; the wording is correct for one panel', () => {
