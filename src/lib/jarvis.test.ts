@@ -130,3 +130,25 @@ describe('business questions', () => {
     expect(pctChange(15000, 4000)).toBe(275); expect(pctChange(5, 0)).toBeNull();
   });
 });
+
+import { rankChats, chatImportance, type ChatRow } from '../../supabase/functions/jarvis/logic';
+describe('jarvis reads AI Chat (read-only): which conversations are important', () => {
+  const base: ChatRow = { id: 'c', name: 'Maria', channel: 'messenger', status: 'Open', human_reason: null, last_message_at: '2026-11-21T01:00:00Z', client: null, unanswered: 0, drafts_waiting: 0, failed: 0, last_customer_message: 'hi', minutes_since_last: 30 };
+  it('a routine new lead is not important; the same person as an existing high-value client is', () => {
+    expect(chatImportance(base).score).toBe(0);
+    const vip = chatImportance({ ...base, client: { name: 'Acme Corp', jobs: 6, lifetime_value: 240000 } });
+    expect(vip.score).toBeGreaterThanOrEqual(5); expect(vip.why.join(' ')).toMatch(/existing client \(6 jobs, ₱240,000 lifetime\)/); expect(vip.why).toContain('high-value client');
+  });
+  it('people handed to staff, commercial properties and unanswered messages rank first, with reasons', () => {
+    const rows: ChatRow[] = [
+      { ...base, id: 'a', name: 'Routine' },
+      { ...base, id: 'b', name: 'Handover', status: 'Needs a person', human_reason: 'Asked for a discount', unanswered: 1 },
+      { ...base, id: 'c', name: 'Office', property: 'commercial', minutes_since_last: 5 },
+      { ...base, id: 'd', name: 'Repeat', client: { name: 'Mr Cruz', jobs: 1, lifetime_value: 4799 }, drafts_waiting: 2 }];
+    const r = rankChats(rows);
+    expect(r.map((x) => x.c.id)).toEqual(['b', 'd', 'c']);                       // routine left out; an existing client with drafts waiting outranks a commercial lead with nothing wrong
+    expect(r[0].why.join(' ')).toMatch(/needs a person: Asked for a discount/); expect(r[0].why.join(' ')).toMatch(/1 message not answered/);
+    expect(r[1].why.join(' ')).toMatch(/2 drafts waiting/); expect(r[2].why).toContain('commercial property');
+    expect(rankChats(rows, 1)).toHaveLength(1);
+  });
+});

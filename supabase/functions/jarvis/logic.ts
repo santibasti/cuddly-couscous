@@ -197,3 +197,24 @@ export function dormantClients(jobs: JobRow[], todayStr: string, months: number,
   return Object.entries(by).filter(([, b]) => b.last && b.last < cutoff).map(([id, b]) => ({ client_id: id, jobs: b.jobs, lifetime_value: round2(b.value), last_job: b.last, months_ago: Math.round((Date.parse(todayStr) - Date.parse(b.last)) / (30.4 * 86400_000)) })).sort((a, b) => b.lifetime_value - a.lifetime_value).slice(0, max);
 }
 export const pctChange = (now: number, before: number) => (before > 0 ? Math.round(((now - before) / before) * 1000) / 10 : null);
+
+/* ---------------- AI Chat (read-only): which conversations matter to the owner ---------------- */
+export interface ChatRow {
+  id: string; name: string | null; channel: string; status: string; human_reason: string | null; last_message_at: string;
+  client: { name: string; jobs: number; lifetime_value: number } | null; property?: string; location?: string; service?: string;
+  unanswered: number; drafts_waiting: number; failed: number; last_customer_message: string; minutes_since_last: number;
+}
+export const HIGH_VALUE_PESOS = 50_000;
+/** Why a conversation is important, and a score to sort by. Existing clients, people the AI handed over, commercial properties, unanswered messages and waiting drafts all count. */
+export function chatImportance(c: ChatRow): { score: number; why: string[] } {
+  const why: string[] = []; let score = 0;
+  if (c.status === 'Needs a person') { score += 5; why.push(`needs a person${c.human_reason ? `: ${c.human_reason.slice(0, 80)}` : ''}`); }
+  if (c.client) { score += 3; why.push(`existing client (${c.client.jobs} job${c.client.jobs === 1 ? '' : 's'}, ₱${Math.round(c.client.lifetime_value).toLocaleString('en-PH')} lifetime)`); if (c.client.lifetime_value >= HIGH_VALUE_PESOS) { score += 2; why.push('high-value client'); } }
+  if (c.property === 'commercial') { score += 3; why.push('commercial property'); }
+  if (c.unanswered > 0) { score += 3; why.push(`${c.unanswered} message${c.unanswered === 1 ? '' : 's'} not answered yet`); }
+  if (c.drafts_waiting > 0) { score += 1; why.push(`${c.drafts_waiting} draft${c.drafts_waiting === 1 ? '' : 's'} waiting for staff approval`); }
+  if (c.failed > 0) { score += 2; why.push(`${c.failed} reply failed to send`); }
+  return { score, why };
+}
+/** Conversations with a reason to matter, most important first (a score of 0 means routine and is left out). */
+export const rankChats = (rows: ChatRow[], limit = 12) => rows.map((c) => ({ c, ...chatImportance(c) })).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.c.minutes_since_last - b.c.minutes_since_last).slice(0, limit);

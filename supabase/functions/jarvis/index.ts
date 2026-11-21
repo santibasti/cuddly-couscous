@@ -11,7 +11,7 @@
 //          ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID. Optional: JARVIS_MODEL (default claude-sonnet-5-5), JARVIS_ADDRESS (how it addresses you), JARVIS_SPEAK_NAMES=0 (do not say client names),
 //          JARVIS_WEB=0 (turn off the web search; on by default), ELEVENLABS_TTS_MODEL (default eleven_multilingual_v2), ELEVENLABS_STT_MODEL (default scribe_v1; scribe_v2 is tried if that one is refused). Deploy with --no-verify-jwt.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { addDays, alertIsInstant, alertLine, chunks, CITY_COORDS, cityOf, cleanNote, crewBonus, invoiceBalance, knowledgeBlock, MAX_KNOWLEDGE_CHARS, parseProposals, pickSections, splitKnowledge, weatherRisk, invoiceTotal, LEARN_RULES, manilaDay, MAX_NOTES, memoryBlock, NOTE_KINDS, ownerIds, personaPrompt, round2, speakable, TOOL_TOPIC, type WxHour, periodStats, periodRange, dormantClients, pctChange, type JobRow } from './logic.ts';
+import { addDays, alertIsInstant, rankChats, type ChatRow, alertLine, chunks, CITY_COORDS, cityOf, cleanNote, crewBonus, invoiceBalance, knowledgeBlock, MAX_KNOWLEDGE_CHARS, parseProposals, pickSections, splitKnowledge, weatherRisk, invoiceTotal, LEARN_RULES, manilaDay, MAX_NOTES, memoryBlock, NOTE_KINDS, ownerIds, personaPrompt, round2, speakable, TOOL_TOPIC, type WxHour, periodStats, periodRange, dormantClients, pctChange, type JobRow } from './logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-jarvis-action', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -336,6 +336,39 @@ async function getHandovers(sb: Db) {
   const cn = await names(sb, 'clients', 'name', (jobs ?? []).map((j: Db) => j.client_id));
   return { waiting: (jobs ?? []).map((j: Db) => ({ job: j.number, client: cn[j.client_id] ?? '', day: String(j.start_at).slice(0, 10) })) };
 }
+/** AI Chat, read-only: who is messaging us, and which conversations matter (existing or high-value clients, people the AI handed over, commercial properties, unanswered messages). Customer words are short excerpts only. */
+async function getChatActivity(sb: Db, days: number, who?: unknown) {
+  const since = new Date(Date.now() - days * 86400_000).toISOString();
+  let q = sb.from('chat_conversations').select('id, name, channel, status, human_reason, client_id, last_message_at, context').gte('last_message_at', since).order('last_message_at', { ascending: false }).limit(80);
+  const w = String(who ?? '').trim().replace(/[%,()]/g, ' ').slice(0, 60);
+  if (w.length >= 2) {
+    const { data: cl } = await sb.from('clients').select('id').is('deleted_at', null).ilike('name', `%${w}%`).limit(10);
+    const ids = (cl ?? []).map((c: Db) => c.id);
+    q = ids.length ? q.or(`name.ilike.%${w}%,client_id.in.(${ids.join(',')})`) : q.ilike('name', `%${w}%`);
+  }
+  const { data: convs, error } = await q; if (error) throw new Error(error.message);
+  const list = (convs ?? []) as Db[]; if (!list.length) return { days, conversations: 0, note: w ? 'No chat found for that name in this period.' : 'No chat activity in this period.' };
+  const convIds = list.map((c) => c.id);
+  const { data: msgs } = await sb.from('chat_messages').select('conversation_id, direction, body, status, handled_at, created_at').in('conversation_id', convIds).gte('created_at', since).order('created_at', { ascending: false }).limit(800);
+  const by: Record<string, Db[]> = {}; for (const m of (msgs ?? []) as Db[]) (by[m.conversation_id] ??= []).push(m);
+  const clientIds = [...new Set(list.map((c) => c.client_id).filter(Boolean))];
+  const cname = await names(sb, 'clients', 'name', clientIds);
+  const jobsBy: Record<string, { jobs: number; value: number }> = {};
+  if (clientIds.length) { const { data: jb } = await sb.from('jobs').select('client_id, contract_amount, status').in('client_id', clientIds).is('deleted_at', null).neq('status', 'Cancelled').limit(3000); for (const j of (jb ?? []) as Db[]) { const e = (jobsBy[j.client_id] ??= { jobs: 0, value: 0 }); e.jobs++; e.value += Number(j.contract_amount) || 0; } }
+  const now = Date.now();
+  const rows: ChatRow[] = list.map((c) => {
+    const ms = by[c.id] ?? []; const lastIn = ms.find((m) => m.direction === 'in'); const ctx = (c.context ?? {}) as Db;
+    return { id: c.id, name: c.name, channel: c.channel, status: c.status, human_reason: c.human_reason, last_message_at: c.last_message_at,
+      client: c.client_id && cname[c.client_id] ? { name: cname[c.client_id], jobs: jobsBy[c.client_id]?.jobs ?? 0, lifetime_value: Math.round(jobsBy[c.client_id]?.value ?? 0) } : null,
+      property: ctx.property, location: ctx.location, service: ctx.service,
+      unanswered: ms.filter((m) => m.direction === 'in' && !m.handled_at && m.status === 'received').length,
+      drafts_waiting: ms.filter((m) => m.direction === 'out' && m.status === 'draft').length, failed: ms.filter((m) => m.direction === 'out' && m.status === 'failed').length,
+      last_customer_message: String(lastIn?.body ?? '').replace(/\s+/g, ' ').slice(0, 160), minutes_since_last: Math.max(0, Math.round((now - Date.parse(c.last_message_at)) / 60000)) };
+  });
+  const status: Record<string, number> = {}; for (const r of rows) status[r.status] = (status[r.status] ?? 0) + 1;
+  const important = rankChats(rows).map(({ c, score, why }) => ({ customer: c.client?.name ?? c.name ?? 'Unknown customer', existing_client: !!c.client, where: c.location, service: c.service, property: c.property, status: c.status, why, last_said: c.last_customer_message, minutes_ago: c.minutes_since_last, score }));
+  return { days, conversations: rows.length, by_status: status, drafts_waiting_total: rows.reduce((n, r) => n + r.drafts_waiting, 0), unanswered_total: rows.reduce((n, r) => n + r.unanswered, 0), important, note: 'Read-only. Chat words are short excerpts; the full conversation is in the app under Sales, AI Chat.' };
+}
 const safe = async (p: Promise<unknown>) => { try { return await p; } catch (e) { return { unavailable: String((e as Error).message ?? e).slice(0, 120) }; } };
 
 /* ---------------- the AI ---------------- */
@@ -359,6 +392,7 @@ const TOOLS = [
   { name: 'lookup_knowledge', description: 'Read the owner-uploaded company knowledge base (services, methods, reference prices, safety limits, clients, policies, plans, rules). Pass a topic or keywords, or a section number from the list in your instructions. Returns the best matching sections.', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'remember_note', description: 'Save one short lasting note about how the owner wants you to work (preference, correction, routine, or business fact they told you). Only what the owner said themselves in this conversation.', input_schema: { type: 'object', properties: { text: { type: 'string' }, kind: { type: 'string', enum: ['preference', 'fact', 'routine', 'correction'] } }, required: ['text'] } },
   { name: 'forget_note', description: 'Delete one saved note by its id (shown as [#id] in your notes) when the owner asks you to forget it.', input_schema: { type: 'object', properties: { id: { type: 'number' } }, required: ['id'] } },
+  { name: 'get_chat_activity', description: 'AI Chat (Messenger customers talking to the AI), read-only: how many conversations, how many wait for a person, and the IMPORTANT ones with why (existing or high-value clients, people handed over to staff, commercial properties, unanswered messages, drafts waiting, failed replies), with a short excerpt of what the customer last said. Pass client to look at one person or client by name. Use it when asked about chats, messages, leads on Messenger, or how an important client is doing. You cannot reply to a customer from here.', input_schema: { type: 'object', properties: { days: { type: 'number', description: 'How many days back (1 to 14, default 2)' }, client: { type: 'string', description: 'Optional: a customer or client name' } }, required: [] } },
   { name: 'get_handovers_waiting', description: 'Finished jobs whose client has not yet signed the handover (their bonus and billing wait for it).', input_schema: { type: 'object', properties: {} } }];
 const dateArg = (v: unknown, d: string) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : d);
 async function runTool(sb: Db, name: string, a: Record<string, unknown>) {
@@ -377,6 +411,7 @@ async function runTool(sb: Db, name: string, a: Record<string, unknown>) {
     case 'get_receivables': return await getReceivables(sb);
     case 'get_money_in': return await getMoneyIn(sb, clampDays(a.days));
     case 'get_quotations_summary': return await getQuotes(sb, clampDays(a.days, 30));
+    case 'get_chat_activity': return await getChatActivity(sb, Math.max(1, Math.min(14, Math.floor(Number(a.days)) || 2)), a.client);
     case 'get_handovers_waiting': return await getHandovers(sb);
     case 'calc_crew_bonus': {
       const { data } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle(); const jp = ((data?.data ?? {}) as Record<string, unknown>).job_pay as Record<string, number> | undefined;
@@ -439,11 +474,11 @@ async function answer(sb: Db, chat: number, question: string): Promise<string> {
 async function morningBrief(sb: Db, owners: number[]) {
   if (!(await once(sb, `brief:${today()}`))) return;
   const t = today(); const y = addDays(t, -1);
-  const [jobsToday, jobsTomorrow, attendanceYesterday, pending, leads, receivables, moneyYesterday, handovers, weatherToday] = await Promise.all([
+  const [jobsToday, jobsTomorrow, attendanceYesterday, pending, leads, receivables, moneyYesterday, handovers, weatherToday, chats] = await Promise.all([
     safe(getJobs(sb, t, t)), safe(getJobs(sb, addDays(t, 1), addDays(t, 1))), safe(getAttendance(sb, y)), safe(getPending(sb)), safe(getLeads(sb, 1)),
-    safe(getReceivables(sb)), safe(getMoneyIn(sb, 1)), safe(getHandovers(sb)), safe(weatherForDay(sb, t))]);
-  const data = { today: t, weekday: new Date(t + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }), jobsToday, jobsTomorrow, attendanceYesterday, waitingForYou: pending, newInquiriesLast24h: leads, receivables, moneyReceivedYesterday: moneyYesterday, handoversWaitingForClientSignature: handovers, weatherRiskForTodaysJobs: weatherToday };
-  const out = await claude(`${persona()}${await memory(sb)}${knowledgeBlock(await loadKnowledge(sb))}\nWrite the owner's MORNING BRIEF to be listened to. Open with a short greeting and the day. Put what needs the owner's attention or a decision first (waiting approvals, unassigned jobs, absent crew, overdue money, handovers waiting), (including any job at risk from rain, thunderstorms or strong wind), then today's jobs in time order, then tomorrow in one line. Skip empty sections. Roughly 100 to 160 words.`,
+    safe(getReceivables(sb)), safe(getMoneyIn(sb, 1)), safe(getHandovers(sb)), safe(weatherForDay(sb, t)), safe(getChatActivity(sb, 1))]);
+  const data = { today: t, weekday: new Date(t + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }), jobsToday, jobsTomorrow, attendanceYesterday, waitingForYou: pending, newInquiriesLast24h: leads, receivables, moneyReceivedYesterday: moneyYesterday, handoversWaitingForClientSignature: handovers, weatherRiskForTodaysJobs: weatherToday, aiChatLast24h: chats };
+  const out = await claude(`${persona()}${await memory(sb)}${knowledgeBlock(await loadKnowledge(sb))}\nWrite the owner's MORNING BRIEF to be listened to. Open with a short greeting and the day. Put what needs the owner's attention or a decision first (waiting approvals, unassigned jobs, absent crew, overdue money, handovers waiting, and important clients in AI Chat: existing clients, people handed to staff, commercial leads or unanswered messages, named with one short line each), (including any job at risk from rain, thunderstorms or strong wind), then today's jobs in time order, then tomorrow in one line. Skip empty sections. Roughly 100 to 160 words.`,
     [{ role: 'user', content: `Data (JSON):\n${JSON.stringify(data).slice(0, 14000)}` }]);
   const text = textOf(out.content) || 'Good morning. I could not prepare the brief today.';
   for (const c of owners) await deliver(c, text);
