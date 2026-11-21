@@ -11,6 +11,7 @@ import { LOGO_SMALL_URL } from '@/lib/logo';
 import { FREQUENCIES, SECTION_TITLES, arrangePhotos, buildSections, createServiceReport, parseBody, deleteServiceReport, serviceDatesText, serviceDays, setReportStatus, signServiceReport, updateServiceReport } from '@/lib/servicereport';
 import { addJobPhoto, photoDataUrls, photoUrls } from '@/lib/photos';
 import { buildServiceReportPdf, serviceReportFilename } from '@/lib/servicereportpdf';
+import { CLOUD, supabase } from '@/lib/cloud';
 import { fmtDate } from '@/lib/util';
 import type { ReportPhoto, ReportSection, ServiceReport } from '@/lib/types';
 
@@ -61,7 +62,7 @@ function ReportEditor({ id }: { id: string }) {
   const saved = (db.service_reports ?? []).find((r) => r.id === id && !r.deleted_at);
   const [r, setR] = useState<ServiceReport | undefined>(saved); const [dirty, setDirty] = useState(false);
   const [urls, setUrls] = useState<Record<string, string>>({}); const [group, setGroup] = useState<ReportPhoto['group']>('Before'); const [busy, setBusy] = useState<string>();
-  const [preview, setPreview] = useState(false); const [priv, setPriv] = useState<{ id: string; src: string }>(); const [signing, setSigning] = useState(false); const [sig, setSig] = useState<string>();
+  const [picking, setPicking] = useState(false); const [preview, setPreview] = useState(false); const [priv, setPriv] = useState<{ id: string; src: string }>(); const [signing, setSigning] = useState(false); const [sig, setSig] = useState<string>();
   const areas = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const cam = useRef<HTMLInputElement>(null); const gal = useRef<HTMLInputElement>(null);
   useEffect(() => { if (saved && !dirty) setR(saved); }, [saved, dirty]);
@@ -100,6 +101,7 @@ function ReportEditor({ id }: { id: string }) {
         {mayEdit && !locked && <button className="btn navy" onClick={() => { if (dirty) save(); attempt(() => setReportStatus(r.id, 'Final'), 'Report marked final'); }}>Mark final</button>}
         {mayEdit && locked && can('jobs.all') && <button className="btn" onClick={() => attempt(() => setReportStatus(r.id, 'Draft'), 'Report reopened')}>Reopen</button>}
       </PageHead>
+      {picking && job && <JobPhotoPicker jobId={job.id} jobNumber={job.number} have={r.photos.map((x) => x.id)} onClose={() => setPicking(false)} onAdd={(list) => { set({ photos: [...r.photos, ...list] }); setPicking(false); toast(`${list.length} photo${list.length === 1 ? '' : 's'} added to the report. Check the Before / After group and save.`, 'ok'); }} />}
       {priv && job && <PrivacyEditor src={priv.src} onClose={() => setPriv(undefined)} onSave={async (blob) => {
         const orig = r.photos.find((x) => x.id === priv.id); if (!orig) return;
         const np = await addJobPhoto(new File([blob], 'privacy.jpg', { type: 'image/jpeg' }), { jobId: job.id, clientId: job.client_id, kind: orig.group === 'Detail' ? 'During' : orig.group, enhance: false });
@@ -135,6 +137,7 @@ function ReportEditor({ id }: { id: string }) {
                 <input ref={gal} type="file" accept="image/*" multiple className="hide" onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
                 <button className="btn primary" disabled={!!busy} onClick={() => cam.current?.click()}>Take a photo</button>
                 <button className="btn" disabled={!!busy} onClick={() => gal.current?.click()}>Choose photos</button>
+                {CLOUD && job && <button className="btn" disabled={!!busy} onClick={() => setPicking(true)} title="Photos your crew sent on Telegram or added to this booking">✈ Add from Telegram / job photos</button>}
                 <EnhanceToggle />
                 {busy && <span className="small muted">{busy}</span>}
               </div>
@@ -192,5 +195,55 @@ function ReportPreview({ r, client, urls, company }: { r: ServiceReport; client:
       <div className="pd-foot"><span>{r.number} · {company.name}</span><span>Prepared by TopMop</span></div>
       {r.signature && <div className="pd-sign"><img src={r.signature} alt="TopMop signature" style={{ height: 54 }} /><div className="pd-small">Signed for TopMop · {r.signed_at ? fmtDate(r.signed_at) : ''}</div></div>}
     </div></div>
+  );
+}
+
+
+/** Picks photos already stored for this booking (sent by the crew on Telegram, or added in the app) and puts them in the report. Photos are matched to the booking by its job order number, never by guesswork. Videos are not shown (a PDF cannot hold them). */
+type JobPhotoRow = { id: string; path: string; thumb_path: string | null; kind: string; caption: string | null; media: string; source: string; created_at: string; sent_by_employee_id: string | null };
+const groupOf = (kind: string): ReportPhoto['group'] => (kind === 'Before' ? 'Before' : kind === 'After' ? 'After' : 'Detail');
+function JobPhotoPicker({ jobId, jobNumber, have, onClose, onAdd }: { jobId: string; jobNumber: string; have: string[]; onClose: () => void; onAdd: (p: ReportPhoto[]) => void }) {
+  const { db } = useAuth();
+  const [rows, setRows] = useState<JobPhotoRow[]>(); const [urls, setUrls] = useState<Record<string, string>>({}); const [sel, setSel] = useState<Record<string, ReportPhoto['group']>>({}); const [err, setErr] = useState<string>();
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const { data, error } = await supabase().from('job_photos').select('id, path, thumb_path, kind, caption, media, source, created_at, sent_by_employee_id').eq('job_id', jobId).is('deleted_at', null).neq('media', 'video').order('created_at', { ascending: true }).limit(300);
+      if (!live) return; if (error) { setErr(error.message); setRows([]); return; }
+      const list = (data ?? []) as JobPhotoRow[]; setRows(list);
+      const paths = list.map((p) => p.thumb_path ?? p.path);
+      if (paths.length) { const sg = await supabase().storage.from('job-photos').createSignedUrls(paths, 3600); if (live) setUrls(Object.fromEntries((sg.data ?? []).filter((d) => d.path && d.signedUrl).map((d) => [d.path!, d.signedUrl as string]))); }
+    })();
+    return () => { live = false; };
+  }, [jobId]);
+  const free = (rows ?? []).filter((p) => !have.includes(p.id));
+  const tg = free.filter((p) => p.source === 'telegram');
+  const toggle = (p: JobPhotoRow) => setSel((c) => { const n = { ...c }; if (n[p.id]) delete n[p.id]; else n[p.id] = groupOf(p.kind); return n; });
+  const chosen = free.filter((p) => sel[p.id]);
+  return (
+    <Modal title={`Photos for ${jobNumber}`} size="wide" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!chosen.length} onClick={() => onAdd(chosen.map((p) => ({ id: p.id, path: p.path, group: sel[p.id], caption: (p.caption ?? '').slice(0, 120) })))}>Add {chosen.length || ''} photo{chosen.length === 1 ? '' : 's'} to the report</button></>}>
+      <div className="stack">
+        <div className="small muted">These are the photos saved on this booking: the ones your crew sent on Telegram with the job order number, and the ones added in the app. Tap a photo to select it, then pick its group (Before, After or Detail).</div>
+        {rows && !rows.length && <div className="muted">{err ? `Could not load photos: ${err}` : 'No photos are saved on this booking yet. Photos sent on Telegram appear here once they are saved.'}</div>}
+        {!rows && <div className="muted">Loading…</div>}
+        {tg.length > 0 && <div className="row"><button className="btn sm" onClick={() => setSel((c) => ({ ...c, ...Object.fromEntries(tg.map((p) => [p.id, c[p.id] ?? groupOf(p.kind)])) }))}>Select all {tg.length} Telegram photo{tg.length === 1 ? '' : 's'}</button>{chosen.length > 0 && <button className="btn sm" onClick={() => setSel({})}>Clear</button>}</div>}
+        <div className="photogrid">
+          {(rows ?? []).map((p) => {
+            const added = have.includes(p.id); const on = !!sel[p.id]; const u = urls[p.thumb_path ?? p.path];
+            return (
+              <div key={p.id} className="photocell" style={{ aspectRatio: 'auto', display: 'block', cursor: 'default', opacity: added ? 0.45 : 1, outline: on ? '3px solid var(--teal, #14b8a6)' : undefined }}>
+                <button type="button" disabled={added} onClick={() => toggle(p)} style={{ display: 'block', width: '100%', aspectRatio: '1', padding: 0, border: 0, background: 'transparent', cursor: added ? 'default' : 'pointer' }} aria-pressed={on} aria-label={`${on ? 'Unselect' : 'Select'} ${p.kind} photo`}>
+                  {u ? <img src={u} alt={p.caption || p.kind} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span className="small muted">…</span>}
+                </button>
+                <div style={{ padding: 6, display: 'grid', gap: 4 }}>
+                  <div className="small muted">{p.source === 'telegram' ? '✈ Telegram' : 'App'} · {p.kind}{p.sent_by_employee_id ? ` · ${db.employees.find((e) => e.id === p.sent_by_employee_id)?.full_name ?? ''}` : ''}</div>
+                  {added ? <Badge tone="gray">Already in the report</Badge> : on ? <select value={sel[p.id]} onChange={(e) => setSel((c) => ({ ...c, [p.id]: e.target.value as ReportPhoto['group'] }))}>{GROUPS.map((g) => <option key={g}>{g}</option>)}</select> : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Modal>
   );
 }
