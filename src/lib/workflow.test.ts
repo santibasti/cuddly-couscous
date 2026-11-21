@@ -531,6 +531,33 @@ describe('Controlled discounts', () => {
     store.update('quotations', q.id, { discount: q.discount } as never);       // unchanged is fine
   });
 
+  it('a client who asks for a general discount during the work, after signing: request → Owner / Admin approval → on the final bill and the invoice', async () => {
+    await as('owner@topmop.ph');
+    const { job, wf } = upToCheckIn('DISC_LATE', lead(), false);
+    await as('leader@topmop.ph');
+    W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true });       // signed with no discount
+    expect(wfOf(job.id).conf_at).toBeTruthy();
+    const base = B.finalQuoteSummary(db(), db().jobs.find((j) => j.id === job.id)!).subtotal;
+    W.startWork(wf.id, {});
+    const r = sub(job.id, { kind: 'percent', value: 5, reason: 'Repeat / loyal client', client_notes: 'Asked during the work' });
+    expect(r).toMatchObject({ status: 'Pending Admin Approval', base_total: base });
+    expect(B.finalContract(db(), db().jobs.find((j) => j.id === job.id)!).discount).toBe(0);   // a request never changes the bill
+    expect(() => W.decideDiscount(r.id, { approve: true, note: 'ok' })).toThrow(/not permitted/);   // only Owner / Admin decide
+    await as('owner@topmop.ph');
+    const a = W.decideDiscount(r.id, { approve: true, note: 'Client asked during the work' });
+    expect(a.status).toBe('Applied');                                                           // no client signature needed for a lower bill
+    const j = db().jobs.find((x) => x.id === job.id)!; const fc = B.finalContract(db(), j);
+    expect(fc.discount).toBe(r.requested_amount); expect(fc.payableTotal).toBeCloseTo(fc.finalTotal - fc.discount, 2);
+    expect(() => sub(job.id, { kind: 'fixed', value: 10, reason: 'Promotion' })).toThrow(/already/);   // one discount per job
+    expect(() => W.decideDiscount(r.id, { approve: true, note: 'again' })).toThrow(/final/);          // locked once applied after signing
+    W.finishWork(wf.id, {}); W.signServiceReport(wf.id, handover);
+    await as('finance@topmop.ph');
+    const inv = A.invoiceFromJob(job.id);
+    expect(inv.discount_request_id).toBe(r.id); expect(inv.discount_granted).toBe(r.requested_amount);
+    await as('owner@topmop.ph');
+    expect(() => sub(job.id, { kind: 'fixed', value: 10, reason: 'Promotion' })).toThrow();      // invoiced / already has one
+  });
+
   it('request → admin approval → apply → client signs; the client cannot sign before; the original quotation is untouched', async () => {
     await as('owner@topmop.ph');
     const { job, wf, q } = upToCheckIn('DISC1', lead(), false);

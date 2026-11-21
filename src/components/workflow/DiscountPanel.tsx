@@ -26,7 +26,7 @@ export function DiscountSection({ job, wf, run, onDecline }: { job: Job; wf: Job
   const mine = can('discount.request') && (admin || canRunHere(job));
   const signed = !!wf.conf_at;
   const invoiced = db.invoices.some((i) => i.job_id === job.id && i.status !== 'Reversed' && !i.deleted_at);
-  const canRequest = mine && !cur && !signed && !invoiced && (!rejected || admin);
+  const canRequest = mine && !cur && !invoiced && wf.conf_mode !== 'declined' && (!rejected || admin);   // also after the client has signed: they may ask for a discount during the work
   const [form, setForm] = useState(false);
   const [review, setReview] = useState<DiscountRequest | null>(null);
   const shown = cur ?? rejected;
@@ -44,7 +44,7 @@ export function DiscountSection({ job, wf, run, onDecline }: { job: Job; wf: Job
           </tbody></table>
           <div className="small muted">{shown.reason}{shown.reason_note ? ` — ${shown.reason_note}` : ''}{shown.client_notes ? ` · Notes: ${shown.client_notes}` : ''}</div>
           <div className="small muted">Requested by {userName(db, shown.submitted_by)} · {fmtDateTime(shown.submitted_at)}</div>
-          {shown.status === 'Pending Admin Approval' && <div className="alert warn" style={{ marginTop: 8 }}>Sent to the Owner / Admin for approval. The client cannot sign the quotation until they approve or reject it.</div>}
+          {shown.status === 'Pending Admin Approval' && <div className="alert warn" style={{ marginTop: 8 }}>Sent to the Owner / Admin for approval. {signed ? 'The client has already signed: once approved, the discount is applied to the final bill.' : 'The client cannot sign the quotation until they approve or reject it.'}</div>}
           {shown.status === 'Applied' && <div className="small" style={{ color: 'var(--green)', marginTop: 6 }}>{DISCOUNT_NOTICE}</div>}
           {shown.status === 'Approved' && <div className="alert info" style={{ marginTop: 8 }}>Approved — apply it to the final bill, then present the revised quotation to the client.</div>}
           {shown.status === 'Rejected' && <div className="alert err" style={{ marginTop: 8 }}>Rejected by {userName(db, shown.decided_by)}{shown.decision_note ? ` — “${shown.decision_note}”` : ''}. The original final amount stands: present the quotation again for the client to sign, or record that the client declined the job.</div>}

@@ -159,7 +159,7 @@ export function ScopeStep({ wf, job, run }: { wf: JobWorkflow; job: Job; run: bo
         {q?.terms && <details><summary className="small" style={{ cursor: 'pointer' }}>Terms &amp; exclusions</summary><p className="small" style={{ whiteSpace: 'pre-wrap' }}>{q.terms}</p></details>}
       </div>
 
-      {!signed && wf.arr_at && (
+      {wf.arr_at && wf.conf_mode !== 'declined' && (
         <div className="card" style={{ padding: 12 }}>
           <div className="row between"><b>Discount</b><span className="small muted">Internal — the client does not see this. Only an approved discount appears on the quotation.</span></div>
           <div style={{ marginTop: 8 }}><DiscountSection job={job} wf={wf} run={run} onDecline={() => setDeclineJob(true)} /></div>

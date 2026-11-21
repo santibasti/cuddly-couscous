@@ -754,7 +754,7 @@ export function submitDiscountRequest(jobId: string, f: DiscountRequestForm): Di
   if (['Cancelled', 'Closed'].includes(job.status)) fail(`A ${job.status.toLowerCase()} job cannot take a discount request.`);
   const wf = workflowFor(jobId);
   if (!wf || !wf.arr_at) return fail('A discount can be requested once the crew has checked in at the site.');
-  if (wf.conf_at) fail('The client has already signed the quotation. A discount must be agreed before the client signs.');
+  if (wf.conf_mode === 'declined') fail('The client declined this job: there is no bill to discount.');   // after the client has signed a discount can still be asked for (the client may ask during the work); it is approved by the Owner / Admin and goes on the final bill before invoicing
   if (jobHasInvoice(jobId)) fail('This job is already invoiced.');
   if (jobRequests(db(), jobId).some((r) => r.status === 'Rejected') && !store.can('discount.approve')) fail('The Admin already rejected a discount for this job. The decision stands: the client can approve the original quotation or decline the job.');
   const open = currentRequest(db(), jobId);
@@ -798,8 +798,8 @@ export function decideDiscount(id: string, f: { approve: boolean; kind?: Discoun
     est_cost: im.cost, gp_before: im.gpBefore, gp_after: im.gpAfter, margin_after: im.marginAfter, net_amount: im.net,
     decision_note: f.note.trim(), decided_by: store.user?.id, decided_at: new Date().toISOString(), applied_at: undefined, applied_by: undefined,
   } as never, 'approve', `${r.number}: discount ${modified ? `approved at a modified ₱${amt} (requested ₱${r.requested_amount})` : `approved ₱${amt}`} — ${f.note.trim()}`) as DiscountRequest;
-  // The client is waiting at the quotation screen: the approved discount goes straight onto the final bill so they can sign.
-  if (wf?.arr_at && !wf.conf_at) return store.update('discount_requests', id, { status: 'Applied', applied_at: new Date().toISOString(), applied_by: store.user?.id } as never, 'approve', `${r.number}: approved discount ₱${amt} applied to the final bill of ${job.number}`) as DiscountRequest;
+  // The approved discount goes straight onto the final bill: the client is waiting to sign it, or has already signed and asked for the discount during the work (a lower bill needs no new signature).
+  if (wf?.arr_at) return store.update('discount_requests', id, { status: 'Applied', applied_at: new Date().toISOString(), applied_by: store.user?.id } as never, 'approve', `${r.number}: approved discount ₱${amt} applied to the final bill of ${job.number}`) as DiscountRequest;
   return approved;
 }
 
