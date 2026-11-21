@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '@/lib/store';
 import { Badge, Field, Modal, attempt } from '@/components/ui';
 import { DraftBar, PresetChips } from '@/components/touch';
@@ -81,7 +82,7 @@ export function DiscountInbox() {
             <div className="row"><button className="btn sm primary" onClick={() => setReview(r)}>Review</button><a className="btn sm" href={`#/jobs/${r.job_id}`}>Open job</a></div></li>
         ); })}
       </ul>
-      {review && job && <ReviewModal job={job} req={review} onClose={() => setReview(null)} />}
+      {review && job && createPortal(<ReviewModal job={job} req={review} onClose={() => setReview(null)} />, document.body)}   {/* straight into the page: inside the card it was clipped by the card's own scroll area */}
     </div>
   );
 }
