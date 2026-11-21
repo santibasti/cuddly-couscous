@@ -26,7 +26,8 @@ export function DiscountSection({ job, wf, run, onDecline }: { job: Job; wf: Job
   const mine = can('discount.request') && (admin || canRunHere(job));
   const signed = !!wf.conf_at;
   const invoiced = db.invoices.some((i) => i.job_id === job.id && i.status !== 'Reversed' && !i.deleted_at);
-  const canRequest = mine && !cur && !invoiced && wf.conf_mode !== 'declined' && (!rejected || admin);   // also after the client has signed: they may ask for a discount during the work
+  const lateOk = !signed || (admin && !!wf.start_at && !wf.finish_at);   // after the client has signed: a special request, Owner only, while the work is in progress
+  const canRequest = mine && !cur && !invoiced && wf.conf_mode !== 'declined' && lateOk && (!rejected || admin);
   const [form, setForm] = useState(false);
   const [review, setReview] = useState<DiscountRequest | null>(null);
   const shown = cur ?? rejected;

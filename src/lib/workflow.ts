@@ -754,11 +754,13 @@ export function submitDiscountRequest(jobId: string, f: DiscountRequestForm): Di
   if (['Cancelled', 'Closed'].includes(job.status)) fail(`A ${job.status.toLowerCase()} job cannot take a discount request.`);
   const wf = workflowFor(jobId);
   if (!wf || !wf.arr_at) return fail('A discount can be requested once the crew has checked in at the site.');
-  if (wf.conf_mode === 'declined') fail('The client declined this job: there is no bill to discount.');   // after the client has signed a discount can still be asked for (the client may ask during the work); it is approved by the Owner / Admin and goes on the final bill before invoicing
+  if (wf.conf_mode === 'declined') fail('The client declined this job: there is no bill to discount.');
   if (jobHasInvoice(jobId)) fail('This job is already invoiced.');
   if (jobRequests(db(), jobId).some((r) => r.status === 'Rejected') && !store.can('discount.approve')) fail('The Admin already rejected a discount for this job. The decision stands: the client can approve the original quotation or decline the job.');
   const open = currentRequest(db(), jobId);
   if (open) fail(`${open.number} is already ${open.status === 'Pending Admin Approval' ? 'waiting for Admin approval' : open.status.toLowerCase()} for this job.`);
+  // After the client has signed, a discount is a special request: only the Owner can make it, and only while the work is in progress.
+  if (wf.conf_at) { if (!store.can('discount.approve')) fail('The client has already signed. A discount after signing is a special request that only the Owner can make.'); if (!wf.start_at || wf.finish_at) fail('A discount after signing can only be requested while the work is in progress.'); }   // after the client has signed a discount can still be asked for (the client may ask during the work); it is approved by the Owner / Admin and goes on the final bill before invoicing
   if (!f.reason.trim()) fail('Choose the reason for the discount.');
   if (f.reason === 'Other' && !f.reason_note?.trim()) fail('Describe the reason for the discount.');
   const b = billBase(job);

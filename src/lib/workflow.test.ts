@@ -538,12 +538,15 @@ describe('Controlled discounts', () => {
     W.approveFinalQuote(wf.id, { name: 'Ms. Reyes', signature: PNG, confirmed: true });       // signed with no discount
     expect(wfOf(job.id).conf_at).toBeTruthy();
     const base = B.finalQuoteSummary(db(), db().jobs.find((j) => j.id === job.id)!).subtotal;
+    await as('owner@topmop.ph');
+    expect(() => sub(job.id, { kind: 'percent', value: 5, reason: 'Repeat / loyal client' })).toThrow(/while the work is in progress/);   // work has not started
     W.startWork(wf.id, {});
+    await as('leader@topmop.ph');
+    expect(() => sub(job.id, { kind: 'percent', value: 5, reason: 'Repeat / loyal client' })).toThrow(/only the Owner/);                   // a Team Leader cannot after signing
+    await as('owner@topmop.ph');
     const r = sub(job.id, { kind: 'percent', value: 5, reason: 'Repeat / loyal client', client_notes: 'Asked during the work' });
     expect(r).toMatchObject({ status: 'Pending Admin Approval', base_total: base });
     expect(B.finalContract(db(), db().jobs.find((j) => j.id === job.id)!).discount).toBe(0);   // a request never changes the bill
-    expect(() => W.decideDiscount(r.id, { approve: true, note: 'ok' })).toThrow(/not permitted/);   // only Owner / Admin decide
-    await as('owner@topmop.ph');
     const a = W.decideDiscount(r.id, { approve: true, note: 'Client asked during the work' });
     expect(a.status).toBe('Applied');                                                           // no client signature needed for a lower bill
     const j = db().jobs.find((x) => x.id === job.id)!; const fc = B.finalContract(db(), j);
