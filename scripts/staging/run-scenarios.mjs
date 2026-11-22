@@ -7,6 +7,8 @@
 const URL_ = (process.env.STAGING_URL || '').replace(/\/$/, ''), KEY = process.env.STAGING_KEY, SVC = process.env.STAGING_SERVICE_KEY, REAL_SUB = process.env.STAGING_SUBSCRIBER;
 if (!URL_ || !KEY || !SVC) { console.error('Set STAGING_URL, STAGING_KEY and STAGING_SERVICE_KEY.'); process.exit(2); }
 if (/ghbumxivporzsalivgyg/.test(URL_)) { console.error('STOP: that is the PRODUCTION project. This script only runs on staging.'); process.exit(3); }
+// Network hiccups (a 10 s connect timeout) must not crash a long run: every request is retried a few times.
+const realFetch = globalThis.fetch; globalThis.fetch = async (u, i) => { let e; for (let k = 0; k < 4; k++) { try { return await realFetch(u, i); } catch (x) { e = x; await new Promise((r) => setTimeout(r, 1500 * (k + 1))); } } throw e; };
 const H = { apikey: SVC, Authorization: `Bearer ${SVC}`, 'Content-Type': 'application/json' };
 const rest = async (p, init = {}) => { const r = await fetch(`${URL_}/rest/v1/${p}`, { headers: H, ...init }); const t = await r.text(); return t ? JSON.parse(t) : []; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

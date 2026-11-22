@@ -151,6 +151,7 @@ export function contradictsBooking(reply: string, customerText: string, jobs: Jo
   if (notMine.length && isPreviousReference(customerText)) {
     if (NOT_AVAILABLE.test(reply)) return `calls ${notMine[0]} full or unavailable although the customer asks about their own booking (their bookings: ${jobs.map((j) => j.date).join(', ')})`;
     const repliedDates = datesIn(reply, today);
+    if (DENY.test(reply) && !/\b(team|staff)\b/i.test(reply) && !jobs.some((j) => reply.includes(j.number) || datesIn(reply, today).includes(j.date))) return `says it does not see ${notMine[0]} but gives the customer nothing: neither their real booking (${jobs.map((j) => j.date).join(', ')}) nor a handover to the team`;
     if ((AFFIRM.test(reply) || (repliedDates.includes(notMine[0]) && /set for|scheduled|booked|booking/i.test(reply))) && !DENY.test(reply)) return `confirms ${notMine[0]}, which is NOT one of this customer's bookings (their bookings: ${jobs.map((j) => j.date).join(', ')})`;
   }
   return undefined;

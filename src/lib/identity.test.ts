@@ -330,3 +330,19 @@ describe('V2.3 issue 26.3: old unfinished jobs can never crowd out the valid cur
     const r = await openJobs(filteringSb({ jobs: rows, sites: [] }), 'c1', NOW); expect(r.live).toHaveLength(10); expect(r.live[0].date).toBe('2027-01-01');
   });
 });
+
+describe('V2.3 real-model finding: "I don\'t see that date" must never leave the customer with nothing', () => {
+  const jobs = [{ number: 'JOB-2026-8820', date: '2026-12-07', time: '09:00', status: 'Confirmed', services: ['roof'], site: 'Home' }];
+  const asked = 'Are we still scheduled for Nov 30?'; const T = '2026-11-22';
+  it('only "I don\'t see November 30 on your record" (no booking, no handover) is a violation the system repairs with the real booking', () => {
+    expect(contradictsBooking("I don't see November 30 on your record po.", asked, jobs, T, true)).toMatch(/gives the customer nothing/);
+  });
+  it('the same denial WITH the real booking or WITH a handover to the team is fine', () => {
+    expect(contradictsBooking("I don't see November 30 on your record po. Your booking JOB-2026-8820 is on December 7.", asked, jobs, T, true)).toBeUndefined();
+    expect(contradictsBooking("I don't see November 30 on your record po. Your booking is on Dec 7 at 9:00 AM.", asked, jobs, T, true)).toBeUndefined();
+    expect(contradictsBooking("I don't see November 30 on your record po. Our team will check it for you.", asked, jobs, T, true)).toBeUndefined();
+  });
+  it('an unconfirmed contact is not affected by this rule (they are handed to staff elsewhere)', () => {
+    expect(contradictsBooking("I don't see November 30 on your record po.", asked, jobs, T, false)).toBeUndefined();
+  });
+});

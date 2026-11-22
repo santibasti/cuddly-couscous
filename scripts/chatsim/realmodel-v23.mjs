@@ -122,9 +122,9 @@ verdict('X-1: a job scheduled NEXT WEEK with status "Dispatched": no crew claim'
 setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); rawJob('c1', 'JOB-A-TODAY', 'On Site', -2, 6); rawJob('c1', 'JOB-B-LATER', 'Confirmed', 24 * 8, 24 * 8 + 3);
 await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say(`Is the crew coming on ${D1.label}? Is it on the way?`, { phone: '0917 555 1212' }); r = lastReply();
 verdict('X-2: mixed jobs: today\'s On Site job must not become a status for the job on another date', r, { no_crew_claim: !/on the way|on site|on their way|is working|arriv/i.test(r), not_full: NOT_FULL(r) });
-setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); for (let i = 0; i < 45; i++) rawJob('c1', `JOB-OLD-${i}`, i % 2 ? 'Dispatched' : 'On Site', -24 * (30 + i), -24 * (30 + i) + 3); rawJob('c1', 'JOB-VALID-FUTURE', 'Confirmed', 24 * 8, 24 * 8 + 3);
+setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); for (let i = 0; i < 45; i++) rawJob('c1', `JOB-2026-7${String(100 + i)}`, i % 2 ? 'Dispatched' : 'On Site', -24 * (30 + i), -24 * (30 + i) + 3); rawJob('c1', 'JOB-2026-9500', 'Confirmed', 24 * 8, 24 * 8 + 3);
 await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say(`Hi po, are we still scheduled for ${D1.label}?`, { phone: '0917 555 1212' }); r = lastReply();
-verdict('X-3: 45 old unfinished jobs and one valid upcoming booking: the booking is found and confirmed, never "full", no form', r, { confirms_booking: /JOB-VALID-FUTURE|scheduled|booked|confirmed/i.test(r) && !/don't see a booking/i.test(r), not_full: NOT_FULL(r), no_form: NO_FORM(r) });
+verdict('X-3: 45 old unfinished jobs and one valid upcoming booking: the booking is found and confirmed, never "full", no form', r, { confirms_booking: /JOB-2026-9500|scheduled|booked|confirmed|set for/i.test(r) && !/don't see a booking/i.test(r), not_full: NOT_FULL(r), no_form: NO_FORM(r) });
 
 const apiErrors = modelCalls.filter((c) => c._real && c._real.status !== 200); if (apiErrors.length) console.log(`\nANTHROPIC API ERRORS: ${apiErrors.length} of ${modelCalls.length} model calls failed. First: HTTP ${apiErrors[0]._real.status} ${apiErrors[0]._real.error?.type ?? ''}: ${apiErrors[0]._real.error?.message ?? ''} (model requested: ${apiErrors[0].model})`);
 
