@@ -146,3 +146,27 @@ describe('V2.3 review fixes', () => {
     expect(existingBookingReply([{ number: 'JOB-1', date: '2026-11-22', time: '09:00', status: 'On Site', services: [] }])).toMatch(/the crew is on site/);
   });
 });
+
+describe('V2.3 final review: a date that is not theirs is never confirmed', () => {
+  const nov30 = '2026-11-30';
+  it('the customer asks about November 30 but their ONLY verified booking is on December 5: the answer says it does not see November 30 and gives December 5; it never says yes', () => {
+    const r = existingBookingReply([dec5], [nov30]);
+    expect(r).toMatch(/I don't see a booking on Monday, Nov 30 on your record/); expect(r).toMatch(/JOB-2026-8820 is set for Saturday, Dec 5/); expect(r).toMatch(/check if you meant a different date/);
+    expect(r).not.toMatch(/\bYes\b/); expect(r).not.toMatch(/Nov 30 at/);
+    const two = existingBookingReply([nov30job(), dec5], ['2026-12-20']); expect(two).toMatch(/don't see a booking on/); expect(two).not.toMatch(/^Yes/);
+  });
+  const nov30job = (): JobLine => ({ number: 'JOB-2026-1111', date: '2026-12-01', time: '09:00', status: 'Confirmed', services: [] });
+  it('a model reply that CONFIRMS November 30 for that customer is caught (yes, confirmed, scheduled, set for)', () => {
+    const q = 'Hi po, are we still scheduled for November 30?';
+    for (const bad of ['Yes po, you are scheduled for November 30.', 'Confirmed po, see you on November 30!', 'Your booking JOB-2026-8820 is set for November 30 at 9:00 AM.', "Yes, that's right po."]) expect(contradictsBooking(bad, q, [dec5], '2026-11-22'), bad).toMatch(/confirms 2026-11-30, which is NOT one of this customer's bookings/);
+  });
+  it('a model reply that calls November 30 full is also caught when they ask about THEIR booking; the honest answers pass', () => {
+    const q = 'We are scheduled November 30, right?';
+    expect(contradictsBooking('Sorry po, November 30 is fully booked.', q, [dec5], '2026-11-22')).toMatch(/calls 2026-11-30 full or unavailable/);
+    for (const good of ["I don't see a booking on November 30 on your record po. Your booking JOB-2026-8820 is set for Saturday, Dec 5.", 'Our team will check your booking for November 30 po.', existingBookingReply([dec5], ['2026-11-30'])]) expect(contradictsBooking(good, q, [dec5], '2026-11-22'), good).toBeUndefined();
+  });
+  it('a plain availability question about a new date is not treated as a booking claim, and an unconfirmed possible client is never described', () => {
+    expect(contradictsBooking('Yes, that date is open po.', 'Is November 30 open for window cleaning?', [dec5], '2026-11-22')).toBeUndefined();
+    expect(contradictsBooking('Yes po, you are scheduled for November 30.', 'We are scheduled November 30', [dec5], '2026-11-22', false)).toBeUndefined();
+  });
+});

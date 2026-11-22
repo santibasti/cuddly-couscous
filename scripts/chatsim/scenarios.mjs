@@ -32,9 +32,11 @@ reset('suggest'); queue(false); state.script = () => text('');
 await send('Can I schedule tomorrow?'); const d1 = ctxOf();
 ok('D: booking intent is recognised and the schedule is remembered', d1.intent === 'booking_request' && d1.schedule === 'tomorrow', JSON.stringify({ intent: d1.intent, schedule: d1.schedule, location: d1.location ?? null }));
 ok('D: no city yet: the welcome already asks for it, no form is sent', !/Reservation Date:/.test(drafts().at(-1).body), JSON.stringify(drafts().at(-1).body.slice(-90)));
-deliver(); const callsBefore = modelCalls.length; await send('Makati');
+deliver(); await send('Makati'); const f0 = drafts().at(-1).body;
+ok('D: the city alone does NOT start the form: the AI asks only for the missing service (rule: scheduling needs the location AND the service)', /Which cleaning service/.test(f0) && !/Reservation Date:/.test(f0) && !/Name:\nAddress:/.test(f0), JSON.stringify(f0.slice(-90)));
+deliver(); const callsBefore = modelCalls.length; await send('window cleaning');
 const f1 = drafts().at(-1).body;
-ok('D: the city is known: the form goes out by itself as its own message (no model call), exactly as approved', /Sure po, happy to help you book!/.test(f1) && f1.includes('Name:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?') && modelCalls.length === callsBefore, JSON.stringify(f1.slice(-120)));
+ok('D: the city AND the service are known: the form goes out by itself as its own message (no model call), exactly as approved', /Sure po, happy to help you book!/.test(f1) && f1.includes('Name:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?') && modelCalls.length === callsBefore, JSON.stringify(f1.slice(-120)));
 deliver(); state.script = () => text('Thank you po! To complete the booking, may I also have the complete address?');
 await send('Name: Maria Santos\nAddress:\nContact Number: 0917 555 1212\nEmail:\nNo. of House Storey: 2\nReservation Date: Saturday\nService Window');
 ok('D: a half-filled form is read: only the address is still missing and the form is not sent again', ctxOf().contact?.name === 'Maria Santos' && ctxOf().contact?.mobile === '09175551212' && ctxOf().service === 'window' && /NEXT BOOKING QUESTION[^:]*: Thank you po! To complete the booking, may I also have the complete address\?/.test(lastSystem()) && !/Reservation Date:/.test(drafts().at(-1).body), JSON.stringify(ctxOf().contact));
@@ -277,5 +279,31 @@ const rs = await staff({ action: 'resync', conversation_id: conv0().id });
 ok('V2.3-10 "Re-check this contact" runs the matching again and reports what it found', rs.ok === true && rs.checked === 1 && rs.previous === 1, JSON.stringify(rs));
 const bad = await staff({ action: 'link', conversation_id: conv0().id, client_id: 'does-not-exist' });
 ok('V2.3-10 linking to a client that does not exist is refused', bad.error === 'Client not found' && !conv0().client_id, JSON.stringify(bad));
+
+
+// V2.3-11: REGRESSION. An old booking intent must never override a new existing-booking inquiry (booking_requested is persistent state).
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => text('');
+await send('Can I schedule tomorrow?'); deliver(); await send('Makati'); deliver();   // no phone yet: a stranger starting a normal new-booking flow
+const bookingBefore = ctxOf().booking_requested; const askedService = /Which cleaning service/.test(drafts().at(-1).body);
+await send(`Actually we are scheduled ${D1.label}, I already booked`, { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-11 setup: a new-booking flow was under way (booking_requested set, the service was asked)', bookingBefore === true && askedService, JSON.stringify({ bookingBefore, askedService }));
+ok('V2.3-11 an UNCONFIRMED contact then refers to an existing booking: the old booking intent is cleared, no booking form is sent, a person is asked', ctxOf().intent === 'existing_booking' && ctxOf().booking_requested === false && !/Reservation Date|Please copy this|Which cleaning service/.test(dr.body) && conv0().status === 'Needs a person', JSON.stringify({ intent: ctxOf().intent, br: ctxOf().booking_requested, body: dr.body.slice(0, 80) }));
+await confirmByStaff('c1'); deliver(); state.script = () => text('Sure po, which cleaning service do you need?');
+await send(askText(D1.label), { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-11 CONFIRMED client: the model prompt carries NO new-booking instructions (no "NEXT BOOKING QUESTION", no "BOOKING FORM") although an older booking intent existed', !/NEXT BOOKING QUESTION|BOOKING FORM|ALL BOOKING DETAILS/.test(lastSystem()) && /CURRENT INTENT: existing_booking/.test(lastSystem()) && /VERIFIED ACTIVE AND UPCOMING BOOKINGS/.test(lastSystem()) && ctxOf().stage !== 'booking', JSON.stringify({ stage: ctxOf().stage }));
+deliver(); await send('What time will the crew arrive?', { phone: '0917 555 1212' });
+ok('V2.3-11 a LATER general message does not fall back into the new-booking flow', ctxOf().intent !== 'booking_request' && ctxOf().booking_requested === false && !/NEXT BOOKING QUESTION|BOOKING FORM/.test(lastSystem()), JSON.stringify({ intent: ctxOf().intent }));
+
+// V2.3-12: the customer asks about a date that is NOT their booking; their only verified booking is on another date. November 30 must never be confirmed.
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8820', date: D2.iso }]); state.script = () => text('Hello po.');
+await send('Hello', { phone: '0917 555 1212' }); await confirmByStaff('c1'); deliver();
+state.script = () => text(`Yes po, you are scheduled for ${D1.label}. See you then!`); await send(askText(D1.label), { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-12 the model says "Yes, you are scheduled" for a date that is not theirs: it is caught; the customer is told the date is not on their record and what they do have', !new RegExp(`Yes po, you are scheduled for ${D1.label}`).test(dr.body) && /I don't see a booking on/.test(dr.body) && /JOB-2026-8820/.test(dr.body) && !/^Yes/.test(dr.body), JSON.stringify(dr.body));
+deliver(); state.script = () => text(`Sorry po, ${D1.label} is fully booked.`); await send(askText(D1.label), { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-12 calling that date "full" when they ask about THEIR booking is also caught and replaced by the same honest answer', !/fully booked/.test(dr.body) && /I don't see a booking on/.test(dr.body), JSON.stringify(dr.body));
+deliver(); state.script = () => text(`I don't see a booking on ${D1.label} on your record po. Our team will check if you meant a different date.`); await send(askText(D1.label), { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-12 an honest model answer passes through unchanged', /I don't see a booking on/.test(dr.body) && dr.flags.length === 0, JSON.stringify(dr.body));
+deliver(); state.script = () => text(`Sorry po, ${D2.label} is fully booked.`); await send(askText(D2.label), { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-12 a date that IS theirs is still confirmed from their booking, and "full" is replaced (no regression)', /JOB-2026-8820/.test(dr.body) && /^Yes po/.test(dr.body) && !/fully booked/.test(dr.body), JSON.stringify(dr.body));
 
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);

@@ -48,6 +48,8 @@ const PREVIOUS_REF = new RegExp([
   String.raw`\bJOB?-\d{4}-\d{3,6}\b`,
 ].join('|'), 'i');
 export const isPreviousReference = (text: string): boolean => PREVIOUS_REF.test(String(text ?? ''));
+/** The message without its existing-booking phrases ("I already booked", "we are scheduled", a job number...): what is left shows whether the customer ALSO asks for something new. */
+export const withoutPreviousReference = (text: string): string => String(text ?? '').replace(new RegExp(PREVIOUS_REF.source, 'gi'), ' ');
 
 const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -108,23 +110,35 @@ const dayName = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString
 const clock = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${pad(m || 0)} ${h >= 12 ? 'PM' : 'AM'}`; };
 export const jobSentence = (j: JobLine) => `${j.number} is set for ${dayName(j.date)} at ${clock(j.time)} (${statusWords(j.status)})`;
 
-/** The reply when a verified customer asks about their own booking: from their own job, never from the general calendar. */
+/** The reply when a verified customer asks about their own booking: from their own job, never from the general calendar.
+ *  A date that is NOT one of their bookings is never confirmed: "I don't see a booking on Monday, Nov 30 on your record", then what they do have. */
 export function existingBookingReply(jobs: JobLine[], wanted: string[] = []): string {
   if (!jobs.length) return '';
   const hit = jobs.find((j) => wanted.includes(j.date));
   if (hit) return `Yes po, your booking ${jobSentence(hit)}. Our team will see you then.`;
-  if (jobs.length === 1) return `Yes po, your booking ${jobSentence(jobs[0])}. Is there anything you'd like to update po?`;
-  return `We have ${jobs.length} bookings for you po: ${jobs.slice(0, 3).map(jobSentence).join('; ')}. Which one would you like to ask about?`;
+  const lead = wanted.length ? `I don't see a booking on ${dayName(wanted[0])} on your record po. ` : '';
+  if (jobs.length === 1) return wanted.length ? `${lead}Your booking ${jobSentence(jobs[0])}. Our team will check if you meant a different date.` : `Yes po, your booking ${jobSentence(jobs[0])}. Is there anything you'd like to update po?`;
+  return `${lead}We have ${jobs.length} bookings for you po: ${jobs.slice(0, 3).map(jobSentence).join('; ')}. ${wanted.length ? 'Our team will check if you meant a different date.' : 'Which one would you like to ask about?'}`;
 }
 
 const NOT_AVAILABLE = /\b(fully[- ]booked|is full|are full|no (?:more )?(?:slots?|schedules?)|not available|unavailable|too soon|cannot (?:accommodate|schedule)|can'?t (?:accommodate|schedule)|already taken)\b/i;
 const FORM_TEXT = /please copy this and fill in your details|Reservation Date:/i;
-/** True when a reply to a VERIFIED customer contradicts their own booking: it says a date they already hold is full or unavailable, or sends the booking form for a booking that exists. */
-export function contradictsBooking(reply: string, customerText: string, jobs: JobLine[], today: string): string | undefined {
+const AFFIRM = /\b(yes|yep|correct|that'?s right|confirmed|you(?:'re| are) (?:all set|scheduled|booked)|all set|see you (?:on|then))\b/i;
+const DENY = /\b(don'?t see|do not see|can'?t find|cannot find|no booking|not on (?:your|our) (?:record|file)|not (?:see|find)|team (?:will|can) (?:check|confirm|verify)|different date)\b/i;
+/** True when a reply contradicts a booking: for a VERIFIED customer (verified = true) it says a date they hold is full or unavailable, sends the booking form for a booking that exists, calls a date full when they are asking about their booking, or CONFIRMS a date that is not one of their bookings;
+ *  for a possible, unconfirmed client (verified = false) only the first two apply (their booking is never described). */
+export function contradictsBooking(reply: string, customerText: string, jobs: JobLine[], today: string, verified = true): string | undefined {
   if (!jobs.length) return undefined;
-  const mine = new Set(jobs.map((j) => j.date)); const asked = datesIn(customerText, today).filter((d) => mine.has(d));
+  const mine = new Set(jobs.map((j) => j.date)); const named = datesIn(customerText, today); const asked = named.filter((d) => mine.has(d));
   if (asked.length && NOT_AVAILABLE.test(reply)) return `says ${asked[0]} is full or unavailable, but that date is this customer's own booking ${jobs.find((j) => j.date === asked[0])!.number}`;
   if (isPreviousReference(customerText) && FORM_TEXT.test(reply)) return 'sends the booking form to a customer who already has a booking';
+  if (!verified) return undefined;
+  const notMine = named.filter((d) => !mine.has(d));
+  if (notMine.length && isPreviousReference(customerText)) {
+    if (NOT_AVAILABLE.test(reply)) return `calls ${notMine[0]} full or unavailable although the customer asks about their own booking (their bookings: ${jobs.map((j) => j.date).join(', ')})`;
+    const repliedDates = datesIn(reply, today);
+    if ((AFFIRM.test(reply) || (repliedDates.includes(notMine[0]) && /set for|scheduled|booked|booking/i.test(reply))) && !DENY.test(reply)) return `confirms ${notMine[0]}, which is NOT one of this customer's bookings (their bookings: ${jobs.map((j) => j.date).join(', ')})`;
+  }
   return undefined;
 }
 

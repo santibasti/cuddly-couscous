@@ -60,10 +60,31 @@ describe('only delivered replies count as said', () => {
   });
 });
 
+describe('V2.3: a stale booking intent never overrides an existing-booking message', () => {
+  const asked = foldMessages(emptyContext(), ['Can I schedule tomorrow?', 'Makati']);   // a new-booking flow is under way: booking_requested is set
+  it('the earlier booking intent is set, so the old behaviour would have kept the booking flow', () => { expect(asked.booking_requested).toBe(true); expect(asked.intent).toBe('booking_request'); });
+  it('"we are scheduled November 30" clears it: intent existing_booking, no booking flow, no booking instructions to the model', () => {
+    const c = foldMessages(asked, ['Actually we are scheduled November 30, I already booked']);
+    expect(c.intent).toBe('existing_booking'); expect(c.booking_requested).toBe(false); expect(c.stage).not.toBe('booking');
+    const block = contextBlock(c); expect(block).not.toMatch(/NEXT BOOKING QUESTION|BOOKING FORM|ALL BOOKING DETAILS/); expect(block).toMatch(/CURRENT INTENT: existing_booking/);
+  });
+  it('a later general message does not fall back into the new-booking flow', () => {
+    let c = foldMessages(asked, ['Reminder lang po, we are scheduled November 30']); c = foldMessages(c, ['What time will the crew arrive?']);
+    expect(c.intent).not.toBe('booking_request'); expect(c.booking_requested).toBe(false); expect(contextBlock(c)).not.toMatch(/NEXT BOOKING QUESTION|BOOKING FORM/);
+  });
+  it('a message that BOTH refers to a booking and asks for a new one keeps the booking request (nothing is lost)', () => {
+    const c = foldMessages(asked, ['I already booked November 30 but I want to book another roof cleaning']); expect(c.intent).toBe('existing_booking'); expect(c.booking_requested).toBe(true);
+  });
+  it('a genuine new booking request afterwards starts the flow again', () => {
+    let c = foldMessages(asked, ['We are scheduled November 30']); c = foldMessages(c, ['Can I also schedule a roof cleaning on December 10?']); expect(c.intent).toBe('booking_request'); expect(c.booking_requested).toBe(true);
+  });
+});
+
 describe('booking uses the booking-details form', () => {
-  it('asks for the city first, then the form goes out once, then only what is missing is asked for', () => {
+  it('asks for the city, then the service, and only then the form goes out once; then only what is missing is asked for', () => {
     let c = foldMessages(emptyContext(), ['I want to book']); expect(nextBookingQuestion(c)?.topic).toBe('location');
-    c = foldMessages(c, ['Makati']); expect(nextBookingQuestion(c)).toEqual({ topic: 'form', text: BOOKING_SEND_FORM }); expect(contextBlock(c)).toMatch(/BOOKING FORM: the system sends/);
+    c = foldMessages(c, ['Makati']); expect(nextBookingQuestion(c)).toEqual({ topic: 'service', text: 'Which cleaning service do you need po?' }); expect(contextBlock(c)).toMatch(/NEXT BOOKING QUESTION \(ask exactly this one, nothing else\): Which cleaning service/);   // the city alone does NOT start the form
+    c = foldMessages(c, ['window cleaning']); expect(nextBookingQuestion(c)).toEqual({ topic: 'form', text: BOOKING_SEND_FORM }); expect(contextBlock(c)).toMatch(/BOOKING FORM: the system sends/);
     expect(BOOKING_SEND_FORM).toContain('Name:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?');
     const sent = applyDelivered(c, analyzeDelivered([BOOKING_SEND_FORM])); expect(sent.form_sent).toBe(true); expect(sent.last_question).toBe('form');
     const half = foldMessages(sent, ['Name: Maria Santos\nAddress:\nContact Number: 0917 555 1212\nEmail:\nNo. of House Storey: 2\nReservation Date: Saturday\nService Window']);

@@ -45,7 +45,7 @@ describe('reply validation', () => {
     expect(validateReply('Our Makati window package is ₱4,799. We also clean roofs po.', v('What window cleaning price is it?', wc, 'price_inquiry')).join()).toMatch(/unrelated_services/);
   });
   it('has a safe fallback for each situation', () => {
-    expect(fallbackReply(v('hi', emptyContext(), 'booking_request')).text).toMatch(/location \(city\)/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'I want to book']), 'booking_request')).text).toMatch(/Reservation Date:/);
+    expect(fallbackReply(v('hi', emptyContext(), 'booking_request')).text).toMatch(/location \(city\)/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'I want to book']), 'booking_request')).text).toMatch(/Which cleaning service/); expect(fallbackReply(v('book', foldMessages(emptyContext(), ['Makati', 'window cleaning', 'I want to book']), 'booking_request')).text).toMatch(/Reservation Date:/);   // city alone: the service is asked first; city and service: the form
     expect(fallbackReply(v('How much?', ctx), 'integration')).toEqual({ text: 'Let me have our team verify that for you po.', handover: true }); expect(fallbackReply(v('You damaged it', ctx, 'complaint')).handover).toBe(true);
     expect(fallbackReply(v('How much?', emptyContext(), 'price_inquiry')).text).toMatch(/location/); expect(ackReply()).toMatch(/You're welcome/);
   });

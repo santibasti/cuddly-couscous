@@ -2,7 +2,7 @@
 // Pure logic with no network: what the customer has told us (location, service, surface, property, access, schedule), what they want right now (intent, stage),
 // and what we have already said to them (explained, last question) read ONLY from replies that were really delivered, never from unsent drafts.
 import { findRate } from './rates.ts';
-import { isPreviousReference } from './identity.ts';
+import { isPreviousReference, withoutPreviousReference } from './identity.ts';
 
 /** A Philippine mobile number in a message or field: 09171234567, +63 917 123 4567, 639171234567 -> 09171234567 (undefined when there is none). */
 export function mobileFrom(...parts: unknown[]): string | undefined {
@@ -136,14 +136,16 @@ export function mergeFacts(ctx: ChatContext, f: Facts): ChatContext {
   if (f.service) { if (n.service && n.service !== f.service) n.surface = f.surface; n.service = f.service; n.services_seen = [...new Set([...(n.services_seen ?? []), f.service])]; }   // a different service: the surface answered for the old one no longer applies
   return n;
 }
-export const deriveStage = (c: ChatContext): Stage => c.booking_requested || c.intent === 'booking_request' ? 'booking' : !c.location || !c.service ? 'understand' : c.price_quoted ? 'confidence' : 'assist';
+export const deriveStage = (c: ChatContext): Stage => (c.booking_requested && c.intent !== 'existing_booking') || c.intent === 'booking_request' ? 'booking' : !c.location || !c.service ? 'understand' : c.price_quoted ? 'confidence' : 'assist';
 /** Fold several unprocessed customer messages (oldest first) into the context. */
 export function foldMessages(ctx: ChatContext, texts: string[]): ChatContext {
   let c = ctx;
   for (const t of texts) {
     const f = extractFacts(t, c.last_question, { location: c.location, booking_requested: c.booking_requested }); c = mergeFacts(c, f); const i = classifyIntent(t, c, f);
     const stay = c.booking_requested && !i.acknowledgment && (i.intent === 'service_qualification' || i.intent === 'general_inquiry');   // while a booking is being arranged, the customer's answers belong to it
-    c = { ...c, intent: stay ? 'booking_request' : i.intent, acknowledgment: i.acknowledgment, booking_requested: c.booking_requested || i.intent === 'booking_request' };   // once the customer asked to book, scheduling talk stays allowed
+    // once the customer asked to book, scheduling talk stays allowed; BUT a message about a booking or a chat that already exists is not a booking request: it clears an older booking intent (unless the same message also asks to book), so an old intent can never turn the answer into a new-booking flow
+    const keepBooking = i.intent === 'existing_booking' ? wantsToBook(withoutPreviousReference(t)) && c.booking_requested : c.booking_requested || i.intent === 'booking_request';
+    c = { ...c, intent: stay ? 'booking_request' : i.intent, acknowledgment: i.acknowledgment, booking_requested: keepBooking, ...(i.intent === 'existing_booking' && !keepBooking ? { form_sent: false } : {}) };
   }
   return { ...c, stage: deriveStage(c) };
 }
@@ -214,6 +216,7 @@ const FORM_LABEL = (c: ChatContext): string[] => [!c.service && 'the service (wi
 const joinList = (a: string[]): string => a.length <= 1 ? (a[0] ?? '') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`;
 export function nextBookingQuestion(c: ChatContext): { topic: Topic; text: string } | null {
   if (!c.location) return { topic: 'location', text: 'May I know your location (city) po?' };
+  if (!c.form_sent && !c.service) return { topic: 'service', text: 'Which cleaning service do you need po?' };   // the location AND the service come before the form (Rulebook: scheduling needs both); once the form went out, a missing service is asked with the other missing items
   if (!c.form_sent) return { topic: 'form', text: BOOKING_SEND_FORM };
   const miss = FORM_LABEL(c); if (miss.length) return { topic: 'contact', text: `Thank you po! To complete the booking, may I also have ${joinList(miss)}?` };
   return null;
@@ -227,6 +230,6 @@ export function contextBlock(c: ChatContext): string {
     c.explained.length ? `ALREADY EXPLAINED to the customer (do not repeat): ${c.explained.join(', ')}.` : '',
     c.price_quoted ? 'A price was already given to the customer.' : '',
     `CURRENT INTENT: ${c.intent}${c.acknowledgment ? ' (a simple acknowledgment)' : ''}. STAGE: ${c.stage}. ${NEXT[c.intent]}`,
-    c.intent === 'booking_request' || c.booking_requested ? (() => { const q = nextBookingQuestion(c); return q ? (q.topic === 'form' ? 'BOOKING FORM: the system sends the booking-details form by itself; do not write the form and do not ask for the details one by one.' : `NEXT BOOKING QUESTION (ask exactly this one, nothing else): ${q.text}`) : 'ALL BOOKING DETAILS ARE KNOWN (the form is filled in): first check the reservation date with check_date. If it is open call book_date with the service, date, name, mobile, address, email and storeys (the system writes the confirmation); if it is not open, say so and offer the nearest open dates, and ask which one they prefer.'; })() : hint ? `SUGGESTED NEXT QUESTION (only if it is really needed): ${hint}` : '',
+    c.intent === 'booking_request' || (c.booking_requested && c.intent !== 'existing_booking') ? (() => { const q = nextBookingQuestion(c); return q ? (q.topic === 'form' ? 'BOOKING FORM: the system sends the booking-details form by itself; do not write the form and do not ask for the details one by one.' : `NEXT BOOKING QUESTION (ask exactly this one, nothing else): ${q.text}`) : 'ALL BOOKING DETAILS ARE KNOWN (the form is filled in): first check the reservation date with check_date. If it is open call book_date with the service, date, name, mobile, address, email and storeys (the system writes the confirmation); if it is not open, say so and offer the nearest open dates, and ask which one they prefer.'; })() : hint ? `SUGGESTED NEXT QUESTION (only if it is really needed): ${hint}` : '',
   ].filter(Boolean).join('\n');
 }

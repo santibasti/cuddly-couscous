@@ -45,7 +45,7 @@ export function validateReply(reply: string, v: Check): string[] {
   const t = String(reply ?? '').trim(); if (!t) return ['empty'];
   const pv = photoViolation(t);
   const mine = v.identity ? (v.identity.verified ? v.identity.jobs : (v.identity.hold ?? [])) : [];   // a verified client's own bookings, or the dates held by a possible (unconfirmed) client
-  const cb = v.identity && mine.length ? contradictsBooking(t, v.customerText, mine, v.identity.today) : undefined;   // never contradict a verified booking (checked before the approved-text exemption: the form is exempt for new customers, not for a booking that exists)
+  const cb = v.identity && mine.length ? contradictsBooking(t, v.customerText, mine, v.identity.today, v.identity.verified) : undefined;   // never contradict a verified booking (checked before the approved-text exemption: the form is exempt for new customers, not for a booking that exists)
   if (cb) return [`contradicts_booking: ${cb}`];
   if (FIXED.test(t) || t.includes('\n\n---\n\n')) return pv ? [pv] : [];          // approved fixed texts and the welcome are exempt (but never a photo request)
   const out: string[] = []; const s = sentences(t);
