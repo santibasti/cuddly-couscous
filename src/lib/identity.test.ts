@@ -93,7 +93,8 @@ describe('V2.3 identity: safety rules', () => {
   });
   it('a stored link (the system or staff) wins and stays; a staff link is shown as staff', () => {
     expect(decideIdentity({ ...base, stored: { client_id: 'c-1', link_state: 'staff' }, phoneMatches: [cruz] })).toMatchObject({ status: 'existing', client_id: 'c-1', state: 'staff' });
-    expect(decideIdentity({ ...base, stored: { client_id: 'c-1' } })).toMatchObject({ status: 'existing', client_id: 'c-1', basis: 'chat_booking' });   // a client created from this chat's own booking
+    expect(decideIdentity({ ...base, stored: { client_id: 'c-1', link_state: 'verified', link_basis: 'chat_booking' } })).toMatchObject({ status: 'existing', client_id: 'c-1', basis: 'chat_booking' });   // a client CREATED by this chat's own booking
+    expect(decideIdentity({ ...base, stored: { client_id: 'c-1' } }).status).not.toBe('existing');   // a bare client_id may come from a number a stranger typed into a booking
     expect(decideIdentity({ ...base, stored: { client_id: 'c-1', link_state: 'ambiguous' } }).status).not.toBe('existing');                                  // an unresolved link is not a link
   });
   it('staff marks and ManyChat tags make a PREVIOUS contact, never an existing client', () => {

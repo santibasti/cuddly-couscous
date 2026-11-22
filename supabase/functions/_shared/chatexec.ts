@@ -12,6 +12,18 @@ const post = async (c: ExecCtx, fn: string, body: Record<string, unknown>) => {
   const j = await r.json().catch(() => ({})) as Record<string, unknown>; if (!r.ok) throw new Error(String(j.error ?? `${fn} answered ${r.status}`)); return j;
 };
 const nums = (...v: unknown[]) => v.map(Number).filter((n) => Number.isFinite(n) && n > 0);
+/** After a booking or a saved lead: the client created by THIS chat is positively linked; a client that already existed and was matched by the mobile number the customer typed is only a suggestion for staff (a stranger can type anyone's number). */
+async function linkAfterLead(c: ExecCtx, clientId: unknown, inquiryId: unknown, existed: boolean) {
+  const base = { client_id: clientId ?? null, inquiry_id: inquiryId ?? null, status: 'Lead created' };
+  if (!clientId) { await c.sb.from('chat_conversations').update(base).eq('id', c.conv.id); return; }
+  const { data: cur } = await c.sb.from('chat_conversations').select('client_id, link_state').eq('id', c.conv.id).maybeSingle();
+  const keep = (cur?.link_state === 'verified' || cur?.link_state === 'staff') && cur?.client_id === clientId;
+  let extra: Record<string, unknown> = {};
+  if (!keep && !existed) extra = { contact_status: 'existing', link_state: 'verified', link_basis: 'chat_booking', link_candidates: [], linked_by: 'system', linked_at: new Date().toISOString(), returning_customer: true, returning_note: 'Client created from this chat' };
+  if (!keep && existed) { const { data: cl } = await c.sb.from('clients').select('name').eq('id', clientId).maybeSingle(); extra = { contact_status: 'previous', link_state: 'suggested', link_basis: 'typed_mobile', link_candidates: [{ client_id: clientId, name: cl?.name ?? 'Client', basis: 'typed_mobile' }] }; }
+  const r = await c.sb.from('chat_conversations').update({ ...base, ...extra }).eq('id', c.conv.id);
+  if (r.error && Object.keys(extra).length) await c.sb.from('chat_conversations').update(base).eq('id', c.conv.id);   // the identity migration (0135) is not applied yet: the booking itself must never fail because of it
+}
 export function makeExec(c: ExecCtx) {
   return async (name: string, input: Record<string, unknown>): Promise<ToolOutcome> => {
     try {
@@ -37,12 +49,12 @@ export function makeExec(c: ExecCtx) {
         const dup = (c.jobs ?? []).find((j) => j.date === parseWanted(input.date, manilaDay(Date.now())));
         if (dup) return { text: `status: already_booked. This customer already has booking ${dup.number} on ${dup.date} at ${dup.time} (${dup.status}). Do not create a second booking: confirm the existing one.` };
         const j = await post(c, 'chat-book', { name: input.name, mobile: input.mobile, email: input.email, storeys: input.storeys, address: input.address, service: input.service, date: input.date, panels: input.panels, property_type: input.property_type, rates_ok: input.rates_ok, details: input.details, source: c.conv.channel, subscriber_id: c.conv.subscriber_id, channel: c.conv.channel });
-        await c.sb.from('chat_conversations').update({ client_id: j.client_id ?? null, inquiry_id: j.inquiry_id ?? null, status: 'Lead created' }).eq('id', c.conv.id);
+        await linkAfterLead(c, j.client_id, j.inquiry_id, j.client_existing === true);
         return { text: `status: ${j.status}. ${j.reply}`, amounts: nums(j.estimate), booked: { ok: j.booked === true, reply: String(j.reply ?? '') } };
       }
       if (name === 'save_lead') {
         const j = await post(c, 'lead-intake', { name: input.name, mobile: input.mobile, address: input.address, service: input.service, property_type: input.property_type, details: input.details, source: c.conv.channel === 'messenger' ? 'Facebook' : c.conv.channel });
-        await c.sb.from('chat_conversations').update({ client_id: j.client_id ?? null, inquiry_id: j.inquiry_id ?? null, status: 'Lead created' }).eq('id', c.conv.id);
+        await linkAfterLead(c, j.client_id, j.inquiry_id, j.existing_client === true);
         return { text: 'Lead saved. Tell the customer our team will contact them.' };
       }
       if (name === 'needs_human') {

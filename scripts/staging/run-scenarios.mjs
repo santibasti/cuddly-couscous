@@ -11,12 +11,12 @@ const H = { apikey: SVC, Authorization: `Bearer ${SVC}`, 'Content-Type': 'applic
 const rest = async (p, init = {}) => { const r = await fetch(`${URL_}/rest/v1/${p}`, { headers: H, ...init }); const t = await r.text(); return t ? JSON.parse(t) : []; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const stamp = Date.now(); let n = 0; const sent = []; const diag = new Set();
-const post = (sub, text) => fetch(`${URL_}/functions/v1/chat-brain?key=${encodeURIComponent(KEY)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sub, first_name: 'StagingTest', last_input_text: text, message_id: `${sub}-${++n}` }) }).then(async (r) => { const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch { /* not json */ } if (!r.ok || !j) { diag.add(`chat-brain HTTP ${r.status}: ${t.slice(0, 300)}`); } return j; });
+const post = (sub, text, extra = {}) => fetch(`${URL_}/functions/v1/chat-brain?key=${encodeURIComponent(KEY)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sub, first_name: 'StagingTest', last_input_text: text, message_id: `${sub}-${++n}`, ...extra }) }).then(async (r) => { const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch { /* not json */ } if (!r.ok || !j) { diag.add(`chat-brain HTTP ${r.status}: ${t.slice(0, 300)}`); } return j; });
 const convOf = async (sub) => (await rest(`chat_conversations?subscriber_id=eq.${encodeURIComponent(sub)}&select=*`))[0];
 const outs = async (sub) => { const c = await convOf(sub); return c ? rest(`chat_messages?conversation_id=eq.${c.id}&direction=eq.out&order=created_at&select=body,status,flags,actions,error,created_at`) : []; };
 const waitFor = async (sub, count, ms = 60000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const o = await outs(sub); if (o.length >= count) return o; await sleep(1500); } return outs(sub); };
 const approve = async (sub) => { const c = await convOf(sub); if (c) await rest(`chat_messages?conversation_id=eq.${c.id}&direction=eq.out&status=eq.draft`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) }); };   // stands in for staff approval in AI Chat
-let lastSub = ''; const talk = async (sub, msgs) => { lastSub = sub; let i = 0; for (const m of msgs) { await post(sub, m); i++; await waitFor(sub, i); await approve(sub); } return (await outs(sub)).at(-1)?.body ?? ''; };
+let lastSub = ''; const talk = async (sub, msgs, extra = {}) => { lastSub = sub; let i = 0; for (const m of msgs) { await post(sub, m, extra); i++; await waitFor(sub, i); await approve(sub); } return (await outs(sub)).at(-1)?.body ?? ''; };
 const last = (b) => b.split('\n\n---\n\n').pop().trim();
 const TL = new Set('ang ng sa mga ko mo ka ako ikaw siya kami tayo kayo sila ninyo niyo namin natin nila ito iyan iyon yung ay at para kung kapag pag saan ano anong anu alin paano bakit kailan magkano mayroon meron wala hindi huwag lang naman din rin na pa nang kasi pero dahil tamang presyo klaseng kailangan gusto pwede puwede salamat opo oo sige muna ba nga daw raw'.split(' '));
 const tagalog = (t) => { const w = t.toLowerCase().replace(/[^a-zñ\s'-]/g, ' ').split(/\s+/).filter(Boolean); return w.length >= 6 && w.filter((x) => TL.has(x) || /^(ma|mag|nag|pag|ipa|ire|i)-/.test(x)).length / w.length > 0.3; };
@@ -82,6 +82,61 @@ r = await V('S', ['Makati', 'window cleaning', 'I have 15 window panels and I wa
 verdict('S: bundle: window package ₱4,799 (first, keeps its minimum) + 10 solar panels × ₱245 = ₱2,450 (second, minimum waived) = ₱7,249; not free, not a discount', r, { ...base(r), combined_total: /7,249/.test(r), not_free: !/\bfree\b|discount/i.test(r) });
 r = await V('Y', ['Makati', 'window cleaning', 'I have 15 window panels, 10 solar panels and about 60 sqm of roof. What is the total for all three?']);
 verdict('Y: three services together: window ₱4,799 (first, keeps its minimum) + solar ₱2,450 + roof ₱8,700 (no minimum) = ₱15,949', r, { ...base(r), combined_total: /15,949/.test(r), not_free: !/\bfree\b|discount/i.test(r) });
+
+/* ============ V2.3: previous contacts and existing clients (real model, real staging database; test clients and jobs are seeded and deleted again) ============ */
+const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const inDays = (k) => { const d = new Date(Date.now() + k * 86400000 + 8 * 3600000); return { iso: d.toISOString().slice(0, 10), label: `${MON[d.getUTCMonth()]} ${d.getUTCDate()}` }; };
+const D1 = inDays(8), D2 = inDays(15); const seeded = { jobs: [], sites: [], clients: [] }; let seedFail = '';
+const ten = (k) => `9${String(stamp).slice(-7)}${String(k).padStart(2, '0')}`;                  // a unique 10-digit mobile per run and per client: no collision with real staging clients
+const mob = (k) => { const n = ten(k); return `0${n.slice(0, 3)} ${n.slice(3, 6)} ${n.slice(6)}`; };   // 09XX XXX XXXX
+const more = async (sub, text, extra = {}) => { lastSub = sub; const before = (await outs(sub)).length; await post(sub, text, extra); await waitFor(sub, before + 1); await approve(sub); };   // a further message in a conversation that already has replies
+const ins = async (table, row) => { const r = await fetch(`${URL_}/rest/v1/${table}`, { method: 'POST', headers: { ...H, Prefer: 'return=representation' }, body: JSON.stringify(row) }); const t = await r.text(); if (!r.ok) { seedFail = `${table}: ${t.slice(0, 200)}`; return null; } return JSON.parse(t)[0]; };
+const seedClient = async (key, name, mobile, jobs = []) => {
+  const id = `stg-${stamp}-${key}`; const c = await ins('clients', { id, name, contact_person: name, mobile, type: 'Residential', status: 'Active', address: 'Makati' }); if (!c) return null; seeded.clients.push(id);
+  const sid = `stg-${stamp}-s-${key}`; if (await ins('sites', { id: sid, client_id: id, name: `${name} residence`, address: 'Makati' })) seeded.sites.push(sid);
+  for (const [i, j] of jobs.entries()) { const jid = `stg-${stamp}-j-${key}-${i}`; if (await ins('jobs', { id: jid, number: j.number, client_id: id, site_id: sid, start_at: `${j.date}T09:00:00`, end_at: `${j.date}T12:00:00`, status: j.status ?? 'Confirmed', service_codes: j.codes ?? ['GLASS_EXT'] })) seeded.jobs.push(jid); }
+  return id;
+};
+const jobNo = (k) => `JOB-9${String(stamp).slice(-5)}-${k}`;
+const full = (sub) => outs(sub).then((o) => o.at(-1)?.body ?? '');
+const noForm = (x) => !/Reservation Date:|Please copy this and fill/i.test(x); const noFull = (x) => !/fully booked|is full|not available|too soon|nearest (open )?dates/i.test(x);
+
+// N1: a brand-new customer with no prior record: unchanged (the welcome is sent)
+const n1 = S('N1'); await talk(n1, ['Hi, how much is window cleaning in Makati?']); let fb = await full(n1); let cv = await convOf(n1);
+verdict('V2.3-N1: a brand-new customer is NEW and gets the standard welcome', last(fb), { welcome: /TopMop offers professional exterior cleaning/.test(fb), status_new: !cv?.contact_status || cv.contact_status === 'new', no_client: !cv?.client_id });
+// P1: messaged before the AI was installed (ManyChat first-contact date long before): PREVIOUS contact, never an existing client
+const p1 = S('P1'); await talk(p1, ['Hello po'], { subscribed: '2026-01-05T08:00:00Z' }); fb = await full(p1); cv = await convOf(p1);
+verdict('V2.3-P1: a contact from before the AI (old Messenger chats, no service history) is a PREVIOUS contact: no welcome, no menu, not an existing client', last(fb), { no_welcome: !/TopMop offers professional exterior cleaning|May we know your location/.test(fb), status_previous: cv?.contact_status === 'previous', not_existing: !cv?.client_id && cv?.contact_status !== 'existing', no_invented_history: !/last time|your previous (job|booking|service)|welcome back.*(job|booking)/i.test(fb) });
+// E1: a manually created job order; the client record is created AFTER the chat began; the customer asks about the booking
+const e1 = S('E1'); await talk(e1, ['Hello po']); const c1 = await seedClient('e1', 'Maria Cruz', mob(1), [{ number: jobNo(1), date: D1.iso }]);
+if (!c1) verdict('V2.3-E1: existing client (manual job order, client record newer than the chat) asks about their booking', seedFail || 'seeding failed', { seeded: false });
+else { await more(e1, `Hi po, are we still scheduled for ${D1.label}?`, { phone: mob(1) }); fb = await full(e1); cv = await convOf(e1);
+  verdict('V2.3-E1: existing client (manual job order, client record created after the chat) asks about their booking: recognised, answered from their own job, never "full", no form', last(fb), { existing: cv?.contact_status === 'existing' && cv?.client_id === c1, basis_mobile: cv?.link_basis === 'mobile', cites_own_booking: fb.includes(jobNo(1)) || new RegExp(D1.label.split(' ')[1]).test(fb), never_full: noFull(fb), no_form: noForm(fb), no_welcome: !/TopMop offers professional/.test(fb) }); }
+// E2: a reminder about a high ceiling for a booked job
+const e2 = S('E2'); const c2 = await seedClient('e2', 'Ana Reyes', mob(2), [{ number: jobNo(2), date: D1.iso }]);
+if (c2) { await talk(e2, [`Reminder lang po, mataas po ang ceiling namin. We are scheduled ${D1.label}.`], { phone: mob(2) }); fb = await full(e2); cv = await convOf(e2);
+  verdict('V2.3-E2: a reminder about a high ceiling from an existing client is not a new inquiry: no form, no welcome, no calendar, the team is alerted', last(fb), { existing: cv?.contact_status === 'existing', no_form: noForm(fb), no_welcome: !/TopMop offers professional/.test(fb), never_full: noFull(fb), no_location_ask: !/location|city|where/i.test(fb), english: !tagalog(fb) }); }
+// E3: several bookings: the asked date picks the right job
+const e3 = S('E3'); const c3 = await seedClient('e3', 'Ben Santos', mob(3), [{ number: jobNo(31), date: D1.iso }, { number: jobNo(32), date: D2.iso, status: 'Pending', codes: ['ROOF'] }]);
+if (c3) { await talk(e3, [`Is my booking on ${D2.label} still on?`], { phone: mob(3) }); fb = await full(e3);
+  verdict('V2.3-E3: a client with several bookings: the asked date is answered from the right job', last(fb), { right_job: fb.includes(jobNo(32)) || new RegExp(D2.label.split(' ')[1]).test(fb), never_full: noFull(fb), no_form: noForm(fb) }); }
+// E4: identical names on two clients: matched by mobile, never by name
+const e4 = S('E4'); const c4a = await seedClient('e4a', 'Carla Lim', mob(41), [{ number: jobNo(41), date: D1.iso }]); const c4b = await seedClient('e4b', 'Carla Lim', mob(42), [{ number: jobNo(42), date: D2.iso }]);
+if (c4a && c4b) { await talk(e4, [`Are we still scheduled for ${D2.label}?`], { phone: mob(42) }); fb = await full(e4); cv = await convOf(e4);
+  verdict('V2.3-E4: two clients with the SAME NAME: the contact is matched to the right one by mobile and only their job is used', last(fb), { right_client: cv?.client_id === c4b, only_their_job: !fb.includes(jobNo(41)), never_full: noFull(fb) }); }
+// E5: no phone number: the customer says they booked: ask once, then a person; a number typed in the chat is only a suggestion
+const e5 = S('E5'); const c5 = await seedClient('e5', 'Dina Gomez', mob(5), [{ number: jobNo(5), date: D1.iso }]);
+if (c5) { await talk(e5, [`Hi, we are scheduled ${D1.label} po. Dina Gomez here.`]); fb = await full(e5); cv = await convOf(e5); const ask = fb;
+  await more(e5, `My number is ${mob(5)}`); fb = await full(e5); const cv2 = await convOf(e5);
+  verdict('V2.3-E5: no phone number: a NAME never links; the AI asks once for the mobile or job order number (no form, no calendar, no details)', last(ask), { not_linked: !cv?.client_id && cv?.contact_status !== 'existing', asks_reference: /mobile number or job order number/i.test(ask), no_form: noForm(ask), never_full: noFull(ask), no_leak: !ask.includes(jobNo(5)) });
+  verdict('V2.3-E5: a number typed in the chat is only a SUGGESTION: staff confirm, the customer is not linked, a person takes over, no details leak', last(fb), { suggested: cv2?.link_state === 'suggested' && !cv2?.client_id, candidate_listed: (cv2?.link_candidates ?? []).some((x) => x.client_id === c5), handed_over: cv2?.status === 'Needs a person', no_leak: !fb.includes(jobNo(5)) }); }
+// E6: the same mobile on two client records: ambiguous, staff decide
+const e6 = S('E6'); const c6a = await seedClient('e6a', 'Eva Tan', mob(6), []); const c6b = await seedClient('e6b', 'Evan Tan', mob(6), []);
+if (c6a && c6b) { await talk(e6, ['Hello po'], { phone: mob(6) }); cv = await convOf(e6);
+  verdict('V2.3-E6: the SAME mobile on two client records is AMBIGUOUS: nobody is linked and staff are asked to choose', await full(e6), { ambiguous: cv?.link_state === 'ambiguous', none_linked: !cv?.client_id, previous: cv?.contact_status === 'previous', two_candidates: (cv?.link_candidates ?? []).length === 2 }); }
+if (seedFail) console.log(`\nSEEDING NOTE (a test client or job could not be created on staging): ${seedFail}`);
+for (const [t, ids] of [['jobs', seeded.jobs], ['sites', seeded.sites], ['clients', seeded.clients]]) for (const id of ids) await fetch(`${URL_}/rest/v1/${t}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: H });   // clean up the seeded test data (staging only)
+
 if (REAL_SUB) { await post(REAL_SUB, 'Staging delivery test: How much for window cleaning in Makati?'); console.log(`\nSent a test message as ManyChat contact ${REAL_SUB}. In Full mode the reply should arrive in that Messenger chat within ~15 seconds; check it by eye.`); }
 for (const x of rows.filter((y) => y.fail.length && y.sub)) { const c = await convOf(x.sub); if (!c) continue; const m = await rest(`chat_messages?conversation_id=eq.${c.id}&select=direction,status,body,created_at,handled_at,flags&order=created_at`); console.log(`\nTIMELINE for ${x.name.split(':')[0]} (in = customer, out = our reply):`); for (const y of m) console.log(`  ${y.created_at.slice(11, 19)} ${y.direction} ${y.status}${y.handled_at ? '' : ' UNHANDLED'} ${JSON.stringify(String(y.body).replace(/\n+/g, ' ').slice(0, 110))}${y.flags?.length ? ' flags=' + JSON.stringify(y.flags).slice(0, 160) : ''}`); }
 const empty = sent.length ? await Promise.all(sent.slice(0, 1).map(why)) : []; if (rows.some((x) => !x.reply)) console.log(`\nFirst conversation state (why replies may be empty):\n  ${empty[0]}`);

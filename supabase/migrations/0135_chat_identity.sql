@@ -22,12 +22,14 @@ do $$ begin
   alter table public.chat_conversations add constraint chat_conversations_link_state_check check (link_state is null or link_state in ('verified', 'staff', 'ambiguous', 'suggested'));
 exception when duplicate_object then null; end $$;
 
--- Older links that came from a number the customer TYPED in the chat (no booking was made from the chat) are only suggestions now: staff confirm them in AI Chat.
+-- A chat that created a client and an inquiry for itself is positively linked. A chat whose client ALREADY EXISTED (the booking matched the mobile number the customer typed: "same mobile = same client")
+-- is only a suggestion: a stranger can type anyone's number. Told apart by comparing when the client record was created with when the inquiry was.
+update public.chat_conversations c set contact_status = 'existing', link_state = 'verified', link_basis = 'chat_booking'
+  where c.client_id is not null and c.link_state is null and c.inquiry_id is not null
+    and exists (select 1 from public.inquiries i join public.clients cl on cl.id = c.client_id where i.id = c.inquiry_id and cl.created_at >= i.created_at - interval '2 minutes');
 update public.chat_conversations c set contact_status = 'previous', link_state = 'suggested', link_basis = 'legacy_match',
   link_candidates = (select coalesce(jsonb_agg(jsonb_build_object('client_id', cl.id, 'name', cl.name, 'basis', 'legacy_match')), '[]'::jsonb) from public.clients cl where cl.id = c.client_id)
-  where c.client_id is not null and c.inquiry_id is null and c.link_state is null;
--- Conversations that created a client or inquiry from the chat itself (a booking or a saved lead) are positively linked.
-update public.chat_conversations set contact_status = 'existing', link_state = 'verified', link_basis = 'chat_booking' where client_id is not null and inquiry_id is not null and link_state is null;
+  where c.client_id is not null and c.link_state is null;
 -- Conversations staff or the system already marked as returning are "previous" until a client is linked.
 update public.chat_conversations set contact_status = 'previous' where returning_customer and client_id is null and contact_status = 'new';
 

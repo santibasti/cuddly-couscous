@@ -68,7 +68,7 @@ const olderThan = (d: string | undefined, ref: string | undefined, graceDays = 0
 /** The decision. Order: a stored link (system or staff) → the contact's own mobile number → previous-contact evidence → typed suggestions → new. */
 export function decideIdentity(i: IdentityInput): Identity {
   const s = i.stored; const reasons: string[] = [];
-  if (s.client_id && (s.link_state === 'verified' || s.link_state === 'staff' || !s.link_state)) {
+  if (s.client_id && (s.link_state === 'verified' || s.link_state === 'staff')) {   // only an explicit link counts: a client_id alone may come from a number the customer typed into a booking
     return { status: 'existing', client_id: s.client_id, state: s.link_state === 'staff' ? 'staff' : 'verified', basis: s.link_basis || (s.link_state === 'staff' ? 'staff' : 'chat_booking'), candidates: [], reasons: [s.link_state === 'staff' ? 'Linked to this client by staff' : 'Already linked to this client'] };
   }
   if (i.phoneMatches.length === 1) { const m = i.phoneMatches[0]; return { status: 'existing', client_id: m.client_id, state: 'verified', basis: 'mobile', candidates: [], reasons: [`The contact's mobile number matches client ${m.name}`] }; }
