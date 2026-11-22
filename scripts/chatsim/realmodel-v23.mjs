@@ -94,4 +94,25 @@ verdict('A-2: a number typed in the chat is only a suggestion: not linked, a per
 setup(); await say('We talked yesterday with your staff, follow-up lang po.'); r = lastReply();
 verdict('W: "we talked yesterday, follow-up lang po" from an unverified contact: not a new inquiry (no welcome, no location question, no form); asks once for the mobile or job order number', r, { no_welcome: !/TopMop offers professional/.test(lastFull()), no_form: NO_FORM(r), no_location_ask: !/location|city/i.test(r), asks_reference: /mobile number or job order number/i.test(r), marked_previous: conv().contact_status === 'previous' });
 
+// S: STALE STATUSES: old Dispatched / On Site records never become "the crew is on the way"; an overnight job is still live
+const manilaStamp = (h) => new Date(Date.now() + 8 * 3600000 + h * 3600000).toISOString().slice(0, 19);
+const rawJob = (cid, number, status, startH, endH) => { DB.jobs = [...(DB.jobs ?? []), { id: `j-${number}`, number, client_id: cid, site_id: `s-${cid}`, start_at: manilaStamp(startH), end_at: manilaStamp(endH), status, service_codes: ['GLASS_EXT'] }]; };
+setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); rawJob('c1', 'JOB-OLD-DISP', 'Dispatched', -24 * 20, -24 * 20 + 3); rawJob('c1', 'JOB-OLD-SITE', 'On Site', -24 * 16, -24 * 16 + 3);
+await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say('Is the crew on the way po?', { phone: '0917 555 1212' }); r = lastReply();
+verdict('S-1: a confirmed client with only 16-20 day old "Dispatched / On Site" jobs asks where the crew is: no crew claim, handed to staff', r, { no_crew_claim: !/on the way|on site|on their way|is working|arriv/i.test(r), handed_to_staff: conv().status === 'Needs a person', no_form: NO_FORM(r) });
+setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); rawJob('c1', 'JOB-OLD-SITE', 'On Site', -24 * 16, -24 * 16 + 3);
+await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say('Good day, what is the status of my booking?', { phone: '0917 555 1212' }); r = lastReply();
+verdict('S-2: "what is the status of my booking" with only an outdated On Site record: the AI does not describe the old record as current work; no crew claim', r, { no_crew_claim: !/on the way|on site|on their way|is working|arriv|currently/i.test(r), no_form: NO_FORM(r), not_full: NOT_FULL(r) });
+setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); rawJob('c1', 'JOB-NIGHT', 'On Site', -8, 14);
+await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say('Is the crew there now?', { phone: '0917 555 1212' }); r = lastReply();
+verdict('S-3: a genuine overnight On Site job is still live: the AI answers from it (no outdated handover)', r, { answers: r.length > 0, not_outdated: !/outdated|not up to date/i.test(conv().human_reason ?? ''), no_form: NO_FORM(r), not_full: NOT_FULL(r) });
+// L: a TopMop job-order link is a reference for staff, never identity
+const TOK = 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6'; const seedOrder = (clientId) => { DB.job_orders = [...(DB.job_orders ?? []), { id: `jo-${clientId}`, number: 'JO-2026-83589', version: 1, job_id: `j-${clientId}-0`, client_id: clientId, status: 'Sent to Client', content: {}, content_key: 'k', share_token: TOK, deleted_at: null }]; };
+setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); seedOrder('c1'); busyDay(D1.iso);
+await say(`Hi, this is my job order https://ops.topmop.ph/#/jo/${TOK}. Can we move it to ${D2.label}?`); r = lastReply();
+verdict('L-1: a pasted job-order link: staff take over; the client is only SUGGESTED (job_order_link), never linked; nothing about the booking is shown; no "full", no form', r, { handed_to_staff: conv().status === 'Needs a person', suggested_not_linked: conv().link_state === 'suggested' && !conv().client_id && (conv().link_candidates ?? []).some((c) => c.basis === 'job_order_link'), no_leak: NO_LEAK(r) && !/Maria|Cruz|JO-2026/.test(r), not_full: NOT_FULL(r), no_form: NO_FORM(r) });
+setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); seedClient('c2', 'Juan Reyes', '0918 777 3434', [{ number: 'JOB-2026-9001', date: D2.iso }]); seedOrder('c2');
+await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say(`Please check this job order https://ops.topmop.ph/#/jo/${TOK}`, { phone: '0917 555 1212' }); r = lastReply();
+verdict('L-2: a CONFIRMED client pasting ANOTHER client\'s job-order link is never shown that booking: handed to staff', r, { no_other_client: !/Juan|Reyes|JOB-2026-9001|JO-2026/.test(r), handed_to_staff: conv().status === 'Needs a person', still_own_client: conv().client_id === 'c1' });
+
 const failed = rows.filter((x) => x.fail.length); console.log(`\n${rows.length - failed.length}/${rows.length} passed (model: ${model || 'default claude-haiku-5-5'}; model calls made: ${modelCalls.length}; database: in memory, NOT staging)`); process.exit(failed.length ? 1 : 0);

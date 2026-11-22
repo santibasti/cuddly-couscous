@@ -326,4 +326,50 @@ reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', 
 await send('Hello', { phone: '0917 555 1212' }); await confirmByStaff('c1'); deliver(); flags.failTable = 'jobs'; modelCalls.length = 0; const held2 = await send(askText(D1.label), { phone: '0917 555 1212' }); flags.failTable = null;
 ok('V2.3-14 a confirmed client whose bookings cannot be read is NOT told "no bookings" or "full": the message is held, nothing is drafted, no model call', held2.status === 'held' && modelCalls.length === 0 && drafts().filter((m) => m.status === 'draft').length === 0, JSON.stringify({ status: held2.status, calls: modelCalls.length }));
 
+// V2.3-15: STALE OPERATIONAL STATUSES. Old "Dispatched / On Site / In Progress" records (they exist in production) must never become "the crew is on the way".
+const manilaStamp = (offsetH) => { const d = new Date(Date.now() + 8 * 3600000 + offsetH * 3600000); return d.toISOString().slice(0, 19); };   // Manila wall-clock, as the jobs table stores it
+const rawJob = (cid, number, status, startH, endH) => { DB.jobs = [...(DB.jobs ?? []), { id: `j-${number}`, number, client_id: cid, site_id: `s-${cid}`, start_at: manilaStamp(startH), end_at: manilaStamp(endH), status, service_codes: ['GLASS_EXT'] }]; };
+const crewLine = () => text('Our crew is on the way po and will arrive shortly.');
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', []);
+rawJob('c1', 'JOB-OLD-DISP', 'Dispatched', -24 * 20, -24 * 20 + 3); rawJob('c1', 'JOB-OLD-SITE', 'On Site', -24 * 16, -24 * 16 + 3);
+state.script = crewLine; await send('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); deliver(); modelCalls.length = 0;
+await send('Is the crew on the way po?', { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-15 a confirmed client with only 16- and 20-day-old "Dispatched / On Site" jobs asks where the crew is: NOT told a crew is coming (the model is not even asked); handed to staff', !!dr && !/on the way|on site|arrive/i.test(dr.body) && /Our team will check/.test(dr.body) && conv0().status === 'Needs a person', JSON.stringify({ b: dr?.body, st: conv0().status }));
+ok('V2.3-15 staff are told the records are outdated', /outdated|not up to date|old/i.test(conv0().human_reason ?? ''), conv0().human_reason);
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); rawJob('c1', 'JOB-OLD-SITE', 'On Site', -24 * 16, -24 * 16 + 3);
+state.script = () => text('Hello po.'); await send('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); deliver(); modelCalls.length = 0; state.script = crewLine;
+await send('Good day, what is the status of my booking?', { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-15 the prompt never lists a stale job as a current booking, and says the record is uncertain; a model that says "on the way" anyway is blocked', !/VERIFIED ACTIVE AND UPCOMING BOOKINGS[\s\S]{0,80}JOB-OLD-SITE/.test(lastSystem()) && (modelCalls.length === 0 || /UNCERTAIN RECORDS/.test(lastSystem())) && !!dr && !/on the way|on site/i.test(dr.body), JSON.stringify({ b: dr?.body, calls: modelCalls.length }));
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); rawJob('c1', 'JOB-NIGHT', 'On Site', -8, 14); rawJob('c1', 'JOB-MULTI', 'In Progress', -24 * 3, 24 * 2);
+state.script = () => text('Hello po.'); await send('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); deliver(); modelCalls.length = 0; state.script = () => text('Our crew is currently on site at your property po.');
+await send('Is the crew there now?', { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-15 a LEGITIMATE overnight job (started 8 h ago, ends in 14 h) and a multi-day project are still live: the AI sees them and may say the crew is on site', /JOB-NIGHT/.test(lastSystem()) && /JOB-MULTI/.test(lastSystem()) && !!dr && /on site/i.test(dr.body), JSON.stringify({ b: dr?.body, sys: /JOB-NIGHT/.test(lastSystem()) }));
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); rawJob('c1', 'JOB-OLD', 'On Site', -24 * 16, -24 * 16 + 3);
+state.script = () => text('Hello po.'); await send('Hello po', { phone: '0917 555 1212' }); deliver(); modelCalls.length = 0; state.script = crewLine;   // NOT confirmed by staff: an unconfirmed contact
+await send('Is the crew on the way po?', { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-15 an UNCONFIRMED contact asking where the crew is is never told anything either', !!dr && !/on the way|on site|arrive/i.test(dr.body), JSON.stringify(dr?.body));
+
+// V2.3-16: A TOPMOP JOB-ORDER LINK. It is a reference that finds a possible booking for staff. It never identifies anyone.
+const TOK = 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6';
+const orderLink = `https://ops.topmop.ph/#/jo/${TOK}`;
+const seedOrder = (clientId, jobNumber) => { DB.job_orders = [...(DB.job_orders ?? []), { id: `jo-${clientId}`, number: 'JO-2026-83589', version: 1, job_id: `j-${clientId}-0`, client_id: clientId, status: 'Sent to Client', content: {}, content_key: 'k', share_token: TOK, deleted_at: null }]; };
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); seedOrder('c1'); state.script = () => sayFull();
+await send(`Hi, this is my job order ${orderLink}. Can we move it to ${D2.label}?`); const dLink = drafts().at(-1);
+ok('V2.3-16 a pasted job-order link is an EXISTING-BOOKING reference: nobody is told the date is full, no form, no booking detail, and no model improvises', !!dLink && !leak(dLink.body) && /Our team will check your booking/.test(dLink.body) && modelCalls.length === 0, JSON.stringify(dLink?.body));
+ok('V2.3-16 the link only SUGGESTS the client to staff (basis job_order_link, with the order number); the contact is NOT linked and is not an existing client', conv0().contact_status === 'previous' && conv0().link_state === 'suggested' && !conv0().client_id && (conv0().link_candidates ?? []).some((c) => c.client_id === 'c1' && c.basis === 'job_order_link') && conv0().status === 'Needs a person' && /JO-2026-83589/.test(conv0().human_reason ?? ''), JSON.stringify({ s: conv0().contact_status, st: conv0().link_state, c: conv0().client_id ?? null, r: conv0().human_reason }));
+ok('V2.3-16 nothing about the match reaches the customer: no name, no order number, no job number, no date', !/Maria|Cruz|JO-2026|JOB-2026|83589/.test(dLink.body) && !new RegExp(D1.label).test(dLink.body), JSON.stringify(dLink.body));
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => sayFull();   // NO job order exists for this token
+await send(`Hi, this is my job order ${orderLink}. Can we move it to ${D2.label}?`); const dUnknown = drafts().at(-1);
+ok('V2.3-16 an UNKNOWN link gets the IDENTICAL reply (the chat cannot be used to find out which links are real) and creates no suggestion', dUnknown.body === dLink.body && !conv0().client_id && (conv0().link_candidates ?? []).length === 0, JSON.stringify({ same: dUnknown.body === dLink.body }));
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); seedClient('c2', 'Juan Reyes', '0918 777 3434', [{ number: 'JOB-2026-9001', date: D2.iso }]); seedOrder('c2'); state.script = () => text('Hello po.');
+await send('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); deliver(); modelCalls.length = 0; state.script = () => sayFull();
+await send(`Hi, can you check this job order ${orderLink}?`, { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-16 a CONFIRMED client who pastes ANOTHER client\'s job-order link is not shown that booking: handed to staff, no detail from the other client, their own link unchanged', !!dr && !/Juan|Reyes|JOB-2026-9001|JO-2026/.test(dr.body) && /Our team will check/.test(dr.body) && conv0().client_id === 'c1' && conv0().status === 'Needs a person', JSON.stringify({ b: dr?.body, c: conv0().client_id }));
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); seedOrder('c1'); state.script = () => text('Which service do you need po?');
+await send(`my job order https://ops.topmop.ph.evil.example/#/jo/${TOK}`); 
+ok('V2.3-16 a look-alike address is NOT a TopMop link: nothing is suggested', !conv0().client_id && (conv0().link_candidates ?? []).length === 0, JSON.stringify(conv0().link_candidates ?? []));
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); seedOrder('c1'); state.script = () => sayFull();
+flags.failTable = 'job_orders'; modelCalls.length = 0; const heldLink = await send(`my job order ${orderLink}`); flags.failTable = null;
+ok('V2.3-16 if the job-order lookup fails the message is HELD (no reply, no model call), never treated as "no match"', heldLink.status === 'held' && modelCalls.length === 0 && drafts().length === 0, JSON.stringify({ st: heldLink.status }));
+
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);

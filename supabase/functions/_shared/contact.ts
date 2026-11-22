@@ -1,13 +1,14 @@
 // AI V2.3: works out who a ManyChat contact is (new / previous contact / existing client), keeps the result on the conversation row (the persistent mapping) and loads the verified client's active bookings.
 // Used by chat-brain on every message and by chat-send when staff re-check or link a contact.
 import { contactSince, type ReturningInfo } from './brain.ts';
-import { activeJobs, clientsByJobNumber, clientsByMobile, decideIdentity, jobNumbersIn, normMobile, phonesIn, type Candidate, type Identity, type JobLine } from './identity.ts';
+import { clientsByMobile, clientsByReference, decideIdentity, jobNumbersIn, jobOrderTokensIn, manilaNow, normMobile, openJobs, phonesIn, type Candidate, type Identity, type JobLine } from './identity.ts';
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
 /** candidateJobs: the active bookings of the clients a contact MIGHT be (not confirmed). They are never shown to the AI or the customer: they only stop the AI from offering the booking form or calling a date full, and tell staff what to check. */
 export interface CandidateJobs { client_id: string; name: string; jobs: JobLine[] }
-export interface ContactResult { identity: Identity; jobs: JobLine[]; candidateJobs: CandidateJobs[]; returning: ReturningInfo | null; mc: { fetched: boolean; fields?: string[]; subscribed?: string } }
+/** staleJobs: a confirmed client's open jobs whose status cannot be trusted any more (for example "On Site" for weeks): never described to the customer, staff verify. referenced: the clients behind job numbers / job-order links the customer wrote (suggestions only). */
+export interface ContactResult { identity: Identity; jobs: JobLine[]; staleJobs: JobLine[]; referenced: Candidate[]; candidateJobs: CandidateJobs[]; returning: ReturningInfo | null; mc: { fetched: boolean; fields?: string[]; subscribed?: string } }
 const iso = (v: unknown): string | undefined => { const t = typeof v === 'number' ? (v > 1e12 ? v : v * 1000) : Date.parse(String(v ?? '')); return Number.isFinite(t) && t > 0 ? new Date(t).toISOString() : undefined; };
 const PHONE_KEYS = ['phone', 'optin_phone', 'mobile', 'mobile_number', 'whatsapp_phone'];
 const phoneFrom = (...objs: unknown[]): string | undefined => { for (const o of objs) { if (!o || typeof o !== 'object') continue; for (const k of PHONE_KEYS) { const n = normMobile((o as Record<string, unknown>)[k]); if (n) return n; } } return undefined; };
@@ -34,7 +35,8 @@ export async function resolveContact(a: { sb: Db; env: (k: string) => string; co
   const typed: Candidate[] = [];
   const typedPhones = phonesIn(a.text).filter((n) => n !== phone);
   for (const n of typedPhones.slice(0, 3)) typed.push(...await clientsByMobile(sb, `0${n}`, 'typed_mobile'));
-  if (jobNumbersIn(a.text).length) typed.push(...await clientsByJobNumber(sb, a.text));
+  const referenced = jobNumbersIn(a.text).length || jobOrderTokensIn(a.text).length ? await clientsByReference(sb, a.text) : [];   // job numbers, job-order numbers and TopMop job-order links: they only SUGGEST a client
+  typed.push(...referenced);
   const kept = (conv.link_state === 'suggested' || conv.link_state === 'ambiguous') && Array.isArray(conv.link_candidates) ? (conv.link_candidates as Candidate[]) : [];
   const seen = new Set<string>(); const typedMatches = [...typed, ...kept].filter((c) => c?.client_id && !seen.has(c.client_id) && seen.add(c.client_id)).slice(0, 5);
 
@@ -68,20 +70,20 @@ export async function resolveContact(a: { sb: Db; env: (k: string) => string; co
   if (askStaff) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Please confirm the client match', body: `${conv.name ?? 'A customer'} (${conv.channel ?? 'chat'}): ${identity.state === 'ambiguous' ? 'the phone number is on more than one client record' : identity.candidates.some((c) => c.basis === 'contact_mobile') ? 'the phone number ManyChat holds for this contact matches a client record' : 'they wrote a number that matches a client record'}: ${identity.candidates.map((c) => c.name).join(' / ')}. Open AI Chat and confirm the right client (until then the AI shares no booking details).`, link: '/ai-chat' });
 
   // 4. what the AI is told
-  let jobs: JobLine[] = []; let returning: ReturningInfo | null = null; const candidateJobs: CandidateJobs[] = [];
-  if (identity.status === 'previous' && identity.candidates.length) for (const c of identity.candidates.slice(0, 3)) { const j = await activeJobs(sb, c.client_id, a.today); if (j.length) candidateJobs.push({ client_id: c.client_id, name: c.name, jobs: j }); }
+  let jobs: JobLine[] = []; let staleJobs: JobLine[] = []; let returning: ReturningInfo | null = null; const candidateJobs: CandidateJobs[] = [];
+  if (identity.status === 'previous' && identity.candidates.length) for (const c of identity.candidates.slice(0, 3)) { const o = await openJobs(sb, c.client_id, manilaNow()); const j = [...o.live, ...o.stale]; if (j.length) candidateJobs.push({ client_id: c.client_id, name: c.name, jobs: j }); }   // stale ones too: a date held by an uncertain record is still never called free
   if (identity.status === 'existing' && identity.client_id) {
     const cid = identity.client_id;
     const [cl, jb, iq, act] = await Promise.all([
       sb.from('clients').select('name, mobile, email, address').eq('id', cid).maybeSingle(),
       sb.from('jobs').select('number, status, start_at').eq('client_id', cid).is('deleted_at', null).order('start_at', { ascending: false }).limit(4),
       sb.from('inquiries').select('stage, details, created_at').eq('client_id', cid).is('deleted_at', null).order('created_at', { ascending: false }).limit(3),
-      activeJobs(sb, cid, a.today)]);
+      openJobs(sb, cid, manilaNow())]);
     if (cl.error || jb.error) throw new Error(`client record lookup failed: ${String((cl.error ?? jb.error)?.message ?? 'error').slice(0, 100)}`);
-    jobs = act;
+    jobs = act.live; staleJobs = act.stale;
     returning = { note: note || 'Matched to an existing client', status: 'existing', client: cl.data ? { name: cl.data.name, mobile: cl.data.mobile, email: cl.data.email, address: cl.data.address } : undefined,
       jobs: ((jb.data ?? []) as { number: string; status: string; start_at: string }[]).map((j) => `${j.number} (${j.status}, ${String(j.start_at).slice(0, 10)})`),
-      inquiries: ((iq.data ?? []) as { stage: string; details: string | null; created_at: string }[]).map((q) => `${String(q.created_at).slice(0, 10)} ${q.stage}: ${String(q.details ?? '').slice(0, 70)}`), active: act };
+      inquiries: ((iq.data ?? []) as { stage: string; details: string | null; created_at: string }[]).map((q) => `${String(q.created_at).slice(0, 10)} ${q.stage}: ${String(q.details ?? '').slice(0, 70)}`), active: act.live, stale: act.stale.map((j) => ({ number: j.number, date: j.date, status: j.status })) };
   } else if (identity.status === 'previous') returning = { note: note || 'Has talked to TopMop before', status: 'previous', suggested: !!identity.state };
-  return { identity, jobs, candidateJobs, returning, mc };
+  return { identity, jobs, staleJobs, referenced, candidateJobs, returning, mc };
 }

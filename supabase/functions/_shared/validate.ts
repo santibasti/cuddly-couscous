@@ -1,6 +1,6 @@
 // Checks a reply before it goes to ManyChat, repairs it when it can, and falls back to a safe sentence when it cannot. Pure logic, no network.
 import { type ChatContext, type Intent, type ServiceKey, lastQuestionOf, questionTopic, servicesIn, nextQuestionHint, nextBookingQuestion } from './chatcontext.ts';
-import { contradictsBooking, datesIn, existingBookingReply, type JobLine } from './identity.ts';
+import { JOB_STATUS_CLASS, asksCrewStatus, claimsCrewStatus, contradictsBooking, datesIn, existingBookingReply, type JobLine } from './identity.ts';
 import { tooTagalog, ACID_RAIN_REPLY, COMMERCIAL_OCULAR } from './brain.ts';
 
 export interface Check { ctx: ChatContext; intent: Intent; customerText: string; previousAi: string[]; first?: boolean; identity?: { status: 'new' | 'previous' | 'existing'; verified: boolean; jobs: JobLine[]; today: string; hold?: JobLine[] } }
@@ -47,6 +47,8 @@ export function validateReply(reply: string, v: Check): string[] {
   const mine = v.identity ? (v.identity.verified ? v.identity.jobs : (v.identity.hold ?? [])) : [];   // a verified client's own bookings, or the dates held by a possible (unconfirmed) client
   const cb = v.identity && mine.length ? contradictsBooking(t, v.customerText, mine, v.identity.today, v.identity.verified) : undefined;   // never contradict a verified booking (checked before the approved-text exemption: the form is exempt for new customers, not for a booking that exists)
   if (cb) return [`contradicts_booking: ${cb}`];
+  // "the crew is on the way / on site / working" may only be said when a LIVE job of a confirmed client has that status (a stale or missing record, or an unconfirmed contact, never backs it)
+  if (claimsCrewStatus(t) && !(v.identity?.verified && v.identity.jobs.some((j) => JOB_STATUS_CLASS[j.status] === 'current'))) return ['crew_status: say nothing about the crew being on the way, on site or working; our team will check'];
   if (FIXED.test(t) || t.includes('\n\n---\n\n')) return pv ? [pv] : [];          // approved fixed texts and the welcome are exempt (but never a photo request)
   const out: string[] = []; const s = sentences(t);
   if (tooTagalog(t)) out.push('language: write in English or English-dominant Taglish, never Tagalog sentences');
@@ -86,6 +88,7 @@ const dropAll = (list: string[], re: RegExp) => list.filter((x) => !re.test(x));
 export const REF_ASK = 'Thank you po! May I have the mobile number or job order number you booked with, so our team can check your booking?';
 export const REF_HANDOVER = 'Thank you po. Our team will check your booking and get back to you shortly.';
 export function repairReply(reply: string, violations: string[], v: Check): string {
+  if (violations.some((x) => x.startsWith('crew_status'))) return '';   // no trimmed answer: the fallback hands over to staff
   if (violations.some((x) => x.startsWith('contradicts_booking')) && !v.identity?.verified) return '';   // not confirmed who this is: no trimmed answer, staff take over (fallbackReply)
   if (violations.some((x) => x.startsWith('contradicts_booking')) && v.identity?.jobs.length) return existingBookingReply(v.identity.jobs, datesIn(v.customerText, v.identity.today));   // the answer comes from the customer's own job
   if (ACID_ASK.test(v.customerText) && REMOVAL_ASK.test(v.customerText)) return ACID_RAIN_REPLY;   // an acid rain removal question always gets the approved answer, never a trimmed model draft (it once added unrelated dates and "permanent etching")
@@ -108,6 +111,7 @@ export function repairReply(reply: string, violations: string[], v: Check): stri
 /** A safe sentence for each situation (the AI wrote nothing, an integration failed, the reply could not be repaired). */
 export function fallbackReply(v: Check, why: 'empty' | 'integration' | 'invalid' = 'invalid'): { text: string; handover: boolean } {
   const c = v.ctx;
+  if (asksCrewStatus(v.customerText) && !(v.identity?.verified && v.identity.jobs.some((j) => JOB_STATUS_CLASS[j.status] === 'current'))) return { text: 'Thank you po. Our team will check on that and update you shortly.', handover: true };   // where the crew is comes only from a live record; otherwise staff answer
   if (v.intent === 'existing_booking' && v.identity?.verified && v.identity.jobs.length) return { text: existingBookingReply(v.identity.jobs, datesIn(v.customerText, v.identity.today)), handover: false };   // a verified customer asking about their booking: their own job, never the calendar
   if (v.identity && !v.identity.verified && v.identity.hold?.length && (v.intent === 'existing_booking' || v.intent === 'booking_request')) return { text: REF_HANDOVER, handover: true };   // a possible client with a booking: staff confirm first
   if (v.intent === 'existing_booking') return { text: REF_ASK, handover: false };

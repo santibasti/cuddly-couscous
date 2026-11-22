@@ -90,7 +90,7 @@ verdict('Y: three services together: window ₱4,799 (first, keeps its minimum) 
 // A phone number held by ManyChat only SUGGESTS a client. Staff confirm in AI Chat ("This is the client", then hand back to the AI). This runner stands in for that click by writing exactly what the chat-send "link" + "release" actions write.
 const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const inDays = (k) => { const d = new Date(Date.now() + k * 86400000 + 8 * 3600000); return { iso: d.toISOString().slice(0, 10), label: `${MON[d.getUTCMonth()]} ${d.getUTCDate()}` }; };
-const D1 = inDays(8), D2 = inDays(15); const seeded = { jobs: [], sites: [], clients: [] }; let seedFail = '';
+const D1 = inDays(8), D2 = inDays(15); const seeded = { jobs: [], sites: [], clients: [], job_orders: [] }; let seedFail = '';
 const ten = (k) => `9${String(stamp).slice(-7)}${String(k).padStart(2, '0')}`;                  // a unique 10-digit mobile per run and per client: no collision with real staging clients
 const mob = (k) => { const n = ten(k); return `0${n.slice(0, 3)} ${n.slice(3, 6)} ${n.slice(6)}`; };   // 09XX XXX XXXX
 const more = async (sub, text, extra = {}) => { lastSub = sub; const before = (await outs(sub)).length; await post(sub, text, extra); await waitFor(sub, before + 1); await approve(sub); };   // a further message in a conversation that already has replies
@@ -98,7 +98,7 @@ const ins = async (table, row) => { const r = await fetch(`${URL_}/rest/v1/${tab
 const seedClient = async (key, name, mobile, jobs = []) => {   // jobs made BY STAFF by hand: no quotation and no inquiry; the client record is created after the chat began
   const id = `stg-${stamp}-${key}`; const c = await ins('clients', { id, name, contact_person: name, mobile, type: 'Residential', status: 'Active', address: 'Makati' }); if (!c) return null; seeded.clients.push(id);
   const sid = `stg-${stamp}-s-${key}`; if (await ins('sites', { id: sid, client_id: id, name: `${name} residence`, address: 'Makati' })) seeded.sites.push(sid);
-  for (const [i, j] of jobs.entries()) { const jid = `stg-${stamp}-j-${key}-${i}`; if (await ins('jobs', { id: jid, number: j.number, client_id: id, site_id: sid, start_at: `${j.date}T09:00:00`, end_at: `${j.date}T12:00:00`, status: j.status ?? 'Confirmed', service_codes: j.codes ?? ['GLASS_EXT'] })) seeded.jobs.push(jid); }
+  for (const [i, j] of jobs.entries()) { const jid = `stg-${stamp}-j-${key}-${i}`; if (await ins('jobs', { id: jid, number: j.number, client_id: id, site_id: sid, start_at: j.start ?? `${j.date}T09:00:00`, end_at: j.end ?? `${j.date}T12:00:00`, status: j.status ?? 'Confirmed', service_codes: j.codes ?? ['GLASS_EXT'] })) seeded.jobs.push(jid); }
   return id;
 };
 const fill = async (date, key) => { const f = await seedClient(`fill-${key}`, 'Filler Client', `09${String(stamp).slice(-9)}`.slice(0, 11), [1, 2, 3, 4].map((k) => ({ number: jobNo(`F${key}${k}`), date, codes: ['ROOF'] }))); return f; };   // other clients' jobs: the calendar for that date becomes FULL, partly because of the customer's own booking: the trap of the November 30 incident
@@ -170,6 +170,24 @@ if (c8) { await more(e8, `Is ${D1.label} open for window cleaning in Makati?`, {
 const e9 = S('E9'); await talk(e9, ['Hello po']); const c9 = await seedClient('e9', 'Ivan Ty', mob(9), [{ number: jobNo('E9'), date: D1.iso }]); await fill(D1.iso, 'e9');
 if (c9) { await more(e9, `I want to book window cleaning on ${D1.label}`, { phone: mob(9) }); fb = await full(e9); cv = await convOf(e9);
   verdict('V2.3-E9: an unconfirmed contact (possible client with a booking) asks to book: NO booking form, no calendar answer, staff are asked to confirm first', last(fb), { never_full_or_form: NEVER(fb), no_leak: noLeak(fb), handed_to_staff: cv?.status === 'Needs a person' }); }
+
+// S1: STALE STATUSES. Old Dispatched / On Site records (production has them) must never become "the crew is on the way".
+const manilaStamp = (h) => new Date(Date.now() + 8 * 3600000 + h * 3600000).toISOString().slice(0, 19);
+const s1 = S('S1'); await talk(s1, ['Hello po']); const cs1 = await seedClient('s1', 'Lara Mendez', mob(21), [{ number: jobNo('S1A'), start: manilaStamp(-24 * 20), end: manilaStamp(-24 * 20 + 3), status: 'Dispatched' }, { number: jobNo('S1B'), start: manilaStamp(-24 * 16), end: manilaStamp(-24 * 16 + 3), status: 'On Site' }]);
+if (cs1) { await more(s1, 'Hello again', { phone: mob(21) }); await confirmByStaff(s1, cs1); await more(s1, 'Is the crew on the way po?', { phone: mob(21) }); fb = await full(s1); cv = await convOf(s1);
+  verdict('V2.3-S1: a confirmed client whose only "Dispatched / On Site" jobs are 16-20 days old is NOT told a crew is on the way, on site or working; handed to staff', last(fb), { no_crew_claim: !/on the way|on site|on their way|is working|arriv/i.test(last(fb)), handed_to_staff: cv?.status === 'Needs a person', no_form: noForm(fb), no_leak: noLeak(fb) }); }
+// S2: a legitimate OVERNIGHT job is still current
+const s2 = S('S2'); await talk(s2, ['Hello po']); const cs2 = await seedClient('s2', 'Noel Ramos', mob(22), [{ number: jobNo('S2'), start: manilaStamp(-8), end: manilaStamp(14), status: 'On Site' }]);
+if (cs2) { await more(s2, 'Hello again', { phone: mob(22) }); await confirmByStaff(s2, cs2); await more(s2, 'Is the crew there now?', { phone: mob(22) }); fb = await full(s2); cv = await convOf(s2);
+  verdict('V2.3-S2: an overnight job (started 8 h ago, ends in 14 h) is still a live booking: the AI may answer from it and does not hand the chat to staff as outdated', last(fb), { answers: last(fb).length > 0, not_outdated: !/outdated|not up to date/i.test(cv?.human_reason ?? ''), no_form: noForm(fb), never_full: noFull(last(fb)) }); }
+// J1: a TopMop job-order link: an existing-booking reference that only SUGGESTS a client for staff
+const j1 = S('J1'); await talk(j1, ['Hello po']); const cj1 = await seedClient('j1', 'Pia Santos', mob(23), [{ number: jobNo('J1'), date: D1.iso }]);
+const tok = `st${stamp}${'x'.repeat(24)}`.slice(0, 40); const joId = `stg-${stamp}-jo-j1`;
+if (cj1 && await ins('job_orders', { id: joId, number: `JO-STG-${String(stamp).slice(-6)}`, version: 1, job_id: `stg-${stamp}-j-j1-0`, client_id: cj1, status: 'Sent to Client', content: {}, content_key: `stg-${stamp}`, share_token: tok })) { seeded.job_orders.push(joId);
+  await more(j1, `Hi, this is my job order https://ops.topmop.ph/#/jo/${tok} can we move it to ${D2.label}?`); fb = await full(j1); cv = await convOf(j1);
+  verdict('V2.3-J1: a pasted job-order link is an existing-booking reference: a person takes over, the client is only SUGGESTED (job_order_link), never linked; nothing about the booking is shown; no "full", no form', last(fb), { handed_to_staff: cv?.status === 'Needs a person', suggested_not_linked: cv?.link_state === 'suggested' && !cv?.client_id && (cv?.link_candidates ?? []).some((c) => c.client_id === cj1 && c.basis === 'job_order_link'), no_leak: noLeak(fb) && !/Pia|Santos|JO-STG/.test(last(fb)), never_full_or_form: NEVER(fb) }); }
+const j2 = S('J2'); await talk(j2, ['Hello po']); await more(j2, `Hi, this is my job order https://ops.topmop.ph/#/jo/${'z'.repeat(32)} can we move it to ${D2.label}?`); fb = await full(j2); cv = await convOf(j2);
+verdict('V2.3-J2: an UNKNOWN job-order link gets the same safe handover (no hint whether the link exists) and no suggestion', last(fb), { handed_to_staff: cv?.status === 'Needs a person', no_candidates: (cv?.link_candidates ?? []).length === 0 && !cv?.client_id, never_full_or_form: NEVER(fb) });
 if (seedFail) console.log(`\nSEEDING NOTE (a test client or job could not be created on staging): ${seedFail}`);
 
 // DELIVERY (optional): the same incident through REAL ManyChat delivery to YOUR test contact. Needs: the AI in Full mode on staging, MANYCHAT_API_TOKEN on the staging function, STAGING_SUBSCRIBER (your test contact's ManyChat id).
@@ -181,7 +199,7 @@ if (REAL_SUB && process.env.STAGING_SUBSCRIBER_PHONE) {
     verdict('V2.3-DELIVERY: through real ManyChat delivery the contact was never sent the booking form or told the date is full, and the answers were really sent', all, { replies_exist: o.length >= 2, really_sent: delivered.length >= 1 && delivered.length === o.filter((m) => m.status !== 'discarded').length, never_full_or_form: NEVER(all), after_confirm_cites_booking: /scheduled|booking|JOB-/i.test(o.slice(mid - before).map((m) => m.body).join(' ')) });
     const c = await convOf(REAL_SUB); if (c) await rest(`chat_conversations?id=eq.${c.id}`, { method: 'PATCH', body: JSON.stringify({ client_id: null, contact_status: 'new', link_state: null, link_basis: null, link_candidates: [], status: 'Open', human_reason: null }) }); }
 }
-for (const [t, ids] of [['jobs', seeded.jobs], ['sites', seeded.sites], ['clients', seeded.clients]]) for (const id of ids) await fetch(`${URL_}/rest/v1/${t}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: H });   // clean up the seeded test data (staging only)
+for (const [t, ids] of [['job_orders', seeded.job_orders], ['jobs', seeded.jobs], ['sites', seeded.sites], ['clients', seeded.clients]]) for (const id of ids) await fetch(`${URL_}/rest/v1/${t}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: H });   // clean up the seeded test data (staging only)
 
 if (REAL_SUB) { await post(REAL_SUB, 'Staging delivery test: How much for window cleaning in Makati?'); console.log(`\nSent a test message as ManyChat contact ${REAL_SUB}. In Full mode the reply should arrive in that Messenger chat within ~15 seconds; check it by eye.`); }
 for (const x of rows.filter((y) => y.fail.length && y.sub)) { const c = await convOf(x.sub); if (!c) continue; const m = await rest(`chat_messages?conversation_id=eq.${c.id}&select=direction,status,body,created_at,handled_at,flags&order=created_at`); console.log(`\nTIMELINE for ${x.name.split(':')[0]} (in = customer, out = our reply):`); for (const y of m) console.log(`  ${y.created_at.slice(11, 19)} ${y.direction} ${y.status}${y.handled_at ? '' : ' UNHANDLED'} ${JSON.stringify(String(y.body).replace(/\n+/g, ' ').slice(0, 110))}${y.flags?.length ? ' flags=' + JSON.stringify(y.flags).slice(0, 160) : ''}`); }

@@ -8,7 +8,7 @@
 
 export type ContactStatus = 'new' | 'previous' | 'existing';
 export type LinkState = 'verified' | 'staff' | 'ambiguous' | 'suggested';
-export interface Candidate { client_id: string; name: string; basis: string }
+export interface Candidate { client_id: string; name: string; basis: string; detail?: string }   // detail: e.g. the job number a reference pointed at (for staff only)
 export interface Identity { status: ContactStatus; client_id?: string; state?: LinkState; basis?: string; candidates: Candidate[]; reasons: string[] }
 export interface IdentityInput {
   stored: { client_id?: string | null; link_state?: string | null; link_basis?: string | null; staff_returning?: boolean };
@@ -29,6 +29,8 @@ export function phonesIn(text: string): string[] {
   for (const m of String(text ?? '').matchAll(/(?:\+?63|0)?[\s-]?9\d{2}[\s-]?\d{3}[\s-]?\d{4}/g)) { const n = normMobile(m[0].replace(/^\s+/, '')); if (n) out.add(n); }
   return [...out];
 }
+/** TopMop job-order links written in a message (https://ops.topmop.ph/#/jo/<token>), as their tokens. Only the TopMop address counts. The token is the job order's share link: a link that can be forwarded, so it LOCATES a possible booking and never proves who is writing. */
+export const jobOrderTokensIn = (text: string): string[] => [...new Set([...String(text ?? '').matchAll(/(?:https?:\/\/)?(?<![A-Za-z0-9.-])ops\.topmop\.ph\/?#\/jo\/([A-Za-z0-9_-]{16,64})(?![A-Za-z0-9_-])/gi)].map((m) => m[1]))].slice(0, 3);
 /** Job order numbers written in a message (JOB-2026-8818, JO-2026-83589). */
 export const jobNumbersIn = (text: string): string[] => [...new Set([...String(text ?? '').matchAll(/\bJOB?-\d{4}-\d{3,6}\b/gi)].map((m) => m[0].toUpperCase()))];
 
@@ -46,6 +48,7 @@ const PREVIOUS_REF = new RegExp([
   String.raw`\b(?:our|my|the|ang) (?:booking|reservation|schedule|appointment|job order)\b.{0,40}\b(?:on|for|sa|is|was)\b`,
   String.raw`\b(?:still|already)\s+(?:scheduled|booked|confirmed|on for)\b|\bare we (?:still )?(?:on|scheduled|booked)\b|\bscheduled (?:on|for)\b|\b(?:my|our) (?:booking|reservation|appointment|job order)\b`,
   String.raw`\bJOB?-\d{4}-\d{3,6}\b`,
+  String.raw`(?<![A-Za-z0-9.-])ops\.topmop\.ph\/?#\/jo\/[A-Za-z0-9_-]{16,64}`,
 ].join('|'), 'i');
 export const isPreviousReference = (text: string): boolean => PREVIOUS_REF.test(String(text ?? ''));
 /** The message without its existing-booking phrases ("I already booked", "we are scheduled", a job number...): what is left shows whether the customer ALSO asks for something new. */
@@ -103,6 +106,15 @@ export const JOB_STATUS_CLASS: Record<string, 'upcoming' | 'current' | 'recent' 
 export const OPEN_JOB_STATUSES = Object.entries(JOB_STATUS_CLASS).filter(([, c]) => c !== 'ended').map(([k]) => k);
 const STATUS_WORDS: Record<string, string> = { 'Pending': 'pending', 'Confirmed': 'confirmed', 'Dispatch Checklist Pending': 'being prepared', 'Dispatched': 'the crew is on the way', 'On Site': 'the crew is on site', 'In Progress': 'the work is in progress', 'Work Completed': 'the work is done', 'Leaving Site': 'the work is done', 'Arrived at HQ': 'the work is done' };
 export const statusWords = (st: string) => STATUS_WORDS[st] ?? st.toLowerCase();
+/** The customer asks where the crew is / whether it has arrived. */
+export const asksCrewStatus = (text: string): boolean => /\b(on the way|papunta na|papunta|dumating na|dumating|nandyan na|nandito na|on[- ]?site|nasa site|asan na|nasaan|are you here|already here|already arrived|(where|how far)[^.?!]{0,25}\b(crew|team|technicians?)|(crew|team|technicians?)[^.?!]{0,25}\b(here|arriv\w*))\b/i.test(String(text ?? ''));
+/** A reply that SAYS a crew is on the way, on site or working. Only a live job whose status says so may back it. */
+export const claimsCrewStatus = (reply: string): boolean => /\b(crew|team|technicians?|cleaners?)\b[^.?!]{0,30}\b(is|are|'s)\b[^.?!]{0,20}\b(on the way|on[- ]?site|here|there|arriv\w+|working|cleaning|already)\b|\bon (?:their|the|its) way\b|\bcurrently (?:cleaning|working|on[- ]?site)\b/i.test(String(reply ?? ''));
+/** The current Manila time as YYYY-MM-DDTHH:mm (job times are stored as Manila local times). */
+export const manilaNow = (): string => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 16);
+const shiftMin = (local: string, minutes: number): string => new Date(Date.parse(`${local.slice(0, 16)}:00Z`) + minutes * 60_000).toISOString().slice(0, 16);
+/** How long after its end a job whose status says "on the way / on site / in progress" is still believed (an overnight job, a job that ran late). */
+export const CURRENT_GRACE_HOURS = 12; export const RECENT_DAYS = 7;
 export interface JobLine { number: string; date: string; time: string; status: string; services: string[]; site?: string }
 const SVC: Record<string, string> = { GLASS_EXT: 'exterior glass', GLASS_INT: 'interior glass', ROOF: 'roof', WALL: 'wall', FLOOR: 'floor', SOLAR: 'solar panels' };
 export const serviceNames = (codes: unknown): string[] => (Array.isArray(codes) ? codes : []).map((c) => SVC[String(c)] ?? String(c).toLowerCase().replace(/_/g, ' ')).slice(0, 4);
@@ -166,17 +178,39 @@ export async function clientsByJobNumber(sb: Sb, text: string): Promise<Candidat
   if (ce) throw new Error(`client lookup failed: ${String(ce.message ?? ce).slice(0, 100)}`);
   return ((cl ?? []) as { id: string; name: string }[]).map((c) => cand(c, 'job_number'));
 }
-/** A verified client's current bookings: every job that is not over (see JOB_STATUS_CLASS), whoever created it (staff, chat, any channel), soonest first. Upcoming jobs must not be in the past; a job that is on the way, on site or being cleaned is always current; a finished job whose paperwork is still open stays for 7 days. */
-export async function activeJobs(sb: Sb, clientId: string, todayIso: string): Promise<JobLine[]> {
-  const { data, error } = await sb.from('jobs').select('number, start_at, end_at, status, service_codes, site_id').eq('client_id', clientId).is('deleted_at', null).in('status', OPEN_JOB_STATUSES).order('start_at', { ascending: true }).limit(20);
-  if (error) throw new Error(`bookings lookup failed: ${String(error.message ?? error).slice(0, 100)}`);   // never "no bookings" because the database failed
-  const weekAgo = `${new Date(Date.parse(`${todayIso}T00:00:00Z`) - 7 * 86400_000).toISOString().slice(0, 10)}T00:00:00`;
-  const rows = ((data ?? []) as { number: string; start_at: string; end_at: string; status: string; service_codes: unknown; site_id: string }[]).filter((r) => {
-    const c = JOB_STATUS_CLASS[r.status]; const end = String(r.end_at ?? r.start_at);
-    return c === 'current' || (c === 'upcoming' && end >= `${todayIso}T00:00:00`) || (c === 'recent' && end >= weekAgo);
-  }).slice(0, 10);
-  if (!rows.length) return [];
-  const { data: st } = await sb.from('sites').select('id, name').in('id', [...new Set(rows.map((r) => r.site_id))]);
-  const sn = Object.fromEntries(((st ?? []) as { id: string; name: string }[]).map((x) => [x.id, x.name]));
-  return rows.map((r) => ({ number: r.number, date: String(r.start_at).slice(0, 10), time: String(r.start_at).slice(11, 16) || '08:00', status: r.status, services: serviceNames(r.service_codes), site: sn[r.site_id] }));
+/** Every kind of booking reference a customer can write: a job number (JOB-2026-8818), a job-order number (JO-2026-83589) and a TopMop job-order link (https://ops.topmop.ph/#/jo/<token>), resolved to the clients behind them.
+ *  These only SUGGEST a client for staff (basis job_number / job_order_number / job_order_link): a number or a forwardable link is not proof of who is writing. A reference that matches nothing returns [] and the customer's answer is the same either way, so the chat cannot be used to test guesses. */
+export async function clientsByReference(sb: Sb, text: string): Promise<Candidate[]> {
+  const out: Candidate[] = []; const seen = new Set<string>();
+  const add = (list: Candidate[]) => { for (const c of list) if (!seen.has(c.client_id)) { seen.add(c.client_id); out.push(c); } };
+  add(await clientsByJobNumber(sb, text));
+  const tokens = jobOrderTokensIn(text); const jos = jobNumbersIn(text).filter((n) => n.startsWith('JO-')).slice(0, 3);
+  const orders: { client_id: string; job_id: string; number: string; basis: string }[] = [];
+  if (tokens.length) { const { data, error } = await sb.from('job_orders').select('client_id, job_id, number').in('share_token', tokens).is('deleted_at', null).limit(5); if (error) throw new Error(`job order lookup failed: ${String(error.message ?? error).slice(0, 100)}`); for (const r of (data ?? []) as { client_id: string; job_id: string; number: string }[]) orders.push({ ...r, basis: 'job_order_link' }); }
+  if (jos.length) { const { data, error } = await sb.from('job_orders').select('client_id, job_id, number').in('number', jos).is('deleted_at', null).limit(5); if (error) throw new Error(`job order lookup failed: ${String(error.message ?? error).slice(0, 100)}`); for (const r of (data ?? []) as { client_id: string; job_id: string; number: string }[]) orders.push({ ...r, basis: 'job_order_number' }); }
+  const ids = [...new Set(orders.map((o) => o.client_id))]; if (!ids.length) return out;
+  const { data: cl, error: ce } = await sb.from('clients').select('id, name').in('id', ids).is('deleted_at', null); if (ce) throw new Error(`client lookup failed: ${String(ce.message ?? ce).slice(0, 100)}`);
+  const names = Object.fromEntries(((cl ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name]));
+  add(orders.filter((o) => names[o.client_id]).map((o) => ({ client_id: o.client_id, name: names[o.client_id], basis: o.basis, detail: o.number })));
+  return out;
 }
+/** Open jobs of a client split by whether their status can be TRUSTED now. The status field is typed by people and is sometimes never updated (a job "Dispatched" or "On Site" for weeks), so a status alone is not enough:
+ *  upcoming (Pending, Confirmed, Dispatch Checklist Pending): live while the job has not ended today or later.
+ *  current (Dispatched, On Site, In Progress): live only while the job's own time window still plausibly covers now (it ends no earlier than CURRENT_GRACE_HOURS ago): this keeps overnight and multi-day jobs.
+ *  recent (Work Completed, Leaving Site, Arrived at HQ): live for RECENT_DAYS after the end.
+ *  Anything open but outside its window is STALE: its status is uncertain, so it is never described to the customer (no "the crew is on the way"); staff verify. */
+export async function openJobs(sb: Sb, clientId: string, nowLocal: string): Promise<{ live: JobLine[]; stale: JobLine[] }> {
+  const now = nowLocal.length > 10 ? nowLocal.slice(0, 16) : `${nowLocal}T12:00`;
+  const { data, error } = await sb.from('jobs').select('number, start_at, end_at, status, service_codes, site_id').eq('client_id', clientId).is('deleted_at', null).in('status', OPEN_JOB_STATUSES).order('start_at', { ascending: true }).limit(40);
+  if (error) throw new Error(`bookings lookup failed: ${String(error.message ?? error).slice(0, 100)}`);   // never "no bookings" because the database failed
+  const todayStart = `${now.slice(0, 10)}T00:00`, currentCut = shiftMin(now, -CURRENT_GRACE_HOURS * 60), recentCut = shiftMin(now, -RECENT_DAYS * 24 * 60);
+  const rows = (data ?? []) as { number: string; start_at: string; end_at: string; status: string; service_codes: unknown; site_id: string }[];
+  const isLive = (r: { start_at: string; end_at: string; status: string }) => { const end = String(r.end_at ?? r.start_at).slice(0, 16); const c = JOB_STATUS_CLASS[r.status]; return c === 'upcoming' ? end >= todayStart : c === 'current' ? end >= currentCut : c === 'recent' ? end >= recentCut : false; };
+  const liveRows = rows.filter(isLive).slice(0, 10), staleRows = rows.filter((r) => !isLive(r) && JOB_STATUS_CLASS[r.status] !== 'ended').sort((a, b) => String(b.start_at).localeCompare(String(a.start_at))).slice(0, 5);
+  const ids = [...new Set([...liveRows, ...staleRows].map((r) => r.site_id))]; let sn: Record<string, string> = {};
+  if (ids.length) { const { data: st } = await sb.from('sites').select('id, name').in('id', ids); sn = Object.fromEntries(((st ?? []) as { id: string; name: string }[]).map((x) => [x.id, x.name])); }
+  const line = (r: { number: string; start_at: string; status: string; service_codes: unknown; site_id: string }): JobLine => ({ number: r.number, date: String(r.start_at).slice(0, 10), time: String(r.start_at).slice(11, 16) || '08:00', status: r.status, services: serviceNames(r.service_codes), site: sn[r.site_id] });
+  return { live: liveRows.map(line), stale: staleRows.map(line) };
+}
+/** A client's current bookings whose status can be trusted (see openJobs), soonest first, whoever created them. */
+export const activeJobs = async (sb: Sb, clientId: string, nowLocal: string): Promise<JobLine[]> => (await openJobs(sb, clientId, nowLocal)).live;

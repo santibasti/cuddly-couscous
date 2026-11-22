@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
-import { JOB_STATUS_CLASS, OPEN_JOB_STATUSES, activeJobs, clientsByMobile, contradictsBooking, datesIn, decideIdentity, existingBookingReply, isPreviousReference, jobNumbersIn, normMobile, phonesIn, type Candidate, type IdentityInput, type JobLine } from '../../supabase/functions/_shared/identity';
+import { JOB_STATUS_CLASS, OPEN_JOB_STATUSES, activeJobs, asksCrewStatus, claimsCrewStatus, clientsByReference, jobOrderTokensIn, openJobs, clientsByMobile, contradictsBooking, datesIn, decideIdentity, existingBookingReply, isPreviousReference, jobNumbersIn, normMobile, phonesIn, type Candidate, type IdentityInput, type JobLine } from '../../supabase/functions/_shared/identity';
 
 const AI_START = '2026-11-17T00:00:00Z';
 const base: IdentityInput = { stored: {}, phoneMatches: [], typedMatches: [], aiStartedOn: AI_START };
@@ -179,4 +179,78 @@ describe('V2.3 reliability: a database failure is never read as "no match" or "n
   it('the client lookup throws when both the database function and the fallback scan fail', async () => { await expect(clientsByMobile(broken(['clients']), '0917 555 1212', 'contact_mobile')).rejects.toThrow(/client lookup failed/); });
   it('the booking lookup throws instead of answering "no bookings"', async () => { await expect(activeJobs(broken(['jobs']), 'c1', '2026-11-22')).rejects.toThrow(/bookings lookup failed/); });
   it('a customer who simply has no match still gets an empty list (no error)', async () => { expect(await clientsByMobile(broken([]), '0917 555 1212', 'contact_mobile')).toEqual([]); expect(await activeJobs(broken([]), 'c1', '2026-11-22')).toEqual([]); });
+});
+
+/* ---------------- ISSUE 1: stale operational statuses ---------------- */
+describe('V2.3 stale statuses: an old "Dispatched / On Site / In Progress" can never make the AI say a crew is on the way', () => {
+  const NOW = '2026-11-22T15:00';
+  const job = (number: string, status: string, start: string, end: string) => ({ number, start_at: `${start}:00`, end_at: `${end}:00`, status, service_codes: ['GLASS_EXT'], site_id: 's1' });
+  const world = (rows: ReturnType<typeof job>[]) => fakeSb({ jobs: rows, sites: [{ id: 's1', name: 'Site' }] });
+  it('Dispatched and On Site jobs 14+ days old are STALE, not live (this is what the production data contains)', async () => {
+    const r = await openJobs(world([job('J-OLD-DISP', 'Dispatched', '2026-11-05T09:00', '2026-11-05T12:00'), job('J-OLD-SITE', 'On Site', '2026-11-04T09:00', '2026-11-04T12:00'), job('J-OLD-PROG', 'In Progress', '2026-10-20T09:00', '2026-10-20T12:00')]), 'c1', NOW);
+    expect(r.live).toEqual([]); expect(r.stale.map((j) => j.number).sort()).toEqual(['J-OLD-DISP', 'J-OLD-PROG', 'J-OLD-SITE']);
+  });
+  it('a job that ended yesterday and was never closed is stale as well (a day and a half is beyond the grace)', async () => {
+    const r = await openJobs(world([job('J-YEST', 'On Site', '2026-11-21T09:00', '2026-11-21T12:00')]), 'c1', NOW); expect(r.live).toEqual([]); expect(r.stale.map((j) => j.number)).toEqual(['J-YEST']);
+  });
+  it('legitimate jobs stay live: one that is running now, one that ran late, an OVERNIGHT job and a MULTI-DAY job', async () => {
+    const r = await openJobs(world([
+      job('J-NOW', 'On Site', '2026-11-22T09:00', '2026-11-22T17:00'),              // running now
+      job('J-LATE', 'In Progress', '2026-11-22T06:00', '2026-11-22T14:00'),         // should have ended an hour ago: inside the grace
+      job('J-NIGHT', 'In Progress', '2026-11-21T21:00', '2026-11-23T06:00'),        // overnight, ends tomorrow morning
+      job('J-MULTI', 'In Progress', '2026-11-19T08:00', '2026-11-24T17:00'),        // a five-day project
+      job('J-OTW', 'Dispatched', '2026-11-22T08:00', '2026-11-22T11:00'),           // ended four hours ago: still inside the grace
+    ]), 'c1', NOW);
+    expect(r.live.map((j) => j.number).sort()).toEqual(['J-LATE', 'J-MULTI', 'J-NIGHT', 'J-NOW', 'J-OTW']); expect(r.stale).toEqual([]);
+  });
+  it('the grace is exactly 12 hours after the job ends', async () => {
+    const mk = (end: string) => world([job('J-X', 'On Site', '2026-11-22T00:00', end)]);
+    expect((await openJobs(mk('2026-11-22T03:00'), 'c1', NOW)).live).toHaveLength(1);      // ended exactly 12 hours ago
+    expect((await openJobs(mk('2026-11-22T02:59'), 'c1', NOW)).live).toHaveLength(0);      // one minute more
+  });
+  it('upcoming and finished-but-open statuses follow their own windows; past Pending/Confirmed and week-old Work Completed are stale', async () => {
+    const r = await openJobs(world([job('J-FUT', 'Confirmed', '2026-12-01T09:00', '2026-12-01T12:00'), job('J-TODAY', 'Pending', '2026-11-22T16:00', '2026-11-22T18:00'), job('J-PASTCONF', 'Confirmed', '2026-11-10T09:00', '2026-11-10T12:00'), job('J-DONE3', 'Work Completed', '2026-11-19T09:00', '2026-11-19T12:00'), job('J-DONE20', 'Work Completed', '2026-11-02T09:00', '2026-11-02T12:00'), job('X-CLOSED', 'Closed', '2026-11-02T09:00', '2026-11-02T12:00')]), 'c1', NOW);
+    expect(r.live.map((j) => j.number).sort()).toEqual(['J-DONE3', 'J-FUT', 'J-TODAY']); expect(r.stale.map((j) => j.number).sort()).toEqual(['J-DONE20', 'J-PASTCONF']);   // a Closed job is neither
+  });
+  it('activeJobs returns only the live ones; the old date-only call still works', async () => {
+    const w = world([job('J-OLD', 'Dispatched', '2026-11-05T09:00', '2026-11-05T12:00'), job('J-NOW', 'On Site', '2026-11-22T09:00', '2026-11-22T17:00')]);
+    expect((await activeJobs(w, 'c1', NOW)).map((j) => j.number)).toEqual(['J-NOW']); expect((await activeJobs(w, 'c1', '2026-11-22')).map((j) => j.number)).toEqual(['J-NOW']);
+  });
+  it('the customer asking where the crew is, and a reply claiming it, are recognised (and ordinary replies are not)', () => {
+    for (const q of ['Is the crew on the way?', 'Nandyan na ba ang team?', 'asan na po kayo', 'Are you here already?', 'Is the team on site?']) expect(asksCrewStatus(q), q).toBe(true);
+    for (const q of ['How much is window cleaning?', 'What do you use for glass?']) expect(asksCrewStatus(q), q).toBe(false);
+    for (const r of ['The crew is on the way po.', 'Our team is currently on site.', 'The crew are working on your windows now.', 'They are on their way po.']) expect(claimsCrewStatus(r), r).toBe(true);
+    for (const r of ['We usually deploy 3–5 professional cleaning crew per service po.', 'Our team will confirm the final bill on site.', 'The crew will arrive at 9:00 AM on Monday.', 'We bring our own cleaning equipment po.']) expect(claimsCrewStatus(r), r).toBe(false);
+  });
+});
+
+/* ---------------- ISSUE 2: TopMop job-order links ---------------- */
+describe('V2.3 job-order links: recognised as an existing-booking reference; they locate a possible job for staff and never verify anyone', () => {
+  const TOKEN = '0123456789abcdef0123456789abcdef';
+  it('finds the token in a pasted TopMop link (with or without the scheme, in a sentence, with punctuation)', () => {
+    for (const t of [`https://ops.topmop.ph/#/jo/${TOKEN}`, `see https://ops.topmop.ph/#/jo/${TOKEN}.`, `ops.topmop.ph/#/jo/${TOKEN}`, `HTTPS://OPS.TOPMOP.PH/#/jo/${TOKEN}?x=1`, `Job order: (https://ops.topmop.ph/#/jo/${TOKEN})`]) expect(jobOrderTokensIn(t), t).toEqual([TOKEN]);
+  });
+  it('ignores every other address, look-alike hosts, short tokens and other TopMop paths', () => {
+    for (const t of [`https://evil.example/#/jo/${TOKEN}`, `https://ops.topmop.ph.evil.example/#/jo/${TOKEN}`, `https://notops.topmop.ph/#/jo/${TOKEN}`, 'https://ops.topmop.ph/#/jo/short', `https://ops.topmop.ph/#/jobs/${TOKEN}`, `https://ops.topmop.ph/#/quote/${TOKEN}`, 'no link here']) expect(jobOrderTokensIn(t), t).toEqual([]);
+  });
+  it('a pasted TopMop job-order link is an existing-booking reference (a look-alike address is not)', () => {
+    expect(isPreviousReference(`Hello, this is my job order https://ops.topmop.ph/#/jo/${TOKEN}`)).toBe(true); expect(isPreviousReference(`ops.topmop.ph/#/jo/${TOKEN}`)).toBe(true);
+    expect(isPreviousReference(`check https://evil.example/#/jo/${TOKEN}`)).toBe(false); expect(isPreviousReference(`https://ops.topmop.ph.evil.example/#/jo/${TOKEN}`)).toBe(false);
+  });
+  it('at most three links are read from one message', () => { expect(jobOrderTokensIn(['a', 'b', 'c', 'd'].map((x) => `https://ops.topmop.ph/#/jo/${x.repeat(20)}`).join(' '))).toHaveLength(3); });
+  const orderDb = (orders: Record<string, unknown>[], clients: Record<string, unknown>[] = [{ id: 'c-cruz', name: 'Maria Cruz' }], errors: string[] = []) => ({
+    from: (t: string) => { const q: Record<string, unknown> = {}; for (const m of ['select', 'eq', 'is', 'in', 'not', 'gte', 'order', 'limit']) q[m] = () => q; q.then = (ok: (v: unknown) => unknown) => ok(errors.includes(t) ? { data: null, error: { message: `boom ${t}` } } : { data: t === 'job_orders' ? orders : t === 'clients' ? clients : [] }); return q; }, rpc: () => ({ data: [], error: null }),
+  });
+  it('a job-order link (or JO number) locates the client as a SUGGESTION with its basis and the order number for staff', async () => {
+    const r = await clientsByReference(orderDb([{ client_id: 'c-cruz', job_id: 'j1', number: 'JO-2026-83589' }]), `my job order https://ops.topmop.ph/#/jo/${TOKEN}`);
+    expect(r).toEqual([{ client_id: 'c-cruz', name: 'Maria Cruz', basis: 'job_order_link', detail: 'JO-2026-83589' }]);
+    const n = await clientsByReference(orderDb([{ client_id: 'c-cruz', job_id: 'j1', number: 'JO-2026-83589' }]), 'my job order is JO-2026-83589'); expect(n[0]).toMatchObject({ basis: 'job_order_number', client_id: 'c-cruz' });
+  });
+  it('POSSESSION OF THE LINK IS NOT IDENTITY: the match becomes a suggestion for staff; the contact stays a previous contact with no client', async () => {
+    const found = await clientsByReference(orderDb([{ client_id: 'c-cruz', job_id: 'j1', number: 'JO-2026-83589' }]), `https://ops.topmop.ph/#/jo/${TOKEN}`);
+    const r = decideIdentity({ ...base, typedMatches: found });
+    expect(r.status).toBe('previous'); expect(r.state).toBe('suggested'); expect(r.client_id).toBeUndefined(); expect(r.candidates[0]).toMatchObject({ client_id: 'c-cruz', basis: 'job_order_link' });
+  });
+  it('an unknown link finds nothing (the customer is answered the same way, so the chat cannot be used to guess links)', async () => { expect(await clientsByReference(orderDb([]), `https://ops.topmop.ph/#/jo/${TOKEN}`)).toEqual([]); });
+  it('a database failure is an error, never "no match"', async () => { await expect(clientsByReference(orderDb([], [], ['job_orders']), `https://ops.topmop.ph/#/jo/${TOKEN}`)).rejects.toThrow(/job order lookup failed/); });
 });
