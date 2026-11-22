@@ -102,7 +102,9 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
       }
       const isNoAnswer = /^NO_ANSWER\W*$/i.test(brain.reply.trim());
       if (brain.error && isTransientError(brain.error) && !legacy && (Date.now() - Date.parse(pending[0]?.created_at ?? new Date().toISOString())) < GIVE_UP_MIN * 60_000) return { status: 'retry', reply: '', note: brain.error.slice(0, 160) };   // nothing is saved and nothing is marked: the next pass (a new message or the recovery job) tries again
-      let flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked, verifiedJobs: verified ? who.jobs.map((j) => j.number) : [] }).violations;
+      // a confirmed client's reply that states THEIR booking (job number, or the date of one of their bookings) is not a new booking claim
+      const own = { verifiedJobs: verified ? who.jobs.map((j) => j.number) : [], ownBooking: verified ? (t: string) => { const ds = datesIn(t, manilaDay(Date.now())); return who.jobs.some((j) => ds.includes(j.date)); } : undefined };
+      let flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked, ...own }).violations;
       if (!brain.error && !isNoAnswer && !brain.bookReply) {
         if (!brain.reply.trim()) {                                                                                         // the AI wrote nothing: a safe sentence, never a blank draft
           const f = fallbackReply(vctx(first), 'empty'); brain.reply = f.text; if (f.handover && !brain.humanReason) brain.humanReason = 'The AI could not answer';
@@ -113,7 +115,7 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
         }
       }
       if (!brain.reply.trim() && !brain.error && photo) brain.reply = PHOTO_THANKS;
-      const d0 = decide(mode, brain, lang);
+      const d0 = decide(mode, brain, lang, own);
       // the welcome already asks for the location: the AI part must not ask it again
       const noDupAsk = (t: string) => t.split(MSG_SPLIT).map((part) => part.split(/(?<=[.!?])\s+/).filter((x) => !(x.includes('?') && questionTopic(x) === 'location')).join(' ').trim()).filter(Boolean).join(MSG_SPLIT);
       const d = first && (d0.kind === 'draft' || d0.kind === 'send') ? { ...d0, text: composeFirst(noDupAsk(d0.text)) } : d0;

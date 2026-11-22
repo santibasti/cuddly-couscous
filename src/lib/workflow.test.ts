@@ -32,8 +32,8 @@ const prepForm = (wf: JobWorkflow, over: Record<string, unknown> = {}) => ({ ite
 const checkIn = (present: string[], over = {}) => {
   for (const e of present) {
     const rec = db().attendance.find((a) => a.employee_id === e && a.date === T() && !a.deleted_at);
-    if (!rec) store.insert('attendance', { employee_id: e, date: T(), kind: 'Present', clock_in: `${T()}T07:50`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending' } as never);
-    else if (!rec.clock_in) store.update('attendance', rec.id, { kind: 'Present', clock_in: `${T()}T07:50` } as never);
+    if (!rec) store.insert('attendance', { employee_id: e, date: T(), kind: 'Present', clock_in: `${T()}T00:01`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending' } as never);
+    else if (!rec.clock_in) store.update('attendance', rec.id, { kind: 'Present', clock_in: `${T()}T00:01` } as never);
   }
   return { contact_name: 'Ms. Reyes', present, absent: [], ...over };
 };
@@ -113,7 +113,7 @@ describe('7-step workflow: normal recurring job', () => {
     const lead = db().employees[3].id;
     // a fresh, not yet approved clock-in (earlier tests may have left an approved one for this person today)
     for (const a of db().attendance.filter((x) => x.employee_id === lead && x.date === T() && !x.deleted_at)) store.remove('attendance', a.id, { cascade: true });
-    store.insert('attendance', { employee_id: lead, date: T(), kind: 'Present', clock_in: `${T()}T07:50`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending' } as never);
+    store.insert('attendance', { employee_id: lead, date: T(), kind: 'Present', clock_in: `${T()}T00:01`, field_work: false, late_min: 0, undertime_min: 0, ot_min: 0, worked_hours: 0, approval: 'Pending' } as never);
     const sc = scenario('FULL', lead);
     const q = db().quotations.find((x) => x.status === 'Approved')!;
     store.update('jobs', sc.job.id, { quotation_id: q.id } as never); priorJob('FULL', sc.job.id);

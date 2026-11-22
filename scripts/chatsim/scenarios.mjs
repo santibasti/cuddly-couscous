@@ -195,10 +195,10 @@ const seedClient = (id, name, mobile, jobs = []) => {   // a client record CREAT
 };
 const conv0 = () => DB.chat_conversations[0] ?? {};
 const askText = (label) => `Hi po, are we still scheduled for ${label}?`;
-const sayFull = () => text(`Sorry po, that date is fully booked. The nearest open dates are Dec 1, Dec 2 or Dec 3.`);
+const sayFull = () => text(`Sorry po, that date is fully booked. The nearest open dates are Jan 11, Jan 12 or Jan 13.`);
 const aiStartedTomorrow = () => { DB.settings[0].data.chat_ai.ai_started_on = new Date(Date.now() + 86400000).toISOString(); };
 const confirmByStaff = async (clientId) => { const a = await staff({ action: 'link', conversation_id: conv0().id, client_id: clientId }); await staff({ action: 'release', conversation_id: conv0().id }); return a; };   // what a staff member does in AI Chat: "This is the client", then lets the AI answer
-const leak = (b) => /JOB-\d{4}-\d{3,5}|fully booked|Dec 1\b|Reservation Date|Please copy this/.test(b);
+const leak = (b) => /JOB-\d{4}-\d{3,5}|fully booked|Jan 11\b|Reservation Date|Please copy this/.test(b);
 
 // V2.3-1/2: previous contacts (before the AI): no welcome, no menu, no client records, never an existing client
 reset('suggest'); queue(false); aiStartedTomorrow(); state.script = () => text('Which service do you need po?');
@@ -218,7 +218,7 @@ ok('V2.3-3 a person is asked: the chat goes to staff with the possible client an
 const lk = await confirmByStaff('c1');
 ok('V2.3-3 staff press "This is the client" (the real chat-send function): the contact becomes an EXISTING client by staff link, audited', lk.ok === true && conv0().contact_status === 'existing' && conv0().client_id === 'c1' && conv0().link_state === 'staff' && (DB.audit_logs ?? []).some((a) => /linked to client Maria Cruz by staff/i.test(a.summary)), JSON.stringify({ s: conv0().contact_status, st: conv0().link_state }));
 deliver(); await send(askText(D1.label), { phone: '+63 917 555 1212' }); dr = drafts().at(-1);
-ok('V2.3-3 now confirmed: the AI is given the job first; the model\'s "fully booked" is caught and replaced by THEIR booking; no form, no other dates', /VERIFIED ACTIVE AND UPCOMING BOOKINGS/.test(lastSystem()) && /JOB-2026-8818/.test(dr.body) && !/fully booked|Dec 1\b|Reservation Date/.test(dr.body), JSON.stringify(dr.body));
+ok('V2.3-3 now confirmed: the AI is given the job first; the model\'s "fully booked" is caught and replaced by THEIR booking; no form, no other dates', /VERIFIED ACTIVE AND UPCOMING BOOKINGS/.test(lastSystem()) && /JOB-2026-8818/.test(dr.body) && !/fully booked|Jan 11\b|Reservation Date/.test(dr.body), JSON.stringify(dr.body));
 
 // V2.3-4: a reminder about a high ceiling: before confirmation a person is asked; after confirmation it is acknowledged and the team alerted
 reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => text("Noted po, thank you for the reminder about the high ceiling. I'll make sure our team sees it.");
@@ -265,9 +265,9 @@ reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', 
 await send(`I want to book window cleaning on ${D1.label}`, { phone: '0917 555 1212' }); dr = drafts().at(-1);
 ok('V2.3-9 an unconfirmed contact (phone matches a client who holds a booking) asks to book: NO booking form, no date offered, staff are asked to confirm first', !/Reservation Date|Please copy this/.test(dr.body) && /Our team will confirm your booking details/.test(dr.body) && conv0().status === 'Needs a person' && /Confirm the client/.test(conv0().human_reason ?? ''), JSON.stringify(dr.body));
 reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); let step = 0;
-state.script = () => { step++; return step === 1 ? { content: [{ type: 'tool_use', id: 't9', name: 'check_date', input: { date: D1.iso } }], stop_reason: 'tool_use' } : text('Sorry po, that date is fully booked. The nearest open dates are Dec 1, Dec 2 or Dec 3.'); };
+state.script = () => { step++; return step === 1 ? { content: [{ type: 'tool_use', id: 't9', name: 'check_date', input: { date: D1.iso } }], stop_reason: 'tool_use' } : text('Sorry po, that date is fully booked. The nearest open dates are Jan 11, Jan 12 or Jan 13.'); };
 await send(`Is ${D1.label} open for window cleaning in Makati?`, { phone: '0917 555 1212' }); dr = drafts().at(-1);
-ok('V2.3-9 the date tool refuses to judge a date the possible client already holds ("team_confirm"), and the model\'s "fully booked" never reaches the customer', JSON.stringify(modelCalls.map((c) => c.messages)).includes('team_confirm') && !/fully booked|Dec 1\b/.test(dr.body), JSON.stringify(dr.body));
+ok('V2.3-9 the date tool refuses to judge a date the possible client already holds ("team_confirm"), and the model\'s "fully booked" never reaches the customer', JSON.stringify(modelCalls.map((c) => c.messages)).includes('team_confirm') && !/fully booked|Jan 11\b/.test(dr.body), JSON.stringify(dr.body));
 
 // V2.3-10: staff tools: unlink, re-check and the link survives a message without a phone
 reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => text('Sure po.');

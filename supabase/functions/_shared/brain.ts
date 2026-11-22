@@ -146,13 +146,13 @@ const peso = (s: string) => [...s.matchAll(/₱\s?([\d,]+(?:\.\d+)?)/g)].map((m)
 /** Every peso amount the rate table itself contains: packages, the extra panel, the unit rates and their minimum totals. */
 export const knownAmounts = (): Set<number> => new Set<number>([OCULAR_FEE, EXTRA_PANEL, ...RATES.map((r) => r.price), ...OTHER.flatMap((o) => [o.rate, o.rate * o.min])]);
 export interface Guard { ok: boolean; violations: string[] }
-export function guardReply(reply: string, ctx: { amounts: number[]; booked: boolean; verifiedJobs?: string[] }): Guard {
+export function guardReply(reply: string, ctx: { amounts: number[]; booked: boolean; verifiedJobs?: string[]; ownBooking?: (text: string) => boolean }): Guard {
   const v: string[] = []; const text = reply ?? '';
   const known = knownAmounts(); const allowed = new Set([...ctx.amounts, ...known]);
   for (const n of peso(text)) if (!allowed.has(n)) v.push(`an amount (₱${n}) that no tool returned`);
   const claim = /(is|are|ay|na)\s+(now\s+)?(booked|confirmed|naka-?book|kumpirmado)|naka-?book na|(booking|reservation|schedule)\s+(is\s+)?(confirmed|set)|successfully booked|nai-?book na/i;
   const claimText = text.replace(/\b(final\s+)?(amount|price|total|bill|count|area|rate|quantity|figure|estimate|charges?)\s+(is|are)\s+(confirmed|set)\b/gi, '$1$2');   // "the final amount is confirmed on site" is the standard estimate sentence, not a booking claim
-  const namesOwnJob = (ctx.verifiedJobs ?? []).some((n) => text.toUpperCase().includes(n.toUpperCase()));   // "your booking JOB-2026-8818 is set for ...": a statement about the customer's own verified job, not a new booking claim
+  const namesOwnJob = (ctx.verifiedJobs ?? []).some((n) => text.toUpperCase().includes(n.toUpperCase())) || !!ctx.ownBooking?.(text);   // "your booking JOB-2026-8818 is set for ...": a statement about the customer's own verified job, not a new booking claim
   if (claim.test(claimText) && !ctx.booked && !namesOwnJob) v.push('says a booking is confirmed when the system did not book it');
   if (/discount|promo|libre|free (of charge|service|cleaning)|mura pa|bawas/i.test(text) && !/(team|staff|ire-?refer|ipapasa|check)/i.test(text) && !/\b(not|no|isn'?t|never|without)\b[^.]{0,25}\b(a |any )?(discount|promo|free)/i.test(text)) v.push('talks about a discount or free service without handing over');
   if (/guarantee|100\s?%|siguradong (matatanggal|malinis)/i.test(text) && !/(not|cannot|can't|hindi|no)\s+(\w+\s+){0,3}guarantee|hindi (po )?(namin )?(ma)?garantiya|guarantee[^.]{0,40}(not|cannot)/i.test(text)) v.push('promises a result');
@@ -214,8 +214,8 @@ export const isRewriteChatter = (t: string): boolean => /^\s*(i (can'?t|cannot|c
 
 /** What to do with the answer. Suggest: always a draft for staff (nothing is sent). Auto: send it, unless a safety check failed (then a person takes over). */
 export type Decision = { kind: 'draft'; text: string } | { kind: 'send'; text: string } | { kind: 'handover'; text: string; reason: string };
-export function decide(mode: Mode, b: Brain, lang: string): Decision {
-  const g = guardReply(b.bookReply ?? b.reply, { amounts: b.amounts, booked: b.booked });
+export function decide(mode: Mode, b: Brain, lang: string, own?: { verifiedJobs?: string[]; ownBooking?: (text: string) => boolean }): Decision {
+  const g = guardReply(b.bookReply ?? b.reply, { amounts: b.amounts, booked: b.booked, ...own });
   if (b.humanReason) return { kind: 'handover', text: g.ok && b.reply ? b.reply : fallbackFor(lang), reason: b.humanReason };
   if (b.error) return { kind: 'handover', text: fallbackFor(lang), reason: `The AI could not answer (${b.error.slice(0, 80)})` };
   if (mode === 'suggest') return { kind: 'draft', text: b.reply.trim() ? b.reply : fallbackFor(lang) };   // never a blank draft: staff get a safe holding sentence they can edit                       // staff see the text and any safety flags before anything is sent

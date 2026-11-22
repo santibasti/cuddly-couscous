@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
+import { emptyContext, foldMessages } from '../../supabase/functions/_shared/chatcontext';
+import { guardReply } from '../../supabase/functions/_shared/brain';
+import { repairReply, validateReply } from '../../supabase/functions/_shared/validate';
 import { JOB_STATUS_CLASS, OPEN_JOB_STATUSES, activeJobs, asksCrewStatus, claimsCrewStatus, crewStatusBacked, clientsByReference, jobOrderTokensIn, openJobs, clientsByMobile, contradictsBooking, datesIn, decideIdentity, existingBookingReply, isPreviousReference, jobNumbersIn, normMobile, phonesIn, type Candidate, type IdentityInput, type JobLine } from '../../supabase/functions/_shared/identity';
 
 const AI_START = '2026-11-17T00:00:00Z';
@@ -344,5 +347,26 @@ describe('V2.3 real-model finding: "I don\'t see that date" must never leave the
   });
   it('an unconfirmed contact is not affected by this rule (they are handed to staff elsewhere)', () => {
     expect(contradictsBooking("I don't see November 30 on your record po.", asked, jobs, T, false)).toBeUndefined();
+  });
+});
+
+describe('V2.3 staging finding: a confirmed client\'s OWN booked service is never an "unrelated service" (it used to delete the answer)', () => {
+  const ctx0 = foldMessages(emptyContext(), ['Hi po, are we still scheduled for December 1?']);
+  const check = (verified: boolean, jobs: JobLine[]) => ({ ctx: ctx0, intent: 'existing_booking' as const, customerText: 'Hi po, are we still scheduled for December 1?', previousAi: [], identity: { status: 'existing' as const, verified, jobs, today: '2026-11-22' } });
+  const reply = 'Yes po, your window cleaning booking on December 1 at 9:00 AM is confirmed. Our team will see you then.';
+  const dec1: JobLine = { number: 'JOB-2026-9100', date: '2026-12-01', time: '09:00', status: 'Confirmed', services: ['exterior glass'] };
+  it('verified client: naming their booked service (glass / window) is fine, the sentence is kept', () => {
+    expect(validateReply(reply, check(true, [dec1])).join()).not.toMatch(/unrelated_services/);
+    expect(repairReply(reply, ['unrelated_services: do not mention window (the customer did not ask about them)'], check(true, [dec1]))).toMatch(/window cleaning booking/);
+  });
+  it('a service the client did NOT book is still flagged (a roof sentence for a glass booking)', () => {
+    expect(validateReply('Yes po, your booking is on December 1. We also clean roofs and walls po.', check(true, [dec1])).join()).toMatch(/unrelated_services/);
+  });
+  it('an unconfirmed contact gets no such allowance', () => { expect(validateReply(reply, check(false, [dec1])).join()).toMatch(/unrelated_services|contradicts|crew/); });
+  it('the booking-claim guard accepts a sentence about the client\'s own booking (date or job number) and still blocks an invented booking', () => {
+    const own = (t: string) => /december 1/i.test(t);
+    expect(guardReply('Your booking on December 1 is confirmed po.', { amounts: [], booked: false, ownBooking: own }).violations).toEqual([]);
+    expect(guardReply('Your booking on December 9 is confirmed po.', { amounts: [], booked: false, ownBooking: own }).violations.join()).toMatch(/booking is confirmed/);
+    expect(guardReply('Your booking is confirmed po.', { amounts: [], booked: false }).violations.join()).toMatch(/booking is confirmed/);
   });
 });
