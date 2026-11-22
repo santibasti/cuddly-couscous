@@ -4,7 +4,10 @@
 // Answer: { ok, status: "queued" | "reply" | "held" | "handover" | "duplicate" | "off", reply, mode } ("queued": the work continues after the answer because ManyChat waits only 10 seconds) — put `reply` in the chatbot's next message; when it is empty, send nothing (staff or a draft is handling it).
 // V2: structured memory (chat_conversations.context), delivered-only history, idempotent conversation creation, one answer per burst (per-conversation lock + debounce + drain), intent/stage, reply validation with repair and safe fallbacks.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { contactSince, olderThanAi, mobileFrom, returningByTag, type ReturningInfo, isPhotoMessage, honorificFor, parseMode } from '../_shared/brain.ts';
+import { type ReturningInfo, isPhotoMessage, honorificFor, parseMode } from '../_shared/brain.ts';
+import { resolveContact } from '../_shared/contact.ts';
+import type { Identity, JobLine } from '../_shared/identity.ts';
+import { manilaDay } from '../chat-availability/logic.ts';
 import { createWorker } from '../_shared/chatworker.ts';
 import { readContext } from '../_shared/chatcontext.ts';
 import { parseLang } from '../chat-availability/logic.ts';
@@ -46,58 +49,24 @@ Deno.serve(async (req) => {
   const photo = isPhotoMessage(text);
   if (photo) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Customer sent a photo', body: `${conv.name ?? 'A customer'} (${channel}) sent a photo. Technical team: please review it.`, link: '/ai-chat' });   // the AI promises the technical team will look at it
 
-  // A returning customer: staff marked them, their mobile number matches a client we already have, or a ManyChat tag says so. The AI then skips the welcome and does not treat them as a new inquiry.
-  let returning: ReturningInfo | null = null;
+  // V2.3: who is this? New contact, previous contact (talked to TopMop before, nothing verified) or existing client (matched to a TopMop client record). The result is kept on the conversation, the existing client's active bookings are loaded, and the AI is told before it writes anything.
+  let returning: ReturningInfo | null = null; let jobs: JobLine[] = []; let identity: Identity | undefined;
   try {
-    const rc = conv as { returning_customer?: boolean; returning_note?: string | null; client_id?: string | null };
-    const mob = mobileFrom(pick('phone', 'optin_phone', 'mobile', 'mobile_number'), text); const tag = returningByTag(b.tags ?? c.tags);
-    let clientId = rc.client_id ?? undefined; let why = rc.returning_customer ? (rc.returning_note || 'Staff marked this customer as returning') : '';
-    if (!why && mob) { const { data: cl } = await sb.from('clients').select('id, name').eq('mobile', mob).is('deleted_at', null).lt('created_at', (conv as { created_at?: string }).created_at ?? new Date().toISOString()).limit(1); if (cl?.length) { clientId = cl[0].id; why = `Matched existing client ${cl[0].name} by mobile number`; } }
-    if (!why && tag) why = `ManyChat tag "${tag}"`;
-    const aiStart = (cfg as { ai_started_on?: string } | undefined)?.ai_started_on;   // set once by the owner: when the AI first answered real customers
-    if (!why && aiStart && olderThanAi((conv as { created_at?: string }).created_at, aiStart, 0)) why = 'This conversation started before the AI chat was switched on; our team handled it';   // works without the ManyChat token, on every message
-    // Ask ManyChat about the contact once (their first message here): its tags, and when they first became a contact. A contact from before the AI chat started was already dealing with our team.
-    const prevCtx = readContext((conv as { context?: unknown }).context);
-    if (!why && env('MANYCHAT_API_TOKEN')) {
-      if (!prevCtx.returning_checked) {   // once per conversation (not only on the first message: conversations that existed before this check are looked at on their next message)
-        const r = await fetch(`https://api.manychat.com/fb/subscriber/getInfo?subscriber_id=${encodeURIComponent(sub)}`, { headers: { Authorization: `Bearer ${env('MANYCHAT_API_TOKEN')}` }, signal: AbortSignal.timeout(3000) }).catch(() => null);
-        const info = r && r.ok ? ((await r.json().catch(() => ({}))) as { data?: Record<string, unknown> }).data : undefined;
-        if (info) {
-          await sb.from('chat_conversations').update({ context: { ...prevCtx, returning_checked: true } }).eq('id', conv.id);
-          const t2 = returningByTag(info.tags); const since = contactSince(b, c, info);
-          const { data: first } = await sb.from('chat_conversations').select('created_at').order('created_at', { ascending: true }).limit(1);
-          const startedOn = (cfg as { ai_started_on?: string } | undefined)?.ai_started_on || first?.[0]?.created_at;
-          if (t2) why = `ManyChat tag "${t2}"`; else if (olderThanAi(since, startedOn)) why = `A ManyChat contact since ${String(since).slice(0, 10)}, before the AI chat started`;
-          const { data: seen } = await sb.from('alert_outbox').select('id').eq('title', 'ManyChat contact fields').limit(1);
-          if (!seen?.length) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'ManyChat contact fields', body: `ManyChat sends these fields for a contact: ${Object.keys(info).join(', ')}. ${since ? `First-contact date found: ${since.slice(0, 10)}.` : 'No first-contact date was found, so old contacts cannot be recognised automatically (tags and mobile numbers still work).'}`, link: '/ai-chat' });
-        }
-      }
+    const aiStart = cfg?.ai_started_on || (await sb.from('chat_conversations').select('created_at').order('created_at', { ascending: true }).limit(1)).data?.[0]?.created_at;   // when the AI first answered real customers
+    const rcv = await resolveContact({ sb, env, conv: conv as Record<string, unknown>, sub, payloads: [b, c], text, aiStartedOn: aiStart, today: manilaDay(Date.now()) });
+    returning = rcv.returning; jobs = rcv.jobs; identity = rcv.identity;
+    if (rcv.mc.fetched) {
+      const { data: seen } = await sb.from('alert_outbox').select('id').eq('title', 'ManyChat contact fields').limit(1);
+      if (!seen?.length) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'ManyChat contact fields', body: `ManyChat sends these fields for a contact: ${(rcv.mc.fields ?? []).join(', ')}. ${rcv.mc.subscribed ? `First-contact date found: ${rcv.mc.subscribed.slice(0, 10)}.` : 'No first-contact date was found, so old contacts cannot be recognised by date (tags, the contact\'s mobile number and staff links still work).'} ManyChat gives contact fields only, never the old message history.`, link: '/ai-chat' });
     }
-    if (why) {
-      const info: ReturningInfo = { note: why };
-      if (clientId) {
-        const [{ data: cl }, { data: jb }, { data: iq }] = await Promise.all([
-          sb.from('clients').select('name, mobile, email, address').eq('id', clientId).maybeSingle(),
-          sb.from('jobs').select('number, status, start_at').eq('client_id', clientId).is('deleted_at', null).order('start_at', { ascending: false }).limit(4),
-          sb.from('inquiries').select('stage, details, created_at').eq('client_id', clientId).is('deleted_at', null).order('created_at', { ascending: false }).limit(3)]);
-        if (cl) info.client = { name: cl.name, mobile: cl.mobile, email: cl.email, address: cl.address };
-        info.jobs = (jb ?? []).map((j: { number: string; status: string; start_at: string }) => `${j.number} (${j.status}, ${String(j.start_at).slice(0, 10)})`);
-        info.inquiries = (iq ?? []).map((q: { stage: string; details: string | null; created_at: string }) => `${String(q.created_at).slice(0, 10)} ${q.stage}: ${String(q.details ?? '').slice(0, 70)}`);
-      }
-      returning = info;
-      if (!rc.returning_customer) {                                                                         // newly recognised: remember it and tell the team once
-        const { error: re } = await sb.from('chat_conversations').update({ returning_customer: true, returning_note: why, ...(clientId && !rc.client_id ? { client_id: clientId } : {}) }).eq('id', conv.id);
-        if (!re) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Returning customer messaged', body: `${conv.name ?? 'A customer'} (${channel}): ${why}. The AI will not treat them as new.`, link: '/ai-chat' });
-      }
-    }
-  } catch (e) { console.error('returning check', (e as Error).message); }   // never stop the chat because of this check
+  } catch (e) { console.error('contact check', (e as Error).message); }   // never stop the chat because of this check
   if (mode === 'off') return json({ ok: true, status: 'off', reply: '', mode });
   if (conv.status === 'Needs a person') return json({ ok: true, status: 'handover', reply: '', mode });                    // a person has this conversation: the AI stays silent
   if (!env('ANTHROPIC_API_KEY')) return json({ ok: true, status: 'held', reply: '', mode, note: 'ANTHROPIC_API_KEY is not set' });
 
   const token = env('MANYCHAT_API_TOKEN'), edge = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
   const queued = !!edge?.waitUntil && !(mode === 'auto' && !token);          // ManyChat waits only 10 seconds: on Supabase the work continues after we have answered; without a token a full-mode reply is awaited and returned
-  const worker = createWorker({ sb, env, conv, sub, channel, text, lang, honorific, returning, photo, mode, cfg, st, queued, token, key, model: cfg?.model || env('CHAT_AI_MODEL') || 'claude-haiku-5-5', appUrl: env('APP_URL') || 'https://ops.topmop.ph', debounceMs: queued ? Number(env('CHAT_DEBOUNCE_MS') || 2500) : 0 });
+  const worker = createWorker({ sb, env, conv, sub, channel, text, lang, honorific, returning, identity, jobs, photo, mode, cfg, st, queued, token, key, model: cfg?.model || env('CHAT_AI_MODEL') || 'claude-haiku-5-5', appUrl: env('APP_URL') || 'https://ops.topmop.ph', debounceMs: queued ? Number(env('CHAT_DEBOUNCE_MS') || 2500) : 0 });
   if (!queued) { const o = await worker(); return json({ ok: o.status !== 'error', ...o, mode }); }
   edge!.waitUntil!(worker().catch(async (e) => { await sb.from('alert_outbox').insert({ kind: 'chat', title: 'The AI chat had an error', body: String((e as Error).message ?? e).slice(0, 160), link: '/ai-chat' }); }));
   return json({ ok: true, status: 'queued', reply: '', mode });

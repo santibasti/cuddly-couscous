@@ -139,8 +139,8 @@ describe('returning customers', () => {
   it('tells the AI the customer is not new, skips the welcome and does not ask for details on file', () => {
     const info = { note: 'Matched existing client Maria Santos by mobile number', client: { name: 'Maria Santos', mobile: '09171234567', address: 'Quezon City' }, jobs: ['JOB-2026-0100 (Completed, 2026-09-01)'] };
     expect(returningBlock(info)).toMatch(/NOT a new inquiry/); expect(returningBlock(info)).toContain('Maria Santos'); expect(returningBlock(info)).toContain('JOB-2026-0100');
-    const s = buildSystem({ sections: [], version: null, lang: 'en', returning: info }); expect(s).toMatch(/RETURNING CUSTOMER/); expect(s).toMatch(/Welcome back po/); expect(s).toMatch(/Do not ask again for details we already have/);
-    expect(buildSystem({ sections: [], version: null, lang: 'en' })).not.toMatch(/RETURNING CUSTOMER/);
+    const s = buildSystem({ sections: [], version: null, lang: 'en', returning: info }); expect(s).toMatch(/CUSTOMER STATUS: EXISTING CLIENT/); expect(s).toMatch(/Welcome back po/); expect(s).toMatch(/Do not ask again for what is on file/);
+    expect(buildSystem({ sections: [], version: null, lang: 'en' })).not.toMatch(/CUSTOMER STATUS:/);
   });
 });
 

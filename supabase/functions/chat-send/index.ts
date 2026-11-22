@@ -2,9 +2,12 @@
 //   { action: "approve", message_id, text? }   run the queued actions (book, save the lead), then send the reply to the customer through ManyChat (secret MANYCHAT_API_TOKEN)
 //                                              — without that token the reply is marked "approved" and shown to copy into ManyChat's live chat
 //   { action: "discard", message_id }          { action: "takeover" | "release", conversation_id }   { action: "returning", conversation_id, on: true|false }
+//   V2.3: { action: "link", conversation_id, client_id }  (staff link a chat to the right TopMop client)   { action: "unlink", conversation_id }   { action: "resync", conversation_id? }  (read the ManyChat contact again; without an id: the next 25 never-checked conversations)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { makeExec } from '../_shared/chatexec.ts';
 import { flattenMessages, splitMessages, type Action } from '../_shared/brain.ts';
+import { resolveContact } from '../_shared/contact.ts';
+import { manilaDay } from '../chat-availability/logic.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Content-Type': 'application/json' };
@@ -24,8 +27,39 @@ Deno.serve(async (req) => {
     await sb.from('chat_conversations').update(action === 'takeover' ? { status: 'Needs a person', human_reason: 'A staff member took over' } : { status: c.inquiry_id ? 'Lead created' : 'Open', human_reason: null }).eq('id', c.id);
     return json({ ok: true });
   }
+  const audit = (summary: string, id: string) => sb.from('audit_logs').insert({ user_id: who, action: 'update', table_name: 'chat_conversations', record_id: id, summary });
+  if (action === 'link') {   // staff decide which TopMop client this contact is: the only way a contact is linked without the system's own verification
+    const cid = String(b.conversation_id ?? ''), clid = String(b.client_id ?? '');
+    const { data: cl } = await sb.from('clients').select('id, name').eq('id', clid).is('deleted_at', null).maybeSingle(); if (!cl) return json({ error: 'Client not found' }, 404);
+    const patch = { client_id: cl.id, contact_status: 'existing', link_state: 'staff', link_basis: 'staff', link_candidates: [], linked_by: who, linked_at: new Date().toISOString(), returning_customer: true, returning_note: `Linked to client ${cl.name} by staff` };
+    const { error } = await sb.from('chat_conversations').update(patch).eq('id', cid);
+    if (error) return json({ error: /column|schema cache/i.test(error.message) ? 'Run supabase db push first (migration 0135).' : error.message }, 400);
+    await audit(`Chat linked to client ${cl.name} by staff`, cid); return json({ ok: true, client: cl.name });
+  }
+  if (action === 'unlink') {
+    const cid = String(b.conversation_id ?? '');
+    const { error } = await sb.from('chat_conversations').update({ client_id: null, contact_status: 'previous', link_state: null, link_basis: null, link_candidates: [], linked_by: null, linked_at: null }).eq('id', cid);
+    if (error) return json({ error: /column|schema cache/i.test(error.message) ? 'Run supabase db push first (migration 0135).' : error.message }, 400);
+    await audit('Chat unlinked from its client by staff', cid); return json({ ok: true });
+  }
+  if (action === 'resync') {   // read the ManyChat contact fields again and re-run the matching (ManyChat gives contact fields only, never the old messages)
+    const { data: st } = await sb.from('settings').select('data').eq('id', 'main').maybeSingle(); const aiStart = ((st?.data as Record<string, unknown> | undefined)?.chat_ai as { ai_started_on?: string } | undefined)?.ai_started_on;
+    const one = String(b.conversation_id ?? '');
+    const q = one ? sb.from('chat_conversations').select('*').eq('id', one) : sb.from('chat_conversations').select('*').is('mc_synced_at', null).order('last_message_at', { ascending: false }).limit(25);
+    const { data: list, error } = await q; if (error) return json({ error: /column|schema cache/i.test(error.message) ? 'Run supabase db push first (migration 0135).' : error.message }, 400);
+    const tally = { checked: 0, existing: 0, previous: 0, new: 0, ask_staff: 0 };
+    for (const conv of (list ?? []) as Record<string, unknown>[]) {
+      try { const r = await resolveContact({ sb, env, conv, sub: String(conv.subscriber_id), payloads: [], text: '', aiStartedOn: aiStart, today: manilaDay(Date.now()), force: true }); tally.checked++; tally[r.identity.status]++; if (r.identity.state === 'ambiguous' || r.identity.state === 'suggested') tally.ask_staff++; } catch (e) { console.error('resync', (e as Error).message); }
+      await new Promise((r) => setTimeout(r, 250));   // ManyChat allows a few requests a second
+    }
+    return json({ ok: true, ...tally });
+  }
   if (action === 'returning') {
-    const on = b.on !== false; const { error } = await sb.from('chat_conversations').update({ returning_customer: on, returning_note: on ? 'Staff marked this customer as returning' : null }).eq('id', String(b.conversation_id ?? ''));
+    const on = b.on !== false; const cid0 = String(b.conversation_id ?? '');
+    const { data: cur } = await sb.from('chat_conversations').select('contact_status').eq('id', cid0).maybeSingle();
+    const base = { returning_customer: on, returning_note: on ? 'Staff marked this customer as returning' : null };
+    let { error } = await sb.from('chat_conversations').update({ ...base, ...(on && (!cur?.contact_status || cur.contact_status === 'new') ? { contact_status: 'previous' } : {}), ...(!on && cur?.contact_status === 'previous' ? { contact_status: 'new' } : {}) }).eq('id', cid0);
+    if (error && /contact_status/.test(error.message)) ({ error } = await sb.from('chat_conversations').update(base).eq('id', cid0));   // migration 0135 not applied yet: the older behaviour
     return error ? json({ error: error.message.includes('returning_customer') ? 'Run supabase db push first (migration 0132).' : error.message }, 400) : json({ ok: true });
   }
   const { data: msg } = await sb.from('chat_messages').select('*').eq('id', String(b.message_id ?? '')).maybeSingle(); if (!msg || msg.direction !== 'out') return json({ error: 'Message not found' }, 404);

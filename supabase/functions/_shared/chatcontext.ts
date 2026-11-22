@@ -2,6 +2,7 @@
 // Pure logic with no network: what the customer has told us (location, service, surface, property, access, schedule), what they want right now (intent, stage),
 // and what we have already said to them (explained, last question) read ONLY from replies that were really delivered, never from unsent drafts.
 import { findRate } from './rates.ts';
+import { isPreviousReference } from './identity.ts';
 
 /** A Philippine mobile number in a message or field: 09171234567, +63 917 123 4567, 639171234567 -> 09171234567 (undefined when there is none). */
 export function mobileFrom(...parts: unknown[]): string | undefined {
@@ -15,7 +16,7 @@ export function mobileFrom(...parts: unknown[]): string | undefined {
 export const BOOKING_FORM = 'Please copy this and fill in your details po:\nName:\nAddress:\nContact Number:\nEmail:\nNo. of House Storey:\nReservation Date:\nService Window, Wall, Roof, Solar, Floor?';
 export const BOOKING_SEND_FORM = `Sure po, happy to help you book!\n\n---\n\n${BOOKING_FORM}`;
 export const isBookingForm = (t: string): boolean => /Reservation Date:/i.test(t ?? '') && /Contact Number:/i.test(t ?? '');
-export type Intent = 'general_inquiry' | 'service_qualification' | 'price_inquiry' | 'technical_question' | 'booking_request' | 'complaint' | 'human_assistance';
+export type Intent = 'general_inquiry' | 'service_qualification' | 'price_inquiry' | 'technical_question' | 'booking_request' | 'existing_booking' | 'complaint' | 'human_assistance';
 export type Stage = 'understand' | 'assist' | 'confidence' | 'booking';
 export type Topic = 'location' | 'service' | 'surface' | 'property' | 'access' | 'date' | 'booking' | 'name' | 'mobile' | 'address' | 'contact' | 'form' | 'other';
 export interface Contact { name?: string; mobile?: string; email?: string; address?: string }
@@ -32,6 +33,8 @@ export interface ChatContext {
   form_sent?: boolean;
   /** the ManyChat contact lookup for returning customers has been done for this conversation */
   returning_checked?: boolean;
+  /** the customer referred to an earlier chat or booking we cannot verify and we already asked for the minimum to find it (mobile number or job order number) */
+  asked_ref?: boolean;
 }
 export const emptyContext = (): ChatContext => ({ v: 1, intent: 'general_inquiry', stage: 'understand', explained: [] });
 /** Reads a stored context (jsonb) safely: anything missing or malformed becomes an empty field. */
@@ -44,7 +47,7 @@ export function readContext(raw: unknown): ChatContext {
   c.service = sv(r.service); c.services_seen = Array.isArray(r.services_seen) ? (r.services_seen as unknown[]).map(sv).filter(Boolean) as ServiceKey[] : undefined;
   if (r.surface === 'interior' || r.surface === 'exterior') c.surface = r.surface; if (r.property === 'residential' || r.property === 'commercial') c.property = r.property;
   if (typeof r.intent === 'string') c.intent = r.intent as Intent; if (typeof r.stage === 'string') c.stage = r.stage as Stage;
-  c.acknowledgment = r.acknowledgment === true; c.price_quoted = r.price_quoted === true; c.booking_offered = r.booking_offered === true; c.booking_requested = r.booking_requested === true; c.form_sent = r.form_sent === true; c.returning_checked = r.returning_checked === true;
+  c.acknowledgment = r.acknowledgment === true; c.price_quoted = r.price_quoted === true; c.booking_offered = r.booking_offered === true; c.booking_requested = r.booking_requested === true; c.form_sent = r.form_sent === true; c.returning_checked = r.returning_checked === true; c.asked_ref = r.asked_ref === true;
   if (typeof r.last_question === 'string') c.last_question = r.last_question as Topic; if (Array.isArray(r.explained)) c.explained = (r.explained as unknown[]).filter((x) => typeof x === 'string').slice(0, 20) as string[];
   return c;
 }
@@ -117,6 +120,7 @@ export function classifyIntent(text: string, ctx: ChatContext, facts: Facts = {}
   if (isAcknowledgment(t)) return { intent: ctx.intent === 'booking_request' ? 'booking_request' : 'general_inquiry', acknowledgment: true };
   if (HUMAN.test(t)) return { intent: 'human_assistance', acknowledgment: false };
   if (COMPLAINT.test(t)) return { intent: 'complaint', acknowledgment: false };
+  if (isPreviousReference(t) && !(ctx.last_question === 'booking' && isYes(t))) return { intent: 'existing_booking', acknowledgment: false };   // an earlier chat, a booking or a job order: NOT a new sales inquiry, never a new booking form
   if (wantsToBook(t) || (ctx.last_question === 'booking' && isYes(t))) return { intent: 'booking_request', acknowledgment: false };
   if (PRICE.test(t)) return { intent: 'price_inquiry', acknowledgment: false };
   if (/\?\s*$/.test(t) && TECH.test(t)) return { intent: 'technical_question', acknowledgment: false };
@@ -201,6 +205,7 @@ const NEXT: Record<Intent, string> = {
   price_inquiry: 'If the location and the service are known, call estimate and give the price plainly. If one is missing, ask only for the missing one. Do not mention booking.',
   technical_question: 'Answer the question directly and briefly from the rulebook. No sales, no booking.',
   booking_request: 'The customer wants to book. Booking uses the booking-details form that the system sends once the city is known (see BOOKING FORM / NEXT BOOKING QUESTION). Do not write the form yourself.',
+  existing_booking: 'The customer refers to an earlier conversation or an existing booking. This is NOT a new inquiry: never send the booking form, never offer general availability and never say their date is full. Follow the CUSTOMER STATUS block.',
   complaint: 'Apologise in one short sentence and use needs_human. Do not argue, offer refunds or sell anything.',
   human_assistance: 'Use needs_human and tell the customer a team member will take over.',
 };

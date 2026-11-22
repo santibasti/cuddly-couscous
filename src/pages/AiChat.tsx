@@ -8,7 +8,7 @@ import { CLOUD, supabase } from '@/lib/cloud';
 import { callFn } from '@/lib/fnclient';
 import { fmtStamp } from '@/lib/util';
 
-interface Conv { id: string; channel: string; subscriber_id: string; name: string | null; lang: string | null; status: 'Open' | 'Needs a person' | 'Lead created' | 'Closed'; human_reason: string | null; returning_customer?: boolean; returning_note?: string | null; last_message_at: string }
+interface Conv { id: string; channel: string; subscriber_id: string; name: string | null; lang: string | null; status: 'Open' | 'Needs a person' | 'Lead created' | 'Closed'; human_reason: string | null; returning_customer?: boolean; returning_note?: string | null; last_message_at: string; client_id?: string | null; contact_status?: 'new' | 'previous' | 'existing'; link_state?: 'verified' | 'staff' | 'ambiguous' | 'suggested' | null; link_basis?: string | null; link_candidates?: { client_id: string; name: string; basis: string }[] }
 interface Msg { id: string; direction: 'in' | 'out'; body: string; status: 'received' | 'draft' | 'approved' | 'sent' | 'failed' | 'discarded'; actions: { type: string; input: Record<string, unknown> }[]; flags: string[]; rulebook_version: number | null; error: string | null; created_at: string; card_url?: string | null; original_body?: string | null }
 const SAMPLE_CONV: Conv[] = [{ id: 's1', channel: 'messenger', subscriber_id: 'sample', name: 'Sample customer', lang: 'taglish', status: 'Open', human_reason: null, last_message_at: new Date().toISOString() }];
 const SAMPLE_MSG: Msg[] = [
@@ -41,12 +41,13 @@ export default function AiChat() {
   return (
     <div className="stack">
       <PageHead title="AI Chat" sub={<>Mode: <Badge tone={mode === 'auto' ? 'red' : mode === 'suggest' ? 'amber' : 'grey'}>{mode === 'auto' ? 'full (replies go out by themselves)' : mode === 'suggest' ? 'suggest (you approve every reply)' : 'off'}</Badge> · change it in Admin → Settings → AI chat{!CLOUD && ' · DEMO: a sample conversation'}</>} />
-      <div className="row" style={{ gap: 6 }}><button className={`b ${filter === 'attention' ? 'primary' : ''}`} onClick={() => setFilter('attention')}>Needs attention ({convs.filter((c) => c.status === 'Needs a person' || pending.has(c.id)).length})</button><button className={`b ${filter === 'all' ? 'primary' : ''}`} onClick={() => setFilter('all')}>All conversations</button></div>
+      <div className="row" style={{ gap: 6 }}>{CLOUD && <button className="b" disabled={busy} title="Reads ManyChat again for up to 25 conversations that were never checked and matches them to TopMop clients by the contact's own mobile number" onClick={() => act({ action: 'resync' }, 'Contacts re-checked (up to 25). Look for "confirm client" badges')}>↻ Re-check old contacts</button>}<button className={`b ${filter === 'attention' ? 'primary' : ''}`} onClick={() => setFilter('attention')}>Needs attention ({convs.filter((c) => c.status === 'Needs a person' || pending.has(c.id)).length})</button><button className={`b ${filter === 'all' ? 'primary' : ''}`} onClick={() => setFilter('all')}>All conversations</button></div>
       <div className="aichat">
         <Card title="Conversations" flush><ul className="aichat-list">{shown.length === 0 && <li className="muted" style={{ padding: 12 }}>{CLOUD ? 'Nothing needs attention.' : ''}</li>}{shown.map((c) => (
-          <li key={c.id}><button className={`aichat-row ${sel === c.id ? 'on' : ''}`} onClick={() => setSel(c.id)}><span>{ICON[c.channel] ?? '💬'}</span><b>{c.name || c.subscriber_id}</b>{(pending.has(c.id) || !CLOUD) && <Badge tone="amber">reply waits</Badge>}{c.status === 'Needs a person' && <Badge tone="red">needs a person</Badge>}<small className="muted">{fmtStamp(c.last_message_at)}</small></button></li>))}</ul></Card>
+          <li key={c.id}><button className={`aichat-row ${sel === c.id ? 'on' : ''}`} onClick={() => setSel(c.id)}><span>{ICON[c.channel] ?? '💬'}</span><b>{c.name || c.subscriber_id}</b>{(pending.has(c.id) || !CLOUD) && <Badge tone="amber">reply waits</Badge>}{c.status === 'Needs a person' && <Badge tone="red">needs a person</Badge>}{c.contact_status === 'existing' && <Badge tone="green">existing client</Badge>}{c.contact_status === 'previous' && <Badge tone="blue">{c.link_state === 'ambiguous' || c.link_state === 'suggested' ? 'confirm client' : 'previous contact'}</Badge>}<small className="muted">{fmtStamp(c.last_message_at)}</small></button></li>))}</ul></Card>
         <Card title={cur ? `${cur.name || cur.subscriber_id} · ${cur.channel}${cur.lang ? ` · ${cur.lang}` : ''}` : 'Pick a conversation'} actions={cur && <div className="row" style={{ gap: 6 }}><button className="b" disabled={busy} onClick={() => act({ action: 'returning', conversation_id: cur.id, on: !cur.returning_customer }, cur.returning_customer ? 'Marked as a new customer' : 'Marked as a returning customer. The AI will not treat them as new')}>{cur.returning_customer ? '✓ Returning customer (clear)' : 'Mark as returning customer'}</button>{cur.status === 'Needs a person' ? <button className="b" disabled={busy} onClick={() => act({ action: 'release', conversation_id: cur.id }, 'Handed back to the AI')}>Hand back to the AI</button> : <button className="b" disabled={busy} onClick={() => act({ action: 'takeover', conversation_id: cur.id }, 'You have the conversation. The AI stays silent')}>Take over</button>}</div>}>
-          {cur?.returning_customer && <div className="alert info">Returning customer: {cur.returning_note || 'the AI will not treat them as new'}.</div>}
+          {cur && <ContactPanel conv={cur} busy={busy} act={act} />}
+          {cur && !cur.contact_status && cur.returning_customer && <div className="alert info">Returning customer: {cur.returning_note || 'the AI will not treat them as new'}.</div>}
           {cur?.human_reason && <div className="alert warn">Needs a person: {cur.human_reason}</div>}
           <div className="stack" style={{ gap: 8 }}>{msgs.map((m) => (
             <div key={m.id} className={`aichat-msg ${m.direction}`}>
@@ -65,6 +66,31 @@ export default function AiChat() {
         </Card>
       </div>
       <style>{`.aichat{display:grid;grid-template-columns:minmax(220px,320px) 1fr;gap:12px;align-items:start}@media(max-width:800px){.aichat{grid-template-columns:1fr}}.aichat-list{list-style:none;margin:0;padding:0;max-height:70vh;overflow:auto}.aichat-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid rgba(120,160,255,.15);padding:10px 12px;color:inherit;cursor:pointer}.aichat-row.on,.aichat-row:hover{background:rgba(120,160,255,.12)}.aichat-msg{padding:8px 10px;border-radius:10px;border:1px solid rgba(120,160,255,.2);max-width:92%}.aichat-msg.in{align-self:flex-start}.aichat-msg.out{align-self:flex-end;background:rgba(80,130,255,.1)}`}</style>
+    </div>
+  );
+}
+
+
+/** Who is this contact: new, a previous contact (talked to TopMop before, nothing verified) or an existing client (matched to a TopMop client record). Staff can confirm a suggested match or link the right client by hand; a name alone never links anyone. */
+function ContactPanel({ conv, busy, act }: { conv: Conv; busy: boolean; act: (body: Record<string, unknown>, ok: string) => void }) {
+  const { db } = useAuth(); const [q, setQ] = useState('');
+  const client = conv.client_id ? db.clients.find((c) => c.id === conv.client_id) : undefined;
+  const status = conv.contact_status ?? (conv.returning_customer ? 'previous' : 'new');
+  const digits = q.replace(/\D/g, '');
+  const found = q.trim().length < 2 ? [] : db.clients.filter((c) => !c.deleted_at && (c.name.toLowerCase().includes(q.trim().toLowerCase()) || (digits.length >= 6 && String(c.mobile ?? '').replace(/\D/g, '').includes(digits)))).slice(0, 6);
+  const link = (id: string, name: string) => { if (confirm(`Link this chat to client ${name}? The AI will then use ${name}'s bookings and details for this contact.`)) act({ action: 'link', conversation_id: conv.id, client_id: id }, `Linked to ${name}`); };
+  const BASIS: Record<string, string> = { mobile: "the contact's mobile number", chat_booking: 'a booking made in this chat', staff: 'linked by staff', typed_mobile: 'a number the customer typed', job_number: 'a job number the customer typed', legacy_match: 'an earlier automatic match' };
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      {status === 'existing' && <div className="alert info"><b>Existing client{client ? `: ${client.name}` : ''}</b> · matched by {BASIS[conv.link_basis ?? ''] ?? conv.link_basis ?? 'TopMop records'}. The AI checks their bookings first.{client && <> <a href={`#/clients/${client.id}`}>Open client</a></>} <button className="b" disabled={busy} onClick={() => { if (confirm('Unlink this chat from the client? The AI will treat the contact as a previous contact again.')) act({ action: 'unlink', conversation_id: conv.id }, 'Unlinked'); }}>Unlink</button></div>}
+      {status === 'previous' && <div className="alert info"><b>Previous contact</b>: they have talked to TopMop before, but no client record is verified, so the AI does not show or assume any history. {conv.returning_note ? `(${conv.returning_note})` : ''}</div>}
+      {status === 'previous' && (conv.link_candidates ?? []).length > 0 && <div className="alert warn"><b>{conv.link_state === 'ambiguous' ? 'More than one client has this contact\'s mobile number' : 'Possible match, please confirm'}:</b>{(conv.link_candidates ?? []).map((c) => <div key={c.client_id} className="row" style={{ gap: 8, marginTop: 4 }}><span>{c.name} <span className="muted small">({BASIS[c.basis] ?? c.basis})</span></span><button className="b primary" disabled={busy} onClick={() => link(c.client_id, c.name)}>This is the client</button></div>)}</div>}
+      {status !== 'existing' && <details><summary className="small" style={{ cursor: 'pointer' }}>Link to a TopMop client by hand</summary>
+        <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: 'wrap' }}><input placeholder="Search a client by name or mobile" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 220 }} /></div>
+        {found.map((c) => <div key={c.id} className="row" style={{ gap: 8, marginTop: 4 }}><span>{c.name} <span className="muted small">{c.mobile ?? 'no mobile'}</span></span><button className="b" disabled={busy} onClick={() => link(c.id, c.name)}>Link</button></div>)}
+        {q.trim().length >= 2 && !found.length && <div className="muted small" style={{ marginTop: 4 }}>No client found.</div>}
+      </details>}
+      <div className="row"><button className="b" disabled={busy} onClick={() => act({ action: 'resync', conversation_id: conv.id }, 'Contact re-checked')}>↻ Re-check this contact</button></div>
     </div>
   );
 }

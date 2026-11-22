@@ -3,14 +3,19 @@
 import { cardForLog, explainsPanelCount, panelGuideUrl } from './estimatecard.ts';
 import { type ReturningInfo, type Mode, type Honorific, type Brain, PHOTO_MARKER, PHOTO_THANKS, MSG_SPLIT, isPhotoMessage, buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, runBrain, fallbackFor } from './brain.ts';
 import { BOOKING_SEND_FORM, questionTopic, analyzeDelivered, applyDelivered, contextBlock, foldMessages, isAcknowledgment, readContext, type ChatContext } from './chatcontext.ts';
-import { ackReply, fallbackReply, repairReply, validateReply, type Check } from './validate.ts';
+import { ackReply, fallbackReply, repairReply, validateReply, REF_ASK, REF_HANDOVER, type Check } from './validate.ts';
 import { buildHistory } from './chathistory.ts';
 import { makeExec } from './chatexec.ts';
+import { resolveContact } from './contact.ts';
+import { datesIn, jobNumbersIn, phonesIn, type Identity, type JobLine } from './identity.ts';
+import { manilaDay } from '../chat-availability/logic.ts';
 
 // deno-lint-ignore no-explicit-any
 type Sb = any;
 export type Out = { status: string; reply: string; card_url?: string; note?: string };
 export interface WorkerDeps {
+  /** V2.3: who this contact is and the verified client's active bookings (chat-brain resolves them; the recovery job lets the worker resolve them itself) */
+  identity?: Identity; jobs?: JobLine[];
   sb: Sb; env: (k: string) => string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null; inquiry_id?: string | null; context?: unknown; lang?: string | null; status?: string; [k: string]: unknown }; sub: string; channel: string; text: string; lang: string; honorific: Honorific; returning: ReturningInfo | null; photo: boolean;
   mode: Mode; cfg?: { model?: string } | undefined; st?: { data?: unknown } | null; queued: boolean; token: string; key: string; model: string; appUrl: string; debounceMs: number;
 }
@@ -23,12 +28,18 @@ const GIVE_UP_MIN = 10;   // after this long without an answer a transient failu
 
 export function createWorker(d: WorkerDeps): () => Promise<Out> {
   const { sb, env, conv, sub, channel, text, lang, honorific, returning, photo, mode, st, queued, token, key, model, appUrl } = d;
+  const deps = d;                                                              // `d` is reused for the reply decision further down
   let legacy = false;                                                          // true when migration 0133 has not been applied yet: the old single-message behaviour
 
   /** One batch: the customer's unprocessed messages are folded into the context and answered once. */
   const processBatch = async (pending: { id: string; body: string; created_at?: string }[]): Promise<Out> => {
     const ids = pending.map((m) => m.id); const texts = pending.map((m) => isPhotoMessage(m.body) ? PHOTO_MARKER : m.body); const lastText = texts[texts.length - 1] ?? text;
     try {
+      let who: { identity?: Identity; jobs: JobLine[]; returning: ReturningInfo | null | undefined } = { identity: deps.identity, jobs: deps.jobs ?? [], returning };
+      if (!deps.identity) {   // the recovery job: resolve the contact here, so a returning customer is never welcomed as new
+        try { const r = await resolveContact({ sb, env, conv: conv as Record<string, unknown>, sub, payloads: [], text: texts.join(' '), aiStartedOn: (st?.data as { chat_ai?: { ai_started_on?: string } } | undefined)?.chat_ai?.ai_started_on, today: manilaDay(Date.now()) }); who = { identity: r.identity, jobs: r.jobs, returning: r.returning }; } catch (e) { console.error('contact check', (e as Error).message); }
+      }
+      const verified = who.identity?.status === 'existing';
       const [{ data: hist }, { data: rb }, { data: cur }] = await Promise.all([
         sb.from('chat_messages').select('direction, body, status').eq('conversation_id', conv.id).in('status', ['received', 'sent', 'approved']).order('created_at', { ascending: false }).limit(40),
         sb.from('ai_rulebook').select('version, sections').eq('status', 'published').maybeSingle(),
@@ -41,9 +52,11 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
       // the context: what we knew + what the customer just told us; "already said" and "last question" are read from replies that were really delivered
       const ctx: ChatContext = foldMessages(applyDelivered(readContext(cur?.context ?? conv.context), analyzeDelivered(deliveredAi)), texts);
       if (!legacy) await sb.from('chat_conversations').update({ context: ctx }).eq('id', conv.id);
-      const vctx = (first: boolean): Check => ({ ctx, intent: ctx.intent, customerText: texts.join(' '), previousAi: deliveredAi.slice(-3), first });
+      if (verified && ctx.intent === 'existing_booking') await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Customer message about their booking', body: `${conv.name ?? 'A customer'} (${who.identity?.client_id ? 'verified client' : 'client'}): ${who.jobs.map((j) => j.number).join(', ') || 'no active booking on file'}: "${texts.join(' ').slice(0, 160)}"`, link: '/ai-chat' });   // the team sees reminders and questions about an existing booking (a high ceiling, a gate, a date)
+      if (ctx.intent === 'existing_booking' && !verified && who.identity?.status === 'new' && !legacy) await sb.from('chat_conversations').update({ contact_status: 'previous', returning_customer: true, returning_note: 'The customer says they already talked to or booked with TopMop (not verified)' }).eq('id', conv.id);   // their own words make them a previous contact, never an existing client
+      const vctx = (first: boolean): Check => ({ ctx, intent: ctx.intent, customerText: texts.join(' '), previousAi: deliveredAi.slice(-3), first, identity: who.identity ? { status: who.identity.status, verified, jobs: who.jobs, today: manilaDay(Date.now()) } : undefined });
 
-      const { count: sentBefore } = await sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('direction', 'out').in('status', ['sent', 'approved', 'draft']); const first = (sentBefore ?? 0) === 0 && !returning;   // the first reply of a conversation starts with the welcome
+      const { count: sentBefore } = await sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('direction', 'out').in('status', ['sent', 'approved', 'draft']); const first = (sentBefore ?? 0) === 0 && !who.returning && ctx.intent !== 'existing_booking';   // saying "we talked yesterday" or "I already booked" means they are not a new contact: no welcome   // the first reply of a conversation starts with the welcome
       let booking: { number: string; date: string; status: string } | null = null;                                              // a booking this chat already made for the customer: the AI must never contradict it
       if (cur?.inquiry_id ?? conv.inquiry_id) { const { data: qs } = await sb.from('quotations').select('id').eq('inquiry_id', cur?.inquiry_id ?? conv.inquiry_id).is('deleted_at', null); if (qs?.length) { const { data: js } = await sb.from('jobs').select('number, start_at, status').in('quotation_id', qs.map((x: { id: string }) => x.id)).is('deleted_at', null).not('status', 'in', '("Cancelled","Rescheduled")').order('created_at', { ascending: false }).limit(1); if (js?.length) booking = { number: js[0].number, date: String(js[0].start_at).slice(0, 10), status: js[0].status }; } }
 
@@ -51,22 +64,26 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
       const allAck = texts.every((t) => isAcknowledgment(t));
       if (ctx.intent === 'complaint' || ctx.intent === 'human_assistance') {                                               // no model needed: a person takes over
         const f = fallbackReply(vctx(first)); brain = { ...brain, reply: f.text, humanReason: ctx.intent === 'complaint' ? 'The customer has a complaint' : 'The customer asked for a person', actions: [{ type: 'needs_human', input: { reason: ctx.intent } }] };
-      } else if (ctx.intent === 'booking_request' && ctx.location && !ctx.form_sent && !photo && !texts.some((t) => /\b(how much|magkano|price|presyo|rate|ocular)\b/i.test(t))) {   // the customer wants to book and the city is known: the booking-details form goes out as its own message (no model needed)
+      } else if ((ctx.intent === 'existing_booking' || (ctx.asked_ref && (phonesIn(texts.join(' ')).length > 0 || jobNumbersIn(texts.join(' ')).length > 0))) && !verified) {   // (the customer's answer to our one question belongs to the same thread)                                                          // an earlier booking or chat we cannot verify: ask once for the minimum, then a person checks it (never a new booking form, never the calendar)
+        const gave = phonesIn(texts.join(' ')).length > 0 || jobNumbersIn(texts.join(' ')).length > 0;
+        if (!gave && !ctx.asked_ref) { ctx.asked_ref = true; if (!legacy) await sb.from('chat_conversations').update({ context: ctx }).eq('id', conv.id); brain = { ...brain, reply: REF_ASK }; }
+        else brain = { ...brain, reply: REF_HANDOVER, humanReason: 'The customer refers to an earlier booking or conversation we could not verify. Check what they gave and link the client in AI Chat', actions: [{ type: 'needs_human', input: { reason: 'existing_booking_unverified' } }] };
+      } else if (ctx.intent === 'booking_request' && ctx.location && !ctx.form_sent && !photo && !(verified && datesIn(texts.join(' '), manilaDay(Date.now())).some((x) => who.jobs.some((j) => j.date === x))) && !texts.some((t) => /\b(how much|magkano|price|presyo|rate|ocular)\b/i.test(t))) {   // the customer wants to book and the city is known: the booking-details form goes out as its own message (no model needed)
         brain = { ...brain, reply: BOOKING_SEND_FORM };
       } else if (allAck && ctx.intent !== 'booking_request' && !first && !photo) {                                         // "okay", "thanks": a brief acknowledgment, no model, no booking offer
         brain = { ...brain, reply: ackReply() };
       } else {
-        const system = buildSystem({ returning, booking, firstMessage: first, honorific, context: contextBlock(ctx), sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, customerName: (conv as { name?: string | null }).name, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
+        const system = buildSystem({ returning: who.returning, booking, firstMessage: first, honorific, context: contextBlock(ctx), sections: (rb?.sections as { key: string; title: string; body: string }[]) ?? [], version: rb?.version ?? null, lang, customerName: (conv as { name?: string | null }).name, companyPhone: (st?.data as { company?: { phone?: string } } | undefined)?.company?.phone });
         const callModel = async (sys: string, msgs: unknown[], tools: unknown) => {
           const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: dropLoneSurrogates(JSON.stringify({ model, max_tokens: 1200, system: sys, tools, messages: msgs })) });
           if (!r.ok) { const body = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 220); throw new Error(`AI error ${r.status}${body ? `: ${body}` : ''}`); } return await r.json();
         };
-        const exec = makeExec({ noHumanAlert: true, services: ctx.services_seen ?? [], booking, sb, base: env('SUPABASE_URL'), key, conv, lang, context: [ctx.location ?? '', ...texts].join(' ').slice(-600) });
+        const exec = makeExec({ jobs: who.jobs, noHumanAlert: true, services: ctx.services_seen ?? [], booking, sb, base: env('SUPABASE_URL'), key, conv, lang, context: [ctx.location ?? '', ...texts].join(' ').slice(-600) });
         brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3, check: (r) => (/^NO_ANSWER\W*$/i.test(r.trim()) ? [] : validateReply(r, vctx(first))) });
       }
       const isNoAnswer = /^NO_ANSWER\W*$/i.test(brain.reply.trim());
       if (brain.error && isTransientError(brain.error) && !legacy && (Date.now() - Date.parse(pending[0]?.created_at ?? new Date().toISOString())) < GIVE_UP_MIN * 60_000) return { status: 'retry', reply: '', note: brain.error.slice(0, 160) };   // nothing is saved and nothing is marked: the next pass (a new message or the recovery job) tries again
-      let flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked }).violations;
+      let flags = guardReply(brain.bookReply ?? brain.reply, { amounts: brain.amounts, booked: brain.booked, verifiedJobs: verified ? who.jobs.map((j) => j.number) : [] }).violations;
       if (!brain.error && !isNoAnswer && !brain.bookReply) {
         if (!brain.reply.trim()) {                                                                                         // the AI wrote nothing: a safe sentence, never a blank draft
           const f = fallbackReply(vctx(first), 'empty'); brain.reply = f.text; if (f.handover && !brain.humanReason) brain.humanReason = 'The AI could not answer';
