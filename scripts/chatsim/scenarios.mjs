@@ -372,4 +372,22 @@ reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', 
 flags.failTable = 'job_orders'; modelCalls.length = 0; const heldLink = await send(`my job order ${orderLink}`); flags.failTable = null;
 ok('V2.3-16 if the job-order lookup fails the message is HELD (no reply, no model call), never treated as "no match"', heldLink.status === 'held' && modelCalls.length === 0 && drafts().length === 0, JSON.stringify({ st: heldLink.status }));
 
+// V2.3-17 (review issue 26): future-dated operational jobs, crew status per job, old open jobs crowding the result
+const NOCLAIM = /on the way|on site|on their way|is working|arriv/i;
+const linkedClient = async (setup) => { reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); setup(); state.script = () => text('Hello po.'); await send('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); deliver(); modelCalls.length = 0; };
+await linkedClient(() => rawJob('c1', 'JOB-FUT', 'Dispatched', 24 * 7, 24 * 7 + 3));
+state.script = crewLine; await send('Is the crew on the way po?', { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-17 a job scheduled NEXT WEEK whose status says "Dispatched" is still a booking but never backs "the crew is on the way": the model\'s claim is blocked and staff are handed the chat', !!dr && !NOCLAIM.test(dr.body) && conv0().status === 'Needs a person' && !/Dispatched/.test(lastSystem()), JSON.stringify({ b: dr?.body, st: conv0().status }));   // the raw status appears nowhere in the prompt, including the history line
+await linkedClient(() => { rawJob('c1', 'JOB-A-TODAY', 'On Site', -2, 6); rawJob('c1', 'JOB-B-LATER', 'Confirmed', 24 * 8, 24 * 8 + 3); });
+state.script = crewLine; await send(`Is the crew coming on ${D1.label}? Is it on the way?`, { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-17 MIXED jobs: Job A is On Site today; the customer asks about Job B\'s date: A\'s status is NOT used to say anything about B', !!dr && !NOCLAIM.test(dr.body), JSON.stringify(dr?.body));
+await staff({ action: 'release', conversation_id: conv0().id }); deliver(); state.script = () => text('Our crew is currently on site at your property po.'); await send('Is the crew there now?', { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-17 MIXED jobs: asked generally, the job running today answers (Job A is On Site), so the AI may say so', !!dr && /on site/i.test(dr.body), JSON.stringify(dr?.body));
+await linkedClient(() => { rawJob('c1', 'JOB-S1-A', 'On Site', -2, 6); DB.sites.push({ id: 's-other', client_id: 'c1', name: 'Second site' }); DB.jobs.push({ id: 'j-B', number: 'JOB-S2-B', client_id: 'c1', site_id: 's-other', start_at: manilaStamp(-1), end_at: manilaStamp(7), status: 'Dispatched', service_codes: ['ROOF'] }); });
+state.script = crewLine; await send('Is the crew there now?', { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-17 two current jobs at DIFFERENT sites: ambiguous, so nothing is asserted and a person answers', !!dr && !NOCLAIM.test(dr.body), JSON.stringify(dr?.body));
+await linkedClient(() => { for (let i = 0; i < 45; i++) rawJob('c1', `JOB-OLD-${i}`, i % 2 ? 'Dispatched' : 'On Site', -24 * (30 + i), -24 * (30 + i) + 3); rawJob('c1', 'JOB-VALID-FUTURE', 'Confirmed', 24 * 8, 24 * 8 + 3); });
+state.script = () => sayFull(); await send(askText(D1.label), { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-17 45 old unfinished jobs do not hide the valid upcoming booking: it is in the prompt and the date is answered from it (never "full")', /JOB-VALID-FUTURE/.test(lastSystem()) && !!dr && /JOB-VALID-FUTURE/.test(dr.body) && !/fully booked/i.test(dr.body), JSON.stringify(dr?.body));
+
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);

@@ -115,4 +115,15 @@ setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-88
 await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say(`Please check this job order https://ops.topmop.ph/#/jo/${TOK}`, { phone: '0917 555 1212' }); r = lastReply();
 verdict('L-2: a CONFIRMED client pasting ANOTHER client\'s job-order link is never shown that booking: handed to staff', r, { no_other_client: !/Juan|Reyes|JOB-2026-9001|JO-2026/.test(r), handed_to_staff: conv().status === 'Needs a person', still_own_client: conv().client_id === 'c1' });
 
+// X: review issue 26: future-dated operational status, crew status per job, old open jobs crowding out the valid booking
+setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); rawJob('c1', 'JOB-FUT', 'Dispatched', 24 * 7, 24 * 7 + 3);
+await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say('Is the crew on the way po?', { phone: '0917 555 1212' }); r = lastReply();
+verdict('X-1: a job scheduled NEXT WEEK with status "Dispatched": no crew claim', r, { no_crew_claim: !/on the way|on site|on their way|is working|arriv/i.test(r), no_form: NO_FORM(r) });
+setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); rawJob('c1', 'JOB-A-TODAY', 'On Site', -2, 6); rawJob('c1', 'JOB-B-LATER', 'Confirmed', 24 * 8, 24 * 8 + 3);
+await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say(`Is the crew coming on ${D1.label}? Is it on the way?`, { phone: '0917 555 1212' }); r = lastReply();
+verdict('X-2: mixed jobs: today\'s On Site job must not become a status for the job on another date', r, { no_crew_claim: !/on the way|on site|on their way|is working|arriv/i.test(r), not_full: NOT_FULL(r) });
+setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); for (let i = 0; i < 45; i++) rawJob('c1', `JOB-OLD-${i}`, i % 2 ? 'Dispatched' : 'On Site', -24 * (30 + i), -24 * (30 + i) + 3); rawJob('c1', 'JOB-VALID-FUTURE', 'Confirmed', 24 * 8, 24 * 8 + 3);
+await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say(`Hi po, are we still scheduled for ${D1.label}?`, { phone: '0917 555 1212' }); r = lastReply();
+verdict('X-3: 45 old unfinished jobs and one valid upcoming booking: the booking is found and confirmed, never "full", no form', r, { confirms_booking: /JOB-VALID-FUTURE|scheduled|booked|confirmed/i.test(r) && !/don't see a booking/i.test(r), not_full: NOT_FULL(r), no_form: NO_FORM(r) });
+
 const failed = rows.filter((x) => x.fail.length); console.log(`\n${rows.length - failed.length}/${rows.length} passed (model: ${model || 'default claude-haiku-5-5'}; model calls made: ${modelCalls.length}; database: in memory, NOT staging)`); process.exit(failed.length ? 1 : 0);

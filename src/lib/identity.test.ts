@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
-import { JOB_STATUS_CLASS, OPEN_JOB_STATUSES, activeJobs, asksCrewStatus, claimsCrewStatus, clientsByReference, jobOrderTokensIn, openJobs, clientsByMobile, contradictsBooking, datesIn, decideIdentity, existingBookingReply, isPreviousReference, jobNumbersIn, normMobile, phonesIn, type Candidate, type IdentityInput, type JobLine } from '../../supabase/functions/_shared/identity';
+import { JOB_STATUS_CLASS, OPEN_JOB_STATUSES, activeJobs, asksCrewStatus, claimsCrewStatus, crewStatusBacked, clientsByReference, jobOrderTokensIn, openJobs, clientsByMobile, contradictsBooking, datesIn, decideIdentity, existingBookingReply, isPreviousReference, jobNumbersIn, normMobile, phonesIn, type Candidate, type IdentityInput, type JobLine } from '../../supabase/functions/_shared/identity';
 
 const AI_START = '2026-11-17T00:00:00Z';
 const base: IdentityInput = { stored: {}, phoneMatches: [], typedMatches: [], aiStartedOn: AI_START };
@@ -13,6 +13,18 @@ const dec5: JobLine = { number: 'JOB-2026-8820', date: '2026-12-05', time: '13:3
 const fakeSb = (tables: Record<string, unknown[]>, rpcRows?: unknown[]) => ({
   from: (t: string) => { const q: Record<string, unknown> = {}; for (const m of ['select', 'eq', 'is', 'in', 'not', 'gte', 'order', 'limit']) q[m] = () => q; q.then = (ok: (v: unknown) => unknown) => ok({ data: tables[t] ?? [] }); return q; },
   rpc: () => (rpcRows ? { data: rpcRows, error: null } : { data: null, error: { message: 'function does not exist' } }),
+});
+
+/** A fake that really applies eq / is / in / gte / order / limit, like the database does (the plain fakeSb above ignores them). */
+const filteringSb = (tables: Record<string, Record<string, unknown>[]>) => ({
+  from: (t: string) => {
+    let rows = [...(tables[t] ?? [])]; let lim = Infinity; const q: Record<string, unknown> = {};
+    q.select = () => q; q.eq = (k: string, v: unknown) => { rows = rows.filter((r) => r[k] === v); return q; }; q.is = (k: string, v: unknown) => { rows = rows.filter((r) => (v === null ? r[k] == null : r[k] === v)); return q; };
+    q.in = (k: string, a: unknown[]) => { rows = rows.filter((r) => a.includes(r[k])); return q; }; q.gte = (k: string, v: string) => { rows = rows.filter((r) => String(r[k]) >= v); return q; };
+    q.order = (k: string, o: { ascending?: boolean } = {}) => { rows.sort((a, b) => String(a[k]).localeCompare(String(b[k])) * (o.ascending === false ? -1 : 1)); return q; }; q.limit = (n: number) => { lim = n; return q; };
+    q.then = (ok: (v: unknown) => unknown) => ok({ data: rows.slice(0, lim) }); return q;
+  },
+  rpc: () => ({ data: [], error: null }),
 });
 
 describe('mobile numbers and references', () => {
@@ -49,7 +61,7 @@ describe('V2.3 identity: the ten required cases', () => {
     const linked = decideIdentity({ ...base, stored: { client_id: 'c-cruz', link_state: 'staff' }, phoneMatches: [cruz] });
     expect(linked).toMatchObject({ status: 'existing', client_id: 'c-cruz', state: 'staff' });
     const jobs = await activeJobs(fakeSb({ jobs: [{ number: 'JOB-2026-8818', start_at: '2026-11-30T09:00:00', end_at: '2026-11-30T12:00:00', status: 'Confirmed', service_codes: ['GLASS_EXT'], site_id: 's1' }], sites: [{ id: 's1', name: 'Cruz residence' }] }), 'c-cruz', '2026-11-22');
-    expect(jobs).toEqual([{ number: 'JOB-2026-8818', date: '2026-11-30', time: '09:00', status: 'Confirmed', services: ['exterior glass'], site: 'Cruz residence' }]);
+    expect(jobs).toMatchObject([{ number: 'JOB-2026-8818', date: '2026-11-30', time: '09:00', status: 'Confirmed', services: ['exterior glass'], site: 'Cruz residence' }]);
   });
   it('4 · the customer\'s phone number is missing → no link; a name alone never links anyone', () => {
     const r = decideIdentity({ ...base, convCreatedAt: '2026-11-20T00:00:00Z' });          // nothing but a name (names are not even an input)
@@ -253,4 +265,68 @@ describe('V2.3 job-order links: recognised as an existing-booking reference; the
   });
   it('an unknown link finds nothing (the customer is answered the same way, so the chat cannot be used to guess links)', async () => { expect(await clientsByReference(orderDb([]), `https://ops.topmop.ph/#/jo/${TOKEN}`)).toEqual([]); });
   it('a database failure is an error, never "no match"', async () => { await expect(clientsByReference(orderDb([], [], ['job_orders']), `https://ops.topmop.ph/#/jo/${TOKEN}`)).rejects.toThrow(/job order lookup failed/); });
+});
+
+/* ---------------- ISSUE #26: future-dated operational jobs, crew status per job, old open jobs crowding the result ---------------- */
+describe('V2.3 issue 26.1: an operational status on a job scheduled for a FUTURE day never backs "the crew is on the way"', () => {
+  const NOW = '2026-11-22T15:00';
+  const job = (number: string, status: string, start: string, end: string) => ({ number, start_at: `${start}:00`, end_at: `${end}:00`, status, service_codes: ['GLASS_EXT'], site_id: 's1' });
+  const world = (rows: ReturnType<typeof job>[]) => fakeSb({ jobs: rows, sites: [{ id: 's1', name: 'Site' }] });
+  it('Dispatched / On Site / In Progress next week stay bookings but are downgraded to Confirmed and flagged unverified', async () => {
+    const r = await openJobs(world([job('J-FUT-D', 'Dispatched', '2026-11-28T09:00', '2026-11-28T12:00'), job('J-FUT-S', 'On Site', '2026-11-23T09:00', '2026-11-23T12:00'), job('J-FUT-P', 'In Progress', '2026-12-05T09:00', '2026-12-05T12:00')]), 'c1', NOW);
+    expect(r.live.map((j) => [j.number, j.status, j.statusUnverified])).toEqual([['J-FUT-S', 'Confirmed', true], ['J-FUT-D', 'Confirmed', true], ['J-FUT-P', 'Confirmed', true]]); expect(r.stale).toEqual([]);
+    for (const j of r.live) expect(crewStatusBacked([j], 'Is the crew on the way?', '2026-11-22')).toBe(false);
+  });
+  it('a job starting within three hours may already be "Dispatched"; one starting later than that may not', async () => {
+    const r = await openJobs(world([job('J-SOON', 'Dispatched', '2026-11-22T17:30', '2026-11-22T20:00'), job('J-LATER', 'Dispatched', '2026-11-22T18:30', '2026-11-22T21:00')]), 'c1', NOW);
+    expect(r.live.find((j) => j.number === 'J-SOON')).toMatchObject({ status: 'Dispatched' }); expect(r.live.find((j) => j.number === 'J-LATER')).toMatchObject({ status: 'Confirmed', statusUnverified: true });
+  });
+  it('overnight and multi-day jobs are unaffected (they started in the past)', async () => {
+    const r = await openJobs(world([job('J-NIGHT', 'In Progress', '2026-11-21T21:00', '2026-11-23T06:00'), job('J-MULTI', 'On Site', '2026-11-19T08:00', '2026-11-24T17:00')]), 'c1', NOW);
+    expect(r.live.map((j) => j.status).sort()).toEqual(['In Progress', 'On Site']); expect(r.live.every((j) => !j.statusUnverified)).toBe(true);
+  });
+});
+
+describe('V2.3 issue 26.2: a crew status is scoped to the job, date and site the customer is talking about', () => {
+  const J = (number: string, date: string, status: string, site = 's1', end = date) => ({ number, date, end, time: '09:00', status, services: ['exterior glass'], site });
+  const TODAY = '2026-11-22';
+  it('one current job running today backs a crew claim', () => { expect(crewStatusBacked([J('JOB-2026-0001', TODAY, 'On Site')], 'Is the crew there?', TODAY)).toBe(true); });
+  it('no jobs, or only upcoming jobs, back nothing', () => { expect(crewStatusBacked([], 'Is the crew there?', TODAY)).toBe(false); expect(crewStatusBacked([J('JOB-2026-0002', TODAY, 'Confirmed')], 'Is the crew there?', TODAY)).toBe(false); });
+  it('MIXED: Job A is On Site today but Job B (a different day) is only Confirmed; asking about B\'s date is NOT backed by A', () => {
+    const jobs = [J('JOB-2026-0001', TODAY, 'On Site'), J('JOB-2026-0002', '2026-11-30', 'Confirmed')];
+    expect(crewStatusBacked(jobs, 'Is the crew coming Nov 30?', TODAY)).toBe(false);
+    expect(crewStatusBacked(jobs, 'Is the crew there for JOB-2026-0002?', TODAY)).toBe(false);
+    expect(crewStatusBacked(jobs, 'Is the crew there for JOB-2026-0001?', TODAY)).toBe(true);
+    expect(crewStatusBacked(jobs, 'Is the crew there now?', TODAY)).toBe(true);        // nothing referenced: the job running today
+  });
+  it('a date or job number that is not one of the live jobs is never backed, even if another job is On Site', () => {
+    const jobs = [J('JOB-2026-0001', TODAY, 'On Site')];
+    expect(crewStatusBacked(jobs, 'Is the crew there on Dec 3?', TODAY)).toBe(false); expect(crewStatusBacked(jobs, 'status of JOB-2026-9999?', TODAY)).toBe(false);
+  });
+  it('two current jobs the same day at DIFFERENT sites are ambiguous: nothing is asserted; at the same site it is fine', () => {
+    expect(crewStatusBacked([J('JOB-2026-0001', TODAY, 'On Site', 's1'), J('JOB-2026-0003', TODAY, 'Dispatched', 's2')], 'Is the crew there?', TODAY)).toBe(false);
+    expect(crewStatusBacked([J('JOB-2026-0001', TODAY, 'On Site', 's1'), J('JOB-2026-0003', TODAY, 'Dispatched', 's1')], 'Is the crew there?', TODAY)).toBe(true);
+  });
+  it('a current job running today next to a current job of another day: the one running today answers a generic question; its neighbour is never used', () => {
+    const jobs = [J('JOB-2026-0001', TODAY, 'On Site'), J('JOB-2026-0005', '2026-11-23', 'In Progress')];
+    expect(crewStatusBacked(jobs, 'Is the crew there now?', TODAY)).toBe(true); expect(crewStatusBacked(jobs, 'How about Nov 23, is the crew there?', TODAY)).toBe(true);
+    expect(crewStatusBacked([J('JOB-2026-0001', TODAY, 'On Site'), J('JOB-2026-0005', '2026-11-23', 'Confirmed')], 'How about Nov 23, is the crew there?', TODAY)).toBe(false);
+  });
+  it('a multi-day job answers for any day inside it', () => { expect(crewStatusBacked([J('JOB-2026-0006', '2026-11-20', 'In Progress', 's1', '2026-11-25')], 'Is the crew there?', TODAY)).toBe(true); });
+});
+
+describe('V2.3 issue 26.3: old unfinished jobs can never crowd out the valid current or upcoming booking', () => {
+  const NOW = '2026-11-22T15:00';
+  const mk = (n: string, status: string, start: string, end: string) => ({ number: n, start_at: `${start}:00`, end_at: `${end}:00`, status, service_codes: ['GLASS_EXT'], site_id: 's1', client_id: 'c1', deleted_at: null });
+  const old = (n: number) => mk(`J-OLD-${n}`, n % 2 ? 'Dispatched' : 'On Site', `2026-0${1 + (n % 9)}-0${1 + (n % 8)}T09:00`, `2026-0${1 + (n % 9)}-0${1 + (n % 8)}T12:00`);
+  it('60 old open jobs plus a valid future job, a running job and a Confirmed job tomorrow: all three valid ones are found', async () => {
+    const rows = [...Array.from({ length: 60 }, (_, i) => old(i)), mk('J-FUTURE', 'Confirmed', '2026-12-10T09:00', '2026-12-10T12:00'), mk('J-TOMORROW', 'Pending', '2026-11-23T09:00', '2026-11-23T12:00'), mk('J-RUNNING', 'On Site', '2026-11-22T09:00', '2026-11-22T17:00')];
+    const r = await openJobs(filteringSb({ jobs: rows, sites: [{ id: 's1', name: 'Site' }] }), 'c1', NOW);
+    expect(r.live.map((j) => j.number).sort()).toEqual(['J-FUTURE', 'J-RUNNING', 'J-TOMORROW']); expect(r.stale.length).toBeGreaterThan(0); expect(r.stale.length).toBeLessThanOrEqual(5);
+    expect(r.stale.every((j) => j.number.startsWith('J-OLD-'))).toBe(true);
+  });
+  it('the live window is applied before the row limit: 45 valid upcoming jobs are all considered (the best ten shown, soonest first)', async () => {
+    const rows = Array.from({ length: 45 }, (_, i) => mk(`J-UP-${String(i).padStart(2, '0')}`, 'Confirmed', `2027-01-${String(1 + (i % 28)).padStart(2, '0')}T09:00`, `2027-01-${String(1 + (i % 28)).padStart(2, '0')}T12:00`));
+    const r = await openJobs(filteringSb({ jobs: rows, sites: [] }), 'c1', NOW); expect(r.live).toHaveLength(10); expect(r.live[0].date).toBe('2027-01-01');
+  });
 });

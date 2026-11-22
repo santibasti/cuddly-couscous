@@ -115,7 +115,9 @@ export const manilaNow = (): string => new Date(Date.now() + 8 * 3600_000).toISO
 const shiftMin = (local: string, minutes: number): string => new Date(Date.parse(`${local.slice(0, 16)}:00Z`) + minutes * 60_000).toISOString().slice(0, 16);
 /** How long after its end a job whose status says "on the way / on site / in progress" is still believed (an overnight job, a job that ran late). */
 export const CURRENT_GRACE_HOURS = 12; export const RECENT_DAYS = 7;
-export interface JobLine { number: string; date: string; time: string; status: string; services: string[]; site?: string }
+/** A job in an operational status (Dispatched / On Site / In Progress / completed) may start at most this long from now. A job scheduled for a later day with such a status is a data error: it stays a booking (as Confirmed) but never backs "the crew is on the way". */
+export const PRE_START_HOURS = 3;
+export interface JobLine { number: string; date: string; time: string; status: string; services: string[]; site?: string; end?: string; statusUnverified?: boolean }
 const SVC: Record<string, string> = { GLASS_EXT: 'exterior glass', GLASS_INT: 'interior glass', ROOF: 'roof', WALL: 'wall', FLOOR: 'floor', SOLAR: 'solar panels' };
 export const serviceNames = (codes: unknown): string[] => (Array.isArray(codes) ? codes : []).map((c) => SVC[String(c)] ?? String(c).toLowerCase().replace(/_/g, ' ')).slice(0, 4);
 const dayName = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -201,16 +203,39 @@ export async function clientsByReference(sb: Sb, text: string): Promise<Candidat
  *  Anything open but outside its window is STALE: its status is uncertain, so it is never described to the customer (no "the crew is on the way"); staff verify. */
 export async function openJobs(sb: Sb, clientId: string, nowLocal: string): Promise<{ live: JobLine[]; stale: JobLine[] }> {
   const now = nowLocal.length > 10 ? nowLocal.slice(0, 16) : `${nowLocal}T12:00`;
-  const { data, error } = await sb.from('jobs').select('number, start_at, end_at, status, service_codes, site_id').eq('client_id', clientId).is('deleted_at', null).in('status', OPEN_JOB_STATUSES).order('start_at', { ascending: true }).limit(40);
-  if (error) throw new Error(`bookings lookup failed: ${String(error.message ?? error).slice(0, 100)}`);   // never "no bookings" because the database failed
-  const todayStart = `${now.slice(0, 10)}T00:00`, currentCut = shiftMin(now, -CURRENT_GRACE_HOURS * 60), recentCut = shiftMin(now, -RECENT_DAYS * 24 * 60);
-  const rows = (data ?? []) as { number: string; start_at: string; end_at: string; status: string; service_codes: unknown; site_id: string }[];
-  const isLive = (r: { start_at: string; end_at: string; status: string }) => { const end = String(r.end_at ?? r.start_at).slice(0, 16); const c = JOB_STATUS_CLASS[r.status]; return c === 'upcoming' ? end >= todayStart : c === 'current' ? end >= currentCut : c === 'recent' ? end >= recentCut : false; };
-  const liveRows = rows.filter(isLive).slice(0, 10), staleRows = rows.filter((r) => !isLive(r) && JOB_STATUS_CLASS[r.status] !== 'ended').sort((a, b) => String(b.start_at).localeCompare(String(a.start_at))).slice(0, 5);
+  const todayStart = `${now.slice(0, 10)}T00:00`, currentCut = shiftMin(now, -CURRENT_GRACE_HOURS * 60), recentCut = shiftMin(now, -RECENT_DAYS * 24 * 60), startLimit = shiftMin(now, PRE_START_HOURS * 60);
+  const SEL = 'number, start_at, end_at, status, service_codes, site_id', inClass = (c: string) => Object.entries(JOB_STATUS_CLASS).filter(([, k]) => k === c).map(([k]) => k);
+  type Row = { number: string; start_at: string; end_at: string; status: string; service_codes: unknown; site_id: string };
+  // One query per class with the live window applied IN THE DATABASE, so a pile of old unfinished jobs can never push a valid current or upcoming booking out of the result (an unfiltered "first 40 by start date" did exactly that).
+  const win = (c: string, cut: string) => sb.from('jobs').select(SEL).eq('client_id', clientId).is('deleted_at', null).in('status', inClass(c)).gte('end_at', cut).order('start_at', { ascending: true }).limit(40);
+  const [up, cur, rec, old] = await Promise.all([win('upcoming', todayStart), win('current', currentCut), win('recent', recentCut),
+    sb.from('jobs').select(SEL).eq('client_id', clientId).is('deleted_at', null).in('status', OPEN_JOB_STATUSES).order('start_at', { ascending: false }).limit(40)]);   // the newest open jobs, to find the stale ones
+  for (const r of [up, cur, rec, old]) if (r.error) throw new Error(`bookings lookup failed: ${String(r.error.message ?? r.error).slice(0, 100)}`);   // never "no bookings" because the database failed
+  const all = new Map<string, Row>(); for (const r of [...(up.data ?? []), ...(cur.data ?? []), ...(rec.data ?? []), ...(old.data ?? [])] as Row[]) all.set(`${r.number}|${r.start_at}`, r);
+  const verdict = (r: Row): 'live' | 'unverified' | 'stale' | 'ended' => {
+    const end = String(r.end_at ?? r.start_at).slice(0, 16), start = String(r.start_at).slice(0, 16), c = JOB_STATUS_CLASS[r.status];
+    if (c === 'upcoming') return end >= todayStart ? 'live' : 'stale';
+    if (c === 'current') return end < currentCut ? 'stale' : start > startLimit ? 'unverified' : 'live';        // a future start with an operational status: the status cannot be believed
+    if (c === 'recent') return end < recentCut ? 'stale' : start > startLimit ? 'unverified' : 'live';
+    return 'ended';
+  };
+  const rows = [...all.values()], liveRows = rows.filter((r) => ['live', 'unverified'].includes(verdict(r))).sort((a, b) => String(a.start_at).localeCompare(String(b.start_at))).slice(0, 10);
+  const staleRows = rows.filter((r) => verdict(r) === 'stale').sort((a, b) => String(b.start_at).localeCompare(String(a.start_at))).slice(0, 5);
   const ids = [...new Set([...liveRows, ...staleRows].map((r) => r.site_id))]; let sn: Record<string, string> = {};
   if (ids.length) { const { data: st } = await sb.from('sites').select('id, name').in('id', ids); sn = Object.fromEntries(((st ?? []) as { id: string; name: string }[]).map((x) => [x.id, x.name])); }
-  const line = (r: { number: string; start_at: string; status: string; service_codes: unknown; site_id: string }): JobLine => ({ number: r.number, date: String(r.start_at).slice(0, 10), time: String(r.start_at).slice(11, 16) || '08:00', status: r.status, services: serviceNames(r.service_codes), site: sn[r.site_id] });
+  const line = (r: Row): JobLine => { const un = verdict(r) === 'unverified'; return { number: r.number, date: String(r.start_at).slice(0, 10), time: String(r.start_at).slice(11, 16) || '08:00', end: String(r.end_at ?? r.start_at).slice(0, 10), status: un ? 'Confirmed' : r.status, statusUnverified: un || undefined, services: serviceNames(r.service_codes), site: sn[r.site_id] }; };
   return { live: liveRows.map(line), stale: staleRows.map(line) };
+}
+/** May a reply say the crew is on the way / on site / working? Only when the job the customer is talking about is a live job in an operational status, and it is clear which job that is.
+ *  The customer's own words pick the job (a job number, or a date inside the job's days); with no reference it is the job(s) running today. A status never carries over from one job to another, several sites, or a mix of current and other jobs: then nobody asserts anything and staff answer. */
+export function crewStatusBacked(jobs: JobLine[], customerText: string, today: string): boolean {
+  if (!jobs.length) return false;
+  const nums = jobNumbersIn(customerText).map((n) => n.toUpperCase()), dates = datesIn(customerText, today);
+  const span = (j: JobLine, d: string) => j.date <= d && (j.end ?? j.date) >= d;
+  let scope = jobs.filter((j) => nums.includes(j.number.toUpperCase()) || dates.some((d) => span(j, d)));
+  if (!scope.length) { if (nums.length || dates.length) return false; scope = jobs.filter((j) => span(j, today)); }   // asked about a job or day we do not have live: nothing backs it
+  if (!scope.length || !scope.every((j) => JOB_STATUS_CLASS[j.status] === 'current')) return false;
+  return new Set(scope.map((j) => j.site ?? '')).size <= 1;
 }
 /** A client's current bookings whose status can be trusted (see openJobs), soonest first, whoever created them. */
 export const activeJobs = async (sb: Sb, clientId: string, nowLocal: string): Promise<JobLine[]> => (await openJobs(sb, clientId, nowLocal)).live;

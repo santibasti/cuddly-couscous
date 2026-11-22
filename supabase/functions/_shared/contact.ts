@@ -1,7 +1,7 @@
 // AI V2.3: works out who a ManyChat contact is (new / previous contact / existing client), keeps the result on the conversation row (the persistent mapping) and loads the verified client's active bookings.
 // Used by chat-brain on every message and by chat-send when staff re-check or link a contact.
 import { contactSince, type ReturningInfo } from './brain.ts';
-import { clientsByMobile, clientsByReference, decideIdentity, jobNumbersIn, jobOrderTokensIn, manilaNow, normMobile, openJobs, phonesIn, type Candidate, type Identity, type JobLine } from './identity.ts';
+import { JOB_STATUS_CLASS, clientsByMobile, clientsByReference, decideIdentity, jobNumbersIn, jobOrderTokensIn, manilaNow, normMobile, openJobs, phonesIn, type Candidate, type Identity, type JobLine } from './identity.ts';
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -82,7 +82,7 @@ export async function resolveContact(a: { sb: Db; env: (k: string) => string; co
     if (cl.error || jb.error) throw new Error(`client record lookup failed: ${String((cl.error ?? jb.error)?.message ?? 'error').slice(0, 100)}`);
     jobs = act.live; staleJobs = act.stale;
     returning = { note: note || 'Matched to an existing client', status: 'existing', client: cl.data ? { name: cl.data.name, mobile: cl.data.mobile, email: cl.data.email, address: cl.data.address } : undefined,
-      jobs: ((jb.data ?? []) as { number: string; status: string; start_at: string }[]).map((j) => `${j.number} (${j.status}, ${String(j.start_at).slice(0, 10)})`),
+      jobs: ((jb.data ?? []) as { number: string; status: string; start_at: string }[]).map((j) => `${j.number} (${JOB_STATUS_CLASS[j.status] === 'ended' ? `${j.status}, ` : ''}${String(j.start_at).slice(0, 10)})`),
       inquiries: ((iq.data ?? []) as { stage: string; details: string | null; created_at: string }[]).map((q) => `${String(q.created_at).slice(0, 10)} ${q.stage}: ${String(q.details ?? '').slice(0, 70)}`), active: act.live, stale: act.stale.map((j) => ({ number: j.number, date: j.date, status: j.status })) };
   } else if (identity.status === 'previous') returning = { note: note || 'Has talked to TopMop before', status: 'previous', suggested: !!identity.state };
   return { identity, jobs, staleJobs, referenced, candidateJobs, returning, mc };
