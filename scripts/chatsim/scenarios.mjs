@@ -306,4 +306,13 @@ ok('V2.3-12 an honest model answer passes through unchanged', /I don't see a boo
 deliver(); state.script = () => text(`Sorry po, ${D2.label} is fully booked.`); await send(askText(D2.label), { phone: '0917 555 1212' }); dr = drafts().at(-1);
 ok('V2.3-12 a date that IS theirs is still confirmed from their booking, and "full" is replaced (no regression)', /JOB-2026-8820/.test(dr.body) && /^Yes po/.test(dr.body) && !/fully booked/.test(dr.body), JSON.stringify(dr.body));
 
+
+// V2.3-13: AI OFF is really off (the rollout and any rollback depend on it): nothing is sent or drafted, the model is never called, the customer's message is kept, and the recovery job does nothing.
+reset('off'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => text('This must never be produced.');
+const offRes = await send(askText(D1.label), { phone: '0917 555 1212' }); const recOff = await recover(120_000);
+ok('V2.3-13 mode OFF: no reply, no draft and no model call; the customer\'s message is stored; the recovery job does nothing', offRes.status === 'off' && drafts().length === 0 && modelCalls.length === 0 && DB.chat_messages.filter((m) => m.direction === 'in').length === 1 && (recOff.recovered ?? 0) === 0 && /off|no key/i.test(recOff.note ?? ''), JSON.stringify({ status: offRes.status, drafts: drafts().length, calls: modelCalls.length, recover: recOff }));
+ok('V2.3-13 mode OFF: the contact is still recognised and kept for staff (suggested client), without any reply to the customer', conv0().link_state === 'suggested' && !conv0().client_id, JSON.stringify({ st: conv0().link_state }));
+reset('suggest'); queue(false); state.script = () => text('Hello po.'); await send('Hello'); deliver(); DB.settings[0].data.chat_ai.mode = 'off'; const callsBeforeOff = modelCalls.length; const offAgain = await send('Are you there?');
+ok('V2.3-13 switching the mode to OFF in the middle of a conversation stops replies at once', offAgain.status === 'off' && modelCalls.length === callsBeforeOff, JSON.stringify({ status: offAgain.status }));
+
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);
