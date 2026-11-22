@@ -28,6 +28,7 @@ export async function resolveContact(a: { sb: Db; env: (k: string) => string; co
   const tags = fresh ? tagNames(fresh.tags) : ((conv.mc_tags as unknown[]) ?? []);
   const phone = phoneFrom(...a.payloads, fresh) ?? (conv.mc_phone as string | undefined) ?? undefined;   // the CONTACT's own number, never one typed in the chat
 
+  if (phone && a.payloads.length && conv.mc_phone !== phone) { const sv = await sb.from('chat_conversations').update({ mc_phone: phone }).eq('id', conv.id); if (!sv.error) conv.mc_phone = phone; }   // kept BEFORE any lookup that can fail: a retry (the recovery job) still knows the contact's own number
   // 2. candidate clients: by the contact's own mobile (verifies), by what the customer typed (only suggests)
   const phoneMatches = phone ? await clientsByMobile(sb, `0${phone}`, 'contact_mobile') : [];   // only a SUGGESTION: a phone number in ManyChat does not prove who is typing
   const typed: Candidate[] = [];
@@ -76,6 +77,7 @@ export async function resolveContact(a: { sb: Db; env: (k: string) => string; co
       sb.from('jobs').select('number, status, start_at').eq('client_id', cid).is('deleted_at', null).order('start_at', { ascending: false }).limit(4),
       sb.from('inquiries').select('stage, details, created_at').eq('client_id', cid).is('deleted_at', null).order('created_at', { ascending: false }).limit(3),
       activeJobs(sb, cid, a.today)]);
+    if (cl.error || jb.error) throw new Error(`client record lookup failed: ${String((cl.error ?? jb.error)?.message ?? 'error').slice(0, 100)}`);
     jobs = act;
     returning = { note: note || 'Matched to an existing client', status: 'existing', client: cl.data ? { name: cl.data.name, mobile: cl.data.mobile, email: cl.data.email, address: cl.data.address } : undefined,
       jobs: ((jb.data ?? []) as { number: string; status: string; start_at: string }[]).map((j) => `${j.number} (${j.status}, ${String(j.start_at).slice(0, 10)})`),

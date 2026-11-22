@@ -59,7 +59,12 @@ Deno.serve(async (req) => {
       const { data: seen } = await sb.from('alert_outbox').select('id').eq('title', 'ManyChat contact fields').limit(1);
       if (!seen?.length) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'ManyChat contact fields', body: `ManyChat sends these fields for a contact: ${(rcv.mc.fields ?? []).join(', ')}. ${rcv.mc.subscribed ? `First-contact date found: ${rcv.mc.subscribed.slice(0, 10)}.` : 'No first-contact date was found, so old contacts cannot be recognised by date (tags, the contact\'s mobile number and staff links still work).'} ManyChat gives contact fields only, never the old message history.`, link: '/ai-chat' });
     }
-  } catch (e) { console.error('contact check', (e as Error).message); }   // never stop the chat because of this check
+  } catch (e) {   // FAIL CLOSED: if we cannot tell who this customer is, the AI must not answer (it could treat a returning client as new and send a booking form or call their date full). The message is kept and unhandled; the recovery job retries.
+    console.error('contact check', (e as Error).message);
+    const since = new Date(Date.now() - 30 * 60_000).toISOString(); const { data: dup } = await sb.from('alert_outbox').select('id').eq('title', 'The AI could not check who this customer is').gte('created_at', since).limit(1);
+    if (!dup?.length) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'The AI could not check who this customer is', body: `${conv.name ?? 'A customer'} (${channel}): ${String((e as Error).message).slice(0, 120)}. No reply was sent or drafted; the system retries every minute. Reply by hand if it is urgent.`, link: '/ai-chat' });
+    return json({ ok: true, status: 'held', reply: '', mode, note: 'contact check failed' });
+  }
   if (mode === 'off') return json({ ok: true, status: 'off', reply: '', mode });
   if (conv.status === 'Needs a person') return json({ ok: true, status: 'handover', reply: '', mode });                    // a person has this conversation: the AI stays silent
   if (!env('ANTHROPIC_API_KEY')) return json({ ok: true, status: 'held', reply: '', mode, note: 'ANTHROPIC_API_KEY is not set' });

@@ -37,7 +37,7 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
     try {
       let who: { identity?: Identity; jobs: JobLine[]; candidateJobs: CandidateJobs[]; returning: ReturningInfo | null | undefined } = { identity: deps.identity, jobs: deps.jobs ?? [], candidateJobs: deps.candidateJobs ?? [], returning };
       if (!deps.identity) {   // the recovery job: resolve the contact here, so a returning customer is never welcomed as new
-        try { const r = await resolveContact({ sb, env, conv: conv as Record<string, unknown>, sub, payloads: [], text: texts.join(' '), aiStartedOn: (st?.data as { chat_ai?: { ai_started_on?: string } } | undefined)?.chat_ai?.ai_started_on, today: manilaDay(Date.now()) }); who = { identity: r.identity, jobs: r.jobs, candidateJobs: r.candidateJobs, returning: r.returning }; } catch (e) { console.error('contact check', (e as Error).message); }
+        { const r = await resolveContact({ sb, env, conv: conv as Record<string, unknown>, sub, payloads: [], text: texts.join(' '), aiStartedOn: (st?.data as { chat_ai?: { ai_started_on?: string } } | undefined)?.chat_ai?.ai_started_on, today: manilaDay(Date.now()) }); who = { identity: r.identity, jobs: r.jobs, candidateJobs: r.candidateJobs, returning: r.returning }; }   // an error here is NOT swallowed: the batch fails closed (nothing is sent or drafted, the messages stay unhandled and are retried)
       }
       const verified = who.identity?.status === 'existing';
       // bookings of the clients this contact MIGHT be (nobody confirmed it): never shown, but they stop the form, the calendar "full" answer and any new booking, and tell staff what to check

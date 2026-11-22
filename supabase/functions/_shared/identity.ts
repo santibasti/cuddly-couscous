@@ -151,20 +151,25 @@ export async function clientsByMobile(sb: Sb, raw: unknown, basis: string): Prom
   const n = normMobile(raw); if (!n) return [];
   const r = await sb.rpc('chat_clients_by_mobile', { p_mobile: `0${n}` });
   if (!r.error) return ((r.data ?? []) as { id: string; name: string }[]).map((c) => cand(c, basis));
-  const { data } = await sb.from('clients').select('id, name, mobile').is('deleted_at', null).not('mobile', 'is', null).limit(5000);
+  const scan = await sb.from('clients').select('id, name, mobile').is('deleted_at', null).not('mobile', 'is', null).limit(5000);
+  if (scan.error) throw new Error(`client lookup failed: ${String(scan.error.message ?? scan.error).slice(0, 100)}`);   // never "no match" because the database failed: the caller must hold the message
+  const data = scan.data;
   return ((data ?? []) as { id: string; name: string; mobile: string }[]).filter((c) => normMobile(c.mobile) === n).slice(0, 5).map((c) => cand(c, basis));
 }
 /** Clients behind job numbers the customer wrote. */
 export async function clientsByJobNumber(sb: Sb, text: string): Promise<Candidate[]> {
   const nums = jobNumbersIn(text).filter((n) => n.startsWith('JOB-')); if (!nums.length) return [];
-  const { data } = await sb.from('jobs').select('number, client_id').in('number', nums).is('deleted_at', null).limit(5);
+  const { data, error } = await sb.from('jobs').select('number, client_id').in('number', nums).is('deleted_at', null).limit(5);
+  if (error) throw new Error(`job lookup failed: ${String(error.message ?? error).slice(0, 100)}`);
   const ids = [...new Set(((data ?? []) as { client_id: string }[]).map((j) => j.client_id))]; if (!ids.length) return [];
-  const { data: cl } = await sb.from('clients').select('id, name').in('id', ids).is('deleted_at', null);
+  const { data: cl, error: ce } = await sb.from('clients').select('id, name').in('id', ids).is('deleted_at', null);
+  if (ce) throw new Error(`client lookup failed: ${String(ce.message ?? ce).slice(0, 100)}`);
   return ((cl ?? []) as { id: string; name: string }[]).map((c) => cand(c, 'job_number'));
 }
 /** A verified client's current bookings: every job that is not over (see JOB_STATUS_CLASS), whoever created it (staff, chat, any channel), soonest first. Upcoming jobs must not be in the past; a job that is on the way, on site or being cleaned is always current; a finished job whose paperwork is still open stays for 7 days. */
 export async function activeJobs(sb: Sb, clientId: string, todayIso: string): Promise<JobLine[]> {
-  const { data } = await sb.from('jobs').select('number, start_at, end_at, status, service_codes, site_id').eq('client_id', clientId).is('deleted_at', null).in('status', OPEN_JOB_STATUSES).order('start_at', { ascending: true }).limit(20);
+  const { data, error } = await sb.from('jobs').select('number, start_at, end_at, status, service_codes, site_id').eq('client_id', clientId).is('deleted_at', null).in('status', OPEN_JOB_STATUSES).order('start_at', { ascending: true }).limit(20);
+  if (error) throw new Error(`bookings lookup failed: ${String(error.message ?? error).slice(0, 100)}`);   // never "no bookings" because the database failed
   const weekAgo = `${new Date(Date.parse(`${todayIso}T00:00:00Z`) - 7 * 86400_000).toISOString().slice(0, 10)}T00:00:00`;
   const rows = ((data ?? []) as { number: string; start_at: string; end_at: string; status: string; service_codes: unknown; site_id: string }[]).filter((r) => {
     const c = JOB_STATUS_CLASS[r.status]; const end = String(r.end_at ?? r.start_at);

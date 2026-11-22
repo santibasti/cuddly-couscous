@@ -170,3 +170,13 @@ describe('V2.3 final review: a date that is not theirs is never confirmed', () =
     expect(contradictsBooking('Yes po, you are scheduled for November 30.', 'We are scheduled November 30', [dec5], '2026-11-22', false)).toBeUndefined();
   });
 });
+
+describe('V2.3 reliability: a database failure is never read as "no match" or "no bookings" (fail closed)', () => {
+  const broken = (tables: string[], rpcFails = true) => ({
+    from: (t: string) => { const q: Record<string, unknown> = {}; for (const m of ['select', 'eq', 'is', 'in', 'not', 'gte', 'order', 'limit']) q[m] = () => q; q.then = (ok: (v: unknown) => unknown) => ok(tables.includes(t) ? { data: null, error: { message: `boom ${t}` } } : { data: [] }); return q; },
+    rpc: () => ({ data: null, error: { message: rpcFails ? 'function does not exist' : 'ok' } }),
+  });
+  it('the client lookup throws when both the database function and the fallback scan fail', async () => { await expect(clientsByMobile(broken(['clients']), '0917 555 1212', 'contact_mobile')).rejects.toThrow(/client lookup failed/); });
+  it('the booking lookup throws instead of answering "no bookings"', async () => { await expect(activeJobs(broken(['jobs']), 'c1', '2026-11-22')).rejects.toThrow(/bookings lookup failed/); });
+  it('a customer who simply has no match still gets an empty list (no error)', async () => { expect(await clientsByMobile(broken([]), '0917 555 1212', 'contact_mobile')).toEqual([]); expect(await activeJobs(broken([]), 'c1', '2026-11-22')).toEqual([]); });
+});

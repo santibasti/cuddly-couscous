@@ -315,4 +315,15 @@ ok('V2.3-13 mode OFF: the contact is still recognised and kept for staff (sugges
 reset('suggest'); queue(false); state.script = () => text('Hello po.'); await send('Hello'); deliver(); DB.settings[0].data.chat_ai.mode = 'off'; const callsBeforeOff = modelCalls.length; const offAgain = await send('Are you there?');
 ok('V2.3-13 switching the mode to OFF in the middle of a conversation stops replies at once', offAgain.status === 'off' && modelCalls.length === callsBeforeOff, JSON.stringify({ status: offAgain.status }));
 
+
+// V2.3-14: FAIL CLOSED. If the AI cannot tell who a customer is (a database failure), it does NOT answer as if they were new: nothing is sent or drafted, staff are alerted, the message is kept and retried.
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => sayFull();
+flags.failTable = 'clients'; const held1 = await send(askText(D1.label), { phone: '0917 555 1212' }); flags.failTable = null;
+ok('V2.3-14 the client lookup fails: the message is HELD (no reply, no draft, no model call), staff are alerted, and the message stays unhandled for a retry', held1.status === 'held' && drafts().length === 0 && modelCalls.length === 0 && (DB.alert_outbox ?? []).some((a) => a.title === 'The AI could not check who this customer is') && DB.chat_messages.filter((m) => m.direction === 'in' && !m.handled_at).length === 1, JSON.stringify({ status: held1.status, drafts: drafts().length, calls: modelCalls.length }));
+const rec14 = await recover(120_000); dr = drafts().at(-1);
+ok('V2.3-14 once the database works again the recovery job answers it correctly: the unconfirmed contact is handed to staff (no "full", no form, no details)', rec14.recovered === 1 && !!dr && !leak(dr.body) && conv0().status === 'Needs a person', JSON.stringify({ recovered: rec14.recovered, body: dr?.body?.slice(0, 80) }));
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => text('Hello po.');
+await send('Hello', { phone: '0917 555 1212' }); await confirmByStaff('c1'); deliver(); flags.failTable = 'jobs'; modelCalls.length = 0; const held2 = await send(askText(D1.label), { phone: '0917 555 1212' }); flags.failTable = null;
+ok('V2.3-14 a confirmed client whose bookings cannot be read is NOT told "no bookings" or "full": the message is held, nothing is drafted, no model call', held2.status === 'held' && modelCalls.length === 0 && drafts().filter((m) => m.status === 'draft').length === 0, JSON.stringify({ status: held2.status, calls: modelCalls.length }));
+
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);
