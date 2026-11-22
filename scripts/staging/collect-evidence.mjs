@@ -9,7 +9,7 @@
 import { spawnSync } from 'node:child_process'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import crypto from 'node:crypto';
 const STAGING_REF = 'nnggknbqrknkuexudvrp', PROD_REF = 'ghbumxivporzsalivgyg';
 const fail = (m) => { console.error(`STOP: ${m}`); process.exit(2); };
-const run = (cmd, args, env = {}) => spawnSync(cmd, args, { encoding: 'utf8', env: { ...process.env, ...env }, shell: process.platform === 'win32', maxBuffer: 64 * 1024 * 1024 });
+const run = (cmd, args, env = {}) => spawnSync(cmd, args, { encoding: 'utf8', env: { ...process.env, ...env }, shell: process.platform === 'win32', maxBuffer: 64 * 1024 * 1024, timeout: 40 * 60 * 1000 });   // one runner may take at most 40 minutes
 const ref = (() => { try { return fs.readFileSync('supabase/.temp/project-ref', 'utf8').trim(); } catch { return ''; } })();
 if (ref === PROD_REF) fail('this folder is linked to PRODUCTION. Use the staging folder.');
 if (ref !== STAGING_REF) fail(`the linked Supabase project is "${ref || 'none'}", not staging (${STAGING_REF}). Run: supabase link --project-ref ${STAGING_REF}`);
