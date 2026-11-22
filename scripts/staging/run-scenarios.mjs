@@ -84,6 +84,7 @@ r = await V('Y', ['Makati', 'window cleaning', 'I have 15 window panels, 10 sola
 verdict('Y: three services together: window ₱4,799 (first, keeps its minimum) + solar ₱2,450 + roof ₱8,700 (no minimum) = ₱15,949', r, { ...base(r), combined_total: /15,949/.test(r), not_free: !/\bfree\b|discount/i.test(r) });
 
 /* ============ V2.3: previous contacts and existing clients (real model, real staging database; test clients and jobs are seeded and deleted again) ============ */
+// A phone number held by ManyChat only SUGGESTS a client. Staff confirm in AI Chat ("This is the client", then hand back to the AI). This runner stands in for that click by writing exactly what the chat-send "link" + "release" actions write.
 const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const inDays = (k) => { const d = new Date(Date.now() + k * 86400000 + 8 * 3600000); return { iso: d.toISOString().slice(0, 10), label: `${MON[d.getUTCMonth()]} ${d.getUTCDate()}` }; };
 const D1 = inDays(8), D2 = inDays(15); const seeded = { jobs: [], sites: [], clients: [] }; let seedFail = '';
@@ -91,50 +92,79 @@ const ten = (k) => `9${String(stamp).slice(-7)}${String(k).padStart(2, '0')}`;  
 const mob = (k) => { const n = ten(k); return `0${n.slice(0, 3)} ${n.slice(3, 6)} ${n.slice(6)}`; };   // 09XX XXX XXXX
 const more = async (sub, text, extra = {}) => { lastSub = sub; const before = (await outs(sub)).length; await post(sub, text, extra); await waitFor(sub, before + 1); await approve(sub); };   // a further message in a conversation that already has replies
 const ins = async (table, row) => { const r = await fetch(`${URL_}/rest/v1/${table}`, { method: 'POST', headers: { ...H, Prefer: 'return=representation' }, body: JSON.stringify(row) }); const t = await r.text(); if (!r.ok) { seedFail = `${table}: ${t.slice(0, 200)}`; return null; } return JSON.parse(t)[0]; };
-const seedClient = async (key, name, mobile, jobs = []) => {
+const seedClient = async (key, name, mobile, jobs = []) => {   // jobs made BY STAFF by hand: no quotation and no inquiry; the client record is created after the chat began
   const id = `stg-${stamp}-${key}`; const c = await ins('clients', { id, name, contact_person: name, mobile, type: 'Residential', status: 'Active', address: 'Makati' }); if (!c) return null; seeded.clients.push(id);
   const sid = `stg-${stamp}-s-${key}`; if (await ins('sites', { id: sid, client_id: id, name: `${name} residence`, address: 'Makati' })) seeded.sites.push(sid);
   for (const [i, j] of jobs.entries()) { const jid = `stg-${stamp}-j-${key}-${i}`; if (await ins('jobs', { id: jid, number: j.number, client_id: id, site_id: sid, start_at: `${j.date}T09:00:00`, end_at: `${j.date}T12:00:00`, status: j.status ?? 'Confirmed', service_codes: j.codes ?? ['GLASS_EXT'] })) seeded.jobs.push(jid); }
   return id;
 };
+const fill = async (date, key) => { const f = await seedClient(`fill-${key}`, 'Filler Client', `09${String(stamp).slice(-9)}`.slice(0, 11), [1, 2, 3, 4].map((k) => ({ number: jobNo(`F${key}${k}`), date, codes: ['ROOF'] }))); return f; };   // other clients' jobs: the calendar for that date becomes FULL, partly because of the customer's own booking: the trap of the November 30 incident
 const jobNo = (k) => `JOB-9${String(stamp).slice(-5)}-${k}`;
 const full = (sub) => outs(sub).then((o) => o.at(-1)?.body ?? '');
-const noForm = (x) => !/Reservation Date:|Please copy this and fill/i.test(x); const noFull = (x) => !/fully booked|is full|not available|too soon|nearest (open )?dates/i.test(x);
+const noForm = (x) => !/Reservation Date:|Please copy this and fill/i.test(x); const noFull = (x) => !/fully booked|is full|not available|unavailable|too soon|nearest (open )?dates|no slots/i.test(x); const noLeak = (x) => !/JOB-\d{4,6}-[A-Z0-9]{1,6}/.test(x);
+const confirmByStaff = async (sub, clientId) => { const c = await convOf(sub); await rest(`chat_conversations?id=eq.${c.id}`, { method: 'PATCH', body: JSON.stringify({ client_id: clientId, contact_status: 'existing', link_state: 'staff', link_basis: 'staff', link_candidates: [], linked_by: 'staging-test', linked_at: new Date().toISOString(), returning_customer: true, returning_note: 'Linked by staff (staging test)', status: 'Open', human_reason: null }) }); };   // = chat-send "link" + "release"
+const NEVER = (x) => noFull(x) && noForm(x);
 
-// N1: a brand-new customer with no prior record: unchanged (the welcome is sent)
+// N1: a brand-new customer is unchanged
 const n1 = S('N1'); await talk(n1, ['Hi, how much is window cleaning in Makati?']); let fb = await full(n1); let cv = await convOf(n1);
 verdict('V2.3-N1: a brand-new customer is NEW and gets the standard welcome', last(fb), { welcome: /TopMop offers professional exterior cleaning/.test(fb), status_new: !cv?.contact_status || cv.contact_status === 'new', no_client: !cv?.client_id });
-// P1: messaged before the AI was installed (ManyChat first-contact date long before): PREVIOUS contact, never an existing client
-const p1 = S('P1'); await talk(p1, ['Hello po'], { subscribed: '2026-01-05T08:00:00Z' }); fb = await full(p1); cv = await convOf(p1);
-verdict('V2.3-P1: a contact from before the AI (old Messenger chats, no service history) is a PREVIOUS contact: no welcome, no menu, not an existing client', last(fb), { no_welcome: !/TopMop offers professional exterior cleaning|May we know your location/.test(fb), status_previous: cv?.contact_status === 'previous', not_existing: !cv?.client_id && cv?.contact_status !== 'existing', no_invented_history: !/last time|your previous (job|booking|service)|welcome back.*(job|booking)/i.test(fb) });
-// E1: a manually created job order; the client record is created AFTER the chat began; the customer asks about the booking
-const e1 = S('E1'); await talk(e1, ['Hello po']); const c1 = await seedClient('e1', 'Maria Cruz', mob(1), [{ number: jobNo(1), date: D1.iso }]);
-if (!c1) verdict('V2.3-E1: existing client (manual job order, client record newer than the chat) asks about their booking', seedFail || 'seeding failed', { seeded: false });
-else { await more(e1, `Hi po, are we still scheduled for ${D1.label}?`, { phone: mob(1) }); fb = await full(e1); cv = await convOf(e1);
-  verdict('V2.3-E1: existing client (manual job order, client record created after the chat) asks about their booking: recognised, answered from their own job, never "full", no form', last(fb), { existing: cv?.contact_status === 'existing' && cv?.client_id === c1, basis_mobile: cv?.link_basis === 'mobile', cites_own_booking: fb.includes(jobNo(1)) || new RegExp(D1.label.split(' ')[1]).test(fb), never_full: noFull(fb), no_form: noForm(fb), no_welcome: !/TopMop offers professional/.test(fb) }); }
-// E2: a reminder about a high ceiling for a booked job
-const e2 = S('E2'); const c2 = await seedClient('e2', 'Ana Reyes', mob(2), [{ number: jobNo(2), date: D1.iso }]);
-if (c2) { await talk(e2, [`Reminder lang po, mataas po ang ceiling namin. We are scheduled ${D1.label}.`], { phone: mob(2) }); fb = await full(e2); cv = await convOf(e2);
-  verdict('V2.3-E2: a reminder about a high ceiling from an existing client is not a new inquiry: no form, no welcome, no calendar, the team is alerted', last(fb), { existing: cv?.contact_status === 'existing', no_form: noForm(fb), no_welcome: !/TopMop offers professional/.test(fb), never_full: noFull(fb), no_location_ask: !/location|city|where/i.test(fb), english: !tagalog(fb) }); }
-// E3: several bookings: the asked date picks the right job
-const e3 = S('E3'); const c3 = await seedClient('e3', 'Ben Santos', mob(3), [{ number: jobNo(31), date: D1.iso }, { number: jobNo(32), date: D2.iso, status: 'Pending', codes: ['ROOF'] }]);
-if (c3) { await talk(e3, [`Is my booking on ${D2.label} still on?`], { phone: mob(3) }); fb = await full(e3);
-  verdict('V2.3-E3: a client with several bookings: the asked date is answered from the right job', last(fb), { right_job: fb.includes(jobNo(32)) || new RegExp(D2.label.split(' ')[1]).test(fb), never_full: noFull(fb), no_form: noForm(fb) }); }
-// E4: identical names on two clients: matched by mobile, never by name
-const e4 = S('E4'); const c4a = await seedClient('e4a', 'Carla Lim', mob(41), [{ number: jobNo(41), date: D1.iso }]); const c4b = await seedClient('e4b', 'Carla Lim', mob(42), [{ number: jobNo(42), date: D2.iso }]);
-if (c4a && c4b) { await talk(e4, [`Are we still scheduled for ${D2.label}?`], { phone: mob(42) }); fb = await full(e4); cv = await convOf(e4);
-  verdict('V2.3-E4: two clients with the SAME NAME: the contact is matched to the right one by mobile and only their job is used', last(fb), { right_client: cv?.client_id === c4b, only_their_job: !fb.includes(jobNo(41)), never_full: noFull(fb) }); }
-// E5: no phone number: the customer says they booked: ask once, then a person; a number typed in the chat is only a suggestion
-const e5 = S('E5'); const c5 = await seedClient('e5', 'Dina Gomez', mob(5), [{ number: jobNo(5), date: D1.iso }]);
+// P1: messaged before the AI: previous contact
+const p1 = S('P1'); await talk(p1, ['Hello po, how much is window cleaning in Makati?'], { subscribed: '2026-01-05T08:00:00Z' }); fb = await full(p1); cv = await convOf(p1);
+verdict('V2.3-P1: a contact from before the AI is a PREVIOUS contact: no welcome, no menu, not an existing client, no invented history', last(fb), { no_welcome: !/TopMop offers professional exterior cleaning|May we know your location/.test(fb), status_previous: cv?.contact_status === 'previous', not_existing: !cv?.client_id && cv?.contact_status !== 'existing', no_history: !/last time|your previous (job|booking|service)/i.test(fb) });
+// E1: THE NOVEMBER 30 INCIDENT: a job made by staff by hand, the date is FULL on the calendar because of it, the client record is newer than the chat, the ManyChat phone matches the client
+const e1 = S('E1'); await talk(e1, ['Hello po']); const c1 = await seedClient('e1', 'Maria Cruz', mob(1), [{ number: jobNo('E1'), date: D1.iso }]); await fill(D1.iso, 'e1');
+if (!c1) { verdict('V2.3-E1: the November 30 incident', seedFail || 'seeding failed', { seeded: false }); }
+else {
+  await more(e1, `Hi po, are we still scheduled for ${D1.label}?`, { phone: mob(1) }); fb = await full(e1); cv = await convOf(e1);
+  verdict('V2.3-E1a (Nov 30 incident, before staff confirm): the phone only SUGGESTS the client: not told the date is full, no form, no booking detail, a person is asked', last(fb), { suggested_not_linked: cv?.link_state === 'suggested' && !cv?.client_id, never_full_or_form: NEVER(fb), no_leak: noLeak(fb) && !new RegExp(D1.label).test(last(fb)), handed_to_staff: cv?.status === 'Needs a person', staff_note_has_booking: String(cv?.human_reason ?? '').includes(jobNo('E1')) });
+  await confirmByStaff(e1, c1); await more(e1, `Hi po, are we still scheduled for ${D1.label}?`, { phone: mob(1) }); fb = await full(e1); cv = await convOf(e1);
+  verdict('V2.3-E1b (Nov 30 incident, after staff confirm): answered from THEIR booking though the calendar is full: never "full", no form, no other dates, no welcome', last(fb), { existing_by_staff: cv?.contact_status === 'existing' && cv?.link_state === 'staff', cites_own_booking: fb.includes(jobNo('E1')) || new RegExp(D1.label.split(' ')[1]).test(last(fb)) || /scheduled|booking/i.test(last(fb)), never_full: noFull(last(fb)), no_form: noForm(fb), no_welcome: !/TopMop offers professional/.test(fb), english: !tagalog(last(fb)) });
+}
+// E2: a high-ceiling reminder from a confirmed client
+const e2 = S('E2'); await talk(e2, ['Hello po']); const c2 = await seedClient('e2', 'Ana Reyes', mob(2), [{ number: jobNo('E2'), date: D1.iso }]);
+if (c2) { await more(e2, 'Hello again', { phone: mob(2) }); await confirmByStaff(e2, c2); await more(e2, `Reminder lang po, mataas po ang ceiling namin. We are scheduled ${D1.label}.`, { phone: mob(2) }); fb = await full(e2);
+  verdict('V2.3-E2: a high-ceiling reminder from a confirmed client is thanked and noted: no form, no welcome, no location question, no calendar', last(fb), { no_form: noForm(fb), no_welcome: !/TopMop offers professional/.test(fb), never_full: noFull(last(fb)), no_location_ask: !/location|city|where/i.test(last(fb)), english: !tagalog(last(fb)) }); }
+// E3: several bookings
+const e3 = S('E3'); await talk(e3, ['Hello po']); const c3 = await seedClient('e3', 'Ben Santos', mob(3), [{ number: jobNo('E31'), date: D1.iso }, { number: jobNo('E32'), date: D2.iso, status: 'Pending', codes: ['ROOF'] }]); await fill(D2.iso, 'e3');
+if (c3) { await more(e3, 'Hello again', { phone: mob(3) }); await confirmByStaff(e3, c3); await more(e3, `Is my roof job on ${D2.label} still on?`, { phone: mob(3) }); fb = await full(e3);
+  verdict('V2.3-E3: several bookings: the asked date is answered from the right job, never "full", no form', last(fb), { right_job: fb.includes(jobNo('E32')) || new RegExp(D2.label.split(' ')[1]).test(last(fb)) || /roof/i.test(last(fb)), never_full: noFull(last(fb)), no_form: noForm(fb) }); }
+// E4: identical names on two clients: only the confirmed client's job is used
+const e4 = S('E4'); await talk(e4, ['Hello po']); const c4a = await seedClient('e4a', 'Carla Lim', mob(41), [{ number: jobNo('E4A'), date: D1.iso }]); const c4b = await seedClient('e4b', 'Carla Lim', mob(42), [{ number: jobNo('E4B'), date: D2.iso }]);
+if (c4a && c4b) { await more(e4, 'Hello again', { phone: mob(42) }); cv = await convOf(e4); const cands = (cv?.link_candidates ?? []).map((x) => x.client_id); await confirmByStaff(e4, c4b); await more(e4, `Are we still scheduled for ${D2.label}?`, { phone: mob(42) }); fb = await full(e4);
+  verdict('V2.3-E4: two clients with the SAME NAME: the phone suggests only the right one; after staff confirm only that client\'s job is used', last(fb), { only_right_candidate: cands.length === 1 && cands[0] === c4b, only_their_job: !fb.includes(jobNo('E4A')) && !new RegExp(D1.label).test(last(fb)), never_full: noFull(last(fb)), no_form: noForm(fb) }); }
+// E5: no phone: a name never links; asked once; a typed number is only a suggestion
+const e5 = S('E5'); const c5 = await seedClient('e5', 'Dina Gomez', mob(5), [{ number: jobNo('E5'), date: D1.iso }]); await fill(D1.iso, 'e5');
 if (c5) { await talk(e5, [`Hi, we are scheduled ${D1.label} po. Dina Gomez here.`]); fb = await full(e5); cv = await convOf(e5); const ask = fb;
   await more(e5, `My number is ${mob(5)}`); fb = await full(e5); const cv2 = await convOf(e5);
-  verdict('V2.3-E5: no phone number: a NAME never links; the AI asks once for the mobile or job order number (no form, no calendar, no details)', last(ask), { not_linked: !cv?.client_id && cv?.contact_status !== 'existing', asks_reference: /mobile number or job order number/i.test(ask), no_form: noForm(ask), never_full: noFull(ask), no_leak: !ask.includes(jobNo(5)) });
-  verdict('V2.3-E5: a number typed in the chat is only a SUGGESTION: staff confirm, the customer is not linked, a person takes over, no details leak', last(fb), { suggested: cv2?.link_state === 'suggested' && !cv2?.client_id, candidate_listed: (cv2?.link_candidates ?? []).some((x) => x.client_id === c5), handed_over: cv2?.status === 'Needs a person', no_leak: !fb.includes(jobNo(5)) }); }
-// E6: the same mobile on two client records: ambiguous, staff decide
+  verdict('V2.3-E5a: no phone number, only a NAME: not linked; asks once for the mobile or job order number; no form, no calendar, no details', last(ask), { not_linked: !cv?.client_id && cv?.contact_status !== 'existing', asks_reference: /mobile number or job order number/i.test(ask), never_full_or_form: NEVER(ask), no_leak: noLeak(ask) });
+  verdict('V2.3-E5b: a number typed in the chat is only a SUGGESTION: staff confirm, not linked, a person takes over, no details leak', last(fb), { suggested_not_linked: cv2?.link_state === 'suggested' && !cv2?.client_id, candidate_listed: (cv2?.link_candidates ?? []).some((x) => x.client_id === c5), handed_over: cv2?.status === 'Needs a person', no_leak: noLeak(fb) }); }
+// E6: the same phone on two client records: ambiguous
 const e6 = S('E6'); const c6a = await seedClient('e6a', 'Eva Tan', mob(6), []); const c6b = await seedClient('e6b', 'Evan Tan', mob(6), []);
 if (c6a && c6b) { await talk(e6, ['Hello po'], { phone: mob(6) }); cv = await convOf(e6);
-  verdict('V2.3-E6: the SAME mobile on two client records is AMBIGUOUS: nobody is linked and staff are asked to choose', await full(e6), { ambiguous: cv?.link_state === 'ambiguous', none_linked: !cv?.client_id, previous: cv?.contact_status === 'previous', two_candidates: (cv?.link_candidates ?? []).length === 2 }); }
+  verdict('V2.3-E6: the SAME phone on two client records is AMBIGUOUS: nobody is linked and staff are asked to choose', await full(e6), { ambiguous: cv?.link_state === 'ambiguous', none_linked: !cv?.client_id, previous: cv?.contact_status === 'previous', two_candidates: (cv?.link_candidates ?? []).length === 2 }); }
+// E7: a job in a dispatch status is a current booking
+const e7 = S('E7'); await talk(e7, ['Hello po']); const c7 = await seedClient('e7', 'Gina Ong', mob(7), [{ number: jobNo('E7'), date: inDays(0).iso, status: 'Dispatched' }]);
+if (c7) { await more(e7, 'Hello again', { phone: mob(7) }); await confirmByStaff(e7, c7); await more(e7, 'Is the crew on the way today?', { phone: mob(7) }); fb = await full(e7);
+  verdict('V2.3-E7: a job in status Dispatched is a current booking: answered from the record in plain words, never the internal status name, no form', last(fb), { knows_job: /on the way|today|crew|booking|dispatch/i.test(last(fb)), plain_words: !/Dispatch Checklist Pending|Dispatched\b/.test(last(fb)), no_form: noForm(fb), never_full: noFull(last(fb)) }); }
+// E8: an UNCONFIRMED contact asks whether the date their possible client already holds is open
+const e8 = S('E8'); await talk(e8, ['Hello po']); const c8 = await seedClient('e8', 'Hanna Co', mob(8), [{ number: jobNo('E8'), date: D1.iso }]); await fill(D1.iso, 'e8');
+if (c8) { await more(e8, `Is ${D1.label} open for window cleaning in Makati?`, { phone: mob(8) }); fb = await full(e8); cv = await convOf(e8);
+  verdict('V2.3-E8: an unconfirmed contact whose possible client holds that date is never told "full" or offered other dates; no booking detail leaks; staff take over', last(fb), { never_full_or_form: NEVER(fb), no_leak: noLeak(fb), still_unverified: !cv?.client_id }); }
+// E9: an UNCONFIRMED contact asks to BOOK the date their possible client already holds
+const e9 = S('E9'); await talk(e9, ['Hello po']); const c9 = await seedClient('e9', 'Ivan Ty', mob(9), [{ number: jobNo('E9'), date: D1.iso }]); await fill(D1.iso, 'e9');
+if (c9) { await more(e9, `I want to book window cleaning on ${D1.label}`, { phone: mob(9) }); fb = await full(e9); cv = await convOf(e9);
+  verdict('V2.3-E9: an unconfirmed contact (possible client with a booking) asks to book: NO booking form, no calendar answer, staff are asked to confirm first', last(fb), { never_full_or_form: NEVER(fb), no_leak: noLeak(fb), handed_to_staff: cv?.status === 'Needs a person' }); }
 if (seedFail) console.log(`\nSEEDING NOTE (a test client or job could not be created on staging): ${seedFail}`);
+
+// DELIVERY (optional): the same incident through REAL ManyChat delivery to YOUR test contact. Needs: the AI in Full mode on staging, MANYCHAT_API_TOKEN on the staging function, STAGING_SUBSCRIBER (your test contact's ManyChat id).
+// It seeds a test client (phone from STAGING_SUBSCRIBER_PHONE, or none) with a staff-made booking on a full date, sends the question, checks the delivered messages in the database, then unlinks and removes its test data. Look at Messenger too: nothing in it may be a booking form or "fully booked".
+if (REAL_SUB && process.env.STAGING_SUBSCRIBER_PHONE) {
+  const phone = process.env.STAGING_SUBSCRIBER_PHONE; const cd = await seedClient('deliv', 'Delivery Test Client', phone, [{ number: jobNo('DLV'), date: D1.iso }]); await fill(D1.iso, 'dlv');
+  if (cd) { const before = (await outs(REAL_SUB)).length; await post(REAL_SUB, `Hi po, are we still scheduled for ${D1.label}?`, { phone }); await sleep(20000); await confirmByStaff(REAL_SUB, cd); const mid = (await outs(REAL_SUB)).length; await post(REAL_SUB, `Hi po, are we still scheduled for ${D1.label}?`, { phone }); await sleep(20000);
+    const o = (await outs(REAL_SUB)).slice(before); const all = o.map((m) => m.body).join(' || '); const delivered = o.filter((m) => m.status === 'sent');
+    verdict('V2.3-DELIVERY: through real ManyChat delivery the contact was never sent the booking form or told the date is full, and the answers were really sent', all, { replies_exist: o.length >= 2, really_sent: delivered.length >= 1 && delivered.length === o.filter((m) => m.status !== 'discarded').length, never_full_or_form: NEVER(all), after_confirm_cites_booking: /scheduled|booking|JOB-/i.test(o.slice(mid - before).map((m) => m.body).join(' ')) });
+    const c = await convOf(REAL_SUB); if (c) await rest(`chat_conversations?id=eq.${c.id}`, { method: 'PATCH', body: JSON.stringify({ client_id: null, contact_status: 'new', link_state: null, link_basis: null, link_candidates: [], status: 'Open', human_reason: null }) }); }
+}
 for (const [t, ids] of [['jobs', seeded.jobs], ['sites', seeded.sites], ['clients', seeded.clients]]) for (const id of ids) await fetch(`${URL_}/rest/v1/${t}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: H });   // clean up the seeded test data (staging only)
 
 if (REAL_SUB) { await post(REAL_SUB, 'Staging delivery test: How much for window cleaning in Makati?'); console.log(`\nSent a test message as ManyChat contact ${REAL_SUB}. In Full mode the reply should arrive in that Messenger chat within ~15 seconds; check it by eye.`); }
