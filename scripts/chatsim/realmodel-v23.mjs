@@ -126,4 +126,6 @@ setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); for (let i = 0; i 
 await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say(`Hi po, are we still scheduled for ${D1.label}?`, { phone: '0917 555 1212' }); r = lastReply();
 verdict('X-3: 45 old unfinished jobs and one valid upcoming booking: the booking is found and confirmed, never "full", no form', r, { confirms_booking: /JOB-VALID-FUTURE|scheduled|booked|confirmed/i.test(r) && !/don't see a booking/i.test(r), not_full: NOT_FULL(r), no_form: NO_FORM(r) });
 
+const apiErrors = modelCalls.filter((c) => c._real && c._real.status !== 200); if (apiErrors.length) console.log(`\nANTHROPIC API ERRORS: ${apiErrors.length} of ${modelCalls.length} model calls failed. First: HTTP ${apiErrors[0]._real.status} ${apiErrors[0]._real.error?.type ?? ''}: ${apiErrors[0]._real.error?.message ?? ''} (model requested: ${apiErrors[0].model})`);
+
 const failed = rows.filter((x) => x.fail.length); console.log(`\n${rows.length - failed.length}/${rows.length} passed (model: ${model || 'default claude-haiku-5-5'}; model calls made: ${modelCalls.length}; database: in memory, NOT staging)`); process.exit(failed.length ? 1 : 0);
