@@ -77,7 +77,8 @@
   },
   "git": {
     "deploymentEnabled": {
-      "staging/ai-v2": false
+      "staging/ai-v2": false,
+      "staging/photo-select": false
     }
   }
 }

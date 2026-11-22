@@ -8,16 +8,22 @@ import { Badge, Card, Field, Modal, PageHead, attempt, toast } from '@/component
 import { CLOUD, supabase } from '@/lib/cloud';
 import { fmtDate } from '@/lib/util';
 import { prepare } from '@/lib/photos';
+import { afterFiling, alreadyElsewhere, chunk, clickSelect, keepVisible, matchesFilters } from '@/lib/photoselect';
 
 type Kind = 'Before' | 'After' | 'During' | 'Site' | 'Other';
 const KINDS: Kind[] = ['Before', 'After', 'During', 'Site', 'Other'];
 interface Photo { id: string; job_id: string | null; client_id: string | null; path: string; thumb_path: string | null; kind: Kind; caption: string; tags: string[]; taken_at: string; client_ok: boolean; uploaded_by: string | null; created_at: string; source?: 'app' | 'telegram'; sent_by_employee_id?: string | null; media?: 'photo' | 'video' }
 const PAGE = 48;
+/** Demo mode only: sample photos (drawn pictures, nothing stored) so the selecting and filing can be tried. */
+const demoImg = (label: string, hue: number) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><rect width="300" height="300" fill="hsl(${hue},45%,38%)"/><rect x="40" y="60" width="220" height="180" rx="10" fill="hsl(${hue},40%,55%)"/><text x="150" y="165" font-family="sans-serif" font-size="34" font-weight="700" text-anchor="middle" fill="#fff">${label}</text></svg>`)}`;
+const makeDemo = (otherJob: string | null): Photo[] => Array.from({ length: 14 }, (_, i) => ({ id: `demo-${i + 1}`, job_id: i >= 10 ? otherJob : null, client_id: null, path: `demo/${i + 1}.jpg`, thumb_path: `demo/${i + 1}_t.jpg`, kind: (['Other', 'Other', 'Before', 'After', 'During'] as Kind[])[i % 5], caption: '', tags: [], taken_at: new Date().toISOString(), client_ok: i === 3, uploaded_by: null, created_at: new Date(Date.now() - i * 60000).toISOString(), source: i % 4 === 3 ? 'app' : 'telegram', sent_by_employee_id: null, media: i === 6 ? 'video' : 'photo' }) as Photo);
+const demoUrls = (): Record<string, string> => Object.fromEntries(Array.from({ length: 14 }, (_, i) => [`demo/${i + 1}_t.jpg`, demoImg(`#${i + 1}`, (i * 47) % 360)]));
 
 export default function PhotoLibrary() {
   const { db, can, user } = useAuth();
   const [sp, setSp] = useSearchParams();
-  const [rows, setRows] = useState<Photo[]>([]); const [urls, setUrls] = useState<Record<string, string>>({});
+  const [rows, setRows] = useState<Photo[]>(() => (CLOUD ? [] : makeDemo(db.jobs.find((j) => !j.deleted_at)?.id ?? null))); const [urls, setUrls] = useState<Record<string, string>>(() => (CLOUD ? {} : demoUrls()));
+  const [sel, setSel] = useState<Set<string>>(new Set()); const lastClick = useRef(-1); const [bulkJob, setBulkJob] = useState(sp.get('job') ?? ''); const [filing, setFiling] = useState(false);
   const [more, setMore] = useState(false); const [loading, setLoading] = useState(false);
   const [job, setJob] = useState(sp.get('job') ?? ''); const [kind, setKind] = useState(''); const [okOnly, setOkOnly] = useState(false); const [unsorted, setUnsorted] = useState(false); const [src, setSrc] = useState(''); const [q, setQ] = useState('');
   const [up, setUp] = useState<{ job: string; kind: Kind; ok: boolean; caption: string; tags: string }>({ job: sp.get('job') ?? '', kind: 'After', ok: false, caption: '', tags: '' });
@@ -45,6 +51,31 @@ export default function PhotoLibrary() {
   useEffect(() => { if (!CLOUD) return; const t = setTimeout(() => load(0, true), 250); return () => clearTimeout(t); }, [load]);
   useEffect(() => { const n = new URLSearchParams(sp); if (job) n.set('job', job); else n.delete('job'); setSp(n, { replace: true }); }, [job]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const filters = useMemo(() => ({ job, unsorted, kind, src, okOnly }), [job, unsorted, kind, src, okOnly]);
+  const shown = useMemo(() => (CLOUD ? rows : rows.filter((p) => matchesFilters(p, filters) && (!q.trim() || p.caption.toLowerCase().includes(q.trim().toLowerCase())))), [rows, filters, q]);   // live: the database filters; demo: the screen does
+  useEffect(() => { setSel(new Set()); lastClick.current = -1; }, [filters, q]);                                                       // a new view starts with nothing selected
+  useEffect(() => { setSel((s) => keepVisible(s, shown.map((p) => p.id))); }, [shown]);                                              // only photos still on screen stay selected
+  useEffect(() => { if (job) setBulkJob(job); }, [job]);
+  const tick = (i: number, shift: boolean) => { const last = lastClick.current; setSel((s) => clickSelect(s, shown.map((p) => p.id), i, last, shift)); lastClick.current = i; };   // `last` is read NOW: the update runs later, after lastClick has moved on
+  /** File every selected photo to the chosen job (the office only; the database function checks it again). */
+  const fileSelected = () => {
+    if (!bulkJob) { toast('Choose the job first', 'err'); return; }
+    const ids = [...sel]; if (!ids.length) return;
+    const moved = alreadyElsewhere(shown, sel, bulkJob);
+    if (moved && !confirm(`${moved} of the selected photo${moved === 1 ? ' is' : 's are'} already filed to another job. Move ${moved === 1 ? 'it' : 'them'} to ${jobLabel(bulkJob)}?`)) return;
+    setFiling(true);
+    attempt(async () => {
+      try {
+        if (CLOUD) for (const part of chunk(ids, 200)) { const { error } = await supabase().rpc('assign_photos', { p_ids: part, p_job: bulkJob }); if (error) throw new Error(error.message); }
+        const cid = db.jobs.find((j) => j.id === bulkJob)?.client_id ?? null; const chosen = new Set(ids);
+        // live: the list is the current filtered page, so photos that no longer match leave it; demo: the list is everything and the screen filters it
+        setRows((r) => afterFiling(r, chosen, bulkJob, cid, CLOUD ? filters : { job: '', unsorted: false, kind: '', src: '', okOnly: false }));
+        setSel(new Set()); lastClick.current = -1;
+      } catch (e) { if (CLOUD) void load(0, true); throw e; }   // a block may already have been filed: show what is really there
+      finally { setFiling(false); }
+    }, `${ids.length} photo${ids.length === 1 ? '' : 's'} filed to ${jobLabel(bulkJob)}`);
+  };
+
   const upload = async (files: FileList | null) => {
     if (!files?.length) return;
     const j = db.jobs.find((x) => x.id === up.job);
@@ -69,10 +100,10 @@ export default function PhotoLibrary() {
   return (
     <>
       <PageHead icon="📷" title="Photo Library" sub="All job photos in one place — add them from the site, find them by job, type or tag." />
-      {!CLOUD && <div className="alert info">The photo library works on the live system (connected to Supabase). Photos are not stored in this demo.</div>}
-      {CLOUD && (
+      {!CLOUD && <div className="alert info">Demo: these are sample pictures so you can try selecting photos and filing them to a job. Nothing is stored. On the live system the library shows your real photos.</div>}
+      {(
         <>
-          <Card title="Add photos">
+          {CLOUD && <Card title="Add photos">
             <div className="form-grid">
               <Field label="Job"><select value={up.job} onChange={(e) => setUp({ ...up, job: e.target.value })}><option value="">— no job (general) —</option>{jobs.map((j) => <option key={j.id} value={j.id}>{jobLabel(j.id)} · {fmtDate(j.start_at.slice(0, 10))}</option>)}</select></Field>
               <Field label="Type"><div className="chips" role="group">{KINDS.map((k) => <button key={k} type="button" className={up.kind === k ? 'on' : ''} onClick={() => setUp({ ...up, kind: k })}>{k}</button>)}</div></Field>
@@ -89,8 +120,8 @@ export default function PhotoLibrary() {
               {busy && <span className="small muted">{busy}</span>}
               <span className="small muted">Photos are resized, and the phone's location data is removed.</span>
             </div>
-          </Card>
-          <Card title="Photos" actions={<span className="small muted">{rows.length}{more ? '+' : ''} shown</span>}>
+          </Card>}
+          <Card title="Photos" actions={<div className="row" style={{ gap: 8 }}>{manage && shown.length > 0 && <button className="btn sm" onClick={() => { setSel(new Set(shown.map((p) => p.id))); lastClick.current = -1; }}>Select all {shown.length} shown</button>}<span className="small muted">{shown.length}{more ? '+' : ''} shown</span></div>}>
             <div className="filterbar" style={{ marginTop: 0 }}>
               <Field label="Job"><select value={job} onChange={(e) => setJob(e.target.value)}><option value="">All jobs</option>{jobs.map((j) => <option key={j.id} value={j.id}>{jobLabel(j.id)}</option>)}</select></Field>
               <Field label="Type"><select value={kind} onChange={(e) => setKind(e.target.value)}><option value="">All</option>{KINDS.map((k) => <option key={k}>{k}</option>)}</select></Field>
@@ -99,15 +130,27 @@ export default function PhotoLibrary() {
               <label className="check"><input type="checkbox" checked={unsorted} onChange={(e) => setUnsorted(e.target.checked)} />Unsorted (no job yet)</label>
               <label className="check"><input type="checkbox" checked={okOnly} onChange={(e) => setOkOnly(e.target.checked)} />Client agreed (marketing)</label>
             </div>
+            {manage && <div className="small muted" style={{ marginTop: 8 }}>To add photos to a job: tick the box on each photo (hold Shift to tick a whole row of them), choose the job, then press <b>Add to this job</b>. Tap a photo itself to open it.</div>}
             <div className="photogrid">
-              {rows.map((p) => (
-                <button key={p.id} type="button" className="photocell" onClick={() => setOpen(p)} title={p.caption || jobLabel(p.job_id)}>
-                  {p.media === 'video' ? <span style={{ fontSize: 34 }} aria-label="Video">🎬</span> : urls[p.thumb_path ?? p.path] ? <img src={urls[p.thumb_path ?? p.path]} alt={p.caption || p.kind} loading="lazy" /> : <span className="muted small">Loading…</span>}
-                  <span className="pk">{p.kind}{p.source === 'telegram' ? ' · TG' : ''}</span>{p.client_ok && <span className="pok" title="Client agreed to marketing use">✓</span>}
-                </button>
+              {shown.map((p, i) => (
+                <div key={p.id} className={`pcwrap${sel.has(p.id) ? ' on' : ''}`}>
+                  <button type="button" className="photocell" onClick={() => (CLOUD ? setOpen(p) : toast('Demo: on the live system this opens the photo.', 'ok'))} title={p.caption || jobLabel(p.job_id)}>
+                    {p.media === 'video' ? <span style={{ fontSize: 34 }} aria-label="Video">🎬</span> : urls[p.thumb_path ?? p.path] ? <img src={urls[p.thumb_path ?? p.path]} alt={p.caption || p.kind} loading="lazy" /> : <span className="muted small">Loading…</span>}
+                    <span className="pk">{p.kind}{p.source === 'telegram' ? ' · TG' : ''}</span>{p.client_ok && <span className="pok" title="Client agreed to marketing use">✓</span>}
+                  </button>
+                  {manage && <input type="checkbox" className="pcsel" checked={sel.has(p.id)} aria-label={`Select this ${p.media === 'video' ? 'video' : 'photo'}`} onChange={() => { /* handled in onClick (it knows about Shift) */ }} onClick={(e) => tick(i, e.shiftKey)} />}
+                </div>
               ))}
             </div>
-            {!rows.length && !loading && <div className="muted">No photos yet. Add the first ones above.</div>}
+            {!shown.length && !loading && <div className="muted">No photos here{CLOUD ? ' yet. Add the first ones above.' : '.'}</div>}
+            {manage && sel.size > 0 && (
+              <div className="bulkbar" role="region" aria-label="Selected photos">
+                <b>{sel.size} selected</b>
+                <select value={bulkJob} onChange={(e) => setBulkJob(e.target.value)} aria-label="File the selected photos to this job"><option value="">Choose the job…</option>{jobs.map((j) => <option key={j.id} value={j.id}>{jobLabel(j.id)}</option>)}</select>
+                <button className="btn primary" disabled={!bulkJob || filing} onClick={fileSelected}>{filing ? 'Filing…' : 'Add to this job'}</button>
+                <button className="btn" disabled={filing} onClick={() => { setSel(new Set()); lastClick.current = -1; }}>Clear</button>
+              </div>
+            )}
             {more && <div style={{ textAlign: 'center', marginTop: 12 }}><button className="btn" disabled={loading} onClick={() => load(rows.length, false)}>{loading ? 'Loading…' : 'Load more'}</button></div>}
           </Card>
         </>
