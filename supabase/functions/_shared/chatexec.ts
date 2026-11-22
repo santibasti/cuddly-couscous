@@ -6,7 +6,7 @@ import type { JobLine } from './identity.ts';
 
 // deno-lint-ignore no-explicit-any
 type Sb = any;
-export interface ExecCtx { sb: Sb; base: string; key: string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null }; lang: string; context?: string; services?: string[]; noHumanAlert?: boolean; jobs?: JobLine[]; booking?: { number: string; date: string; status: string } | null }
+export interface ExecCtx { sb: Sb; base: string; key: string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null }; lang: string; context?: string; services?: string[]; noHumanAlert?: boolean; jobs?: JobLine[]; hold?: string[]; booking?: { number: string; date: string; status: string } | null }
 const post = async (c: ExecCtx, fn: string, body: Record<string, unknown>) => {
   const r = await fetch(`${c.base}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': c.key }, body: JSON.stringify({ ...body, lang: 'en' }) });   // the tools always answer in short English; the AI phrases the reply for the customer
   const j = await r.json().catch(() => ({})) as Record<string, unknown>; if (!r.ok) throw new Error(String(j.error ?? `${fn} answered ${r.status}`)); return j;
@@ -40,12 +40,16 @@ export function makeExec(c: ExecCtx) {
       }
       if (name === 'check_date') {
         const own = (c.jobs ?? []).find((j) => j.date === parseWanted(input.date, manilaDay(Date.now())));   // a VERIFIED client's own booking is answered before any calendar check
+        const wantedDay = parseWanted(input.date, manilaDay(Date.now()));
+        if (!own && wantedDay && (c.hold ?? []).includes(wantedDay)) return { text: 'status: team_confirm. Do NOT say whether this date is free, full or unavailable and do not offer other dates: tell the customer our team will confirm the date.' };   // the contact may already hold a booking on this date (not confirmed who they are): the calendar must never contradict it
         if (own) return { text: `This is the customer's own booking ${own.number} on ${own.date} at ${own.time} (${own.status}). Do NOT say the date is full or unavailable and do not offer other dates: confirm their booking.` };
         if (c.booking && parseWanted(input.date, manilaDay(Date.now())) === c.booking.date) return { text: `This is the customer's own confirmed booking ${c.booking.number} for ${c.booking.date}. Do NOT say the date is full or that it is not confirmed: thank them and confirm it.` };
         const j = await post(c, 'chat-availability', { when: input.date });
         return { text: `status: ${j.status}. ${j.reply}` };
       }
       if (name === 'book_date') {
+        const wantedBook = parseWanted(input.date, manilaDay(Date.now()));
+        if (wantedBook && (c.hold ?? []).includes(wantedBook)) return { text: 'status: team_confirm. Do not create a booking: the customer may already hold a booking on this date; tell them our team will confirm.' };
         const dup = (c.jobs ?? []).find((j) => j.date === parseWanted(input.date, manilaDay(Date.now())));
         if (dup) return { text: `status: already_booked. This customer already has booking ${dup.number} on ${dup.date} at ${dup.time} (${dup.status}). Do not create a second booking: confirm the existing one.` };
         const j = await post(c, 'chat-book', { name: input.name, mobile: input.mobile, email: input.email, storeys: input.storeys, address: input.address, service: input.service, date: input.date, panels: input.panels, property_type: input.property_type, rates_ok: input.rates_ok, details: input.details, source: c.conv.channel, subscriber_id: c.conv.subscriber_id, channel: c.conv.channel });

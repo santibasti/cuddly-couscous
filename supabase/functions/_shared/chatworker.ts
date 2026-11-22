@@ -6,7 +6,7 @@ import { BOOKING_SEND_FORM, questionTopic, analyzeDelivered, applyDelivered, con
 import { ackReply, fallbackReply, repairReply, validateReply, REF_ASK, REF_HANDOVER, type Check } from './validate.ts';
 import { buildHistory } from './chathistory.ts';
 import { makeExec } from './chatexec.ts';
-import { resolveContact } from './contact.ts';
+import { resolveContact, type CandidateJobs } from './contact.ts';
 import { datesIn, jobNumbersIn, phonesIn, type Identity, type JobLine } from './identity.ts';
 import { manilaDay } from '../chat-availability/logic.ts';
 
@@ -15,7 +15,7 @@ type Sb = any;
 export type Out = { status: string; reply: string; card_url?: string; note?: string };
 export interface WorkerDeps {
   /** V2.3: who this contact is and the verified client's active bookings (chat-brain resolves them; the recovery job lets the worker resolve them itself) */
-  identity?: Identity; jobs?: JobLine[];
+  identity?: Identity; jobs?: JobLine[]; candidateJobs?: CandidateJobs[];
   sb: Sb; env: (k: string) => string; conv: { id: string; channel: string; subscriber_id: string; name?: string | null; inquiry_id?: string | null; context?: unknown; lang?: string | null; status?: string; [k: string]: unknown }; sub: string; channel: string; text: string; lang: string; honorific: Honorific; returning: ReturningInfo | null; photo: boolean;
   mode: Mode; cfg?: { model?: string } | undefined; st?: { data?: unknown } | null; queued: boolean; token: string; key: string; model: string; appUrl: string; debounceMs: number;
 }
@@ -35,11 +35,15 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
   const processBatch = async (pending: { id: string; body: string; created_at?: string }[]): Promise<Out> => {
     const ids = pending.map((m) => m.id); const texts = pending.map((m) => isPhotoMessage(m.body) ? PHOTO_MARKER : m.body); const lastText = texts[texts.length - 1] ?? text;
     try {
-      let who: { identity?: Identity; jobs: JobLine[]; returning: ReturningInfo | null | undefined } = { identity: deps.identity, jobs: deps.jobs ?? [], returning };
+      let who: { identity?: Identity; jobs: JobLine[]; candidateJobs: CandidateJobs[]; returning: ReturningInfo | null | undefined } = { identity: deps.identity, jobs: deps.jobs ?? [], candidateJobs: deps.candidateJobs ?? [], returning };
       if (!deps.identity) {   // the recovery job: resolve the contact here, so a returning customer is never welcomed as new
-        try { const r = await resolveContact({ sb, env, conv: conv as Record<string, unknown>, sub, payloads: [], text: texts.join(' '), aiStartedOn: (st?.data as { chat_ai?: { ai_started_on?: string } } | undefined)?.chat_ai?.ai_started_on, today: manilaDay(Date.now()) }); who = { identity: r.identity, jobs: r.jobs, returning: r.returning }; } catch (e) { console.error('contact check', (e as Error).message); }
+        try { const r = await resolveContact({ sb, env, conv: conv as Record<string, unknown>, sub, payloads: [], text: texts.join(' '), aiStartedOn: (st?.data as { chat_ai?: { ai_started_on?: string } } | undefined)?.chat_ai?.ai_started_on, today: manilaDay(Date.now()) }); who = { identity: r.identity, jobs: r.jobs, candidateJobs: r.candidateJobs, returning: r.returning }; } catch (e) { console.error('contact check', (e as Error).message); }
       }
       const verified = who.identity?.status === 'existing';
+      // bookings of the clients this contact MIGHT be (nobody confirmed it): never shown, but they stop the form, the calendar "full" answer and any new booking, and tell staff what to check
+      const hold: JobLine[] = who.candidateJobs.flatMap((c) => c.jobs.map((j) => ({ ...j, number: 'an existing booking' })));
+      const holdNote = who.candidateJobs.map((c) => `${c.name}: ${c.jobs.map((j) => `${j.number} on ${j.date}`).join(', ')}`).join(' | ');
+      const hasCandidates = !verified && (who.identity?.candidates?.length ?? 0) > 0;
       const [{ data: hist }, { data: rb }, { data: cur }] = await Promise.all([
         sb.from('chat_messages').select('direction, body, status').eq('conversation_id', conv.id).in('status', ['received', 'sent', 'approved']).order('created_at', { ascending: false }).limit(40),
         sb.from('ai_rulebook').select('version, sections').eq('status', 'published').maybeSingle(),
@@ -54,7 +58,7 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
       if (!legacy) await sb.from('chat_conversations').update({ context: ctx }).eq('id', conv.id);
       if (verified && ctx.intent === 'existing_booking') await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Customer message about their booking', body: `${conv.name ?? 'A customer'} (${who.identity?.client_id ? 'verified client' : 'client'}): ${who.jobs.map((j) => j.number).join(', ') || 'no active booking on file'}: "${texts.join(' ').slice(0, 160)}"`, link: '/ai-chat' });   // the team sees reminders and questions about an existing booking (a high ceiling, a gate, a date)
       if (ctx.intent === 'existing_booking' && !verified && who.identity?.status === 'new' && !legacy) await sb.from('chat_conversations').update({ contact_status: 'previous', returning_customer: true, returning_note: 'The customer says they already talked to or booked with TopMop (not verified)' }).eq('id', conv.id);   // their own words make them a previous contact, never an existing client
-      const vctx = (first: boolean): Check => ({ ctx, intent: ctx.intent, customerText: texts.join(' '), previousAi: deliveredAi.slice(-3), first, identity: who.identity ? { status: who.identity.status, verified, jobs: who.jobs, today: manilaDay(Date.now()) } : undefined });
+      const vctx = (first: boolean): Check => ({ ctx, intent: ctx.intent, customerText: texts.join(' '), previousAi: deliveredAi.slice(-3), first, identity: who.identity ? { status: who.identity.status, verified, jobs: who.jobs, hold, today: manilaDay(Date.now()) } : undefined });
 
       const { count: sentBefore } = await sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('direction', 'out').in('status', ['sent', 'approved', 'draft']); const first = (sentBefore ?? 0) === 0 && !who.returning && ctx.intent !== 'existing_booking';   // saying "we talked yesterday" or "I already booked" means they are not a new contact: no welcome   // the first reply of a conversation starts with the welcome
       let booking: { number: string; date: string; status: string } | null = null;                                              // a booking this chat already made for the customer: the AI must never contradict it
@@ -66,8 +70,10 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
         const f = fallbackReply(vctx(first)); brain = { ...brain, reply: f.text, humanReason: ctx.intent === 'complaint' ? 'The customer has a complaint' : 'The customer asked for a person', actions: [{ type: 'needs_human', input: { reason: ctx.intent } }] };
       } else if ((ctx.intent === 'existing_booking' || (ctx.asked_ref && (phonesIn(texts.join(' ')).length > 0 || jobNumbersIn(texts.join(' ')).length > 0))) && !verified) {   // (the customer's answer to our one question belongs to the same thread)                                                          // an earlier booking or chat we cannot verify: ask once for the minimum, then a person checks it (never a new booking form, never the calendar)
         const gave = phonesIn(texts.join(' ')).length > 0 || jobNumbersIn(texts.join(' ')).length > 0;
-        if (!gave && !ctx.asked_ref) { ctx.asked_ref = true; if (!legacy) await sb.from('chat_conversations').update({ context: ctx }).eq('id', conv.id); brain = { ...brain, reply: REF_ASK }; }
-        else brain = { ...brain, reply: REF_HANDOVER, humanReason: 'The customer refers to an earlier booking or conversation we could not verify. Check what they gave and link the client in AI Chat', actions: [{ type: 'needs_human', input: { reason: 'existing_booking_unverified' } }] };
+        if (!gave && !ctx.asked_ref && !hasCandidates) { ctx.asked_ref = true; if (!legacy) await sb.from('chat_conversations').update({ context: ctx }).eq('id', conv.id); brain = { ...brain, reply: REF_ASK }; }
+        else brain = { ...brain, reply: REF_HANDOVER, humanReason: `The customer refers to an earlier booking or conversation and we could not verify who they are. ${hasCandidates ? `Possible client: ${who.identity!.candidates.map((c) => c.name).join(' / ')}.` : 'Check what they gave.'}${holdNote ? ` Bookings on file for the possible client: ${holdNote}.` : ''} Confirm the client in AI Chat, then reply.`.slice(0, 300), actions: [{ type: 'needs_human', input: { reason: 'existing_booking_unverified' } }] };
+      } else if (ctx.intent === 'booking_request' && !verified && hold.length > 0) {                                           // a possible client who already holds a booking: no new booking form, no calendar answer: staff confirm who they are first
+        brain = { ...brain, reply: 'Thank you po! Our team will confirm your booking details shortly.', humanReason: `Possible existing client with a booking asks to book. ${holdNote}. Confirm the client in AI Chat before any form or date is sent.`.slice(0, 300), actions: [{ type: 'needs_human', input: { reason: 'possible_existing_booking' } }] };
       } else if (ctx.intent === 'booking_request' && ctx.location && !ctx.form_sent && !photo && !(verified && datesIn(texts.join(' '), manilaDay(Date.now())).some((x) => who.jobs.some((j) => j.date === x))) && !texts.some((t) => /\b(how much|magkano|price|presyo|rate|ocular)\b/i.test(t))) {   // the customer wants to book and the city is known: the booking-details form goes out as its own message (no model needed)
         brain = { ...brain, reply: BOOKING_SEND_FORM };
       } else if (allAck && ctx.intent !== 'booking_request' && !first && !photo) {                                         // "okay", "thanks": a brief acknowledgment, no model, no booking offer
@@ -78,7 +84,7 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
           const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: dropLoneSurrogates(JSON.stringify({ model, max_tokens: 1200, system: sys, tools, messages: msgs })) });
           if (!r.ok) { const body = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 220); throw new Error(`AI error ${r.status}${body ? `: ${body}` : ''}`); } return await r.json();
         };
-        const exec = makeExec({ jobs: who.jobs, noHumanAlert: true, services: ctx.services_seen ?? [], booking, sb, base: env('SUPABASE_URL'), key, conv, lang, context: [ctx.location ?? '', ...texts].join(' ').slice(-600) });
+        const exec = makeExec({ jobs: who.jobs, hold: hold.map((j) => j.date), noHumanAlert: true, services: ctx.services_seen ?? [], booking, sb, base: env('SUPABASE_URL'), key, conv, lang, context: [ctx.location ?? '', ...texts].join(' ').slice(-600) });
         brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3, check: (r) => (/^NO_ANSWER\W*$/i.test(r.trim()) ? [] : validateReply(r, vctx(first))) });
       }
       const isNoAnswer = /^NO_ANSWER\W*$/i.test(brain.reply.trim());

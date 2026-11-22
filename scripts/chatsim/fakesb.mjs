@@ -51,7 +51,8 @@ const rpc = async (name, a) => {
   if (name === 'chat_lock') { const c = T('chat_conversations').find((x) => x.id === a.p_conv); const t = Date.now(); if (!c) return { data: false, error: null }; if (c.busy_until && c.busy_until > t) return { data: false, error: null }; c.busy_until = t + (a.p_secs ?? 90) * 1000; return { data: true, error: null }; }
   if (name === 'chat_answer') { if (flags.crashBeforeAnswer) throw new Error('worker crashed before saving the answer'); const row = { id: uid(), created_at: now(), direction: 'out', ...a.p_row }; T('chat_messages').push(row); for (const m of T('chat_messages')) if (a.p_ids.includes(m.id) && m.direction === 'in' && !m.handled_at) m.handled_at = now(); return { data: row.id, error: null }; }
   if (name === 'chat_clients_by_mobile') { const d = (x) => String(x ?? '').replace(/\D/g, '').slice(-10); return { data: T('clients').filter((c) => !c.deleted_at && d(c.mobile).length === 10 && d(c.mobile) === d(a.p_mobile)).slice(0, 5).map((c) => ({ id: c.id, name: c.name, mobile: c.mobile })), error: null }; }
+  if (name === 'can_manage_inbox') return { data: true, error: null };
   if (name === 'chat_unlock') { const c = T('chat_conversations').find((x) => x.id === a.p_conv); if (c) c.busy_until = null; return { data: null, error: null }; }
   return { data: null, error: { message: `unknown function ${name}` } };
 };
-export const createClient = () => ({ from: (t) => new Q(t), rpc });
+export const createClient = () => ({ from: (t) => new Q(t), rpc, auth: { getUser: async () => ({ data: { user: { id: 'staff-1' } } }) } });

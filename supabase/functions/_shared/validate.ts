@@ -3,7 +3,7 @@ import { type ChatContext, type Intent, type ServiceKey, lastQuestionOf, questio
 import { contradictsBooking, datesIn, existingBookingReply, type JobLine } from './identity.ts';
 import { tooTagalog, ACID_RAIN_REPLY, COMMERCIAL_OCULAR } from './brain.ts';
 
-export interface Check { ctx: ChatContext; intent: Intent; customerText: string; previousAi: string[]; first?: boolean; identity?: { status: 'new' | 'previous' | 'existing'; verified: boolean; jobs: JobLine[]; today: string } }
+export interface Check { ctx: ChatContext; intent: Intent; customerText: string; previousAi: string[]; first?: boolean; identity?: { status: 'new' | 'previous' | 'existing'; verified: boolean; jobs: JobLine[]; today: string; hold?: JobLine[] } }
 const FIXED = /Reservation Date:|preliminary ocular visit|^\s*Thank you po! Our technical team|^\s*Sure po, you may send them|^\s*Your booking is set for|TopMop offers professional exterior cleaning/i;
 // Abbreviations in addresses and titles ("Brgy. Bahay Toro", "Maple St. Extension") do not end a sentence; splitting there cut a booking confirmation in the middle of the address.
 const ABBR = /\b(brgy|st|ave|blvd|rd|bldg|apt|hwy|dist|mt|mr|mrs|dr|sr|jr)\./gi;
@@ -44,7 +44,8 @@ const SERVICE_WORDS: [ServiceKey, RegExp][] = [['window', /\b(window|glass)\b/i]
 export function validateReply(reply: string, v: Check): string[] {
   const t = String(reply ?? '').trim(); if (!t) return ['empty'];
   const pv = photoViolation(t);
-  const cb = v.identity?.verified ? contradictsBooking(t, v.customerText, v.identity.jobs, v.identity.today) : undefined;   // never contradict a verified booking (checked before the approved-text exemption: the form is exempt for new customers, not for a booking that exists)
+  const mine = v.identity ? (v.identity.verified ? v.identity.jobs : (v.identity.hold ?? [])) : [];   // a verified client's own bookings, or the dates held by a possible (unconfirmed) client
+  const cb = v.identity && mine.length ? contradictsBooking(t, v.customerText, mine, v.identity.today) : undefined;   // never contradict a verified booking (checked before the approved-text exemption: the form is exempt for new customers, not for a booking that exists)
   if (cb) return [`contradicts_booking: ${cb}`];
   if (FIXED.test(t) || t.includes('\n\n---\n\n')) return pv ? [pv] : [];          // approved fixed texts and the welcome are exempt (but never a photo request)
   const out: string[] = []; const s = sentences(t);
@@ -85,6 +86,7 @@ const dropAll = (list: string[], re: RegExp) => list.filter((x) => !re.test(x));
 export const REF_ASK = 'Thank you po! May I have the mobile number or job order number you booked with, so our team can check your booking?';
 export const REF_HANDOVER = 'Thank you po. Our team will check your booking and get back to you shortly.';
 export function repairReply(reply: string, violations: string[], v: Check): string {
+  if (violations.some((x) => x.startsWith('contradicts_booking')) && !v.identity?.verified) return '';   // not confirmed who this is: no trimmed answer, staff take over (fallbackReply)
   if (violations.some((x) => x.startsWith('contradicts_booking')) && v.identity?.jobs.length) return existingBookingReply(v.identity.jobs, datesIn(v.customerText, v.identity.today));   // the answer comes from the customer's own job
   if (ACID_ASK.test(v.customerText) && REMOVAL_ASK.test(v.customerText)) return ACID_RAIN_REPLY;   // an acid rain removal question always gets the approved answer, never a trimmed model draft (it once added unrelated dates and "permanent etching")
   let s = sentences(reply);
@@ -107,6 +109,7 @@ export function repairReply(reply: string, violations: string[], v: Check): stri
 export function fallbackReply(v: Check, why: 'empty' | 'integration' | 'invalid' = 'invalid'): { text: string; handover: boolean } {
   const c = v.ctx;
   if (v.intent === 'existing_booking' && v.identity?.verified && v.identity.jobs.length) return { text: existingBookingReply(v.identity.jobs, datesIn(v.customerText, v.identity.today)), handover: false };   // a verified customer asking about their booking: their own job, never the calendar
+  if (v.identity && !v.identity.verified && v.identity.hold?.length && (v.intent === 'existing_booking' || v.intent === 'booking_request')) return { text: REF_HANDOVER, handover: true };   // a possible client with a booking: staff confirm first
   if (v.intent === 'existing_booking') return { text: REF_ASK, handover: false };
   if (v.intent === 'complaint' || v.intent === 'human_assistance') return { text: "I'm sorry for the inconvenience po. I'll refer this to our team right away.", handover: true };
   if (why === 'integration') return { text: 'Let me have our team verify that for you po.', handover: true };

@@ -51,3 +51,9 @@ const bg = [];
 export const queue = (on, debounceMs = 40) => { globalThis.EdgeRuntime = on ? { waitUntil: (p) => bg.push(p) } : undefined; envs.CHAT_DEBOUNCE_MS = String(debounceMs); };
 export const flush = async () => { while (bg.length) await Promise.all(bg.splice(0)); };
 export const setEnv = (k, v) => { envs[k] = v; };
+// the staff function (link, unlink, re-check, release): the real chat-send code, the same in-memory database
+const outSend = path.join(tmp, 'send.mjs');
+execSync(`npx rolldown supabase/functions/chat-send/index.ts --format esm --platform node -o ${outSend} --external 'npm:@supabase/supabase-js@2'`, { cwd: root, stdio: 'pipe' });
+fs.writeFileSync(outSend, fs.readFileSync(outSend, 'utf8').replaceAll('npm:@supabase/supabase-js@2', pathToFileURL(path.join(here, 'fakesb.mjs')).href));
+await import(pathToFileURL(outSend).href);
+export const staff = async (body) => { const r = await handlers[2](new Request('https://sim.invalid/', { method: 'POST', headers: { Authorization: 'Bearer staff' }, body: JSON.stringify(body) })); return r.json(); };

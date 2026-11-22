@@ -5,7 +5,7 @@
 // V2: structured memory (chat_conversations.context), delivered-only history, idempotent conversation creation, one answer per burst (per-conversation lock + debounce + drain), intent/stage, reply validation with repair and safe fallbacks.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { type ReturningInfo, isPhotoMessage, honorificFor, parseMode } from '../_shared/brain.ts';
-import { resolveContact } from '../_shared/contact.ts';
+import { resolveContact, type CandidateJobs } from '../_shared/contact.ts';
 import type { Identity, JobLine } from '../_shared/identity.ts';
 import { manilaDay } from '../chat-availability/logic.ts';
 import { createWorker } from '../_shared/chatworker.ts';
@@ -50,11 +50,11 @@ Deno.serve(async (req) => {
   if (photo) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Customer sent a photo', body: `${conv.name ?? 'A customer'} (${channel}) sent a photo. Technical team: please review it.`, link: '/ai-chat' });   // the AI promises the technical team will look at it
 
   // V2.3: who is this? New contact, previous contact (talked to TopMop before, nothing verified) or existing client (matched to a TopMop client record). The result is kept on the conversation, the existing client's active bookings are loaded, and the AI is told before it writes anything.
-  let returning: ReturningInfo | null = null; let jobs: JobLine[] = []; let identity: Identity | undefined;
+  let returning: ReturningInfo | null = null; let jobs: JobLine[] = []; let candidateJobs: CandidateJobs[] = []; let identity: Identity | undefined;
   try {
     const aiStart = cfg?.ai_started_on || (await sb.from('chat_conversations').select('created_at').order('created_at', { ascending: true }).limit(1)).data?.[0]?.created_at;   // when the AI first answered real customers
     const rcv = await resolveContact({ sb, env, conv: conv as Record<string, unknown>, sub, payloads: [b, c], text, aiStartedOn: aiStart, today: manilaDay(Date.now()) });
-    returning = rcv.returning; jobs = rcv.jobs; identity = rcv.identity;
+    returning = rcv.returning; jobs = rcv.jobs; candidateJobs = rcv.candidateJobs; identity = rcv.identity;
     if (rcv.mc.fetched) {
       const { data: seen } = await sb.from('alert_outbox').select('id').eq('title', 'ManyChat contact fields').limit(1);
       if (!seen?.length) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'ManyChat contact fields', body: `ManyChat sends these fields for a contact: ${(rcv.mc.fields ?? []).join(', ')}. ${rcv.mc.subscribed ? `First-contact date found: ${rcv.mc.subscribed.slice(0, 10)}.` : 'No first-contact date was found, so old contacts cannot be recognised by date (tags, the contact\'s mobile number and staff links still work).'} ManyChat gives contact fields only, never the old message history.`, link: '/ai-chat' });
@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
 
   const token = env('MANYCHAT_API_TOKEN'), edge = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
   const queued = !!edge?.waitUntil && !(mode === 'auto' && !token);          // ManyChat waits only 10 seconds: on Supabase the work continues after we have answered; without a token a full-mode reply is awaited and returned
-  const worker = createWorker({ sb, env, conv, sub, channel, text, lang, honorific, returning, identity, jobs, photo, mode, cfg, st, queued, token, key, model: cfg?.model || env('CHAT_AI_MODEL') || 'claude-haiku-5-5', appUrl: env('APP_URL') || 'https://ops.topmop.ph', debounceMs: queued ? Number(env('CHAT_DEBOUNCE_MS') || 2500) : 0 });
+  const worker = createWorker({ sb, env, conv, sub, channel, text, lang, honorific, returning, identity, jobs, candidateJobs, photo, mode, cfg, st, queued, token, key, model: cfg?.model || env('CHAT_AI_MODEL') || 'claude-haiku-5-5', appUrl: env('APP_URL') || 'https://ops.topmop.ph', debounceMs: queued ? Number(env('CHAT_DEBOUNCE_MS') || 2500) : 0 });
   if (!queued) { const o = await worker(); return json({ ok: o.status !== 'error', ...o, mode }); }
   edge!.waitUntil!(worker().catch(async (e) => { await sb.from('alert_outbox').insert({ kind: 'chat', title: 'The AI chat had an error', body: String((e as Error).message ?? e).slice(0, 160), link: '/ai-chat' }); }));
   return json({ ok: true, status: 'queued', reply: '', mode });

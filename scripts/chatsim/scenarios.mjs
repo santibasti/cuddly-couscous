@@ -1,6 +1,6 @@
 // Automated scenarios A-G for TopMop AI V2 with a SCRIPTED model (deterministic: it tests the memory, the validation and the delivery plumbing, not the wording of a real model).
 // Run:  node scripts/chatsim/scenarios.mjs        (real-model run: CHATSIM_REAL=1 node scripts/chatsim/realmodel.mjs)
-import { send, reset, deliver, modelCalls, state, DB, queue, flush, setEnv, flags, recover } from './harness.mjs';
+import { send, reset, deliver, modelCalls, state, DB, queue, flush, setEnv, flags, recover, staff } from './harness.mjs';
 const results = []; const ok = (name, pass, evidence) => { results.push({ name, pass: !!pass, evidence }); console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${evidence ? `\n      ${evidence}` : ''}`); };
 const lastSystem = () => modelCalls[modelCalls.length - 1]?.system ?? '';
 const text = (t) => ({ content: [{ type: 'text', text: t }], stop_reason: 'end_turn' });
@@ -182,77 +182,100 @@ m = await priced('Makati: 15 window panels, 10 solar panels and 60 sqm of roof. 
 ok('Bundle of three: window ₱4,799 (keeps its minimum) + solar ₱2,450 + roof ₱8,700 (no minimum) = ₱15,949, from the tool, no flag', /15,949/.test(m.body) && m.flags.length === 0, JSON.stringify(m.body.slice(0, 100)));
 
 
-/* ============ V2.3: previous contacts and existing clients (scripted model, in-memory database) ============ */
+/* ============ V2.3: previous contacts and existing clients (scripted model; the REAL chat-brain and chat-send code; in-memory database) ============ */
 const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const inDays = (n) => { const d = new Date(Date.now() + n * 86400000 + 8 * 3600000); return { iso: d.toISOString().slice(0, 10), label: `${MON[d.getUTCMonth()]} ${d.getUTCDate()}` }; };
 const D1 = inDays(8), D2 = inDays(15);
-const seedClient = (id, name, mobile, jobs = []) => {   // a client record CREATED AFTER the chat started (the old matcher rejected that), with its own jobs
+const seedClient = (id, name, mobile, jobs = []) => {   // a client record CREATED AFTER the chat started, with its own jobs (made by staff by hand: no quotation, no inquiry)
   DB.clients = [...(DB.clients ?? []), { id, name, mobile, address: 'Makati', created_at: new Date(Date.now() + 5000).toISOString() }];
   DB.sites = [...(DB.sites ?? []), { id: `s-${id}`, client_id: id, name: `${name} residence`, address: 'Makati' }];
-  jobs.forEach((j, i) => { DB.jobs = [...(DB.jobs ?? []), { id: `j-${id}-${i}`, number: j.number, client_id: id, site_id: `s-${id}`, start_at: `${j.date}T${j.time ?? '09:00'}:00`, end_at: `${j.date}T${j.time ?? '09:00'}:00`.replace('T09', 'T12'), status: j.status ?? 'Confirmed', service_codes: j.codes ?? ['GLASS_EXT'] }]; });
+  jobs.forEach((j, i) => { DB.jobs = [...(DB.jobs ?? []), { id: `j-${id}-${i}`, number: j.number, client_id: id, site_id: `s-${id}`, start_at: `${j.date}T09:00:00`, end_at: `${j.date}T12:00:00`, status: j.status ?? 'Confirmed', service_codes: j.codes ?? ['GLASS_EXT'] }]; });
 };
 const conv0 = () => DB.chat_conversations[0] ?? {};
 const askText = (label) => `Hi po, are we still scheduled for ${label}?`;
 const sayFull = () => text(`Sorry po, that date is fully booked. The nearest open dates are Dec 1, Dec 2 or Dec 3.`);
 const aiStartedTomorrow = () => { DB.settings[0].data.chat_ai.ai_started_on = new Date(Date.now() + 86400000).toISOString(); };
+const confirmByStaff = async (clientId) => { const a = await staff({ action: 'link', conversation_id: conv0().id, client_id: clientId }); await staff({ action: 'release', conversation_id: conv0().id }); return a; };   // what a staff member does in AI Chat: "This is the client", then lets the AI answer
+const leak = (b) => /JOB-\d{4}-\d{3,5}|fully booked|Dec 1\b|Reservation Date|Please copy this/.test(b);
 
-// V2.3-1: messaged before the AI was installed -> PREVIOUS contact: no welcome, no service menu, never an existing client
+// V2.3-1/2: previous contacts (before the AI): no welcome, no menu, no client records, never an existing client
 reset('suggest'); queue(false); aiStartedTomorrow(); state.script = () => text('Which service do you need po?');
 await send('Hello po'); let dr = drafts().at(-1);
-ok('V2.3-1 previous contact (talked to us before the AI): status previous, not an existing client', conv0().contact_status === 'previous' && !conv0().client_id, JSON.stringify({ s: conv0().contact_status, c: conv0().client_id ?? null }));
-ok('V2.3-1 no welcome message or service menu is sent again; the AI is told "previous contact" and never to invent history', !/TopMop offers professional exterior cleaning/.test(dr.body) && /CUSTOMER STATUS: PREVIOUS CONTACT/.test(lastSystem()) && /do not invent or assume/i.test(lastSystem()), JSON.stringify(dr.body.slice(0, 80)));
-
-// V2.3-2: old Messenger chats (ManyChat first-contact date before the AI) but no service history
+ok('V2.3-1 messaged before the AI was installed: PREVIOUS contact, not an existing client', conv0().contact_status === 'previous' && !conv0().client_id, JSON.stringify({ s: conv0().contact_status, c: conv0().client_id ?? null }));
+ok('V2.3-1 no welcome or service menu again; the AI is told "previous contact" and never to invent history', !/TopMop offers professional exterior cleaning/.test(dr.body) && /CUSTOMER STATUS: PREVIOUS CONTACT/.test(lastSystem()) && /do not invent or assume/i.test(lastSystem()), JSON.stringify(dr.body.slice(0, 80)));
 reset('suggest'); queue(false); DB.settings[0].data.chat_ai.ai_started_on = '2026-11-17T00:00:00Z'; state.script = () => text('Which service do you need po?');
 await send('Hi', { subscribed: '2026-05-02T08:00:00Z' });
 ok('V2.3-2 old Messenger contact with no service history: PREVIOUS contact, no client record shown to the AI', conv0().contact_status === 'previous' && !conv0().client_id && !/mobile|address on file/i.test(lastSystem().split('CUSTOMER STATUS')[1] ?? ''), JSON.stringify({ s: conv0().contact_status }));
 
-// V2.3-3 + 5 + 6: a staff-created job order; the client record is NEWER than the chat; the customer asks about their booking
+// V2.3-3: THE NOVEMBER 30 INCIDENT. A booking made BY STAFF by hand; the client record is newer than the chat; the customer asks about it. The phone in ManyChat matches the client, but a phone is not proof.
 reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => sayFull();
 await send(askText(D1.label), { phone: '+63 917 555 1212' }); dr = drafts().at(-1);
-ok('V2.3-3/5 manual job order, client record created AFTER the chat: matched by the contact\'s mobile = EXISTING client (verified)', conv0().contact_status === 'existing' && conv0().client_id === 'c1' && conv0().link_state === 'verified' && conv0().link_basis === 'mobile', JSON.stringify({ s: conv0().contact_status, c: conv0().client_id, b: conv0().link_basis }));
-ok('V2.3-6 asked about THEIR booking: the AI is given the job first and is forbidden to say it is full', /VERIFIED ACTIVE AND UPCOMING BOOKINGS/.test(lastSystem()) && lastSystem().includes('JOB-2026-8818') && /never say their confirmed date is full/i.test(lastSystem()), '');
-ok('V2.3-6 the model said "fully booked": it is caught and replaced by their own booking; no form, no other dates', /JOB-2026-8818/.test(dr.body) && new RegExp(D1.label.split(' ')[1]).test(dr.body) && !/fully booked|Dec 1|Reservation Date/i.test(dr.body), JSON.stringify(dr.body));
-ok('V2.3-6 the staff are told about the message (reminders and questions about an existing booking)', (DB.alert_outbox ?? []).some((a) => a.title === 'Customer message about their booking'), '');
+ok('V2.3-3 the ManyChat phone matches a client: it only SUGGESTS (previous contact, "suggested"), nobody is verified', conv0().contact_status === 'previous' && conv0().link_state === 'suggested' && !conv0().client_id && (conv0().link_candidates ?? []).some((c) => c.client_id === 'c1' && c.basis === 'contact_mobile'), JSON.stringify({ s: conv0().contact_status, st: conv0().link_state, c: conv0().client_id ?? null }));
+ok('V2.3-3 the customer is NOT told the date is full, NOT given the form and NOT shown any booking detail; the team will check (no model improvised)', !leak(dr.body) && /Our team will check your booking/.test(dr.body) && modelCalls.length === 0, JSON.stringify(dr.body));
+ok('V2.3-3 a person is asked: the chat goes to staff with the possible client and the booking to check; an alert asks them to confirm the client', conv0().status === 'Needs a person' && /Maria Cruz/.test(conv0().human_reason ?? '') && /JOB-2026-8818/.test(conv0().human_reason ?? '') && (DB.alert_outbox ?? []).some((a) => a.title === 'Please confirm the client match'), conv0().human_reason);
+const lk = await confirmByStaff('c1');
+ok('V2.3-3 staff press "This is the client" (the real chat-send function): the contact becomes an EXISTING client by staff link, audited', lk.ok === true && conv0().contact_status === 'existing' && conv0().client_id === 'c1' && conv0().link_state === 'staff' && (DB.audit_logs ?? []).some((a) => /linked to client Maria Cruz by staff/i.test(a.summary)), JSON.stringify({ s: conv0().contact_status, st: conv0().link_state }));
+deliver(); await send(askText(D1.label), { phone: '+63 917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-3 now confirmed: the AI is given the job first; the model\'s "fully booked" is caught and replaced by THEIR booking; no form, no other dates', /VERIFIED ACTIVE AND UPCOMING BOOKINGS/.test(lastSystem()) && /JOB-2026-8818/.test(dr.body) && !/fully booked|Dec 1\b|Reservation Date/.test(dr.body), JSON.stringify(dr.body));
 
-// V2.3-7: a reminder about a high ceiling for a booked job: not a new inquiry, no form, no welcome
+// V2.3-4: a reminder about a high ceiling: before confirmation a person is asked; after confirmation it is acknowledged and the team alerted
 reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => text("Noted po, thank you for the reminder about the high ceiling. I'll make sure our team sees it.");
 await send(`Reminder lang po, mataas po ang ceiling namin. We are scheduled ${D1.label}.`, { phone: '0917 555 1212' }); dr = drafts().at(-1);
-ok('V2.3-7 high-ceiling reminder from an existing client: understood as an existing-booking message, no booking form, no welcome', ctxOf().intent === 'existing_booking' && !/Reservation Date|Please copy this/.test(dr.body) && !/TopMop offers professional/.test(dr.body), JSON.stringify({ intent: ctxOf().intent, body: dr.body.slice(0, 90) }));
+ok('V2.3-4 high-ceiling reminder from an UNCONFIRMED contact: not a new inquiry (no form, no welcome, no calendar), staff are asked to check, nothing leaks', ctxOf().intent === 'existing_booking' && !leak(dr.body) && !/TopMop offers professional/.test(dr.body) && conv0().status === 'Needs a person', JSON.stringify(dr.body));
+await confirmByStaff('c1'); deliver(); await send(`Reminder lang po, mataas po ang ceiling namin. We are scheduled ${D1.label}.`, { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-4 after staff confirm: acknowledged, no form, no welcome, and the team gets an alert about the booking message', /high ceiling/.test(dr.body) && !leak(dr.body) && !/TopMop offers professional/.test(dr.body) && (DB.alert_outbox ?? []).some((a) => a.title === 'Customer message about their booking'), JSON.stringify(dr.body));
 
-// V2.3-4: phone number missing: a previous reference that cannot be verified -> ask ONCE for the minimum, then a person checks (never the calendar, never the form)
+// V2.3-5: no phone at all: a NAME never links; asked once; a typed number is only a suggestion and a person takes over
 reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => sayFull();
 await send(`Hi, we are scheduled ${D1.label} po. Maria Cruz here.`); dr = drafts().at(-1);
-ok('V2.3-4 no phone number, only a NAME: not linked to anyone (a name is never a basis)', !conv0().client_id && conv0().contact_status !== 'existing', JSON.stringify({ s: conv0().contact_status, c: conv0().client_id ?? null }));
-ok('V2.3-4 the AI asks once for the mobile number or job order number; no form, no calendar, no booking details leaked', /mobile number or job order number/.test(dr.body) && !/JOB-2026-8818|fully booked|Reservation Date/.test(dr.body), JSON.stringify(dr.body));
+ok('V2.3-5 no phone number, only a NAME: not linked to anyone', !conv0().client_id && conv0().contact_status !== 'existing', JSON.stringify({ s: conv0().contact_status, c: conv0().client_id ?? null }));
+ok('V2.3-5 the AI asks once for the mobile number or job order number; no form, no calendar, no booking details', /mobile number or job order number/.test(dr.body) && !leak(dr.body), JSON.stringify(dr.body));
 deliver(); await send('My number is 0917 555 1212'); dr = drafts().at(-1);
-ok('V2.3-4 a number typed in the chat is only a SUGGESTION: staff are asked to confirm, the customer is NOT linked, a person takes over', conv0().link_state === 'suggested' && !conv0().client_id && (conv0().link_candidates ?? []).some((c) => c.client_id === 'c1') && /Our team will check your booking/.test(dr.body) && conv0().status === 'Needs a person' && /earlier booking or conversation/.test(conv0().human_reason ?? ''), JSON.stringify({ st: conv0().link_state, c: conv0().client_id ?? null, body: dr.body.slice(0, 70) }));
-ok('V2.3-4 the booking details of the suggested client were never shown to the customer', !/JOB-2026-8818/.test(drafts().map((m) => m.body).join(' ')), '');
+ok('V2.3-5 a number typed in the chat is only a SUGGESTION: the customer is NOT linked, a person takes over, no details leak', conv0().link_state === 'suggested' && !conv0().client_id && (conv0().link_candidates ?? []).some((c) => c.client_id === 'c1') && /Our team will check your booking/.test(dr.body) && conv0().status === 'Needs a person' && !leak(drafts().map((m) => m.body).join(' ')), JSON.stringify({ st: conv0().link_state, c: conv0().client_id ?? null }));
 
-// V2.3-8: identical names and the same mobile on two client records
+// V2.3-6: identical names / the same phone on two clients: only staff decide; only the chosen client's jobs are ever used
 reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); seedClient('c2', 'Maria Cruz', '0918 777 3434', [{ number: 'JOB-2026-9001', date: D2.iso }]); state.script = () => sayFull();
 await send(askText(D2.label), { phone: '0918 777 3434' });
-ok('V2.3-8 two clients with the SAME NAME: the contact is matched to the right one by mobile, and only that client\'s job is used', conv0().client_id === 'c2' && lastSystem().includes('JOB-2026-9001') && !lastSystem().includes('JOB-2026-8818'), JSON.stringify({ c: conv0().client_id }));
-reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212'); seedClient('c3', 'Mario Cruz', '0917 555 1212'); state.script = () => text('Which service do you need po?');
+ok('V2.3-6 two clients with the SAME NAME: the phone suggests only the right one (c2); nobody is linked; no client record reaches the AI or the customer', (conv0().link_candidates ?? []).length === 1 && conv0().link_candidates[0].client_id === 'c2' && !conv0().client_id && !leak(drafts().at(-1).body), JSON.stringify(conv0().link_candidates));
+await confirmByStaff('c2'); deliver(); state.script = () => sayFull(); await send(askText(D2.label), { phone: '0918 777 3434' });
+ok('V2.3-6 after staff confirm c2: only c2\'s job is used (never the other Maria Cruz)', lastSystem().includes('JOB-2026-9001') && !lastSystem().includes('JOB-2026-8818') && /JOB-2026-9001/.test(drafts().at(-1).body), JSON.stringify(drafts().at(-1).body));
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); seedClient('c3', 'Mario Cruz', '0917 555 1212', [{ number: 'JOB-2026-7000', date: D2.iso }]); state.script = () => text('Which service do you need po?');
 await send('Hello po', { phone: '0917 555 1212' });
-ok('V2.3-8 the SAME mobile on two client records: AMBIGUOUS, nobody is linked, staff are asked to choose', conv0().link_state === 'ambiguous' && !conv0().client_id && conv0().contact_status === 'previous' && (DB.alert_outbox ?? []).some((a) => a.title === 'Please confirm the client match'), JSON.stringify({ st: conv0().link_state, n: (conv0().link_candidates ?? []).length }));
-ok('V2.3-8 an ambiguous contact is not given any client\'s records', !/VERIFIED ACTIVE|What we have on file/.test(lastSystem()), '');
+ok('V2.3-6 the SAME phone on two client records: AMBIGUOUS, nobody linked, staff asked to choose; no records given to the AI', conv0().link_state === 'ambiguous' && !conv0().client_id && (conv0().link_candidates ?? []).length === 2 && (DB.alert_outbox ?? []).some((a) => a.title === 'Please confirm the client match') && !/VERIFIED ACTIVE|What we have on file/.test(lastSystem()), JSON.stringify({ st: conv0().link_state }));
+await confirmByStaff('c3'); deliver(); await send('Hello again', { phone: '0917 555 1212' });
+ok('V2.3-6 staff choose one of the two: that client only', conv0().client_id === 'c3' && lastSystem().includes('JOB-2026-7000') && !lastSystem().includes('JOB-2026-8818'), JSON.stringify({ c: conv0().client_id }));
 
-// V2.3-9: several bookings: all are listed; the asked date is answered from the right job
-reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }, { number: 'JOB-2026-8820', date: D2.iso, status: 'Pending', codes: ['ROOF'] }]); state.script = () => sayFull();
-await send(askText(D2.label), { phone: '0917 555 1212' }); dr = drafts().at(-1);
-ok('V2.3-9 several bookings: the AI sees both jobs', lastSystem().includes('JOB-2026-8818') && lastSystem().includes('JOB-2026-8820'), '');
-ok('V2.3-9 the date asked picks the right job in the answer, and "full" is never said', /JOB-2026-8820/.test(dr.body) && !/fully booked/i.test(dr.body), JSON.stringify(dr.body));
+// V2.3-7: several bookings and EVERY job status the database allows
+reset('suggest'); queue(false);
+seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-S-PENDING', date: D1.iso, status: 'Pending' }, { number: 'JOB-S-CONFIRMED', date: D2.iso, status: 'Confirmed' }, { number: 'JOB-S-DCP', date: inDays(2).iso, status: 'Dispatch Checklist Pending' }, { number: 'JOB-S-DISPATCHED', date: inDays(0).iso, status: 'Dispatched' }, { number: 'JOB-S-ONSITE', date: inDays(0).iso, status: 'On Site' }, { number: 'JOB-S-INPROG', date: inDays(0).iso, status: 'In Progress' }, { number: 'JOB-S-CLOSED', date: D1.iso, status: 'Closed' }, { number: 'JOB-S-CANCELLED', date: D1.iso, status: 'Cancelled' }]);
+state.script = () => sayFull(); await send('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); deliver(); await send(askText(D2.label), { phone: '0917 555 1212' }); dr = drafts().at(-1);
+const activeBlock = (lastSystem().split('VERIFIED ACTIVE AND UPCOMING BOOKINGS')[1] ?? '').split(/Recent jobs:|Earlier inquiries:/)[0];   // only the bookings offered as current (the separate history line may name closed jobs)
+ok('V2.3-7 every current status is recognised (Pending, Confirmed, Dispatch Checklist Pending, Dispatched, On Site, In Progress); Closed and Cancelled are not offered as bookings', ['PENDING', 'CONFIRMED', 'DCP', 'DISPATCHED', 'ONSITE', 'INPROG'].every((k) => activeBlock.includes(`JOB-S-${k}`)) && !activeBlock.includes('JOB-S-CLOSED') && !activeBlock.includes('JOB-S-CANCELLED') && !/Dispatch Checklist Pending|Dispatched,|On Site,/.test(activeBlock), activeBlock.slice(0, 160));
+ok('V2.3-7 several bookings: the date asked picks the right job in the answer and "full" is never said', /JOB-S-CONFIRMED/.test(dr.body) && !/fully booked/i.test(dr.body), JSON.stringify(dr.body));
 
-// V2.3-10: a brand-new customer is unchanged: the welcome, no recognition block
+// V2.3-8: a brand-new customer is unchanged
 reset('suggest'); queue(false); state.script = () => text('Which cleaning service do you need po?');
 await send('Hi, how much is window cleaning?'); dr = drafts().at(-1);
-ok('V2.3-10 a brand-new customer is NEW: the standard welcome is sent and no customer-status block is added', conv0().contact_status === undefined || conv0().contact_status === 'new', JSON.stringify({ s: conv0().contact_status ?? 'new' }));
-ok('V2.3-10 new customer: welcome present, no previous-customer text', /TopMop offers professional exterior cleaning/.test(dr.body) && !/CUSTOMER STATUS:/.test(lastSystem()), JSON.stringify(dr.body.slice(0, 70)));
+ok('V2.3-8 a brand-new customer is NEW: the standard welcome is sent and no customer-status block is added', (conv0().contact_status === undefined || conv0().contact_status === 'new') && /TopMop offers professional exterior cleaning/.test(dr.body) && !/CUSTOMER STATUS:/.test(lastSystem()), JSON.stringify({ s: conv0().contact_status ?? 'new' }));
 
-// persistence: the link survives the next message even when the phone is not sent again; staff link wins
+// V2.3-9: an unconfirmed contact whose possible client holds a booking is never offered the form or a "full" calendar answer
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => text('Sure po, which date?');
+await send(`I want to book window cleaning on ${D1.label}`, { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-9 an unconfirmed contact (phone matches a client who holds a booking) asks to book: NO booking form, no date offered, staff are asked to confirm first', !/Reservation Date|Please copy this/.test(dr.body) && /Our team will confirm your booking details/.test(dr.body) && conv0().status === 'Needs a person' && /Confirm the client/.test(conv0().human_reason ?? ''), JSON.stringify(dr.body));
+reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); let step = 0;
+state.script = () => { step++; return step === 1 ? { content: [{ type: 'tool_use', id: 't9', name: 'check_date', input: { date: D1.iso } }], stop_reason: 'tool_use' } : text('Sorry po, that date is fully booked. The nearest open dates are Dec 1, Dec 2 or Dec 3.'); };
+await send(`Is ${D1.label} open for window cleaning in Makati?`, { phone: '0917 555 1212' }); dr = drafts().at(-1);
+ok('V2.3-9 the date tool refuses to judge a date the possible client already holds ("team_confirm"), and the model\'s "fully booked" never reaches the customer', JSON.stringify(modelCalls.map((c) => c.messages)).includes('team_confirm') && !/fully booked|Dec 1\b/.test(dr.body), JSON.stringify(dr.body));
+
+// V2.3-10: staff tools: unlink, re-check and the link survives a message without a phone
 reset('suggest'); queue(false); seedClient('c1', 'Maria Cruz', '0917 555 1212', [{ number: 'JOB-2026-8818', date: D1.iso }]); state.script = () => text('Sure po.');
-await send('Hello', { phone: '0917 555 1212' }); deliver(); await send('Thank you, one more question: do you clean roofs?');
-ok('V2.3 the link is kept: the next message without a phone number is still the same existing client', conv0().contact_status === 'existing' && conv0().client_id === 'c1' && /EXISTING CLIENT/.test(lastSystem()), '');
+await send('Hello', { phone: '0917 555 1212' }); await confirmByStaff('c1'); deliver(); await send('Do you clean roofs?');
+ok('V2.3-10 the staff link is kept: the next message without a phone number is still the same existing client', conv0().contact_status === 'existing' && conv0().client_id === 'c1' && /EXISTING CLIENT/.test(lastSystem()), '');
+const un = await staff({ action: 'unlink', conversation_id: conv0().id }); deliver(); await send('And walls?', { phone: '0917 555 1212' });
+ok('V2.3-10 unlink: back to a previous contact, the client is no longer used, the AI shares no bookings; audited', un.ok === true && conv0().contact_status === 'previous' && !conv0().client_id && !/EXISTING CLIENT|VERIFIED ACTIVE/.test(lastSystem()) && (DB.audit_logs ?? []).some((a) => /unlinked/i.test(a.summary)), JSON.stringify({ s: conv0().contact_status, st: conv0().link_state }));
+const rs = await staff({ action: 'resync', conversation_id: conv0().id });
+ok('V2.3-10 "Re-check this contact" runs the matching again and reports what it found', rs.ok === true && rs.checked === 1 && rs.previous === 1, JSON.stringify(rs));
+const bad = await staff({ action: 'link', conversation_id: conv0().id, client_id: 'does-not-exist' });
+ok('V2.3-10 linking to a client that does not exist is refused', bad.error === 'Client not found' && !conv0().client_id, JSON.stringify(bad));
 
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);

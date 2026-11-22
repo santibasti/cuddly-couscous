@@ -1,6 +1,6 @@
 -- AI V2.3: recognise previous Messenger contacts and existing clients (no second customer database: the chat_conversations row IS the persistent mapping of one ManyChat contact).
 --  contact_status : new (first known interaction) | previous (has talked to TopMop before, service history NOT verified) | existing (positively matched to a TopMop client record)
---  link_state     : verified (matched by the system: mobile / booking made from this chat) | staff (a person linked it) | ambiguous (more than one client fits: staff decide) | suggested (a number or job number the customer typed: staff confirm)
+--  link_state     : verified (the system created this client for this chat's own booking) | staff (a person linked it) | ambiguous (more than one client fits: staff decide) | suggested (a number or job number the customer typed: staff confirm)
 --  link_basis     : why (mobile, chat_booking, staff, job_number ...) ; link_candidates : [{client_id, name, basis}] for staff to confirm
 --  mc_*           : what ManyChat said about the contact (first contact date, last interaction, tags), read once and kept
 -- A name is never a basis for a link.
@@ -22,13 +22,12 @@ do $$ begin
   alter table public.chat_conversations add constraint chat_conversations_link_state_check check (link_state is null or link_state in ('verified', 'staff', 'ambiguous', 'suggested'));
 exception when duplicate_object then null; end $$;
 
--- A chat that created a client and an inquiry for itself is positively linked. A chat whose client ALREADY EXISTED (the booking matched the mobile number the customer typed: "same mobile = same client")
--- is only a suggestion: a stranger can type anyone's number. Told apart by comparing when the client record was created with when the inquiry was.
-update public.chat_conversations c set contact_status = 'existing', link_state = 'verified', link_basis = 'chat_booking'
-  where c.client_id is not null and c.link_state is null and c.inquiry_id is not null
-    and exists (select 1 from public.inquiries i join public.clients cl on cl.id = c.client_id where i.id = c.inquiry_id and cl.created_at >= i.created_at - interval '2 minutes');
+-- OLD LINKS ARE NEVER PROMOTED TO "VERIFIED" BY THE MIGRATION. Before V2.3 the same chat_conversations.client_id was filled both for a client the chat created and for an existing client matched by a mobile number
+-- the customer typed ("same mobile = same client"), and nothing recorded which. A close creation timestamp does not prove identity either. So every old link becomes a SUGGESTION for staff review
+-- (status previous, link_state suggested, candidate = that client): staff confirm it in AI Chat with "This is the client", and until then the AI shares no booking details with that contact.
+-- From now on a link is verified only when this chat's own booking CREATED the client in the same request (the application records it), or when staff link it.
 update public.chat_conversations c set contact_status = 'previous', link_state = 'suggested', link_basis = 'legacy_match',
-  link_candidates = (select coalesce(jsonb_agg(jsonb_build_object('client_id', cl.id, 'name', cl.name, 'basis', 'legacy_match')), '[]'::jsonb) from public.clients cl where cl.id = c.client_id)
+  link_candidates = (select coalesce(jsonb_agg(jsonb_build_object('client_id', cl.id, 'name', cl.name, 'basis', 'legacy_match')), '[]'::jsonb) from public.clients cl where cl.id = c.client_id and cl.deleted_at is null)
   where c.client_id is not null and c.link_state is null;
 -- Conversations staff or the system already marked as returning are "previous" until a client is linked.
 update public.chat_conversations set contact_status = 'previous' where returning_customer and client_id is null and contact_status = 'new';

@@ -1,6 +1,7 @@
 // The AI brain of the customer-service chat. Pure logic (no network, so it can be tested): the prompt from the published rulebook, the tools, the safety checks on every reply, and the run loop with an injected model.
 // The model only PHRASES the answer. Prices, dates and bookings always come from the functions (estimate, check_date, book_date): the reply is checked against what those returned before anything is sent.
 import { RATES, OTHER, EXTRA_PANEL } from './rates.ts';
+import { statusWords } from './identity.ts';
 
 export type Mode = 'off' | 'suggest' | 'auto';
 export const parseMode = (v: unknown): Mode => (v === 'suggest' || v === 'auto' ? v : 'off');
@@ -86,7 +87,7 @@ export function returningBlock(r: ReturningInfo): string {
   }
   const known = `What we have on file: ${[c!.name && `name ${c!.name}`, c!.mobile && `mobile ${c!.mobile}`, c!.email && `email ${c!.email}`, c!.address && `address ${c!.address}`].filter(Boolean).join('; ')}.`;
   const act = r.active ?? [];
-  const bookings = act.length ? `VERIFIED ACTIVE AND UPCOMING BOOKINGS (from TopMop Operations, created by staff or any channel; these are facts): ${act.map((j) => `${j.number} on ${j.date} at ${j.time}, ${j.status}${j.services.length ? `, ${j.services.join(' and ')}` : ''}${j.site ? `, ${j.site}` : ''}`).join('; ')}.` : 'No active or upcoming booking is on file for this client.';
+  const bookings = act.length ? `VERIFIED ACTIVE AND UPCOMING BOOKINGS (from TopMop Operations, created by staff or any channel; these are facts): ${act.map((j) => `${j.number} on ${j.date} at ${j.time}, ${statusWords(j.status)}${j.services.length ? `, ${j.services.join(' and ')}` : ''}${j.site ? `, ${j.site}` : ''}`).join('; ')}.` : 'No active or upcoming booking is on file for this client.';
   const hist = [r.jobs?.length ? `Recent jobs: ${r.jobs.join('; ')}.` : '', r.inquiries?.length ? `Earlier inquiries: ${r.inquiries.join('; ')}.` : ''].filter(Boolean).join(' ');
   return `- CUSTOMER STATUS: EXISTING CLIENT (verified: ${r.note}). This is NOT a new inquiry. ${known} ${bookings} ${hist} Do not use the welcome message or the service menu. In your first reply you may open with a short "Welcome back po!" (never repeat it later). Do not ask again for what is on file (name, mobile, address, email, location). BOOKINGS FIRST: when the customer asks about a reservation, a schedule, a date or a job order, answer from the verified bookings above BEFORE anything else: confirm their own date and say what is set. Never send the booking form for a booking that exists, never call check_date to decide whether THEIR date is free, and never say their confirmed date is full or unavailable. If they mention a date that is not among their bookings, say you do not see it on their record and the team will check; do not guess. A reminder or request about the job (access, a high ceiling, a gate) is thanked and noted ("I'll make sure our team sees it po"). Never make up service history that is not listed.`;
 }

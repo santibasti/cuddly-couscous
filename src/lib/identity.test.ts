@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { activeJobs, clientsByMobile, contradictsBooking, datesIn, decideIdentity, existingBookingReply, isPreviousReference, jobNumbersIn, normMobile, phonesIn, type Candidate, type IdentityInput, type JobLine } from '../../supabase/functions/_shared/identity';
+import fs from 'node:fs';
+import { JOB_STATUS_CLASS, OPEN_JOB_STATUSES, activeJobs, clientsByMobile, contradictsBooking, datesIn, decideIdentity, existingBookingReply, isPreviousReference, jobNumbersIn, normMobile, phonesIn, type Candidate, type IdentityInput, type JobLine } from '../../supabase/functions/_shared/identity';
 
 const AI_START = '2026-11-17T00:00:00Z';
 const base: IdentityInput = { stored: {}, phoneMatches: [], typedMatches: [], aiStartedOn: AI_START };
-const cruz: Candidate = { client_id: 'c-cruz', name: 'Maria Cruz', basis: 'mobile' };
-const cruz2: Candidate = { client_id: 'c-cruz2', name: 'Maria Cruz', basis: 'mobile' };   // a different client with the SAME name
+const cruz: Candidate = { client_id: 'c-cruz', name: 'Maria Cruz', basis: 'contact_mobile' };
+const cruz2: Candidate = { client_id: 'c-cruz2', name: 'Maria Cruz', basis: 'contact_mobile' };   // a different client with the SAME name
 const nov30: JobLine = { number: 'JOB-2026-8818', date: '2026-11-30', time: '09:00', status: 'Confirmed', services: ['exterior glass'] };
 const dec5: JobLine = { number: 'JOB-2026-8820', date: '2026-12-05', time: '13:30', status: 'Pending', services: ['roof'] };
 
@@ -42,19 +43,22 @@ describe('V2.3 identity: the ten required cases', () => {
     const r = decideIdentity({ ...base, subscribedAt: '2026-06-10T00:00:00Z', lastInteraction: '2026-09-01T00:00:00Z' });
     expect(r.status).toBe('previous'); expect(r.client_id).toBeUndefined(); expect(r.state).toBeUndefined();
   });
-  it('3 · a manually created job order: the contact\'s mobile matches the client → EXISTING, and the job is found from the client record', async () => {
+  it('3 · a manually created job order: the contact\'s mobile only SUGGESTS the client (staff confirm); once staff link it, the job is found from the client record', async () => {
     const r = decideIdentity({ ...base, phoneMatches: [cruz] });
-    expect(r).toMatchObject({ status: 'existing', client_id: 'c-cruz', state: 'verified', basis: 'mobile' });
-    const jobs = await activeJobs(fakeSb({ jobs: [{ number: 'JOB-2026-8818', start_at: '2026-11-30T09:00:00', status: 'Confirmed', service_codes: ['GLASS_EXT'], site_id: 's1' }], sites: [{ id: 's1', name: 'Cruz residence' }] }), 'c-cruz', '2026-11-22');
+    expect(r.status).toBe('previous'); expect(r.client_id).toBeUndefined(); expect(r.state).toBe('suggested'); expect(r.candidates).toEqual([cruz]); expect(r.reasons.join(' ')).toMatch(/staff must confirm before booking details are shared/);
+    const linked = decideIdentity({ ...base, stored: { client_id: 'c-cruz', link_state: 'staff' }, phoneMatches: [cruz] });
+    expect(linked).toMatchObject({ status: 'existing', client_id: 'c-cruz', state: 'staff' });
+    const jobs = await activeJobs(fakeSb({ jobs: [{ number: 'JOB-2026-8818', start_at: '2026-11-30T09:00:00', end_at: '2026-11-30T12:00:00', status: 'Confirmed', service_codes: ['GLASS_EXT'], site_id: 's1' }], sites: [{ id: 's1', name: 'Cruz residence' }] }), 'c-cruz', '2026-11-22');
     expect(jobs).toEqual([{ number: 'JOB-2026-8818', date: '2026-11-30', time: '09:00', status: 'Confirmed', services: ['exterior glass'], site: 'Cruz residence' }]);
   });
   it('4 · the customer\'s phone number is missing → no link; a name alone never links anyone', () => {
     const r = decideIdentity({ ...base, convCreatedAt: '2026-11-20T00:00:00Z' });          // nothing but a name (names are not even an input)
     expect(r.status).toBe('new'); expect(r.client_id).toBeUndefined(); expect(r.candidates).toEqual([]);
   });
-  it('5 · the client record is NEWER than the contact (created after the AI conversation) → still EXISTING', () => {
-    const r = decideIdentity({ ...base, convCreatedAt: '2026-11-18T00:00:00Z', subscribedAt: '2026-05-01T00:00:00Z', phoneMatches: [cruz] });   // the matcher takes no client dates at all
-    expect(r.status).toBe('existing'); expect(r.client_id).toBe('c-cruz');
+  it('5 · the client record is NEWER than the contact: dates play no part; the phone suggests, the staff link makes it existing', () => {
+    const sug = decideIdentity({ ...base, convCreatedAt: '2026-11-18T00:00:00Z', subscribedAt: '2026-05-01T00:00:00Z', phoneMatches: [cruz] });   // the matcher takes no client dates at all
+    expect(sug.status).toBe('previous'); expect(sug.candidates[0].client_id).toBe('c-cruz');
+    expect(decideIdentity({ ...base, convCreatedAt: '2026-11-18T00:00:00Z', stored: { client_id: 'c-cruz', link_state: 'staff' } }).status).toBe('existing');
   });
   it('6 · a returning customer asks about their November 30 booking → answered from THEIR job; "fully booked" is a contradiction; no booking form', () => {
     const text = 'Hi, are we still scheduled for November 30?';
@@ -69,12 +73,12 @@ describe('V2.3 identity: the ten required cases', () => {
     expect(isPreviousReference(text)).toBe(true);
     expect(contradictsBooking('Please copy this and fill in your details po:\nName:', text, [nov30], '2026-11-22')).toBeTruthy();
   });
-  it('8 · identical names: the right client is found by mobile; the same mobile on two clients goes to staff; a name never decides', () => {
-    expect(decideIdentity({ ...base, phoneMatches: [cruz] }).client_id).toBe('c-cruz');          // two Maria Cruz clients exist, only one has this mobile
+  it('8 · identical names: the right client is SUGGESTED by mobile; the same mobile on two clients is ambiguous; a name never decides', () => {
+    const one = decideIdentity({ ...base, phoneMatches: [cruz] });                                // two Maria Cruz clients exist, only one has this mobile
+    expect(one.client_id).toBeUndefined(); expect(one.candidates.map((c) => c.client_id)).toEqual(['c-cruz']);
     const amb = decideIdentity({ ...base, phoneMatches: [cruz, cruz2] });
     expect(amb.status).toBe('previous'); expect(amb.state).toBe('ambiguous'); expect(amb.client_id).toBeUndefined(); expect(amb.candidates.map((c) => c.client_id)).toEqual(['c-cruz', 'c-cruz2']);
-    const noPhone = decideIdentity({ ...base });                                                  // same name, no number: nothing to match on
-    expect(noPhone.client_id).toBeUndefined();
+    expect(decideIdentity({ ...base }).client_id).toBeUndefined();                               // same name, no number: nothing to match on
   });
   it('9 · a customer with several bookings: all active jobs are listed and the asked date picks the right one', () => {
     const r = existingBookingReply([nov30, dec5]);
@@ -107,5 +111,38 @@ describe('V2.3 identity: safety rules', () => {
     expect(await clientsByMobile(fakeSb({}, [{ id: 'c1', name: 'Ana' }]), '+63 917 123 4567', 'mobile')).toEqual([{ client_id: 'c1', name: 'Ana', basis: 'mobile' }]);
     const sb = fakeSb({ clients: [{ id: 'c1', name: 'Ana', mobile: '0917-123-4567' }, { id: 'c2', name: 'Ben', mobile: '0918 111 2222' }] });   // function missing → scan
     expect((await clientsByMobile(sb, '09171234567', 'mobile')).map((c) => c.client_id)).toEqual(['c1']); expect(await clientsByMobile(sb, 'no number', 'mobile')).toEqual([]);
+  });
+});
+
+describe('V2.3 review fixes', () => {
+  it('a phone number held by ManyChat is NEVER proof of ownership: it can only suggest a client', () => {
+    for (const phoneMatches of [[cruz], [cruz, cruz2]]) { const r = decideIdentity({ ...base, phoneMatches, tags: [{ name: 'Existing customer' }], subscribedAt: '2026-01-01T00:00:00Z' }); expect(r.status).toBe('previous'); expect(r.client_id).toBeUndefined(); expect(['suggested', 'ambiguous']).toContain(r.state); }
+  });
+  it('only a link made by staff, or by the system for a client this chat created, makes an existing client', () => {
+    expect(decideIdentity({ ...base, stored: { client_id: 'c-1', link_state: 'verified', link_basis: 'chat_booking' } }).status).toBe('existing');
+    expect(decideIdentity({ ...base, stored: { client_id: 'c-1', link_state: 'staff' } }).status).toBe('existing');
+    for (const link_state of [null, undefined, 'suggested', 'ambiguous']) expect(decideIdentity({ ...base, stored: { client_id: 'c-1', link_state } }).status).not.toBe('existing');
+  });
+  it('AUDIT: every job status in the database and in the app is classified (a new status cannot be forgotten)', () => {
+    const migration = fs.readFileSync('supabase/migrations/0004_job_workflow_and_incidents.sql', 'utf8');
+    const dbList = /jobs_status_check check \(status in \(([^)]*)\)/.exec(migration)![1].match(/'([^']+)'/g)!.map((x) => x.replace(/'/g, ''));
+    const types = fs.readFileSync('src/lib/types.ts', 'utf8'); const union = /export type JobStatus =([^;]*);/.exec(types)![1];
+    const appList = [...union.replace(/\/\/[^\n]*/g, '').matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect(dbList.length).toBe(13); expect(new Set(dbList)).toEqual(new Set(appList));
+    expect(new Set(Object.keys(JOB_STATUS_CLASS))).toEqual(new Set(dbList));
+    expect([...OPEN_JOB_STATUSES].sort()).toEqual(['Arrived at HQ', 'Confirmed', 'Dispatch Checklist Pending', 'Dispatched', 'In Progress', 'Leaving Site', 'On Site', 'Pending', 'Work Completed']);
+  });
+  it('every current booking is recognised, whatever its status; finished, closed, cancelled or stale ones are not', async () => {
+    const row = (number: string, status: string, start: string, end = start) => ({ number, start_at: `${start}T09:00:00`, end_at: `${end}T12:00:00`, status, service_codes: ['GLASS_EXT'], site_id: 's1' });
+    const rows = [row('J-PENDING', 'Pending', '2026-11-30'), row('J-CONFIRMED', 'Confirmed', '2026-12-01'), row('J-DCP', 'Dispatch Checklist Pending', '2026-11-23'), row('J-DISPATCHED', 'Dispatched', '2026-11-22'), row('J-ONSITE', 'On Site', '2026-11-22'), row('J-INPROG', 'In Progress', '2026-11-20', '2026-11-23'),
+      row('J-WORKDONE', 'Work Completed', '2026-11-21'), row('J-LEAVING', 'Leaving Site', '2026-11-21'), row('J-HQ', 'Arrived at HQ', '2026-11-20'),
+      row('X-CLOSED', 'Closed', '2026-11-30'), row('X-COMPLETED', 'Completed', '2026-11-30'), row('X-CANCELLED', 'Cancelled', '2026-11-30'), row('X-RESCHEDULED', 'Rescheduled', '2026-11-30'),
+      row('X-STALE-PENDING', 'Pending', '2026-09-01'), row('X-STALE-DONE', 'Work Completed', '2026-10-01')];
+    const jobs = await activeJobs(fakeSb({ jobs: rows, sites: [{ id: 's1', name: 'Site' }] }), 'c1', '2026-11-22');
+    expect(jobs.map((j) => j.number).sort()).toEqual(['J-CONFIRMED', 'J-DCP', 'J-DISPATCHED', 'J-HQ', 'J-INPROG', 'J-LEAVING', 'J-ONSITE', 'J-PENDING', 'J-WORKDONE']);
+  });
+  it('a booking in a dispatch status is described in plain words, never the internal status name', () => {
+    expect(existingBookingReply([{ number: 'JOB-1', date: '2026-11-30', time: '09:00', status: 'Dispatch Checklist Pending', services: [] }])).toMatch(/\(being prepared\)/);
+    expect(existingBookingReply([{ number: 'JOB-1', date: '2026-11-22', time: '09:00', status: 'On Site', services: [] }])).toMatch(/the crew is on site/);
   });
 });

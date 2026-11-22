@@ -5,7 +5,9 @@ import { activeJobs, clientsByJobNumber, clientsByMobile, decideIdentity, jobNum
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
-export interface ContactResult { identity: Identity; jobs: JobLine[]; returning: ReturningInfo | null; mc: { fetched: boolean; fields?: string[]; subscribed?: string } }
+/** candidateJobs: the active bookings of the clients a contact MIGHT be (not confirmed). They are never shown to the AI or the customer: they only stop the AI from offering the booking form or calling a date full, and tell staff what to check. */
+export interface CandidateJobs { client_id: string; name: string; jobs: JobLine[] }
+export interface ContactResult { identity: Identity; jobs: JobLine[]; candidateJobs: CandidateJobs[]; returning: ReturningInfo | null; mc: { fetched: boolean; fields?: string[]; subscribed?: string } }
 const iso = (v: unknown): string | undefined => { const t = typeof v === 'number' ? (v > 1e12 ? v : v * 1000) : Date.parse(String(v ?? '')); return Number.isFinite(t) && t > 0 ? new Date(t).toISOString() : undefined; };
 const PHONE_KEYS = ['phone', 'optin_phone', 'mobile', 'mobile_number', 'whatsapp_phone'];
 const phoneFrom = (...objs: unknown[]): string | undefined => { for (const o of objs) { if (!o || typeof o !== 'object') continue; for (const k of PHONE_KEYS) { const n = normMobile((o as Record<string, unknown>)[k]); if (n) return n; } } return undefined; };
@@ -27,7 +29,7 @@ export async function resolveContact(a: { sb: Db; env: (k: string) => string; co
   const phone = phoneFrom(...a.payloads, fresh) ?? (conv.mc_phone as string | undefined) ?? undefined;   // the CONTACT's own number, never one typed in the chat
 
   // 2. candidate clients: by the contact's own mobile (verifies), by what the customer typed (only suggests)
-  const phoneMatches = phone ? await clientsByMobile(sb, `0${phone}`, 'mobile') : [];
+  const phoneMatches = phone ? await clientsByMobile(sb, `0${phone}`, 'contact_mobile') : [];   // only a SUGGESTION: a phone number in ManyChat does not prove who is typing
   const typed: Candidate[] = [];
   const typedPhones = phonesIn(a.text).filter((n) => n !== phone);
   for (const n of typedPhones.slice(0, 3)) typed.push(...await clientsByMobile(sb, `0${n}`, 'typed_mobile'));
@@ -62,10 +64,11 @@ export async function resolveContact(a: { sb: Db; env: (k: string) => string; co
   }
   // staff are told only when THEY must decide (more than one client fits, or the customer wrote a number that matches a client)
   const askStaff = identity.status === 'previous' && !!identity.state && identity.candidates.length > 0 && !sameJson(identity.candidates.map((c) => c.client_id), prevIds);
-  if (askStaff) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Please confirm the client match', body: `${conv.name ?? 'A customer'} (${conv.channel ?? 'chat'}): ${identity.state === 'ambiguous' ? 'their mobile number is on more than one client record' : 'they wrote a number that matches a client record'}: ${identity.candidates.map((c) => c.name).join(' / ')}. Open AI Chat and link the right client.`, link: '/ai-chat' });
+  if (askStaff) await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Please confirm the client match', body: `${conv.name ?? 'A customer'} (${conv.channel ?? 'chat'}): ${identity.state === 'ambiguous' ? 'the phone number is on more than one client record' : identity.candidates.some((c) => c.basis === 'contact_mobile') ? 'the phone number ManyChat holds for this contact matches a client record' : 'they wrote a number that matches a client record'}: ${identity.candidates.map((c) => c.name).join(' / ')}. Open AI Chat and confirm the right client (until then the AI shares no booking details).`, link: '/ai-chat' });
 
   // 4. what the AI is told
-  let jobs: JobLine[] = []; let returning: ReturningInfo | null = null;
+  let jobs: JobLine[] = []; let returning: ReturningInfo | null = null; const candidateJobs: CandidateJobs[] = [];
+  if (identity.status === 'previous' && identity.candidates.length) for (const c of identity.candidates.slice(0, 3)) { const j = await activeJobs(sb, c.client_id, a.today); if (j.length) candidateJobs.push({ client_id: c.client_id, name: c.name, jobs: j }); }
   if (identity.status === 'existing' && identity.client_id) {
     const cid = identity.client_id;
     const [cl, jb, iq, act] = await Promise.all([
@@ -78,5 +81,5 @@ export async function resolveContact(a: { sb: Db; env: (k: string) => string; co
       jobs: ((jb.data ?? []) as { number: string; status: string; start_at: string }[]).map((j) => `${j.number} (${j.status}, ${String(j.start_at).slice(0, 10)})`),
       inquiries: ((iq.data ?? []) as { stage: string; details: string | null; created_at: string }[]).map((q) => `${String(q.created_at).slice(0, 10)} ${q.stage}: ${String(q.details ?? '').slice(0, 70)}`), active: act };
   } else if (identity.status === 'previous') returning = { note: note || 'Has talked to TopMop before', status: 'previous', suggested: !!identity.state };
-  return { identity, jobs, returning, mc };
+  return { identity, jobs, candidateJobs, returning, mc };
 }

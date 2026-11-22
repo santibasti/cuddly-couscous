@@ -65,13 +65,12 @@ const TAG = /existing|returning|regular|repeat|past (customer|client)/i;
 const tagOf = (tags: unknown): string | undefined => { for (const t of Array.isArray(tags) ? tags : []) { const n = String(typeof t === 'object' && t ? (t as { name?: unknown }).name ?? '' : t ?? ''); if (TAG.test(n) && !/new|lead|prospect/i.test(n)) return n; } return undefined; };
 const olderThan = (d: string | undefined, ref: string | undefined, graceDays = 0) => !!d && !!ref && Date.parse(d) < Date.parse(ref) - graceDays * 86400_000;
 
-/** The decision. Order: a stored link (system or staff) → the contact's own mobile number → previous-contact evidence → typed suggestions → new. */
+/** The decision. Only a stored link made by the system (a client this chat itself created) or by staff makes an EXISTING client. A ManyChat phone number or a number the customer typed only suggests a client. Then previous-contact evidence, else new. */
 export function decideIdentity(i: IdentityInput): Identity {
   const s = i.stored; const reasons: string[] = [];
   if (s.client_id && (s.link_state === 'verified' || s.link_state === 'staff')) {   // only an explicit link counts: a client_id alone may come from a number the customer typed into a booking
     return { status: 'existing', client_id: s.client_id, state: s.link_state === 'staff' ? 'staff' : 'verified', basis: s.link_basis || (s.link_state === 'staff' ? 'staff' : 'chat_booking'), candidates: [], reasons: [s.link_state === 'staff' ? 'Linked to this client by staff' : 'Already linked to this client'] };
   }
-  if (i.phoneMatches.length === 1) { const m = i.phoneMatches[0]; return { status: 'existing', client_id: m.client_id, state: 'verified', basis: 'mobile', candidates: [], reasons: [`The contact's mobile number matches client ${m.name}`] }; }
   const tag = tagOf(i.tags);
   if (i.phoneMatches.length > 1) reasons.push(`The contact's mobile number is on ${i.phoneMatches.length} client records: staff must choose`);
   if (s.staff_returning) reasons.push('Staff marked this customer as returning');
@@ -80,20 +79,34 @@ export function decideIdentity(i: IdentityInput): Identity {
   if (olderThan(i.convCreatedAt, i.aiStartedOn)) reasons.push('This conversation started before the AI chat was switched on; our team handled it');
   if (olderThan(i.lastInteraction, i.aiStartedOn)) reasons.push('Their last ManyChat activity was before the AI chat started');
   if (i.priorStaffReply) reasons.push('A staff member already replied in this chat');
+  // A phone number held by ManyChat is NOT proof of who is typing (it can be wrong, shared or typed by someone else): it only SUGGESTS a client. Staff confirm before any booking detail is shared.
   const ambiguous = i.phoneMatches.length > 1;
   const typed = i.typedMatches.filter((t) => !i.phoneMatches.some((p) => p.client_id === t.client_id));
-  const cands = ambiguous ? i.phoneMatches : typed;
+  const cands = [...i.phoneMatches, ...typed].slice(0, 5);
+  if (i.phoneMatches.length === 1) reasons.push(`The phone number ManyChat holds for this contact matches client ${i.phoneMatches[0].name}: staff must confirm before booking details are shared`);
   if (!ambiguous && typed.length) reasons.push('The customer wrote a number that matches a client record: staff to confirm');
   if (!reasons.length) return { status: 'new', candidates: [], reasons: [] };
   return { status: 'previous', ...(cands.length ? { state: ambiguous ? 'ambiguous' as const : 'suggested' as const, candidates: cands } : { candidates: [] }), reasons };
 }
 
+/** EVERY job status the database allows (jobs_status_check, migration 0004), and what it means for a customer asking about their booking.
+ *  upcoming = booked, not started   current = on the way / on site / being cleaned   recent = work done, paperwork or return trip not finished   ended = never offered as a booking.
+ *  A test compares this list with the app's JobStatus type, so a new status cannot be forgotten. */
+export const JOB_STATUS_CLASS: Record<string, 'upcoming' | 'current' | 'recent' | 'ended'> = {
+  'Pending': 'upcoming', 'Confirmed': 'upcoming', 'Dispatch Checklist Pending': 'upcoming',
+  'Dispatched': 'current', 'On Site': 'current', 'In Progress': 'current',
+  'Work Completed': 'recent', 'Leaving Site': 'recent', 'Arrived at HQ': 'recent',
+  'Closed': 'ended', 'Completed': 'ended', 'Cancelled': 'ended', 'Rescheduled': 'ended',
+};
+export const OPEN_JOB_STATUSES = Object.entries(JOB_STATUS_CLASS).filter(([, c]) => c !== 'ended').map(([k]) => k);
+const STATUS_WORDS: Record<string, string> = { 'Pending': 'pending', 'Confirmed': 'confirmed', 'Dispatch Checklist Pending': 'being prepared', 'Dispatched': 'the crew is on the way', 'On Site': 'the crew is on site', 'In Progress': 'the work is in progress', 'Work Completed': 'the work is done', 'Leaving Site': 'the work is done', 'Arrived at HQ': 'the work is done' };
+export const statusWords = (st: string) => STATUS_WORDS[st] ?? st.toLowerCase();
 export interface JobLine { number: string; date: string; time: string; status: string; services: string[]; site?: string }
 const SVC: Record<string, string> = { GLASS_EXT: 'exterior glass', GLASS_INT: 'interior glass', ROOF: 'roof', WALL: 'wall', FLOOR: 'floor', SOLAR: 'solar panels' };
 export const serviceNames = (codes: unknown): string[] => (Array.isArray(codes) ? codes : []).map((c) => SVC[String(c)] ?? String(c).toLowerCase().replace(/_/g, ' ')).slice(0, 4);
 const dayName = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
 const clock = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${pad(m || 0)} ${h >= 12 ? 'PM' : 'AM'}`; };
-export const jobSentence = (j: JobLine) => `${j.number} is set for ${dayName(j.date)} at ${clock(j.time)} (${j.status.toLowerCase()})`;
+export const jobSentence = (j: JobLine) => `${j.number} is set for ${dayName(j.date)} at ${clock(j.time)} (${statusWords(j.status)})`;
 
 /** The reply when a verified customer asks about their own booking: from their own job, never from the general calendar. */
 export function existingBookingReply(jobs: JobLine[], wanted: string[] = []): string {
@@ -135,11 +148,16 @@ export async function clientsByJobNumber(sb: Sb, text: string): Promise<Candidat
   const { data: cl } = await sb.from('clients').select('id, name').in('id', ids).is('deleted_at', null);
   return ((cl ?? []) as { id: string; name: string }[]).map((c) => cand(c, 'job_number'));
 }
-/** The verified client's active and upcoming jobs (not cancelled, not completed), soonest first. Found from the client record, whoever created the job. */
+/** A verified client's current bookings: every job that is not over (see JOB_STATUS_CLASS), whoever created it (staff, chat, any channel), soonest first. Upcoming jobs must not be in the past; a job that is on the way, on site or being cleaned is always current; a finished job whose paperwork is still open stays for 7 days. */
 export async function activeJobs(sb: Sb, clientId: string, todayIso: string): Promise<JobLine[]> {
-  const { data } = await sb.from('jobs').select('number, start_at, status, service_codes, site_id').eq('client_id', clientId).is('deleted_at', null).in('status', ['Pending', 'Confirmed', 'In Progress']).gte('end_at', `${todayIso}T00:00:00`).order('start_at', { ascending: true }).limit(6);
-  const rows = (data ?? []) as { number: string; start_at: string; status: string; service_codes: unknown; site_id: string }[]; if (!rows.length) return [];
+  const { data } = await sb.from('jobs').select('number, start_at, end_at, status, service_codes, site_id').eq('client_id', clientId).is('deleted_at', null).in('status', OPEN_JOB_STATUSES).order('start_at', { ascending: true }).limit(20);
+  const weekAgo = `${new Date(Date.parse(`${todayIso}T00:00:00Z`) - 7 * 86400_000).toISOString().slice(0, 10)}T00:00:00`;
+  const rows = ((data ?? []) as { number: string; start_at: string; end_at: string; status: string; service_codes: unknown; site_id: string }[]).filter((r) => {
+    const c = JOB_STATUS_CLASS[r.status]; const end = String(r.end_at ?? r.start_at);
+    return c === 'current' || (c === 'upcoming' && end >= `${todayIso}T00:00:00`) || (c === 'recent' && end >= weekAgo);
+  }).slice(0, 10);
+  if (!rows.length) return [];
   const { data: st } = await sb.from('sites').select('id, name').in('id', [...new Set(rows.map((r) => r.site_id))]);
-  const sn = Object.fromEntries(((st ?? []) as { id: string; name: string }[]).map((s) => [s.id, s.name]));
+  const sn = Object.fromEntries(((st ?? []) as { id: string; name: string }[]).map((x) => [x.id, x.name]));
   return rows.map((r) => ({ number: r.number, date: String(r.start_at).slice(0, 10), time: String(r.start_at).slice(11, 16) || '08:00', status: r.status, services: serviceNames(r.service_codes), site: sn[r.site_id] }));
 }
