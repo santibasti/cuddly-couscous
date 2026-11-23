@@ -8,7 +8,7 @@ if (!EMAIL || !PW) { console.log('STOP: set STAGING_LOGIN_EMAIL and STAGING_LOGI
 if (/ghbumxivporzsalivgyg/.test(SB)) { console.log('STOP: that is the PRODUCTION address.'); process.exit(3); }
 const dir = path.join(os.homedir(), 'v23-ui-evidence', new Date().toISOString().replace(/[:.]/g, '-')); fs.mkdirSync(dir, { recursive: true });
 const results = []; const ok = (name, pass, ev = '') => { results.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${ev ? `\n      ${ev}` : ''}`); };
-const rest = async (p) => { const r = await fetch(`${SB}/rest/v1/${p}`, { headers: { apikey: SVC, Authorization: `Bearer ${SVC}` } }); return r.json(); };
+const rest = async (p) => { const r = await fetch(`${SB}/rest/v1/${p}`, { headers: { apikey: SVC, Authorization: `Bearer ${SVC}` } }); const j = await r.json().catch(() => null); if (!r.ok || !Array.isArray(j)) { console.log(`   [database read failed] HTTP ${r.status}: ${JSON.stringify(j).slice(0, 300)}`); return []; } return j; };
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1500, height: 1100 } }); const dialogs = [];
   p.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
@@ -25,31 +25,32 @@ const rest = async (p) => { const r = await fetch(`${SB}/rest/v1/${p}`, { header
   const signedIn = await p.getByRole('button', { name: /All conversations/ }).count() > 0; ok('signed in to the STAGING app as the owner and AI Chat opens', signedIn, signedIn ? '' : (await p.locator('body').innerText()).slice(0, 200).replace(/\n+/g, ' | ')); if (!signedIn) { await shot('00-not-signed-in'); await b.close(); process.exit(1); }
   await p.getByRole('button', { name: /All conversations/ }).click(); await p.waitForTimeout(800);
   const row = (n) => p.locator('.aichat-row', { hasText: n }); const txt = async () => p.locator('.aichat').innerText(); const list = async () => p.locator('.aichat-list').innerText();
+  const settle = async (re, ms = 20000) => { const t0 = Date.now(); let t = await txt(); while (!re.test(t) && Date.now() - t0 < ms) { await p.waitForTimeout(500); t = await txt(); } return t; };   // wait until the screen shows the expected state (the first call to a cold function can take several seconds)
   const l0 = await list(); ok('the five "UI Test" conversations are listed', ['new contact', 'previous contact (no match)', 'phone matches ONE', 'same NAME', 'same PHONE'].every((x) => l0.includes(x)), l0.replace(/\n+/g, ' | ').slice(0, 300)); await shot('01-list');
   // A. one match
   await row('phone matches ONE').click(); await p.waitForTimeout(500); let t = await txt(); await shot('02-A-one-match');
   ok('A: suggested match: "Previous contact", the possible client UI Test Maria Cruz, how it was found, a "This is the client" button', /Previous contact/.test(t) && /UI Test Maria Cruz/.test(t) && /phone number ManyChat holds/.test(t) && await p.getByRole('button', { name: 'This is the client' }).count() === 1, t.replace(/\n+/g, ' | ').slice(0, 260));
-  await p.getByRole('button', { name: 'This is the client' }).click(); await p.waitForTimeout(2500); t = await txt(); await shot('03-A-linked');
+  await p.getByRole('button', { name: 'This is the client' }).click(); t = await settle(/Existing client/); await shot('03-A-linked');
   ok('A: LINK: a confirmation question was asked and the contact is now an existing client (live chat-send call)', dialogs.some((d) => /Link this chat to client UI Test Maria Cruz/.test(d)) && /Existing client/.test(t), dialogs.at(-1) ?? '');
-  const open = await p.getByRole('link', { name: 'Open client' }).count(); ok('A: "Open client" link is offered', open === 1);
-  await p.getByRole('button', { name: 'Unlink' }).click(); await p.waitForTimeout(2500); t = await txt(); await shot('04-A-unlinked');
+  await p.waitForTimeout(500); const open = await p.getByRole('link', { name: 'Open client' }).count(); ok('A: "Open client" link is offered', open === 1);
+  await p.getByRole('button', { name: 'Unlink' }).click(); t = await settle(/Previous contact/);  await shot('04-A-unlinked');
   ok('A: UNLINK: asked to confirm, and the contact is back to "Previous contact"', dialogs.some((d) => /Unlink this chat/.test(d)) && /Previous contact/.test(t) && !/Existing client/.test(t));
   // B. same name
   await row('same NAME').click(); await p.waitForTimeout(500); t = await txt(); await shot('05-B-same-name');
   ok('B: same NAME on two clients: only the second UI Test Carla Lim is suggested (by phone), one Link button', /UI Test Carla Lim/.test(t) && await p.getByRole('button', { name: 'This is the client' }).count() === 1, t.replace(/\n+/g, ' | ').slice(0, 240));
-  await p.getByRole('button', { name: 'This is the client' }).click(); await p.waitForTimeout(2500); t = await txt(); await shot('06-B-linked');
+  await p.getByRole('button', { name: 'This is the client' }).click(); t = await settle(/Existing client/); await shot('06-B-linked');
   ok('B: linked to UI Test Carla Lim', /Existing client/.test(t) && dialogs.some((d) => /Link this chat to client UI Test Carla Lim/.test(d)));
   // C. same phone
   await row('same PHONE').click(); await p.waitForTimeout(500); t = await txt(); await shot('07-C-same-phone');
   ok('C: same PHONE on two clients: "More than one client has this contact\'s mobile number", both Eva Tan and Evan Tan offered, nobody linked', /More than one client has this contact's mobile number/.test(t) && /UI Test Eva Tan/.test(t) && /UI Test Evan Tan/.test(t) && await p.getByRole('button', { name: 'This is the client' }).count() === 2 && !/Existing client/.test(t));
-  await p.getByRole('button', { name: 'This is the client' }).nth(1).click(); await p.waitForTimeout(2500); t = await txt(); await shot('08-C-linked');
+  await p.getByRole('button', { name: 'This is the client' }).nth(1).click(); t = await settle(/Existing client/); await shot('08-C-linked');
   ok('C: choosing the second candidate links only that one', /Existing client/.test(t) && dialogs.some((d) => /Link this chat to client UI Test Evan Tan/.test(d)));
   // D. previous contact, no match: search by hand
   await row('previous contact (no match)').click(); await p.waitForTimeout(500); t = await txt(); await shot('09-D-previous');
   ok('D: previous contact with no suggestion: explained, a manual-link search is offered, no client records shown', /Previous contact/.test(t) && /Link to a TopMop client by hand/.test(t) && !/Possible match/.test(t));
   await p.getByText('Link to a TopMop client by hand').click(); await p.getByPlaceholder('Search a client by name or mobile').fill('UI Test Maria'); await p.waitForTimeout(1500); t = await txt(); await shot('10-D-search');
   ok('D: typing a client name lists the matching client with a Link button', /UI Test Maria Cruz/.test(t) && await p.getByRole('button', { name: 'Link', exact: true }).count() >= 1);
-  await p.getByRole('button', { name: 'Link', exact: true }).first().click(); await p.waitForTimeout(2500); t = await txt(); await shot('11-D-linked');
+  await p.getByRole('button', { name: 'Link', exact: true }).first().click(); t = await settle(/Existing client: UI Test Maria Cruz/); await shot('11-D-linked');
   ok('D: after confirming, the contact is an existing client: UI Test Maria Cruz', /Existing client: UI Test Maria Cruz/.test(t));
   // E. re-check
   await p.getByRole('button', { name: /Re-check this contact/ }).click(); await p.waitForTimeout(3500); let body = await p.locator('body').innerText(); await shot('12-E-recheck');
