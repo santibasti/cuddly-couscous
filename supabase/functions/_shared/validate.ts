@@ -133,6 +133,7 @@ export const ackReply = (): string => "You're welcome po! Just message us anytim
 export function priceFigureMissing(c: ChatContext, customerTexts: string, reply: string): boolean {
   if (c.intent !== 'price_inquiry' || !c.location || !c.service || c.property === 'commercial') return false;
   if ((c.services_seen ?? []).filter((x) => x !== c.service).length > 0) return false;
+  if (!/\b(how much|magkano|price|prices|presyo|rate|rates|cost|estimate|quote|quotation)\b/i.test(customerTexts) || /\b(fee|fees|charge|charges|transport\w*|travel|extra|additional|discount|payment|pay)\b/i.test(customerTexts)) return false;   // only an explicit price question: a question about fees, extras, payment or discounts keeps the model's own answer
   if (/\d/.test(customerTexts) || /\b(commercial|office|business|store|hotel|warehouse|condo corp)\b/i.test(customerTexts)) return false;
   if (/^NO_ANSWER\W*$/i.test(String(reply ?? '').trim())) return false;
   return !/₱\s?\d/.test(String(reply ?? ''));

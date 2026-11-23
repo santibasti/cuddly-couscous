@@ -78,6 +78,8 @@ describe('a price question left without a peso figure (review 23 Nov, scenario F
     expect(priceFigureMissing({ ...ctx, location: undefined }, t, 'Our team will verify.')).toBe(false);
     expect(priceFigureMissing({ ...ctx, service: undefined }, t, 'Our team will verify.')).toBe(false);
     expect(priceFigureMissing({ ...ctx, intent: 'general_inquiry' }, t, 'Our team will verify.')).toBe(false);
+    expect(priceFigureMissing(ctx, 'Makati window cleaning may transportation fee ba?', 'There is no transportation fee po.')).toBe(false);   // a fee question is not a price question (staging scenario L)
+    expect(priceFigureMissing(ctx, 'How much? is there a discount', 'Our team will check.')).toBe(false);
   });
 });
 
