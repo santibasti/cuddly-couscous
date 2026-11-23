@@ -2,17 +2,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeExec } from '../../supabase/functions/_shared/chatexec';
 
 // A booking or a saved lead through the chat: when is the chat positively linked to a TopMop client?
+let aMobile: string | null = '0917 555 1212';   // the mobile on the LINKED client's record (client A)
 const inserts: Record<string, unknown>[] = []; const fetched: string[] = []; let outcome: { text: string; conflict?: boolean; booked?: { ok: boolean; reply: string } } = { text: '' };
 /** The linked client A (when the chat has a trusted link) has this mobile on file; the customer types `mobile`. */
 const run = async (tool: 'book_date' | 'save_lead', reply: Record<string, unknown>, cur: Record<string, unknown> = {}, jobs: { number: string; date: string; time: string; status: string; services: string[] }[] = [], mobile = '0917 555 1212', dbError = false) => {
   const updates: Record<string, unknown>[] = []; inserts.length = 0; fetched.length = 0;
-  const row = (t: string) => (t === 'clients' ? { name: 'Maria Cruz', mobile: '0917 555 1212' } : cur);
+  const row = (t: string) => (t === 'clients' ? { name: 'Maria Cruz', mobile: aMobile } : cur);
   const sb = { from: (t: string) => ({ select: () => ({ eq: () => ({ maybeSingle: async () => (dbError ? { data: null, error: { message: 'boom' } } : { data: row(t) }) }) }), update: (p: Record<string, unknown>) => { updates.push(p); return { eq: async () => ({ error: null }) }; }, insert: async (r: Record<string, unknown>) => { inserts.push(r); return { error: null }; } }) };
   vi.stubGlobal('fetch', async (u: string) => { fetched.push(String(u)); return new Response(JSON.stringify(reply), { status: 200 }); });
   outcome = await makeExec({ sb, base: 'https://x.invalid', key: 'k', conv: { id: 'conv-1', channel: 'messenger', subscriber_id: 's1' }, lang: 'en', jobs })(tool, { name: 'Maria Cruz', mobile, date: '2026-12-05', address: 'Makati', service: 'window cleaning' });
   return updates;
 };
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); aMobile = '0917 555 1212'; });
 
 describe('V2.3: a chat is verified as a client only when its own booking CREATED that client', () => {
   it('a booking that created a new client links the chat as verified (chat_booking)', async () => {
@@ -84,9 +85,24 @@ describe('review finding 2: a booking for someone else is stopped BEFORE any wri
   it('the same for a lead: lead-intake is never called for another person\'s number', async () => {
     await run('save_lead', { client_id: 'c-B', inquiry_id: 'i-B', existing_client: true }, A, [], '0918 777 3434'); expect(fetched).toEqual([]); expect(outcome.conflict).toBe(true);
   });
-  it('the linked client\'s OWN number goes ahead, in any format, and so does the contact\'s own ManyChat number', async () => {
+  it('the linked client\'s OWN verified number goes ahead, in any format', async () => {
     await run('book_date', { ...BOOKED_B, client_id: 'c-A' }, A, [], '+63 917 555 1212'); expect(fetched.length).toBe(1); expect(outcome.conflict).toBeUndefined(); expect(outcome.booked?.ok).toBe(true);
-    await run('book_date', { ...BOOKED_B, client_id: 'c-A' }, { ...A, mc_phone: '9185551234' }, [], '0918 555 1234'); expect(fetched.length).toBe(1); expect(outcome.conflict).toBeUndefined();
+    await run('save_lead', { client_id: 'c-A', inquiry_id: 'i-A', existing_client: true }, A, [], '09175551212'); expect(fetched.length).toBe(1); expect(outcome.conflict).toBeUndefined();
+  });
+  it('REVIEW EDGE CASE: client A.mobile !== conversation mc_phone === typed mobile === client B.mobile: the ManyChat number never substitutes for A\'s verified mobile, so chat-book and lead-intake are NEVER called', async () => {
+    aMobile = '0917 555 1212';                                                                                           // client A (linked by staff)
+    const withMc = { ...A, mc_phone: '9187771234' };                                                                      // ManyChat holds ANOTHER number: client B's
+    const u = await run('book_date', BOOKED_B, withMc, [], '0918 777 1234');                                              // the customer types B's mobile
+    expect(fetched).toEqual([]); expect(outcome.conflict).toBe(true); expect(outcome.booked).toBeUndefined(); expect(outcome.text).not.toMatch(/JOB-2026-9999|ops\.topmop|booked|confirmed/i);
+    expect(u.some((x) => 'client_id' in x)).toBe(false); expect(u.at(-1)).toMatchObject({ status: 'Needs a person' }); expect(String(u.at(-1)!.human_reason)).toMatch(/ManyChat number|records disagree/); expect(String(u.at(-1)!.human_reason)).not.toMatch(/9187771234|0918 777 1234/);   // the other number is not repeated
+    await run('save_lead', { client_id: 'c-B', inquiry_id: 'i-B', existing_client: true }, withMc, [], '0918 777 1234'); expect(fetched).toEqual([]); expect(outcome.conflict).toBe(true);
+  });
+  it('a linked client with NO mobile on file cannot be validated: nothing is created (fails closed), even if the typed number equals the ManyChat number', async () => {
+    aMobile = null; await run('book_date', BOOKED_B, { ...A, mc_phone: '9187771234' }, [], '0918 777 1234'); expect(fetched).toEqual([]); expect(outcome.conflict).toBe(true);
+    await run('book_date', BOOKED_B, A, [], '0917 555 1212'); expect(fetched).toEqual([]); expect(outcome.conflict).toBe(true);
+  });
+  it('a REAL change of phone number is handled by explicit staff re-verification: once staff update the client\'s mobile (or re-link), the new number goes ahead', async () => {
+    aMobile = '0918 777 1234'; await run('book_date', { ...BOOKED_B, client_id: 'c-A' }, { ...A, mc_phone: '9187771234' }, [], '0918 777 1234'); expect(fetched.length).toBe(1); expect(outcome.conflict).toBeUndefined();
   });
   it('FAIL CLOSED: if the check cannot be done (database error) nothing is created', async () => {
     await run('book_date', BOOKED_B, A, [], '0917 555 1212', true); expect(fetched).toEqual([]); expect(outcome.conflict).toBe(true);
