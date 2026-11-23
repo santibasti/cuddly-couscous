@@ -442,6 +442,8 @@ ok('V2.3-23 control: a reply that already carries the tool\'s figure is left alo
 pf = await noFigure(['Binondo', 'Wall Cleaning', 'Exterior', 'about 80 sqm', 'How much?'], 'suggest', 'Our team will verify the exact rate for you po.');
 ok('V2.3-23 a size given earlier and no figure from the model: only the TOOL\'s own figures are added (rate and minimum), never an invented total', /125/.test(pf.body) && (pf.body.match(/₱\s?[\d,]+/g) ?? []).every((x) => /125|6,250/.test(x)), JSON.stringify(pf.body.slice(0, 160)));
 
+pf = await noFigure(['Makati', 'window cleaning', 'may transportation fee ba?'], 'suggest', 'There is no transportation fee po. Our team will confirm any other charges on site.');
+ok('V2.3-23 a transportation-fee question is NOT turned into a price quote (staging scenario L): the model\'s own answer stays', /no transportation fee/i.test(pf.body) && !/starts at|₱4,799/.test(pf.body), JSON.stringify(pf.body.slice(0, 160)));
 // 23b (review: "add regression coverage for batched messages"): the five-message burst of scenario F, model answers with no figure and no tool
 reset('suggest'); queue(true, 60); state.script = () => text('Our team will verify the exact rate and coverage for Binondo po. Exterior wall cleaning is priced per sqm, so they\'ll confirm the final figure with you.');
 await Promise.all(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?'].map((t, i) => (i ? new Promise((r) => setTimeout(r, i * 5)).then(() => send(t, {}, 'MC-F2')) : send(t, {}, 'MC-F2')))); await flush();

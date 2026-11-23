@@ -101,7 +101,7 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
         brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3, check: (r) => (/^NO_ANSWER\W*$/i.test(r.trim()) ? [] : validateReply(r, vctx(first))) });
         // A price question must end with the tool's figure: when the model answered without a peso amount (it once wrote "priced per square meter, our team will verify"), the estimate tool is asked directly and its text is the answer.
         if (!brain.error && !brain.bookReply && !brain.humanReason && !brain.conflict && priceFigureMissing(ctx, texts.join(' '), brain.reply)) {
-          const sv = serviceName(ctx.service); const o = sv ? await exec('estimate', { address: ctx.location, service: sv, property_type: 'Residential' }).catch(() => null) : null;
+          const sv = serviceName(ctx.service); const ask = () => exec('estimate', { address: ctx.location, service: sv, property_type: 'Residential' }).catch(() => null); let o = sv ? await ask() : null; if (sv && !(o && /₱\s?\d/.test(o.text))) o = await ask();   // one more try if the tool call failed (a dropped connection)
           if (o && /₱\s?\d/.test(o.text)) { brain.reply = `${o.text.replace(/\s+$/, '')} po. Our team confirms the exact area on site before work starts.`.replace(/\.\s*po\./, ' po.'); brain.amounts.push(...(o.amounts ?? [])); brain.log.push({ tool: 'estimate', input: { address: ctx.location, service: sv }, result: o.text.slice(0, 300) }); brain.violations = []; brain.note = 'price taken from the estimate tool (the AI gave no figure)'; }
         }
       }
