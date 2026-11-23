@@ -7,7 +7,7 @@ export type Mode = 'off' | 'suggest' | 'auto';
 export const parseMode = (v: unknown): Mode => (v === 'suggest' || v === 'auto' ? v : 'off');
 export interface Section { key: string; title: string; body: string }
 export type Action = { type: 'save_lead' | 'book_date' | 'needs_human'; input: Record<string, unknown> };
-export interface ToolOutcome { text: string; amounts?: number[]; booked?: { reply: string; ok: boolean } }
+export interface ToolOutcome { text: string; amounts?: number[]; booked?: { reply: string; ok: boolean }; conflict?: boolean; reason?: string }   // conflict: the tool refused or saved the work for ANOTHER client than the one linked to the chat: nothing may be confirmed to the customer
 
 export const TOOLS = [
   { name: 'estimate', description: 'The starting rates and, when the customer gave a count, an ESTIMATE for a service at an address. ALWAYS use it for any price question and quote ITS figure: it applies the minimum charge of every package (below the allowance the full minimum is charged, never prorated), so never calculate, prorate or add amounts yourself. property_type: Residential or Commercial. For TWO OR MORE services asked together (even three or four) make ONE call with ALL of them in items: [{service, qty}] in the order the customer named them (the window package is always the first); never split them into separate calls and never quote one service on its own when the customer asked for a total: the tool returns the combined total (the first service keeps its minimum, every other service has its minimum waived). with_main: true only for another service booked together with a first one; the system checks it against the conversation and ignores it for a standalone service.', input_schema: { type: 'object', properties: { address: { type: 'string' }, service: { type: 'string' }, qty: { type: 'number', description: 'glass or solar panels, or square metres' }, property_type: { type: 'string' }, with_main: { type: 'boolean' }, items: { type: 'array', description: 'two or more services booked together', items: { type: 'object', properties: { service: { type: 'string' }, qty: { type: 'number' } }, required: ['service'] } } }, required: ['address'] } },
@@ -165,7 +165,7 @@ export function guardReply(reply: string, ctx: { amounts: number[]; booked: bool
 export const FALLBACK = { en: 'Let me refer this to our team so we can give you accurate information po.', tl: 'Ire-refer ko po ito sa aming team para makapagbigay kami ng tamang impormasyon.', taglish: 'Let me refer this to our team po so we can give you accurate information.' };
 export const fallbackFor = (lang: string) => (lang === 'tl' || lang === 'taglish' ? FALLBACK.taglish : FALLBACK.en);
 
-export interface Brain { violations?: string[]; reply: string; actions: Action[]; amounts: number[]; booked: boolean; bookReply?: string; humanReason?: string; log: { tool: string; input: unknown; result: string }[]; error?: string; note?: string }
+export interface Brain { violations?: string[]; reply: string; actions: Action[]; amounts: number[]; booked: boolean; bookReply?: string; conflict?: boolean; humanReason?: string; log: { tool: string; input: unknown; result: string }[]; error?: string; note?: string }
 export interface ModelOut { content: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[]; stop_reason: string }
 /** Runs the model with the tools. Read tools (estimate, check_date) always run. Write tools (book_date, save_lead, needs_human) run now only in `auto` mode; in `suggest` mode they are queued as actions for staff to approve. */
 /** Share of the words that are Tagalog function words (0–1). Taglish stays low; a reply written in Tagalog sentences is high. */
@@ -186,7 +186,7 @@ export async function runBrain(a: { mode: Mode; system: string; messages: { role
       for (const u of uses) {
         const name = u.name ?? '', input = u.input ?? {}; let text: string;
         if (READ_TOOLS.includes(name)) { const o = await a.exec(name, input, true); text = o.text; out.amounts.push(...(o.amounts ?? [])); }
-        else if (a.mode === 'auto') { const o = await a.exec(name, input, true); text = o.text; if (o.booked) { out.booked = o.booked.ok; out.bookReply = o.booked.reply; } if (name === 'needs_human') out.humanReason = String(input.reason ?? 'Needs a person'); }
+        else if (a.mode === 'auto') { const o = await a.exec(name, input, true); text = o.text; /* after a conflict NO booking text can ever become the reply */ if (o.conflict) { out.conflict = true; out.booked = false; out.bookReply = undefined; out.humanReason = (o.reason ?? 'A booking or lead was refused or saved for a different client than the one linked to this chat: a person must check it').slice(0, 300); } else if (o.booked && !out.conflict) { out.booked = o.booked.ok; out.bookReply = o.booked.reply; } if (name === 'needs_human') out.humanReason = String(input.reason ?? 'Needs a person'); }
         else { out.actions.push({ type: name as Action['type'], input }); text = name === 'needs_human' ? 'A staff member will be asked to take over.' : name === 'book_date' ? 'Queued: staff will review and the system will book it. Do NOT say it is booked; say the team will confirm.' : 'Queued: it will be saved when staff approve.'; if (name === 'needs_human') out.humanReason = String(input.reason ?? 'Needs a person'); }
         out.log.push({ tool: name, input, result: text.slice(0, 400) }); results.push({ type: 'tool_result', tool_use_id: u.id, content: text });
       }
@@ -216,6 +216,7 @@ export const isRewriteChatter = (t: string): boolean => /^\s*(i (can'?t|cannot|c
 export type Decision = { kind: 'draft'; text: string } | { kind: 'send'; text: string } | { kind: 'handover'; text: string; reason: string };
 export function decide(mode: Mode, b: Brain, lang: string, own?: { verifiedJobs?: string[]; ownBooking?: (text: string) => boolean }): Decision {
   const g = guardReply(b.bookReply ?? b.reply, { amounts: b.amounts, booked: b.booked, ...own });
+  if (b.conflict) return { kind: 'handover', text: fallbackFor(lang), reason: b.humanReason ?? 'A booking conflict needs a person' };   // only the safe handover sentence is sent: never the model's words, never the tool's confirmation
   if (b.humanReason) return { kind: 'handover', text: g.ok && b.reply ? b.reply : fallbackFor(lang), reason: b.humanReason };
   if (b.error) return { kind: 'handover', text: fallbackFor(lang), reason: `The AI could not answer (${b.error.slice(0, 80)})` };
   if (mode === 'suggest') return { kind: 'draft', text: b.reply.trim() ? b.reply : fallbackFor(lang) };   // never a blank draft: staff get a safe holding sentence they can edit                       // staff see the text and any safety flags before anything is sent
