@@ -9,8 +9,12 @@ if (!URL_ || !KEY || !SVC) { console.error('Set STAGING_URL, STAGING_KEY and STA
 if (/ghbumxivporzsalivgyg/.test(URL_)) { console.error('STOP: that is the PRODUCTION project. This script only runs on staging.'); process.exit(3); }
 // Network hiccups (a 10 s connect timeout) must not crash a long run: every request is retried a few times.
 const realFetch = globalThis.fetch; globalThis.fetch = async (u, i) => {
-  const isPost = String(i?.method ?? 'GET').toUpperCase() === 'POST' && String(u).includes('/functions/v1/');   // a message sent to the AI is NEVER re-sent automatically (it would duplicate the customer's message)
-  let e; for (let k = 0; k < (isPost ? 1 : 4); k++) { try { return await realFetch(u, { ...(i ?? {}), signal: AbortSignal.timeout(isPost ? 150000 : 60000) }); } catch (x) { e = x; if (isPost) { console.log(`   [network] the function did not answer within 150 s (${x?.name ?? 'error'}); continuing`); return new Response('{}', { status: 504 }); } await new Promise((r) => setTimeout(r, 1500 * (k + 1))); } } throw e;
+  // A message to the AI is retried ONLY when the connection itself failed (a dropped connection: the same message id is de-duplicated by the database, so a retry can never create a second message); a real timeout is never re-sent.
+  const isPost = String(i?.method ?? 'GET').toUpperCase() === 'POST' && String(u).includes('/functions/v1/');
+  let e; for (let k = 0; k < 4; k++) {
+    try { return await realFetch(u, { ...(i ?? {}), signal: AbortSignal.timeout(isPost ? 150000 : 60000) }); }
+    catch (x) { e = x; const timeout = x?.name === 'TimeoutError' || x?.name === 'AbortError'; if (isPost && timeout) { console.log('   [network] the function did not answer within 150 s; continuing'); return new Response('{}', { status: 504 }); } console.log(`   [network] ${x?.name ?? 'error'}: ${x?.cause?.code ?? x?.message ?? ''}; retry ${k + 1}`); await new Promise((r) => setTimeout(r, 2000 * (k + 1))); }
+  } throw e;
 };
 const H = { apikey: SVC, Authorization: `Bearer ${SVC}`, 'Content-Type': 'application/json' };
 const rest = async (p, init = {}) => { const r = await fetch(`${URL_}/rest/v1/${p}`, { headers: H, ...init }); const t = await r.text(); return t ? JSON.parse(t) : []; };
