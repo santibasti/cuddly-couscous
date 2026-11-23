@@ -1,0 +1,39 @@
+// CONTROLLED ManyChat DELIVERY TEST (staging only). It sends the November 30 situation through the deployed STAGING chat-brain with the AI in Full mode, so the answers are really delivered to YOUR ManyChat test contact in Messenger.
+// Needs in the window: STAGING_URL, STAGING_KEY (staging LEAD_INTAKE_KEY), STAGING_SERVICE_KEY, STAGING_SUBSCRIBER (your test contact's ManyChat id), STAGING_PHONE (any 10/11-digit mobile, e.g. 09001234567).
+// Also: staging AI mode = full, MANYCHAT_API_TOKEN set on the staging functions, and the contact must have messaged your page within the last 24 hours. Prints no keys.   node scripts/staging/delivery-test.mjs
+const URL_ = (process.env.STAGING_URL || '').replace(/\/$/, ''), KEY = process.env.STAGING_KEY, SVC = process.env.STAGING_SERVICE_KEY, SUB = process.env.STAGING_SUBSCRIBER, PHONE = process.env.STAGING_PHONE;
+if (!URL_ || !KEY || !SVC || !SUB || !PHONE) { console.log('STOP: set STAGING_URL, STAGING_KEY, STAGING_SERVICE_KEY, STAGING_SUBSCRIBER and STAGING_PHONE in this window first.'); process.exit(2); }
+if (/ghbumxivporzsalivgyg/.test(URL_)) { console.log('STOP: that is the PRODUCTION address.'); process.exit(3); }
+const H = { apikey: SVC, Authorization: `Bearer ${SVC}`, 'Content-Type': 'application/json' };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms)); const stamp = Date.now(); let n = 0;
+const rest = async (p, init = {}) => { const r = await fetch(`${URL_}/rest/v1/${p}`, { headers: H, ...init, signal: AbortSignal.timeout(60000) }); const t = await r.text(); try { return t ? JSON.parse(t) : []; } catch { return t; } };
+const ins = async (table, row) => { const r = await fetch(`${URL_}/rest/v1/${table}`, { method: 'POST', headers: { ...H, Prefer: 'return=representation' }, body: JSON.stringify(row), signal: AbortSignal.timeout(60000) }); const t = await r.text(); if (!r.ok) { console.log(`   [seed failed] ${table}: ${t.slice(0, 200)}`); return null; } return JSON.parse(t)[0]; };
+const post = (text) => fetch(`${URL_}/functions/v1/chat-brain?key=${encodeURIComponent(KEY)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: SUB, first_name: 'Delivery Test', last_input_text: text, message_id: `dlv-${stamp}-${++n}`, phone: PHONE }), signal: AbortSignal.timeout(150000) }).then((r) => r.status).catch((e) => `error ${e.message}`);
+const conv = async () => (await rest(`chat_conversations?subscriber_id=eq.${encodeURIComponent(SUB)}&select=*`))[0];
+const outs = async () => { const c = await conv(); return c ? rest(`chat_messages?conversation_id=eq.${c.id}&direction=eq.out&order=created_at&select=body,status,error,flags,created_at`) : []; };
+const waitOuts = async (k, ms = 90000) => { const t0 = Date.now(); let o = []; while (Date.now() - t0 < ms) { o = await outs(); if (o.length >= k && o.every((m) => m.status !== 'queued')) return o; await sleep(2500); } return o; };
+const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const d = new Date(Date.now() + 8 * 86400000 + 8 * 3600000); const iso = d.toISOString().slice(0, 10), label = `${MON[d.getUTCMonth()]} ${d.getUTCDate()}`;
+const noForm = (x) => !/Reservation Date:|Please copy this and fill/i.test(x), noFull = (x) => !/fully booked|is full|not available|unavailable|too soon|nearest (open )?dates|no slots/i.test(x);
+(async () => {
+  const s = await rest('settings?id=eq.main&select=data'); const mode = s?.[0]?.data?.chat_ai?.mode; console.log(`staging AI mode: ${mode}`);
+  if (mode !== 'full') { console.log('STOP: the staging AI mode must be "full" for a real delivery test. Run the SQL that sets it, then run this again.'); process.exit(1); }
+  await rest(`chat_conversations?subscriber_id=eq.${encodeURIComponent(SUB)}`, { method: 'DELETE' }).catch(() => {});   // start clean (only this test contact)
+  const cid = `stg-dlv-${stamp}-c`, sid = `stg-dlv-${stamp}-s`;
+  const ok1 = await ins('clients', { id: cid, name: 'Delivery Test Client', contact_person: 'Delivery Test Client', mobile: PHONE, type: 'Residential', status: 'Active', address: 'Makati' }); if (!ok1) process.exit(1);
+  await ins('sites', { id: sid, client_id: cid, name: 'Delivery Test residence', address: 'Makati' });
+  await ins('jobs', { id: `stg-dlv-${stamp}-j`, number: `JOB-9${String(stamp).slice(-5)}-DLV`, client_id: cid, site_id: sid, start_at: `${iso}T09:00:00`, end_at: `${iso}T12:00:00`, status: 'Confirmed', service_codes: ['GLASS_EXT'] });
+  const fid = `stg-dlv-${stamp}-f`; await ins('clients', { id: fid, name: 'Filler Client', contact_person: 'Filler Client', mobile: `09${String(stamp).slice(-9)}`.slice(0, 11), type: 'Residential', status: 'Active', address: 'Makati' });
+  for (let k = 1; k <= 4; k++) await ins('jobs', { id: `stg-dlv-${stamp}-fj${k}`, number: `JOB-9${String(stamp).slice(-5)}-F${k}`, client_id: fid, site_id: sid, start_at: `${iso}T09:00:00`, end_at: `${iso}T12:00:00`, status: 'Confirmed', service_codes: ['ROOF'] });   // the day is FULL for the calendar, partly because of the customer's own booking (the November 30 trap)
+  console.log(`seeded: a client with a staff-made booking on ${label}, and other jobs that make that day look full`);
+  console.log(`\n1) sending the first message as the ManyChat contact (before staff confirm)...`); const st1 = await post(`Hi po, are we still scheduled for ${label}?`); console.log(`   chat-brain answered HTTP ${st1}`); const o1 = await waitOuts(1);
+  const c = await conv(); if (c) await rest(`chat_conversations?id=eq.${c.id}`, { method: 'PATCH', body: JSON.stringify({ client_id: cid, contact_status: 'existing', link_state: 'staff', link_basis: 'staff', link_candidates: [], linked_by: 'staging-test', linked_at: new Date().toISOString(), returning_customer: true, status: 'Open', human_reason: null }) });   // = a staff member pressing "This is the client" and handing back
+  console.log(`2) staff confirmed the client; sending the second message...`); const st2 = await post(`Hi po, are we still scheduled for ${label}?`); console.log(`   chat-brain answered HTTP ${st2}`); const o2 = await waitOuts(o1.length + 1);
+  const all = await outs(); console.log('\nSTORED REPLIES (status "sent" = handed to ManyChat for delivery):'); all.forEach((m, i) => console.log(`  ${i + 1}. [${m.status}] ${JSON.stringify(String(m.body).replace(/\n+/g, ' ').slice(0, 170))}${m.error ? ' ERROR: ' + String(m.error).slice(0, 160) : ''}`));
+  const real = all.filter((m) => m.status !== 'discarded'); const joined = all.map((m) => m.body).join(' || '); const after = o2.slice(o1.length).map((m) => m.body).join(' ');
+  const res = [['at least two replies were produced', all.length >= 2], ['every reply was really SENT through ManyChat (status "sent")', real.length > 0 && real.every((m) => m.status === 'sent')], ['no reply contains the booking form', noForm(joined)], ['no reply says the date is full or unavailable', noFull(joined)], ['after staff confirmed, the reply cites THEIR booking', /scheduled|booking|JOB-|confirmed/i.test(after)]];
+  console.log(''); for (const [name, pass] of res) console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}`);
+  console.log(`\nNOW LOOK AT MESSENGER on your test account: you should have received the replies above (about ${real.length} message(s)). None may be a booking form or "fully booked". Take a screenshot.`);
+  await rest(`chat_messages?conversation_id=eq.${(await conv())?.id}`, { method: 'DELETE' }).catch(() => {}); await rest(`chat_conversations?subscriber_id=eq.${encodeURIComponent(SUB)}`, { method: 'DELETE' }).catch(() => {});   // remove this test contact's conversation (the seeded client and jobs stay, prefixed stg-dlv-)
+  process.exit(res.every((x) => x[1]) ? 0 : 1);
+})().catch((e) => { console.log(`SCRIPT STOPPED: ${e.message}`); process.exit(1); });
