@@ -18,8 +18,9 @@ async function flagConflict(c: ExecCtx, why: string) {
   try { await c.sb.from('chat_conversations').update({ status: 'Needs a person', human_reason: why.slice(0, 300) }).eq('id', c.conv.id); } catch { /* the caller suppresses the confirmation anyway */ }
   try { await c.sb.from('alert_outbox').insert({ kind: 'chat', title: 'Booking for a different client than the one linked to this chat', body: `${c.conv.name ?? 'A customer'} (${c.conv.channel ?? 'chat'}): ${why}`.slice(0, 500) }); } catch { /* the conversation note is enough */ }
 }
-/** BEFORE any write (chat-book / lead-intake): a chat that staff or the system linked to client A may only book or save a lead with A's own mobile (or the contact's own ManyChat number). Anything else is a booking for someone else: nothing is created, staff handle it.
- *  If the check itself cannot be done (database error, no mobile on file to compare) it fails closed: nothing is created, staff handle it. Returns the tool outcome to give back, or null when the call may go ahead. */
+/** BEFORE any write (chat-book / lead-intake): a chat linked to client A by staff or the system may book or save a lead ONLY with A's OWN verified mobile (the number on A's client record, in any format).
+ *  The contact's ManyChat number is NOT a substitute: it can differ from A's number and can even belong to another client, so it never authorises a write. Anything else creates nothing (chat-book / lead-intake are never called), flags staff and hands over; staff reconcile (for a real change of phone number a person updates A's mobile in Clients or re-links the chat, which is the explicit re-verification).
+ *  If the check itself cannot be done (database error, no mobile on file for A) it FAILS CLOSED. Returns the tool outcome to give back, or null when the call may go ahead. */
 async function trustedLinkGuard(c: ExecCtx, typedMobile: unknown): Promise<ToolOutcome | null> {
   let blockedWhy = '';
   try {
@@ -29,8 +30,9 @@ async function trustedLinkGuard(c: ExecCtx, typedMobile: unknown): Promise<ToolO
     const { data: cl, error: ce } = await c.sb.from('clients').select('name, mobile').eq('id', cur.client_id).maybeSingle();
     if (ce) throw new Error(String(ce.message ?? ce));
     const typed = normMobile(typedMobile), own = normMobile(cl?.mobile), contact = normMobile(cur.mc_phone);
-    if (typed && (typed === own || typed === contact)) return null;                                          // the linked client's own number: this is their own booking
-    blockedWhy = `The AI was about to make a booking or save a lead with a mobile number that is NOT the number of the client linked to this chat (${cl?.name ?? cur.client_id}). Nothing was created. If this is a booking for another person, create it yourself in Clients.`;
+    if (typed && own && typed === own) return null;                                                         // the linked client's own verified number: this is their own booking
+    const why = !own ? `the linked client (${cl?.name ?? cur.client_id}) has no mobile number on file to check it against` : contact && typed === contact && contact !== own ? 'the number typed is the contact\'s ManyChat number, which differs from the linked client\'s number on file (the records disagree)' : 'the number typed is not the linked client\'s number on file';
+    blockedWhy = `The AI was about to make a booking or save a lead, but ${why}. Nothing was created. Check the client record and the chat link (update the client's mobile in Clients if the number really changed, or create the booking yourself for the other person).`;
   } catch (e) { blockedWhy = `The AI could not check who a booking in this chat is for (${String((e as Error).message).slice(0, 80)}). Nothing was created: please handle it.`; }
   await flagConflict(c, blockedWhy);
   return { text: CONFLICT_TEXT, conflict: true, reason: blockedWhy };
