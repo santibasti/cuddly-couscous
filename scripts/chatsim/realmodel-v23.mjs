@@ -24,6 +24,11 @@ const lastFull = () => outs().at(-1)?.body ?? ''; const allText = () => lastFull
 const lastReply = () => lastFull().split('\n\n---\n\n').pop().trim();
 const sentences = (t) => t.replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/).filter(Boolean);
 const verdict = (name, reply, checks) => { const f = Object.entries(checks).filter(([, v]) => !v).map(([k]) => k); rows.push({ name, fail: f }); console.log(`${f.length ? 'FAIL' : 'PASS'}  ${name}\n      reply: ${JSON.stringify(String(reply).slice(0, 260))}${f.length ? `\n      failed: ${f.join(', ')}` : ''}`); };
+// Crew-status assertion (review 23 Nov): an AFFIRMATIVE or unsupported crew claim fails; a plain negation ("it isn't on site yet") is allowed only when it is supported, i.e. it is about the date asked and that job really is in the future.
+const CREW_RE = /on the way|on site|on-site|on their way|is working|(?:has|have|is|are|already) arriv(?:ed|ing)/i;
+const NEG_CREW = /\b(?:isn't|is not|aren't|are not|hasn't|has not|haven't|have not|not|no)\s+(?:\w+\s+){0,2}?(?:yet\s+)?(?:on the way|on[- ]site|on their way|working|arrived|arriving)\b[^.?!]{0,12}/gi;
+const affirmativeCrewClaim = (t) => CREW_RE.test(String(t).replace(NEG_CREW, ' '));
+const hasNegation = (t) => { NEG_CREW.lastIndex = 0; return NEG_CREW.test(String(t)); };
 const NOT_FULL = (t) => !/fully booked|is full|not available|unavailable|too soon|nearest (open )?dates|no slots/i.test(t); const NO_FORM = (t) => !/Reservation Date:|Please copy this and fill/i.test(t);
 const NO_LEAK = (t) => !/JOB-\d{4}-\d{3,5}/.test(t);
 const confirmByStaff = async (clientId) => { await staff({ action: 'link', conversation_id: conv().id, client_id: clientId }); await staff({ action: 'release', conversation_id: conv().id }); deliver(); };   // staff: "This is the client", then hand back to the AI
@@ -122,7 +127,7 @@ await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); a
 verdict('X-1: a job scheduled NEXT WEEK with status "Dispatched": no crew claim', r, { no_crew_claim: !/on the way|on site|on their way|is working|(?:has|have|is|are|already) arriv(?:ed|ing)/i.test(r), no_form: NO_FORM(r) });
 setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); rawJob('c1', 'JOB-A-TODAY', 'On Site', -2, 6); rawJob('c1', 'JOB-B-LATER', 'Confirmed', 24 * 8, 24 * 8 + 3);
 await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say(`Is the crew coming on ${D1.label}? Is it on the way?`, { phone: '0917 555 1212' }); r = lastReply();
-verdict('X-2: mixed jobs: today\'s On Site job must not become a status for the job on another date', r, { no_crew_claim: !/on the way|on site|on their way|is working|(?:has|have|is|are|already) arriv(?:ed|ing)/i.test(r), not_full: NOT_FULL(r) });
+verdict('X-2: mixed jobs: today\'s On Site job must not become a status for the job on another date (no affirmative crew claim; a negation only if it names the asked date)', r, { no_affirmative_crew_claim: !affirmativeCrewClaim(r), negation_supported: !hasNegation(r) || new RegExp(D1.label.replace(/\s+/g, '\\s+'), 'i').test(r), not_full: NOT_FULL(r) });
 setup(); seedClient('c1', 'Maria Cruz', '0917 555 1212', []); for (let i = 0; i < 45; i++) rawJob('c1', `JOB-2026-7${String(100 + i)}`, i % 2 ? 'Dispatched' : 'On Site', -24 * (30 + i), -24 * (30 + i) + 3); rawJob('c1', 'JOB-2026-9500', 'Confirmed', 24 * 8, 24 * 8 + 3);
 await say('Hello po', { phone: '0917 555 1212' }); await confirmByStaff('c1'); await say(`Hi po, are we still scheduled for ${D1.label}?`, { phone: '0917 555 1212' }); r = lastReply();
 verdict('X-3: 45 old unfinished jobs and one valid upcoming booking: the booking is found and confirmed, never "full", no form', r, { confirms_booking: /JOB-2026-9500|scheduled|booked|confirmed|set for/i.test(allText()) && !/don't see a booking/i.test(allText()), not_full: NOT_FULL(r), no_form: NO_FORM(r) });

@@ -433,4 +433,13 @@ await linkedA(); bookTool('0917 555 1212', 'Your booking request is in.'); toolS
 await send(`Please book window cleaning for ${D2.label}`, { phone: '0917 555 1212' });
 ok('V2.3-21 CONTROL: the linked client\'s own booking (same mobile, same client) is still delivered normally and the chat is not handed over', toolCalls.includes('chat-book') && /Booked for Tuesday/.test(delivered()) && conv0().status !== 'Needs a person' && conv0().client_id === 'c1', JSON.stringify({ calls: toolCalls, d: delivered().slice(0, 120), st: conv0().status }));
 
+// 23 (review 23 Nov, staging scenario F): a price question the model answers WITHOUT a peso figure and without calling the tool gets the estimate tool's figure
+const noFigure = async (msgs, mode, reply) => { reset(mode); queue(false); state.script = () => text('NO_ANSWER'); await send('Hello', {}, 'MC-P1'); deliver(); state.script = () => text(reply); for (const t of msgs) await send(t, {}, 'MC-P1'); return drafts().at(-1) ?? { body: delivered(), flags: [] }; };
+let pf = await noFigure(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?'], 'suggest', 'Exterior wall cleaning is priced per square meter, and our team will verify the exact rate and coverage for Binondo po. Thanks for the details!');
+ok('V2.3-23 wall price asked in Binondo, model gave no figure and called no tool: the tool\'s rate ₱125 per sqm / ₱6,250 minimum is the answer', /125/.test(pf.body) && /6,250/.test(pf.body), JSON.stringify(pf.body.slice(0, 200)));
+pf = await noFigure(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?'], 'suggest', 'Exterior wall cleaning in Binondo is ₱125 per sqm, with a 50 sqm minimum (₱6,250) po.');
+ok('V2.3-23 control: a reply that already carries the tool\'s figure is left alone', /125/.test(pf.body) && !/confirms the exact area on site/.test(pf.body), JSON.stringify(pf.body.slice(0, 160)));
+pf = await noFigure(['Binondo', 'Wall Cleaning', 'Exterior', 'about 80 sqm', 'How much?'], 'suggest', 'Our team will verify the exact rate for you po.');
+ok('V2.3-23 a size given earlier and no figure from the model: only the TOOL\'s own figures are added (rate and minimum), never an invented total', /125/.test(pf.body) && (pf.body.match(/₱\s?[\d,]+/g) ?? []).every((x) => /125|6,250/.test(x)), JSON.stringify(pf.body.slice(0, 160)));
+
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyContext, foldMessages } from '../../supabase/functions/_shared/chatcontext';
-import { ackReply, fallbackReply, repairReply, validateReply } from '../../supabase/functions/_shared/validate';
+import { ackReply, fallbackReply, priceFigureMissing, repairReply, validateReply } from '../../supabase/functions/_shared/validate';
 
 const ctx = foldMessages(emptyContext(), ['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?']);
 const v = (customerText: string, c = ctx, intent = c.intent, previousAi: string[] = []) => ({ ctx: c, intent, customerText, previousAi });
@@ -58,5 +58,24 @@ describe('booking questions are validated', () => {
     const nocity = foldMessages(emptyContext(), ['I want to book']); expect(validateReply('May I have your full name po?', vb('I want to book', nocity)).join()).toMatch(/wrong_order: ask for the location first/);
     const p = foldMessages(emptyContext(), ['Makati', 'window cleaning', 'How much?']); expect(validateReply('May I have your full name po?', vb('How much?', p)).join()).toMatch(/premature_contact/);
     const ready = foldMessages(b, ['Saturday']); expect(validateReply('May I have your full name po?', vb('Saturday', ready))).toEqual([]); expect(validateReply('What date would you prefer po?', vb('Saturday', ready)).join()).toMatch(/repeated_question/);
+  });
+});
+
+describe('a price question left without a peso figure (review 23 Nov, scenario F)', () => {
+  const t = 'Binondo Wall Cleaning Exterior Ground floor How much?';
+  it('is detected for a single residential service with city and service known', () => {
+    expect(ctx.intent).toBe('price_inquiry');
+    expect(priceFigureMissing(ctx, t, 'Exterior wall cleaning is priced per square meter, and our team will verify the exact rate po.')).toBe(true);
+  });
+  it('is not triggered when the reply already has a peso figure, the AI chose NO_ANSWER, or a number was given', () => {
+    expect(priceFigureMissing(ctx, t, 'Exterior wall cleaning is ₱125 per sqm, minimum ₱6,250 po.')).toBe(false);
+    expect(priceFigureMissing(ctx, t, 'NO_ANSWER')).toBe(false);
+    expect(priceFigureMissing(ctx, `${t} about 80 sqm`, 'Our team will verify.')).toBe(false);
+  });
+  it('is not triggered for commercial work, an unknown city or service, or a non-price intent', () => {
+    expect(priceFigureMissing(ctx, 'How much? it is for our office', 'Our team will verify.')).toBe(false);
+    expect(priceFigureMissing({ ...ctx, location: undefined }, t, 'Our team will verify.')).toBe(false);
+    expect(priceFigureMissing({ ...ctx, service: undefined }, t, 'Our team will verify.')).toBe(false);
+    expect(priceFigureMissing({ ...ctx, intent: 'general_inquiry' }, t, 'Our team will verify.')).toBe(false);
   });
 });
