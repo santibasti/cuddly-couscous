@@ -14,7 +14,13 @@ const rest = async (p) => { const r = await fetch(`${SB}/rest/v1/${p}`, { header
   p.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
   const shot = async (n) => p.screenshot({ path: path.join(dir, `${n}.png`) });
   await p.goto(`${APP}/#/`); await p.waitForTimeout(1500);
-  if (await p.locator('input[type=email]').count()) { await p.locator('input[type=email]').fill(EMAIL); await p.locator('input[type=password]').fill(PW); await p.getByRole('button', { name: /Sign in/ }).click(); await p.waitForTimeout(4000); }
+  console.log(`signing in as ${EMAIL} (password length ${PW.length}) at ${APP}`);
+  if (await p.locator('input[type=email]').count()) {
+    await p.locator('input[type=email]').fill(EMAIL); await p.locator('input[type=password]').fill(PW); await p.getByRole('button', { name: /Sign in/ }).click();
+    for (let i = 0; i < 30; i++) { await p.waitForTimeout(1000); if (!(await p.locator('input[type=email]').count())) break; }   // wait up to 30 s for the app to open
+    const still = await p.locator('input[type=email]').count();
+    if (still) { await shot('00-login-failed'); const msgs = await p.locator('.alert, .toast, [role=alert], .err, .error').allInnerTexts().catch(() => []); console.log(`SIGN-IN DID NOT COMPLETE. The app says: ${msgs.join(' | ') || '(no message shown)'}`); }
+  }
   await p.goto(`${APP}/#/ai-chat`); await p.waitForTimeout(2500);
   const signedIn = await p.getByRole('button', { name: /All conversations/ }).count() > 0; ok('signed in to the STAGING app as the owner and AI Chat opens', signedIn, signedIn ? '' : (await p.locator('body').innerText()).slice(0, 200).replace(/\n+/g, ' | ')); if (!signedIn) { await shot('00-not-signed-in'); await b.close(); process.exit(1); }
   await p.getByRole('button', { name: /All conversations/ }).click(); await p.waitForTimeout(800);
