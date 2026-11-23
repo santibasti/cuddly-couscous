@@ -1,6 +1,6 @@
 // Checks a reply before it goes to ManyChat, repairs it when it can, and falls back to a safe sentence when it cannot. Pure logic, no network.
 import { type ChatContext, type Intent, type ServiceKey, lastQuestionOf, questionTopic, servicesIn, nextQuestionHint, nextBookingQuestion } from './chatcontext.ts';
-import { asksCrewStatus, claimsCrewStatus, contradictsBooking, crewStatusBacked, datesIn, existingBookingReply, type JobLine } from './identity.ts';
+import { asksCrewStatus, claimsCrewStatus, deniesCrewStatus, contradictsBooking, crewStatusBacked, datesIn, existingBookingReply, type JobLine } from './identity.ts';
 import { tooTagalog, ACID_RAIN_REPLY, COMMERCIAL_OCULAR } from './brain.ts';
 
 export interface Check { ctx: ChatContext; intent: Intent; customerText: string; previousAi: string[]; first?: boolean; identity?: { status: 'new' | 'previous' | 'existing'; verified: boolean; jobs: JobLine[]; today: string; hold?: JobLine[] } }
@@ -50,7 +50,7 @@ export function validateReply(reply: string, v: Check): string[] {
   const cb = v.identity && mine.length ? contradictsBooking(t, v.customerText, mine, v.identity.today, v.identity.verified) : undefined;   // never contradict a verified booking (checked before the approved-text exemption: the form is exempt for new customers, not for a booking that exists)
   if (cb) return [`contradicts_booking: ${cb}`];
   // "the crew is on the way / on site / working" may only be said when a LIVE job of a confirmed client has that status (a stale or missing record, or an unconfirmed contact, never backs it)
-  if (claimsCrewStatus(t) && !(v.identity?.verified && crewStatusBacked(v.identity.jobs, v.customerText, v.identity.today))) return ['crew_status: say nothing about the crew being on the way, on site or working; our team will check'];
+  if ((claimsCrewStatus(t) || deniesCrewStatus(t)) && !(v.identity?.verified && crewStatusBacked(v.identity.jobs, v.customerText, v.identity.today))) return ['crew_status: say nothing about the crew being on the way, on site or working; our team will check'];
   if (FIXED.test(t) || t.includes('\n\n---\n\n')) return pv ? [pv] : [];          // approved fixed texts and the welcome are exempt (but never a photo request)
   const out: string[] = []; const s = sentences(t);
   if (tooTagalog(t)) out.push('language: write in English or English-dominant Taglish, never Tagalog sentences');

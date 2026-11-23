@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyContext, foldMessages } from '../../supabase/functions/_shared/chatcontext';
+import { deniesCrewStatus } from '../../supabase/functions/_shared/identity';
 import { ackReply, fallbackReply, priceFigureMissing, repairReply, validateReply } from '../../supabase/functions/_shared/validate';
 
 const ctx = foldMessages(emptyContext(), ['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?']);
@@ -77,5 +78,18 @@ describe('a price question left without a peso figure (review 23 Nov, scenario F
     expect(priceFigureMissing({ ...ctx, location: undefined }, t, 'Our team will verify.')).toBe(false);
     expect(priceFigureMissing({ ...ctx, service: undefined }, t, 'Our team will verify.')).toBe(false);
     expect(priceFigureMissing({ ...ctx, intent: 'general_inquiry' }, t, 'Our team will verify.')).toBe(false);
+  });
+});
+
+describe('a negated crew status is blocked like an affirmative one (review 23 Nov, X-2)', () => {
+  it('detects the wordings seen from the model', () => {
+    for (const t of ["It isn't on site yet, and our team will be in touch.", "I can't see a crew on site yet, but our team will be in touch.", "I don't see the crew as on site for that date yet.", 'The crew has not arrived yet.', 'Our team is not yet on site.']) expect(deniesCrewStatus(t), t).toBe(true);
+  });
+  it('leaves ordinary sentences alone', () => {
+    for (const t of ['The final amount is confirmed on site by our team.', 'Our team will be on site on December 1 at 9 AM.', 'The price is not final until our team confirms the area on site.', 'Your booking is confirmed for December 1.']) expect(deniesCrewStatus(t), t).toBe(false);
+  });
+  it('validateReply raises crew_status for it when nothing backs a crew status', () => {
+    const c = { ...ctx };
+    expect(validateReply("Yes po, it's confirmed for December 1. I can't see a crew on site yet.", { ctx: c, intent: 'existing_booking', customerText: 'Is the crew coming on December 1? Is it on the way?', previousAi: [], identity: { status: 'existing', verified: true, jobs: [], today: '2026-11-23' } }).join()).toMatch(/crew_status/);
   });
 });
