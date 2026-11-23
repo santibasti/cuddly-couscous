@@ -1,6 +1,6 @@
-// CONTROLLED ManyChat DELIVERY TEST (staging only). It sends the November 30 situation through the deployed STAGING chat-brain with the AI in Full mode, so the answers are really delivered to YOUR ManyChat test contact in Messenger.
+// CONTROLLED ManyChat DELIVERY TEST (staging only). It sends the November 30 situation through the deployed STAGING chat-brain with the AI in Full mode, so the answers are really delivered to YOUR ManyChat test contact in Messenger. (The AI modes are off / suggest / auto; automatic sending is "auto".)
 // Needs in the window: STAGING_URL, STAGING_KEY (staging LEAD_INTAKE_KEY), STAGING_SERVICE_KEY, STAGING_SUBSCRIBER (your test contact's ManyChat id), STAGING_PHONE (any 10/11-digit mobile, e.g. 09001234567).
-// Also: staging AI mode = full, MANYCHAT_API_TOKEN set on the staging functions, and the contact must have messaged your page within the last 24 hours. Prints no keys.   node scripts/staging/delivery-test.mjs
+// Also: staging AI mode = auto, MANYCHAT_API_TOKEN set on the staging functions, and the contact must have messaged your page within the last 24 hours. Prints no keys.   node scripts/staging/delivery-test.mjs
 const URL_ = (process.env.STAGING_URL || '').replace(/\/$/, ''), KEY = process.env.STAGING_KEY, SVC = process.env.STAGING_SERVICE_KEY, SUB = process.env.STAGING_SUBSCRIBER;   // the phone is generated for every run: the same number on two test clients would (correctly) make the contact ambiguous
 if (!URL_ || !KEY || !SVC || !SUB) { console.log('STOP: set STAGING_URL, STAGING_KEY, STAGING_SERVICE_KEY and STAGING_SUBSCRIBER in this window first.'); process.exit(2); }
 if (/ghbumxivporzsalivgyg/.test(URL_)) { console.log('STOP: that is the PRODUCTION address.'); process.exit(3); }
@@ -17,13 +17,13 @@ const d = new Date(Date.now() + 8 * 86400000 + 8 * 3600000); const iso = d.toISO
 const noForm = (x) => !/Reservation Date:|Please copy this and fill/i.test(x), noFull = (x) => !/fully booked|is full|not available|unavailable|too soon|nearest (open )?dates|no slots/i.test(x);
 (async () => {
   const s = await rest('settings?id=eq.main&select=data'); const mode = s?.[0]?.data?.chat_ai?.mode; console.log(`staging AI mode: ${mode}`);
-  if (mode !== 'full') { console.log('STOP: the staging AI mode must be "full" for a real delivery test. Run the SQL that sets it, then run this again.'); process.exit(1); }
+  if (mode !== 'auto') { console.log(`STOP: the staging AI mode is "${mode}" but a real delivery test needs "auto" (automatic replies). Run:\n  update public.settings set data = jsonb_set(data, '{chat_ai,mode}', '"auto"') where id = 'main' returning data->'chat_ai'->>'mode';\nin the STAGING SQL Editor, then run this again.`); process.exit(1); }
   await rest(`chat_conversations?subscriber_id=eq.${encodeURIComponent(SUB)}`, { method: 'DELETE' }).catch(() => {});   // start clean (only this test contact)
   const cid = `stg-dlv-${stamp}-c`, sid = `stg-dlv-${stamp}-s`;
   const ok1 = await ins('clients', { id: cid, name: 'Delivery Test Client', contact_person: 'Delivery Test Client', mobile: PHONE, type: 'Residential', status: 'Active', address: 'Makati' }); if (!ok1) process.exit(1);
   await ins('sites', { id: sid, client_id: cid, name: 'Delivery Test residence', address: 'Makati' });
   await ins('jobs', { id: `stg-dlv-${stamp}-j`, number: `JOB-9${String(stamp).slice(-5)}-DLV`, client_id: cid, site_id: sid, start_at: `${iso}T09:00:00`, end_at: `${iso}T12:00:00`, status: 'Confirmed', service_codes: ['GLASS_EXT'] });
-  const fid = `stg-dlv-${stamp}-f`; await ins('clients', { id: fid, name: 'Filler Client', contact_person: 'Filler Client', mobile: `09${String(stamp).slice(-9)}`.slice(0, 11), type: 'Residential', status: 'Active', address: 'Makati' });
+  const fid = `stg-dlv-${stamp}-f`; await ins('clients', { id: fid, name: 'Filler Client', contact_person: 'Filler Client', mobile: `08${String(stamp).slice(-9)}`.slice(0, 11), type: 'Residential', status: 'Active', address: 'Makati' });   // a DIFFERENT number from the test client's (the same number would make the contact ambiguous)
   for (let k = 1; k <= 4; k++) await ins('jobs', { id: `stg-dlv-${stamp}-fj${k}`, number: `JOB-9${String(stamp).slice(-5)}-F${k}`, client_id: fid, site_id: sid, start_at: `${iso}T09:00:00`, end_at: `${iso}T12:00:00`, status: 'Confirmed', service_codes: ['ROOF'] });   // the day is FULL for the calendar, partly because of the customer's own booking (the November 30 trap)
   console.log(`seeded: a client with a staff-made booking on ${label}, and other jobs that make that day look full`);
   console.log(`\n1) sending the first message as the ManyChat contact (before staff confirm)...`); const st1 = await post(`Hi po, are we still scheduled for ${label}?`); console.log(`   chat-brain answered HTTP ${st1}`); const o1 = await waitOuts(1);
