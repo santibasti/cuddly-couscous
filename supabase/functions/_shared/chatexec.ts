@@ -29,7 +29,11 @@ export function makeExec(c: ExecCtx) {
     try {
       if (name === 'estimate') {
         // Two services booked together: the code works out the combined total (first service keeps its minimum, the second has it waived). The AI never adds the amounts itself.
-        const items = Array.isArray(input.items) ? (input.items as { service?: unknown; qty?: unknown }[]).slice(0, 6).map((x) => ({ service: String(x?.service ?? ''), qty: Number(x?.qty) })) : null;
+        const list = Array.isArray(input.items) ? (input.items as { service?: unknown; qty?: unknown }[]).slice(0, 6).map((x) => ({ service: String(x?.service ?? ''), qty: Number(x?.qty) })) : null;
+        // ONE service sent in the list form (the model alternates between service: and items:[{service}]) is a single service, priced exactly like service: (a bundle answer here left customers without a price in about a third of the tries)
+        const only = list && list.length === 1 && list[0].service ? list[0] : null;
+        const items = only ? null : list;
+        if (only) { input = { ...input, service: only.service, qty: Number.isFinite(only.qty) ? only.qty : input.qty }; }
         // A single service: the minimum is waived ONLY when the model says it is a bundle AND the conversation really has another eligible first service (never for a standalone service).
         const withMain = !items && input.with_main === true && bundleWaives(String(input.service ?? ''), c.services ?? []);
         const body = (address: unknown) => (items ? { address, items, property_type: input.property_type } : { address, service: input.service, qty: input.qty, property_type: input.property_type, with_main: withMain });

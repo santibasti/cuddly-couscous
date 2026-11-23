@@ -105,6 +105,16 @@ describe('the tool runner enforces it, whatever the model asks for', () => {
     const r2 = await run(['solar'], { service: 'solar panels', qty: 10, with_main: true }); expect(r2.text).toMatch(/4,900/);
   });
   it('a real second service after the window package: with_main is accepted', async () => { const r = await run(['window', 'solar'], { service: 'solar panels', qty: 10, with_main: true }); expect(calls[0].with_main).toBe(true); expect(r.text).toMatch(/2,450/); });
+  it('ONE service sent in the list form (items:[{service}]) is priced exactly like service: (staging finding: it used to answer "our team will confirm the combined price" in about a third of the tries)', async () => {
+    const single = await run([], { service: 'Wall Cleaning' }); const listed = await run([], { items: [{ service: 'Exterior wall cleaning' }] });
+    expect(listed.text).toBe(single.text); expect(listed.text).toMatch(/₱125 per sqm/); expect(listed.text).not.toMatch(/combined price/);
+    expect(calls.at(-1)).not.toHaveProperty('items');                                           // it went to the estimate as a single service
+    const q = await run([], { items: [{ service: 'Wall Cleaning', qty: 80 }] }); expect(q.text).toBe((await run([], { service: 'Wall Cleaning', qty: 80 })).text);
+  });
+  it('two services in the list still go through the bundle rules, and an empty or unknown one-item list still needs a person', async () => {
+    const two = await run(['window', 'solar'], { items: [{ service: 'window cleaning', qty: 15 }, { service: 'solar panels', qty: 10 }] }); expect(two.text).toContain('₱7,249');
+    expect((await run([], { items: [] })).text).toMatch(/combined price|confirm/i);
+  });
   it('two services: the code returns the combined total and its parts as allowed amounts', async () => {
     const r = await run(['window', 'solar'], { items: [{ service: 'window cleaning', qty: 15 }, { service: 'solar panels', qty: 10 }] }); expect(r.text).toContain('₱7,249'); expect(r.amounts).toEqual(expect.arrayContaining([7249, 4799, 2450, 245]));
     expect(guardReply('For both it comes to ₱7,249 po.', { amounts: r.amounts ?? [], booked: false }).violations).toEqual([]);
@@ -133,4 +143,3 @@ describe('"the final amount is confirmed on site" is not a booking confirmation 
     expect(guardReply('Your booking is confirmed po.', { amounts: [], booked: true }).violations).toEqual([]);
   });
 });
-
