@@ -442,4 +442,9 @@ ok('V2.3-23 control: a reply that already carries the tool\'s figure is left alo
 pf = await noFigure(['Binondo', 'Wall Cleaning', 'Exterior', 'about 80 sqm', 'How much?'], 'suggest', 'Our team will verify the exact rate for you po.');
 ok('V2.3-23 a size given earlier and no figure from the model: only the TOOL\'s own figures are added (rate and minimum), never an invented total', /125/.test(pf.body) && (pf.body.match(/₱\s?[\d,]+/g) ?? []).every((x) => /125|6,250/.test(x)), JSON.stringify(pf.body.slice(0, 160)));
 
+// 23b (review: "add regression coverage for batched messages"): the five-message burst of scenario F, model answers with no figure and no tool
+reset('suggest'); queue(true, 60); state.script = () => text('Our team will verify the exact rate and coverage for Binondo po. Exterior wall cleaning is priced per sqm, so they\'ll confirm the final figure with you.');
+await Promise.all(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?'].map((t, i) => (i ? new Promise((r) => setTimeout(r, i * 5)).then(() => send(t, {}, 'MC-F2')) : send(t, {}, 'MC-F2')))); await flush();
+ok('V2.3-23 BURST: five rapid messages, model gave no figure: ONE draft, and it carries the tool\'s rate (₱125 per sqm, ₱6,250 minimum)', drafts().length === 1 && /125/.test(drafts()[0].body) && /6,250/.test(drafts()[0].body), JSON.stringify(drafts().map((d) => d.body.slice(0, 160))));
+queue(false);
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);
