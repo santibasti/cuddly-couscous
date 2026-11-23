@@ -12,12 +12,24 @@ const post = async (c: ExecCtx, fn: string, body: Record<string, unknown>) => {
   const j = await r.json().catch(() => ({})) as Record<string, unknown>; if (!r.ok) throw new Error(String(j.error ?? `${fn} answered ${r.status}`)); return j;
 };
 const nums = (...v: unknown[]) => v.map(Number).filter((n) => Number.isFinite(n) && n > 0);
-/** After a booking or a saved lead: the client created by THIS chat is positively linked; a client that already existed and was matched by the mobile number the customer typed is only a suggestion for staff (a stranger can type anyone's number). */
+/** After a booking or a saved lead: the client created by THIS chat is positively linked; a client that already existed and was matched by the mobile number the customer typed is only a suggestion for staff (a stranger can type anyone's number).
+ *  A TRUSTED link (verified, or set by staff) is never overwritten, downgraded or cleared by what a tool returns: if the tool returns a DIFFERENT client, the link stays, the chat goes to a person and staff are told to reconcile the two records (nothing about either record is said to the customer). */
 async function linkAfterLead(c: ExecCtx, clientId: unknown, inquiryId: unknown, existed: boolean) {
+  const { data: cur } = await c.sb.from('chat_conversations').select('client_id, link_state').eq('id', c.conv.id).maybeSingle();
+  const trusted = cur?.link_state === 'verified' || cur?.link_state === 'staff';
+  if (trusted) {
+    if (!clientId || cur?.client_id === clientId) { await c.sb.from('chat_conversations').update({ ...(clientId ? { inquiry_id: inquiryId ?? null } : {}), status: 'Lead created' }).eq('id', c.conv.id); return; }   // the same client (or none returned): the link and the inquiry stay as they are
+    // CONFLICT: the booking or lead was saved for another client record than the one this chat is linked to
+    let linked = String(cur?.client_id ?? ''), other = String(clientId);
+    try { const [x, y] = await Promise.all([c.sb.from('clients').select('name').eq('id', cur?.client_id).maybeSingle(), c.sb.from('clients').select('name').eq('id', clientId).maybeSingle()]); linked = x?.data?.name ?? linked; other = y?.data?.name ?? other; } catch { /* the ids are enough */ }
+    const why = `A booking or lead made in this chat was saved for a DIFFERENT client record (${other}) than the one linked to this chat (${linked}). The link was NOT changed. Check both records in Clients and fix the one that is wrong.`;
+    await c.sb.from('chat_conversations').update({ status: 'Needs a person', human_reason: why.slice(0, 300) }).eq('id', c.conv.id);
+    try { await c.sb.from('alert_outbox').insert({ kind: 'chat', title: 'Booking saved for a different client than the linked one', body: `${c.conv.name ?? 'A customer'} (${c.conv.channel ?? 'chat'}): ${why}`.slice(0, 500) }); } catch { /* the conversation note above is enough */ }
+    return;
+  }
   const base = { client_id: clientId ?? null, inquiry_id: inquiryId ?? null, status: 'Lead created' };
   if (!clientId) { await c.sb.from('chat_conversations').update(base).eq('id', c.conv.id); return; }
-  const { data: cur } = await c.sb.from('chat_conversations').select('client_id, link_state').eq('id', c.conv.id).maybeSingle();
-  const keep = (cur?.link_state === 'verified' || cur?.link_state === 'staff') && cur?.client_id === clientId;
+  const keep = false;
   let extra: Record<string, unknown> = {};
   if (!keep && !existed) extra = { contact_status: 'existing', link_state: 'verified', link_basis: 'chat_booking', link_candidates: [], linked_by: 'system', linked_at: new Date().toISOString(), returning_customer: true, returning_note: 'Client created from this chat' };
   if (!keep && existed) { const { data: cl } = await c.sb.from('clients').select('name').eq('id', clientId).maybeSingle(); extra = { contact_status: 'previous', link_state: 'suggested', link_basis: 'typed_mobile', link_candidates: [{ client_id: clientId, name: cl?.name ?? 'Client', basis: 'typed_mobile' }] }; }
