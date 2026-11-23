@@ -2,8 +2,8 @@
 // Shared by chat-brain (a customer message) and chat-recover (a message that was left unanswered because a worker stopped or crashed).
 import { cardForLog, explainsPanelCount, panelGuideUrl } from './estimatecard.ts';
 import { type ReturningInfo, type Mode, type Honorific, type Brain, PHOTO_MARKER, PHOTO_THANKS, MSG_SPLIT, isPhotoMessage, buildSystem, composeFirst, flattenMessages, splitMessages, decide, guardReply, runBrain, fallbackFor } from './brain.ts';
-import { BOOKING_SEND_FORM, questionTopic, analyzeDelivered, applyDelivered, contextBlock, foldMessages, isAcknowledgment, readContext, type ChatContext } from './chatcontext.ts';
-import { ackReply, fallbackReply, repairReply, validateReply, REF_ASK, REF_HANDOVER, type Check } from './validate.ts';
+import { BOOKING_SEND_FORM, serviceName, questionTopic, analyzeDelivered, applyDelivered, contextBlock, foldMessages, isAcknowledgment, readContext, type ChatContext } from './chatcontext.ts';
+import { ackReply, fallbackReply, priceFigureMissing, repairReply, validateReply, REF_ASK, REF_HANDOVER, type Check } from './validate.ts';
 import { buildHistory } from './chathistory.ts';
 import { makeExec } from './chatexec.ts';
 import { resolveContact, type CandidateJobs } from './contact.ts';
@@ -99,6 +99,11 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
         };
         const exec = makeExec({ jobs: who.jobs, hold: [...hold.map((j) => j.date), ...(verified ? who.staleJobs.map((j) => j.date) : [])], noHumanAlert: true, services: ctx.services_seen ?? [], booking, sb, base: env('SUPABASE_URL'), key, conv, lang, context: [ctx.location ?? '', ...texts].join(' ').slice(-600) });
         brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3, check: (r) => (/^NO_ANSWER\W*$/i.test(r.trim()) ? [] : validateReply(r, vctx(first))) });
+        // A price question must end with the tool's figure: when the model answered without a peso amount (it once wrote "priced per square meter, our team will verify"), the estimate tool is asked directly and its text is the answer.
+        if (!brain.error && !brain.bookReply && !brain.humanReason && !brain.conflict && priceFigureMissing(ctx, texts.join(' '), brain.reply)) {
+          const sv = serviceName(ctx.service); const o = sv ? await exec('estimate', { address: ctx.location, service: sv, property_type: 'Residential' }).catch(() => null) : null;
+          if (o && /₱\s?\d/.test(o.text)) { brain.reply = `${o.text.replace(/\s+$/, '')} po. Our team confirms the exact area on site before work starts.`.replace(/\.\s*po\./, ' po.'); brain.amounts.push(...(o.amounts ?? [])); brain.log.push({ tool: 'estimate', input: { address: ctx.location, service: sv }, result: o.text.slice(0, 300) }); brain.violations = []; brain.note = 'price taken from the estimate tool (the AI gave no figure)'; }
+        }
       }
       const isNoAnswer = /^NO_ANSWER\W*$/i.test(brain.reply.trim());
       if (brain.error && isTransientError(brain.error) && !legacy && (Date.now() - Date.parse(pending[0]?.created_at ?? new Date().toISOString())) < GIVE_UP_MIN * 60_000) return { status: 'retry', reply: '', note: brain.error.slice(0, 160) };   // nothing is saved and nothing is marked: the next pass (a new message or the recovery job) tries again

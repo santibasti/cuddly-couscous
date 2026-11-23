@@ -128,3 +128,12 @@ export function fallbackReply(v: Check, why: 'empty' | 'integration' | 'invalid'
   return { text: 'Let me have our team check that for you po.', handover: true };
 }
 export const ackReply = (): string => "You're welcome po! Just message us anytime.";
+
+/** A price question the AI left without a peso figure (review 23 Nov: "priced per square meter, our team will verify" with no rate). True only for a SINGLE residential service with the city and the service known, a price asked, no number in what the customer wrote (a count or size is the model's job) and no peso amount in the reply. The caller then asks the estimate tool itself, so the figure always comes from the tool. */
+export function priceFigureMissing(c: ChatContext, customerTexts: string, reply: string): boolean {
+  if (c.intent !== 'price_inquiry' || !c.location || !c.service || c.property === 'commercial') return false;
+  if ((c.services_seen ?? []).filter((x) => x !== c.service).length > 0) return false;
+  if (/\d/.test(customerTexts) || /\b(commercial|office|business|store|hotel|warehouse|condo corp)\b/i.test(customerTexts)) return false;
+  if (/^NO_ANSWER\W*$/i.test(String(reply ?? '').trim())) return false;
+  return !/₱\s?\d/.test(String(reply ?? ''));
+}
