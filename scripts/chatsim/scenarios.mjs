@@ -449,4 +449,9 @@ reset('suggest'); queue(true, 60); state.script = () => text('Our team will veri
 await Promise.all(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?'].map((t, i) => (i ? new Promise((r) => setTimeout(r, i * 5)).then(() => send(t, {}, 'MC-F2')) : send(t, {}, 'MC-F2')))); await flush();
 ok('V2.3-23 BURST: five rapid messages, model gave no figure: ONE draft, and it carries the tool\'s rate (₱125 per sqm, ₱6,250 minimum)', drafts().length === 1 && /125/.test(drafts()[0].body) && /6,250/.test(drafts()[0].body), JSON.stringify(drafts().map((d) => d.body.slice(0, 160))));
 queue(false);
+// 23c: a burst whose messages arrive slower than the debounce still gets ONE answer (the worker waits for a pause)
+reset('suggest'); queue(true, 80); state.script = () => text('Exterior wall cleaning is ₱125 per sqm, with a 50 sqm minimum (₱6,250) po.');
+await Promise.all(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?'].map((t, i) => new Promise((r) => setTimeout(r, i * 50)).then(() => send(t, {}, 'MC-F3')))); await flush();
+ok('V2.3-23 SLOW BURST: five messages 50 ms apart with an 80 ms debounce: ONE draft, one model call', drafts().length === 1 && modelCalls.length === 1, `drafts=${drafts().length} modelCalls=${modelCalls.length}`);
+queue(false);
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);
