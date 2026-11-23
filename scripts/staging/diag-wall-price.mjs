@@ -3,6 +3,7 @@
 const URL_ = (process.env.STAGING_URL || '').replace(/\/$/, ''), KEY = process.env.STAGING_KEY, SVC = process.env.STAGING_SERVICE_KEY, N = Number(process.argv[2] || 6);
 if (!URL_ || !KEY || !SVC) { console.log('Set STAGING_URL, STAGING_KEY and STAGING_SERVICE_KEY.'); process.exit(2); }
 if (/ghbumxivporzsalivgyg/.test(URL_)) { console.log('STOP: production.'); process.exit(3); }
+const _fetch = globalThis.fetch; globalThis.fetch = async (u, o) => { let e; for (let k = 0; k < 5; k++) { try { return await _fetch(u, o); } catch (x) { e = x; console.log(`  [network] ${x?.cause?.code ?? x?.message}; retry ${k + 1}`); await new Promise((r) => setTimeout(r, 3000)); } } throw e; };   // a dropped connection is retried (the same message id is reused, so the database stores it once)
 const H = { apikey: SVC, Authorization: `Bearer ${SVC}`, 'Content-Type': 'application/json' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms)); const stamp = Date.now(); let n = 0;
 const rest = async (p, init = {}) => { const r = await fetch(`${URL_}/rest/v1/${p}`, { headers: H, ...init, signal: AbortSignal.timeout(60000) }); const t = await r.text(); return t ? JSON.parse(t) : []; };
