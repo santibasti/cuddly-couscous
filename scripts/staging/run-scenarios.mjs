@@ -8,7 +8,10 @@ const URL_ = (process.env.STAGING_URL || '').replace(/\/$/, ''), KEY = process.e
 if (!URL_ || !KEY || !SVC) { console.error('Set STAGING_URL, STAGING_KEY and STAGING_SERVICE_KEY.'); process.exit(2); }
 if (/ghbumxivporzsalivgyg/.test(URL_)) { console.error('STOP: that is the PRODUCTION project. This script only runs on staging.'); process.exit(3); }
 // Network hiccups (a 10 s connect timeout) must not crash a long run: every request is retried a few times.
-const realFetch = globalThis.fetch; globalThis.fetch = async (u, i) => { let e; for (let k = 0; k < 4; k++) { try { return await realFetch(u, { ...(i ?? {}), signal: AbortSignal.timeout(60000) }); } catch (x) { e = x; await new Promise((r) => setTimeout(r, 1500 * (k + 1))); } } throw e; };
+const realFetch = globalThis.fetch; globalThis.fetch = async (u, i) => {
+  const isPost = String(i?.method ?? 'GET').toUpperCase() === 'POST' && String(u).includes('/functions/v1/');   // a message sent to the AI is NEVER re-sent automatically (it would duplicate the customer's message)
+  let e; for (let k = 0; k < (isPost ? 1 : 4); k++) { try { return await realFetch(u, { ...(i ?? {}), signal: AbortSignal.timeout(isPost ? 150000 : 60000) }); } catch (x) { e = x; if (isPost) { console.log(`   [network] the function did not answer within 150 s (${x?.name ?? 'error'}); continuing`); return new Response('{}', { status: 504 }); } await new Promise((r) => setTimeout(r, 1500 * (k + 1))); } } throw e;
+};
 const H = { apikey: SVC, Authorization: `Bearer ${SVC}`, 'Content-Type': 'application/json' };
 const rest = async (p, init = {}) => { const r = await fetch(`${URL_}/rest/v1/${p}`, { headers: H, ...init }); const t = await r.text(); return t ? JSON.parse(t) : []; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -27,7 +30,7 @@ const sentences = (t) => t.replace(/\s+/g, ' ').trim().replace(/\b(brgy|st|ave|b
 const base = (r) => ({ english: !tagalog(r), two_sentences: sentences(r).length <= 2, one_question: (r.match(/\?/g) ?? []).length <= 1, no_photo_ask: !/\b(send|share|upload)\b.{0,20}\b(photos?|pictures?|videos?)/i.test(r), no_quantity_ask: !/how many (glass |solar )?(panels|windows)|square met/i.test(r), not_the_fallback: !/refer this to our team so we can give you accurate|verify that for you/i.test(r) });
 const rows = []; const verdict = (name, reply, checks) => { if (!String(reply).replace(/[|\s]/g, '')) checks = { ...checks, got_a_reply: false }; const f = Object.entries(checks).filter(([, v]) => !v).map(([k]) => k); rows.push({ name, reply, fail: f, sub: lastSub }); console.log(`${f.length ? 'FAIL' : 'PASS'}  ${name}\n      reply: ${JSON.stringify(reply)}${f.length ? `\n      failed: ${f.join(', ')}` : ''}`); };
 const why = async (sub) => { const o = await outs(sub); const c = await convOf(sub); const m = c ? await rest(`chat_messages?conversation_id=eq.${c.id}&select=direction,status,error,handled_at&order=created_at`) : []; return JSON.stringify({ outs: o.map((x) => ({ status: x.status, error: x.error, flags: x.flags, actions: x.actions })), rows: m.map((x) => `${x.direction}:${x.status}:${x.handled_at ? 'handled' : 'pending'}${x.error ? ':' + String(x.error).slice(0, 120) : ''}`) }); };
-const S = (tag) => { const s = `stg-${stamp}-${tag}`; sent.push(s); return s; };
+const S = (tag) => { const s = `stg-${stamp}-${tag}`; sent.push(s); console.log(`[${new Date().toISOString().slice(11, 19)}] start ${tag}`); return s; };
 
 let r = last(await talk(S('A'), ['Binondo', 'Wall Cleaning']));
 verdict('A: remembers Binondo, asks the wall type, no booking, no location re-ask', r, { ...base(r), no_booking_offer: !/book|schedule|appointment|reserv/i.test(r), no_location_reask: !/location|city|where/i.test(r), wall_question: /exterior|interior/i.test(r) });
