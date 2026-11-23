@@ -164,6 +164,15 @@ export function dispatchJob(id: string, f: { at?: string; confirmed: boolean }) 
 
 /* ================= Step 3: Site Check-In (arrival + attendance) ================= */
 export interface CheckInForm { at?: string; contact_name: string; contact_mobile?: string; notes?: string; present: string[]; absent: { id: string; reason: string }[]; /** Owner only: clock in the crew who have not clocked in themselves */ ownerClockIn?: boolean }
+/** What the app itself writes to a present crew member's attendance when the Site Check-In is saved. On the LIVE site: nothing. The database links the attendance to the job and approves it when the check-in is saved
+ *  (migrations 0102 / 0115, security definer), and the app must not edit those rows itself: a Team Leader without the "approve attendance" permission was refused ("NOT SAVED ... permission (attendance)") and the whole step was undone.
+ *  In demo mode (no database) the app does it. A record the office already approved stays as it is. */
+export function siteAttendancePatch(att: { approval: string; kind: string; job_id?: string | null; field_work?: boolean }, jobId: string, cloud: boolean, nowIso: string): Record<string, unknown> | null {
+  if (cloud) return null;
+  const link = att.approval !== 'Approved' && (!att.job_id || !att.field_work), auto = att.approval === 'Pending' && att.kind === 'Present';
+  if (!link && !auto) return null;
+  return { ...(link ? { job_id: jobId, field_work: true } : {}), ...(auto ? { approval: 'Approved', approved_by: 'auto', approved_at: nowIso } : {}) };
+}
 export function arriveAtSite(id: string, f: CheckInForm) {
   const wf = getWf(id); const job = jobOf(wf);
   needRun(job);
@@ -195,9 +204,8 @@ export function arriveAtSite(id: string, f: CheckInForm) {
     const att = clocked(e)!;
     // an attendance record the office already approved is locked (corrections only): it stays as it is, the check-in itself records who was on site
     // passing the site check-in approves the attendance by itself: nobody has to approve it afterwards (on the live site the database does this when the check-in is saved)
-    const link = att.approval !== 'Approved' && (!att.job_id || !att.field_work);
-    const auto = !CLOUD && att.approval === 'Pending' && att.kind === 'Present';
-    if (link || auto) store.update('attendance', att.id, { ...(link ? { job_id: job.id, field_work: true } : {}), ...(auto ? { approval: 'Approved' as const, approved_by: 'auto', approved_at: isoNow() } : {}) } as never, 'update', `Attendance ${auto ? 'approved automatically and ' : ''}linked to ${job.number} at site check-in`);
+    const patch = siteAttendancePatch(att, job.id, CLOUD, isoNow());
+    if (patch) store.update('attendance', att.id, patch as never, 'update', `Attendance ${patch.approval ? 'approved automatically and ' : ''}linked to ${job.number} at site check-in`);
   }
   store.update('workflows', id, { arr_at: at, arr_by: uidNow(), arr_contact_name: f.contact_name.trim(), arr_contact_mobile: f.contact_mobile, arr_notes: f.notes, arr_crew_present: f.present, arr_crew_absent: f.absent } as never, 'update', `${job.number}: checked in at site ${at.slice(11)}, attendance confirmed`);
   setStatus(db().jobs.find((j) => j.id === job.id)!, 'On Site');

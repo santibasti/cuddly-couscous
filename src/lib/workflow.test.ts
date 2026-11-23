@@ -1537,3 +1537,18 @@ describe('attendance approves itself at the site check-in', () => {
     expect(a).toMatchObject({ approval: 'Approved', approved_by: 'auto', job_id: sc.job.id, field_work: true, late_min: 100 });
   });
 });
+
+describe('site check-in: the app never edits crew attendance on the live site (the database does it)', () => {
+  const pending = { approval: 'Pending', kind: 'Present', job_id: null, field_work: false };
+  it('LIVE site: no attendance edit at all, so a Team Leader without the approve-attendance permission is not refused (the "NOT SAVED ... permission (attendance)" bug)', () => {
+    expect(W.siteAttendancePatch(pending, 'J1', true, '2026-11-22T09:00:00Z')).toBeNull();
+    expect(W.siteAttendancePatch({ ...pending, job_id: 'J0', field_work: true }, 'J1', true, 'x')).toBeNull();
+  });
+  it('demo mode (no database): the app links and approves, as before', () => {
+    expect(W.siteAttendancePatch(pending, 'J1', false, 'T')).toEqual({ job_id: 'J1', field_work: true, approval: 'Approved', approved_by: 'auto', approved_at: 'T' });
+  });
+  it('demo mode: an already-approved record is left alone; a linked pending record is only approved', () => {
+    expect(W.siteAttendancePatch({ approval: 'Approved', kind: 'Present', job_id: 'J0', field_work: true }, 'J1', false, 'T')).toBeNull();
+    expect(W.siteAttendancePatch({ approval: 'Pending', kind: 'Present', job_id: 'J0', field_work: true }, 'J1', false, 'T')).toEqual({ approval: 'Approved', approved_by: 'auto', approved_at: 'T' });
+  });
+});
