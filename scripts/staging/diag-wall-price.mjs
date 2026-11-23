@@ -11,11 +11,12 @@ const conv = async (sub) => (await rest(`chat_conversations?subscriber_id=eq.${e
 const outs = async (sub) => { const c = await conv(sub); return c ? rest(`chat_messages?conversation_id=eq.${c.id}&direction=eq.out&order=created_at&select=id,body,tool_log,flags,error`) : []; };
 const wait = async (sub, k) => { for (let i = 0; i < 40; i++) { const o = await outs(sub); if (o.length >= k) return o; await sleep(1500); } return outs(sub); };
 const approve = async (sub) => { const c = await conv(sub); if (c) await rest(`chat_messages?conversation_id=eq.${c.id}&direction=eq.out&status=eq.draft`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) }); };
-const brief = (x) => JSON.stringify(x).slice(0, 420);
+const brief = (x) => JSON.stringify(x).slice(0, 700);
 let priced = 0; const subs = [];
 for (let i = 1; i <= N; i++) {
   const sub = `stg-${stamp}-diag${i}`; subs.push(sub); let k = 0;
-  for (const m of ['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?']) { await post(sub, m); k++; await wait(sub, k); await approve(sub); }
+  if (process.env.BATCH) { await Promise.all(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?'].map((t, j) => sleep(j * 300).then(() => post(sub, t)))); await wait(sub, 1); await sleep(8000); }   // BATCH=1: five rapid messages, exactly like staging scenario F
+  else for (const m of ['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?']) { await post(sub, m); k++; await wait(sub, k); await approve(sub); }
   const o = (await outs(sub)).at(-1); const body = (o?.body ?? '').split('\n\n---\n\n').pop(); const hasPrice = /₱\s?\d/.test(body); if (hasPrice) priced++;
   console.log(`\n#${i} ${hasPrice ? 'PRICE GIVEN' : 'NO PRICE'}: ${JSON.stringify(body.slice(0, 200))}`);
   const log = Array.isArray(o?.tool_log) ? o.tool_log : []; console.log(`   tools called: ${log.length ? log.map((t) => t.name ?? t.tool ?? '?').join(', ') : '(none)'}`);
