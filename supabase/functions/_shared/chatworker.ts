@@ -162,6 +162,13 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
   /** One worker per conversation: it takes the lock, answers everything the customer has written (one batch at a time) and lets go. A request that cannot take the lock leaves its message to the worker that has it. */
   const worker = async (): Promise<Out> => {
     if (d.debounceMs > 0) await sleep(d.debounceMs);                                                                     // a customer who types several messages in a row gets one answer
+    if (d.debounceMs > 0) {                                                                                              // wait for a PAUSE, not a fixed time: while the newest unanswered message is younger than the debounce, wait the rest of it (at most three more times), so a slow connection or a typing burst still gets ONE answer (staging scenario F split into two replies)
+      for (let k = 0; k < 3; k++) {
+        const nw = await sb.from('chat_messages').select('created_at').eq('conversation_id', conv.id).eq('direction', 'in').is('handled_at', null).order('created_at', { ascending: false }).limit(1);
+        const at = nw.error ? NaN : Date.parse(String((nw.data as { created_at?: string }[] | null)?.[0]?.created_at ?? ''));
+        const age = Date.now() - at; if (!Number.isFinite(age) || age >= d.debounceMs) break; await sleep(d.debounceMs - age + 20);
+      }
+    }
     const lk = await sb.rpc('chat_lock', { p_conv: conv.id, p_secs: 90 }); const locked = lk.error ? true : lk.data === true;   // fail open when migration 0133 is missing
     if (!locked) return { status: 'merged', reply: '' };
     let last: Out = { status: 'merged', reply: '' };
