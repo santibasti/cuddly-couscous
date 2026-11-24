@@ -467,4 +467,10 @@ queue(false);
 // the same unsafe reply when the city is NOT known: no figure is invented, the safe fallback with a precise staff reason stays
 reset('suggest'); queue(false); state.script = () => text('Para ma-check ko ang tamang presyo, anong klaseng cleaning po ang kailangan ninyo at saan po ang location?'); await send('Hello po', {}, 'MC-F5'); deliver(); await send('How much po?', {}, 'MC-F5');
 ok('V2.3-23 no city or service known: nothing is priced by the system, the answer stays a safe question/handover', !/₱\s?\d/.test(drafts().at(-1)?.body ?? ''), JSON.stringify((drafts().at(-1)?.body ?? '').slice(0, 160)));
+// 23e: a message that arrives WHILE the first answer is being written is answered in the SAME reply (one reply for the whole burst; nothing lost)
+reset('suggest'); queue(true, 10); let slow2 = true; state.script = () => text('Exterior wall cleaning is ₱125 per sqm, with a 50 sqm minimum (₱6,250) po.'); const of2 = globalThis.fetch;
+globalThis.fetch = async (u, i) => { if (String(u).includes('anthropic') && slow2) { slow2 = false; await send('How much?', {}, 'MC-F7'); await new Promise((r) => setTimeout(r, 60)); } return of2(u, i); };   // the second message is stored exactly while the first model call is in progress
+await send('Binondo wall cleaning exterior', {}, 'MC-F7'); await flush(); globalThis.fetch = of2; queue(false);
+const outs7 = DB.chat_messages.filter((m) => m.direction === 'out');
+ok('V2.3-23 LATE MESSAGE: a message arriving while the first answer is written gets ONE shared reply (the first answer is discarded, the burst is answered once), nothing lost', outs7.length === 1 && modelCalls.length === 2 && DB.chat_messages.filter((m) => m.direction === 'in').every((m) => m.handled_at), `outs=${outs7.length} modelCalls=${modelCalls.length}`);
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);

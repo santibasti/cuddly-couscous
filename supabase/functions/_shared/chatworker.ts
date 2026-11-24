@@ -32,7 +32,7 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
   let legacy = false;                                                          // true when migration 0133 has not been applied yet: the old single-message behaviour
 
   /** One batch: the customer's unprocessed messages are folded into the context and answered once. */
-  const processBatch = async (pending: { id: string; body: string; created_at?: string }[]): Promise<Out> => {
+  const processBatch = async (pending: { id: string; body: string; created_at?: string }[], redo = 0): Promise<Out> => {
     const ids = pending.map((m) => m.id); const texts = pending.map((m) => isPhotoMessage(m.body) ? PHOTO_MARKER : m.body); const lastText = texts[texts.length - 1] ?? text;
     try {
       let who: { identity?: Identity; jobs: JobLine[]; staleJobs: JobLine[]; referenced: Candidate[]; candidateJobs: CandidateJobs[]; returning: ReturningInfo | null | undefined } = { identity: deps.identity, jobs: deps.jobs ?? [], staleJobs: deps.staleJobs ?? [], referenced: deps.referenced ?? [], candidateJobs: deps.candidateJobs ?? [], returning };
@@ -142,6 +142,11 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
         if (!r.error && !legacy) await sb.from('chat_messages').update({ handled_at: new Date().toISOString() }).in('id', ids);   // an older database: not atomic, but marked only after the reply is stored
         return r.error?.message ?? null;
       };
+      // a message that arrived WHILE this answer was being written belongs to the same burst: nothing is stored, the whole burst is answered once (at most twice; never after a booking or lead was written, so no write can be repeated)
+      if (!legacy && queued && redo < 2 && !brain.booked && !brain.conflict && !brain.log.some((l) => l.tool === 'book_date' || l.tool === 'save_lead')) {
+        const nw = await sb.from('chat_messages').select('id').eq('conversation_id', conv.id).eq('direction', 'in').is('handled_at', null).limit(40);
+        if (!nw.error && ((nw.data ?? []) as { id: string }[]).some((m) => !ids.includes(m.id))) return { status: 'again', reply: '', note: 'a newer message arrived while answering' };
+      }
       if (d.kind === 'draft') {                                                                                            // suggest: a draft for staff, nothing is sent
         const pe = await store({ ...common, body: d.text, status: 'draft', actions: brain.actions, flags });
         if (pe) return { status: 'error', reply: '', note: `Could not save the draft: ${pe.slice(0, 160)}` };
@@ -182,11 +187,12 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
     if (!locked) return { status: 'merged', reply: '' };
     let last: Out = { status: 'merged', reply: '' };
     try {
-      for (let i = 0; i < 4; i++) {
+      let redo = 0;
+      for (let i = 0; i < 6; i++) {
         const q = await sb.from('chat_messages').select('id, body, created_at').eq('conversation_id', conv.id).eq('direction', 'in').is('handled_at', null).order('created_at', { ascending: true }).limit(30);
         legacy = !!q.error; const pend = legacy ? [{ id: '', body: text }] : (q.data ?? []) as { id: string; body: string; created_at?: string }[];
         if (!pend.length) break;
-        last = await processBatch(pend); await push(last);
+        last = await processBatch(pend, redo); if (last.status === 'again') { redo++; continue; } await push(last);
         if (legacy || !queued || last.status === 'error' || last.status === 'retry') break;                                                          // without the queue ManyChat is waiting for this one answer
       }
     } finally { await sb.rpc('chat_unlock', { p_conv: conv.id }); }
