@@ -454,4 +454,17 @@ reset('suggest'); queue(true, 80); state.script = () => text('Exterior wall clea
 await Promise.all(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?'].map((t, i) => new Promise((r) => setTimeout(r, i * 50)).then(() => send(t, {}, 'MC-F3')))); await flush();
 ok('V2.3-23 SLOW BURST: five messages 50 ms apart with an 80 ms debounce: ONE draft, one model call', drafts().length === 1 && modelCalls.length === 1, `drafts=${drafts().length} modelCalls=${modelCalls.length}`);
 queue(false);
+// 23d (review 24 Nov): a price question whose model reply has an UNRESOLVED validation violation (Tagalog sentences: repair leaves nothing, the safe fallback would replace it): the tool-verified quote must survive; a burst, too
+reset('suggest'); queue(true, 60); state.script = () => text('Para ma-check ko ang tamang presyo, anong klaseng cleaning po ang kailangan ninyo at saan po ang location?');
+await Promise.all(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?'].map((t, i) => (i ? new Promise((r) => setTimeout(r, i * 5)).then(() => send(t, {}, 'MC-F4')) : send(t, {}, 'MC-F4')))); await flush();
+ok('V2.3-23 VIOLATION + BURST: the model reply is unsafe (repair impossible, fallback would apply): ONE draft carries the tool quote (₱125/sqm, ₱6,250 minimum) and is not left as a handover', drafts().length === 1 && /125/.test(drafts()[0].body) && /6,250/.test(drafts()[0].body) && !/verify the exact rate for you/.test(drafts()[0].body), JSON.stringify(drafts().map((d) => ({ b: d.body.slice(-170), f: d.flags }))));
+queue(false);
+// ... and when the unsafe reply DOES contain a peso figure (so the first recovery does not apply), repair leaves nothing and the safe fallback would replace it: the second recovery (after repair/fallback) restores the tool quote
+reset('suggest'); queue(true, 60); state.script = () => text('Para sa wall cleaning po, ang presyo ay ₱125 bawat sqm, ano po ang location ninyo at gaano po kalaki ang pader ninyo?');
+await Promise.all(['Binondo', 'Wall Cleaning', 'Exterior', 'Ground floor', 'How much?'].map((t, i) => (i ? new Promise((r) => setTimeout(r, i * 5)).then(() => send(t, {}, 'MC-F6')) : send(t, {}, 'MC-F6')))); await flush();
+ok('V2.3-23 UNSAFE REPLY WITH A FIGURE + BURST: the fallback no longer replaces a price question: the tool quote is restored AFTER repair, the staff reason of the fallback is dropped, and the flag says so', drafts().length === 1 && /125/.test(drafts()[0].body) && /6,250/.test(drafts()[0].body) && !/verify the exact rate for you/.test(drafts()[0].body) && drafts()[0].flags.some((f) => /estimate tool after validation/.test(f)), JSON.stringify(drafts().map((d) => ({ b: d.body.slice(-170), f: d.flags }))));
+queue(false);
+// the same unsafe reply when the city is NOT known: no figure is invented, the safe fallback with a precise staff reason stays
+reset('suggest'); queue(false); state.script = () => text('Para ma-check ko ang tamang presyo, anong klaseng cleaning po ang kailangan ninyo at saan po ang location?'); await send('Hello po', {}, 'MC-F5'); deliver(); await send('How much po?', {}, 'MC-F5');
+ok('V2.3-23 no city or service known: nothing is priced by the system, the answer stays a safe question/handover', !/₱\s?\d/.test(drafts().at(-1)?.body ?? ''), JSON.stringify((drafts().at(-1)?.body ?? '').slice(0, 160)));
 const failed = results.filter((r) => !r.pass); console.log(`\n${results.length - failed.length}/${results.length} passed`); process.exit(failed.length ? 1 : 0);
