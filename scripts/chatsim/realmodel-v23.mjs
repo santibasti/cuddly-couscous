@@ -27,7 +27,8 @@ const verdict = (name, reply, checks) => { const f = Object.entries(checks).filt
 // Crew-status assertion (review 23 Nov): an AFFIRMATIVE or unsupported crew claim fails; a plain negation ("it isn't on site yet") is allowed only when it is supported, i.e. it is about the date asked and that job really is in the future.
 const CREW_RE = /on the way|on site|on-site|on their way|is working|(?:has|have|is|are|already) arriv(?:ed|ing)/i;
 const NEG_CREW = /\b(?:isn't|is not|aren't|are not|hasn't|has not|haven't|have not|not|no)\s+(?:\w+\s+){0,2}?(?:yet\s+)?(?:on the way|on[- ]site|on their way|working|arrived|arriving)\b[^.?!]{0,12}/gi;
-const affirmativeCrewClaim = (t) => CREW_RE.test(String(t).replace(NEG_CREW, ' '));
+const FUTURE_CREW = /\b(?:will|'ll|shall|is going to|are going to)\s+(?:be\s+)?(?:on[- ]?site|arriv\w+|there|here)\b/gi;   // a FUTURE commitment for the confirmed date ("our team will be on site then") is not a claim about the crew's status now
+const affirmativeCrewClaim = (t) => CREW_RE.test(String(t).replace(NEG_CREW, ' ').replace(FUTURE_CREW, ' '));
 const hasNegation = (t) => { NEG_CREW.lastIndex = 0; return NEG_CREW.test(String(t)); };
 const NOT_FULL = (t) => !/fully booked|is full|not available|unavailable|too soon|nearest (open )?dates|no slots/i.test(t); const NO_FORM = (t) => !/Reservation Date:|Please copy this and fill/i.test(t);
 const NO_LEAK = (t) => !/JOB-\d{4}-\d{3,5}/.test(t);
