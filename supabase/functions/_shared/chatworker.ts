@@ -74,6 +74,7 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
         return hit ? `The client's booking record looks outdated: ${who.staleJobs.map((j) => `${j.number} (${j.status}, ${j.date})`).join('; ')}. Confirm with the crew before telling the customer anything.` : '';
       })();
       let brain: Brain = { reply: '', actions: [], amounts: [], booked: false, log: [] };
+      let fillPrice: () => Promise<boolean> = async () => false;   // set in the model branch: asks the estimate tool when a price question was answered without a figure; used again AFTER repair/fallback so a valid tool price survives them
       const allAck = texts.every((t) => isAcknowledgment(t));
       if (ctx.intent === 'complaint' || ctx.intent === 'human_assistance') {                                               // no model needed: a person takes over
         const f = fallbackReply(vctx(first)); brain = { ...brain, reply: f.text, humanReason: ctx.intent === 'complaint' ? 'The customer has a complaint' : 'The customer asked for a person', actions: [{ type: 'needs_human', input: { reason: ctx.intent } }] };
@@ -99,11 +100,18 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
         };
         const exec = makeExec({ jobs: who.jobs, hold: [...hold.map((j) => j.date), ...(verified ? who.staleJobs.map((j) => j.date) : [])], noHumanAlert: true, services: ctx.services_seen ?? [], booking, sb, base: env('SUPABASE_URL'), key, conv, lang, context: [ctx.location ?? '', ...texts].join(' ').slice(-600) });
         brain = await runBrain({ mode, system, messages, callModel, exec, maxRounds: 3, check: (r) => (/^NO_ANSWER\W*$/i.test(r.trim()) ? [] : validateReply(r, vctx(first))) });
-        // A price question must end with the tool's figure: when the model answered without a peso amount (it once wrote "priced per square meter, our team will verify"), the estimate tool is asked directly and its text is the answer.
-        if (!brain.error && !brain.bookReply && !brain.humanReason && !brain.conflict && priceFigureMissing(ctx, texts.join(' '), brain.reply)) {
-          const sv = serviceName(ctx.service); const ask = () => exec('estimate', { address: ctx.location, service: sv, property_type: 'Residential' }).catch(() => null); let o = sv ? await ask() : null; if (sv && !(o && /₱\s?\d/.test(o.text))) o = await ask();   // one more try if the tool call failed (a dropped connection)
-          if (o && /₱\s?\d/.test(o.text)) { brain.reply = `${o.text.replace(/\s+$/, '')} po. Our team confirms the exact area on site before work starts.`.replace(/\.\s*po\./, ' po.'); brain.amounts.push(...(o.amounts ?? [])); brain.log.push({ tool: 'estimate', input: { address: ctx.location, service: sv }, result: o.text.slice(0, 300) }); brain.violations = []; brain.note = 'price taken from the estimate tool (the AI gave no figure)'; }
-        }
+        fillPrice = async (): Promise<boolean> => {
+          // A price question must end with the tool's figure: when the answer has no peso amount (the model wrote "priced per square meter, our team will verify", or its text was replaced by the safe fallback), the estimate tool is asked directly and its text is the answer. A handover reason that only came from the fallback is dropped with it; any other reason stays.
+          const fromFallback = !brain.humanReason || /^(The reply could not be made safe|The AI could not answer)$/.test(brain.humanReason);
+          if (brain.error || brain.bookReply || brain.conflict || !fromFallback || !priceFigureMissing(ctx, texts.join(' '), brain.reply)) return false;
+          const sv = serviceName(ctx.service); if (!sv) return false;
+          const ask = () => exec('estimate', { address: ctx.location, service: sv, property_type: 'Residential' }).catch(() => null);
+          let o = await ask(); if (!(o && /₱\s?\d/.test(o.text))) o = await ask();   // one more try if the tool call failed (a dropped connection)
+          if (!(o && /₱\s?\d/.test(o.text))) return false;
+          brain.reply = `${o.text.replace(/\s+$/, '')} po. Our team confirms the exact area on site before work starts.`.replace(/\.\s*po\./, ' po.'); brain.amounts.push(...(o.amounts ?? []));
+          brain.log.push({ tool: 'estimate', input: { address: ctx.location, service: sv }, result: o.text.slice(0, 300) }); brain.violations = []; brain.humanReason = undefined; brain.note = 'price taken from the estimate tool (the AI gave no figure)'; return true;
+        };
+        await fillPrice();
       }
       const isNoAnswer = /^NO_ANSWER\W*$/i.test(brain.reply.trim());
       if (brain.error && isTransientError(brain.error) && !legacy && (Date.now() - Date.parse(pending[0]?.created_at ?? new Date().toISOString())) < GIVE_UP_MIN * 60_000) return { status: 'retry', reply: '', note: brain.error.slice(0, 160) };   // nothing is saved and nothing is marked: the next pass (a new message or the recovery job) tries again
@@ -119,6 +127,7 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
           else { const f = fallbackReply(vctx(first)); flags = [...flags, `replaced by a safe sentence: ${brain.violations.join('; ')}`.slice(0, 240)]; brain.reply = f.text; if (f.handover && !brain.humanReason) brain.humanReason = 'The reply could not be made safe'; }
         }
       }
+      if (!brain.error && !isNoAnswer && !brain.bookReply && await fillPrice()) flags = [...flags, 'price taken from the estimate tool after validation/repair'];   // a valid tool price must survive repair and the safe fallback
       if (!brain.reply.trim() && !brain.error && photo) brain.reply = PHOTO_THANKS;
       const d0 = decide(mode, brain, lang, own);
       // the welcome already asks for the location: the AI part must not ask it again
@@ -142,8 +151,8 @@ export function createWorker(d: WorkerDeps): () => Promise<Out> {
       if (d.kind === 'handover') {
         await sb.from('chat_conversations').update({ status: 'Needs a person', human_reason: d.reason.slice(0, 300) }).eq('id', conv.id);
         await sb.from('alert_outbox').insert({ kind: 'chat', title: 'Chat needs a person', body: `${conv.name ?? 'A customer'} (${channel}): ${d.reason.slice(0, 160)}`, link: '/ai-chat' });
-        if (mode === 'suggest') { await store({ ...common, body: d.text || fallbackFor(lang), status: 'draft', actions: [], flags: [d.reason] }); return { status: 'held', reply: '' }; }
-        await store({ ...common, body: d.text, status: 'sent', flags: [d.reason] });
+        if (mode === 'suggest') { await store({ ...common, body: d.text || fallbackFor(lang), status: 'draft', actions: [], flags: [d.reason, ...flags].slice(0, 6) }); return { status: 'held', reply: '' }; }
+        await store({ ...common, body: d.text, status: 'sent', flags: [d.reason, ...flags].slice(0, 6) });
         return { status: 'handover', reply: d.text };                                                                    // the customer gets the safe sentence, a person takes over
       }
       await store({ ...common, body: d.text, status: 'sent' });
