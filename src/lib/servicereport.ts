@@ -173,6 +173,13 @@ export function parseBody(body: string): ({ kind: 'p'; text: string } | { kind: 
   return out;
 }
 
+/** Moves the photo with this id to the given 0-based position (clamped to the list); every other photo keeps its relative order. Returns the same array when nothing changes. */
+export function movePhoto(photos: ReportPhoto[], id: string, to: number): ReportPhoto[] {
+  const from = photos.findIndex((p) => p.id === id); if (from < 0 || !Number.isFinite(to)) return photos;
+  const target = Math.max(0, Math.min(photos.length - 1, Math.trunc(to))); if (target === from) return photos;
+  const next = photos.slice(); const [moved] = next.splice(from, 1); next.splice(target, 0, moved); return next;
+}
+
 /** Auto-arrangement of the photos: Before / After pairs side by side first, then the remaining photos in a 2-column grid. */
 export function arrangePhotos(photos: ReportPhoto[]): { pairs: [ReportPhoto, ReportPhoto][]; rest: ReportPhoto[] } {
   const before = photos.filter((p) => p.group === 'Before'); const after = photos.filter((p) => p.group === 'After');

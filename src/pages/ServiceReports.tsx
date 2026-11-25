@@ -8,7 +8,7 @@ import { EnhanceToggle } from '@/components/EnhanceToggle';
 import { AiRephrase } from '@/components/AiRephrase';
 import { DataTable } from '@/components/DataTable';
 import { LOGO_SMALL_URL } from '@/lib/logo';
-import { FREQUENCIES, SECTION_TITLES, arrangePhotos, buildSections, createServiceReport, parseBody, deleteServiceReport, serviceDatesText, serviceDays, setReportStatus, signServiceReport, updateServiceReport } from '@/lib/servicereport';
+import { FREQUENCIES, SECTION_TITLES, arrangePhotos, movePhoto, buildSections, createServiceReport, parseBody, deleteServiceReport, serviceDatesText, serviceDays, setReportStatus, signServiceReport, updateServiceReport } from '@/lib/servicereport';
 import { addJobPhoto, photoDataUrls, photoUrls } from '@/lib/photos';
 import { buildServiceReportPdf, serviceReportFilename } from '@/lib/servicereportpdf';
 import { CLOUD, supabase } from '@/lib/cloud';
@@ -129,7 +129,7 @@ function ReportEditor({ id }: { id: string }) {
             </div>
             {!locked && <button className="btn sm" onClick={rebuild}>Rebuild sections from the template</button>}
           </Card>
-          <Card title="Photos" actions={<span className="small muted">{r.photos.length} photo{r.photos.length === 1 ? '' : 's'} · they arrange themselves in the report</span>}>
+          <Card title="Photos" actions={<span className="small muted">{r.photos.length} photo{r.photos.length === 1 ? '' : 's'} · Before / After pairs go first, then the Detail photos; use ◀ ▶ or the number box to change a photo's place</span>}>
             {!locked && (
               <div className="row" style={{ flexWrap: 'wrap', marginBottom: 10 }}>
                 <div className="chips" role="group" aria-label="Photo group">{GROUPS.map((g) => <button key={g} type="button" className={group === g ? 'on' : ''} onClick={() => setGroup(g)}>{g}</button>)}</div>
@@ -143,10 +143,19 @@ function ReportEditor({ id }: { id: string }) {
               </div>
             )}
             <div className="photogrid">
-              {r.photos.map((p) => (
+              {r.photos.map((p, i) => (
                 <div key={p.id} className="photocell" style={{ aspectRatio: 'auto', display: 'block', cursor: 'default' }}>
                   <div style={{ aspectRatio: '1', display: 'grid', placeItems: 'center' }}>{urls[p.id] ? <img src={urls[p.id]} alt={p.caption || p.group} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span className="small muted">Loading…</span>}</div>
                   <div style={{ padding: 6, display: 'grid', gap: 4 }}>
+                    {!locked && r.photos.length > 1 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr 1fr', gap: 4, alignItems: 'stretch' }} role="group" aria-label={`Move photo ${i + 1}`}>
+                        <button type="button" className="btn sm" style={{ padding: '4px 0' }} disabled={i === 0} title="Move earlier" aria-label="Move this photo earlier" onClick={() => set({ photos: movePhoto(r.photos, p.id, i - 1) })}>◀</button>
+                        <input key={`${p.id}-${i}`} type="number" min={1} max={r.photos.length} defaultValue={i + 1} title={`Position ${i + 1} of ${r.photos.length}: type a number (1 to ${r.photos.length}) and press Enter to move this photo there`} aria-label="Position of this photo" style={{ width: '100%', minWidth: 0, textAlign: 'center', padding: '4px 2px' }}
+                          onBlur={(e) => { const n = Number(e.target.value); if (Number.isFinite(n) && n >= 1) set({ photos: movePhoto(r.photos, p.id, n - 1) }); else e.target.value = String(i + 1); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+                        <button type="button" className="btn sm" style={{ padding: '4px 0' }} disabled={i === r.photos.length - 1} title="Move later" aria-label="Move this photo later" onClick={() => set({ photos: movePhoto(r.photos, p.id, i + 1) })}>▶</button>
+                      </div>
+                    )}
                     <select disabled={locked} value={p.group} onChange={(e) => set({ photos: r.photos.map((x) => (x.id === p.id ? { ...x, group: e.target.value as ReportPhoto['group'] } : x)) })}>{GROUPS.map((g) => <option key={g}>{g}</option>)}</select>
                     <input disabled={locked} placeholder="Caption" value={p.caption} maxLength={120} onChange={(e) => set({ photos: r.photos.map((x) => (x.id === p.id ? { ...x, caption: e.target.value } : x)) })} />
                     {!locked && <button className="btn sm" onClick={async () => { const u = (await photoDataUrls([p]))[p.id]; if (u) setPriv({ id: p.id, src: u }); else toast('Could not open this photo', 'err'); }}>🔒 Privacy edit</button>}
