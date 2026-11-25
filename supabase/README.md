@@ -102,9 +102,9 @@ attendance but not their own.
 the service price list, branches, storage locations, holidays, maintenance checklist templates, and the inventory / equipment names as a starting list
 (their stock movements, checkouts and maintenance history are cleared). Run it once in the Supabase SQL editor, after the preview.
 
-## Owner alerts by SMS (ONLY: quotation approved, job booked automatically by the chat)
+## Owner alerts by SMS (ONLY: quotation approved, discount requested, job booked automatically by the chat)
 
-> Since 25 Nov 2026 the owner is texted **only** for a client-approved/signed quotation (`kind = 'quotation'`) and a job the chat booked automatically (`kind = 'booking'`, "Booked automatically"), plus the Admin test button (`kind = 'test'`). The list lives in `supabase/functions/send-alerts/policy.ts`. Every other alert (chat needs a person, AI reply waits for approval, new leads, photos, on-site signatures, additional scope, discount requests, errors) is still recorded in `alert_outbox` and shown in the app, but is marked "Not texted" and never sent. The reminders to CLIENTS (`send-client-reminders`) are unchanged.
+> Since 25 Nov 2026 the owner is texted **only** for a client-approved/signed quotation (`kind = 'quotation'`), a discount request that waits for the owner's approval (`kind = 'discount'`) and a job the chat booked automatically (`kind = 'booking'`, "Booked automatically"), plus the Admin test button (`kind = 'test'`). The list lives in `supabase/functions/send-alerts/policy.ts`. Every other alert (chat needs a person, AI reply waits for approval, new leads, photos, on-site signatures, additional scope, errors) is still recorded in `alert_outbox` and shown in the app, but is marked "Not texted" and never sent. The reminders to CLIENTS (`send-client-reminders`) are unchanged.
 
 
 The database records these events itself (migrations `0044`/`0045`, table `alert_outbox`), so they are sent even when nobody has the app open. The `send-alerts` Edge Function delivers them by SMS through [Semaphore](https://semaphore.co) (Philippines).
