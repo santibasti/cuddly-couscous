@@ -6,6 +6,7 @@
 // Optional: SEMAPHORE_SENDER (an approved sender name; default is Semaphore's shared sender), APP_URL (default https://cuddly-couscous-one.vercel.app),
 //           WEBHOOK_SECRET (if set, the caller must send it as header x-webhook-secret — leave it unset when migration 0046 calls the function).
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { NOT_TEXTED, shouldText } from './policy.ts';
 
 const env = (k: string) => Deno.env.get(k) ?? '';
 
@@ -31,8 +32,10 @@ Deno.serve(async (req) => {
   const { data: rows, error } = await db.from('alert_outbox').select('*').is('sent_at', null).lt('attempts', 5).order('id').limit(25);
   if (error) return new Response(error.message, { status: 500 });
   const to = env('ALERT_SMS_TO').replace(/\s/g, '');
-  let sent = 0;
+  let sent = 0, skipped = 0;
   for (const r of rows ?? []) {
+    // Only approved quotations and automatic bookings are texted (see policy.ts); every other alert stays in the app and is marked as skipped so it is never retried.
+    if (!shouldText(r.kind)) { await db.from('alert_outbox').update({ attempts: 5, error: NOT_TEXTED }).eq('id', r.id); skipped++; continue; }
     // No link in any alert text: Philippine phone companies drop texts that contain one. The text is kept inside one SMS (160 characters).
     const full = gsm(`TopMop: ${r.title}\n${r.body}`);
     const text = full.length > 160 ? `${full.slice(0, 157).trimEnd()}...` : full;
@@ -44,5 +47,5 @@ Deno.serve(async (req) => {
       await db.from('alert_outbox').update({ attempts: r.attempts + 1, error: String((e as Error).message).slice(0, 300) }).eq('id', r.id);
     }
   }
-  return Response.json({ sent, pending: (rows?.length ?? 0) - sent });
+  return Response.json({ sent, skipped, pending: (rows?.length ?? 0) - sent - skipped });
 });

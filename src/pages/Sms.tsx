@@ -61,7 +61,7 @@ export default function Sms() {
       </div>
 
       <Card title="3 · Owner alert texts" actions={<span className="small muted">Sent to the alert number set for the system</span>}>
-        <div className="small muted" style={{ marginBottom: 8 }}>You are texted when: a client approves or signs a <b>quotation</b>, signs the scope or final quote <b>on site</b>, <b>additional work</b> is approved, or a <b>discount is requested</b>. They are kept to one SMS and carry no link; open the app to act on them.</div>
+        <div className="small muted" style={{ marginBottom: 8 }}>You are texted <b>only</b> when a client approves or signs a <b>quotation</b>, or when the chat <b>books a job automatically</b>. Everything else (the chat needing a person, AI replies waiting for approval, new leads, photos, on-site signatures, additional work, discount requests, errors) stays in the app and is not texted; those rows below show as skipped. Texts are kept to one SMS and carry no link; open the app to act on them.</div>
         {err && <div className="alert warn">{err}</div>}
         {logs.missing && <div className="alert warn">The SMS log tables are not in the database yet. Run the latest database update.</div>}
         <div className="tbl-wrap"><table className="tbl compact"><thead><tr><th>When</th><th>Alert</th><th>Status</th><th>Detail</th></tr></thead><tbody>
